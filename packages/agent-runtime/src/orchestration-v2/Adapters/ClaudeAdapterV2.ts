@@ -4016,6 +4016,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   adapterOptions: ClaudeAdapterV2Options,
 ) {
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
+  const platform = yield* HostProcess.Platform;
+  const instanceConfigDirectory = HostProcess.readEnvironmentVariable(
+    platform,
+    adapterOptions.environment,
+    "CLAUDE_CONFIG_DIR",
+  );
   const { attachmentsDir, fileSystem, path, crypto, idAllocator, queryRunner } = adapterOptions;
   const keepViewedImageCopy = keepViewedImage({ attachmentsDir, fileSystem, path });
   // Subagent model names and effort levels, including the instance's custom models.
@@ -4054,8 +4060,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   ) {
     if (identities.length === 0) return undefined;
     const flags = parseCliArgs(adapterOptions.settings.launchArgs).flags;
-    const configDir = environment.CLAUDE_CONFIG_DIR?.trim();
-    const userHome = environment.HOME ?? environment.USERPROFILE;
+    const configDir = HostProcess.readEnvironmentVariable(
+      platform,
+      environment,
+      "CLAUDE_CONFIG_DIR",
+    )?.trim();
+    const userHome =
+      HostProcess.readEnvironmentVariable(platform, environment, "HOME") ??
+      HostProcess.readEnvironmentVariable(platform, environment, "USERPROFILE");
     const configHome = configDir
       ? path.resolve(cwd ?? ".", configDir)
       : userHome
@@ -4147,8 +4159,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
     const availability = yield* Effect.gen(function* () {
       const remote = yield* readPermissionSettings(path.join(homePath, "remote-settings.json"));
       const customHome =
-        adapterOptions.settings.homePath.trim() !== "" ||
-        adapterOptions.environment.CLAUDE_CONFIG_DIR !== undefined;
+        adapterOptions.settings.homePath.trim() !== "" || instanceConfigDirectory !== undefined;
       const home =
         customHome && !adapterOptions.settings.isolated
           ? yield* readPermissionSettings(path.join(homePath, "settings.json"))
@@ -4253,9 +4264,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
       function* (discardInput) {
         const nativeThreadId = yield* getNativeThreadId(discardInput.providerThread);
         yield* queryRunner.deleteSession({
-          ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
+          ...(instanceConfigDirectory === undefined
             ? {}
-            : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
+            : { configDirectory: instanceConfigDirectory }),
           sessionId: nativeThreadId,
           options: {
             ...(discardInput.runtimePolicy.cwd === null
@@ -5437,9 +5448,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
           const launchToolUseId = yield* queryRunner
             .subagentLaunchToolUseId({
-              ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
+              ...(instanceConfigDirectory === undefined
                 ? {}
-                : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
+                : { configDirectory: instanceConfigDirectory }),
               sessionId: resume.nativeThreadId,
               agentId: resume.taskId,
               dir: resume.context.input.runtimePolicy.cwd,
@@ -5778,13 +5789,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ? yield* readWorkflowAgentAnswers({
                     transcriptDir,
                     agentId,
-                    ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
+                    ...(instanceConfigDirectory === undefined
                       ? {}
                       : {
-                          configDir: path.resolve(
-                            session.cwd,
-                            adapterOptions.environment.CLAUDE_CONFIG_DIR,
-                          ),
+                          configDir: path.resolve(session.cwd, instanceConfigDirectory),
                         }),
                   }).pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
                 : [];
@@ -8127,7 +8135,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               context.billingLimited = message.error === "billing_error";
               if (message.error === "authentication_failed") {
                 context.authenticationFailureMessage = claudeSignedOutMessage({
-                  configDir: adapterOptions.environment.CLAUDE_CONFIG_DIR,
+                  configDir: instanceConfigDirectory,
                   cwd: path.resolve(context.input.runtimePolicy.cwd ?? "."),
                 });
               }
@@ -10043,9 +10051,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             adapterOptions.environment,
             preparedThread.environment,
             adapterOptions.settings.isolated,
+            platform,
           );
           const profileHome =
-            cliShell?.profileHome ?? adapterOptions.environment?.NODEX_AGENT_PROFILE_HOME;
+            cliShell?.profileHome ??
+            HostProcess.readEnvironmentVariable(
+              platform,
+              adapterOptions.environment,
+              "NODEX_AGENT_PROFILE_HOME",
+            );
           const pluginScope =
             identity && executionHost.openPlugins ? yield* Scope.fork(sessionScope) : null;
           const releasePlugins = pluginScope ? Scope.close(pluginScope, Exit.void) : Effect.void;
@@ -10085,26 +10099,21 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               attachmentsDir,
               settings: adapterOptions.settings,
               ...(sdkSettings === undefined ? {} : { sdkSettings }),
-              environment:
-                cliShell === undefined
-                  ? {
-                      ...environment,
-                      NODEX_AGENT_SHELL: "1",
-                      ...(profileHome === undefined
-                        ? {}
-                        : { NODEX_AGENT_PROFILE_HOME: profileHome }),
-                    }
+              environment: HostProcess.mergeProcessEnvironments(platform, environment, {
+                NODEX_AGENT_SHELL: "1",
+                ...(profileHome === undefined ? {} : { NODEX_AGENT_PROFILE_HOME: profileHome }),
+                ...(cliShell === undefined
+                  ? {}
                   : {
-                      ...environment,
-                      NODEX_AGENT_SHELL: "1",
-                      ...(profileHome === undefined
-                        ? {}
-                        : { NODEX_AGENT_PROFILE_HOME: profileHome }),
                       NODEX_CLI_TASK_ID: cliShell.taskId,
-                      PATH: [cliShell.bin, environment?.PATH ?? process.env.PATH]
+                      PATH: [
+                        cliShell.bin,
+                        HostProcess.readEnvironmentVariable(platform, environment, "PATH"),
+                      ]
                         .filter(Boolean)
-                        .join(process.platform === "win32" ? ";" : ":"),
-                    },
+                        .join(platform === "win32" ? ";" : ":"),
+                    }),
+              }),
               tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
               ...withClaudePluginQueryOptions(mcpOverrides, plugins),
               permissionMode: queryPolicy.permissionMode,
@@ -11185,9 +11194,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ...(upToMessageId === undefined ? {} : { upToMessageId }),
               };
               const forked = yield* queryRunner.forkSession({
-                ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
+                ...(instanceConfigDirectory === undefined
                   ? {}
-                  : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
+                  : { configDirectory: instanceConfigDirectory }),
                 sessionId: sourceNativeThreadId,
                 options: forkOptions,
                 threadId: forkInput.targetThreadId,
@@ -11267,10 +11276,10 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     const queryRunner = yield* ClaudeAgentSdkQueryRunner;
     const serverConfig = yield* ServerConfig.ServerConfig;
     const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
-    const baseEnvironment = yield* mergeProviderInstanceEnvironment(
-      environment,
-      config.isolated ? {} : hostEnvironment,
-    );
+    const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment, {
+      isolated: config.isolated,
+      host: hostEnvironment,
+    });
     const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
     const path = yield* Path.Path;
     const crypto = yield* Crypto.Crypto;

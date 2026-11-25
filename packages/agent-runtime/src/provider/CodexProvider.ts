@@ -53,6 +53,7 @@ import {
   type CodexResetCreditsSummary,
 } from "./codexUsageLimits.ts";
 import * as HostProcess from "@nodex/runtime-shared/HostProcess";
+import { mergeProviderInstanceEnvironment } from "@nodex/provider-core/server/instanceEnvironment";
 import packageJson from "../../package.json" with { type: "json" };
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 const RATE_LIMITS_PROBE_TIMEOUT_MS = 3_000;
@@ -458,11 +459,16 @@ export const requestCodexChatGptModels = Effect.fn("requestCodexChatGptModels")(
  * A value the user already set wins.
  */
 export const codexAppServerEnvironment = (
-  environment: NodeJS.ProcessEnv | undefined,
-): NodeJS.ProcessEnv => ({
-  CODEX_INTERNAL_ORIGINATOR_OVERRIDE: CODEX_CLIENT_NAME,
-  ...environment,
-});
+  platform: NodeJS.Platform,
+  environment: NodeJS.ProcessEnv,
+  homePath: string | undefined,
+): NodeJS.ProcessEnv =>
+  HostProcess.mergeProcessEnvironments(
+    platform,
+    { CODEX_INTERNAL_ORIGINATOR_OVERRIDE: CODEX_CLIENT_NAME },
+    environment,
+    homePath ? { CODEX_HOME: homePath } : undefined,
+  );
 
 export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   return {
@@ -482,7 +488,7 @@ const launchCodexProbeClient = Effect.fn("launchCodexProbeClient")(function* (in
   readonly homePath?: string | undefined;
   readonly launchArgs?: string | undefined;
   readonly cwd: string;
-  readonly environment?: NodeJS.ProcessEnv | undefined;
+  readonly environment: NodeJS.ProcessEnv;
 }) {
   // `~` is not shell-expanded when env vars are set via `child_process.spawn`,
   // so `CODEX_HOME=~/.codex_work` would reach codex verbatim and trip
@@ -492,21 +498,22 @@ const launchCodexProbeClient = Effect.fn("launchCodexProbeClient")(function* (in
     ? expandHomePath(input.homePath, yield* HostProcess.HomeDirectory)
     : undefined;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const environment = {
-    ...codexAppServerEnvironment(input.environment),
-    ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-  };
+  const environment = codexAppServerEnvironment(
+    yield* HostProcess.Platform,
+    input.environment,
+    resolvedHomePath,
+  );
   const spawnCommand = yield* resolveSpawnCommand(
     input.binaryPath,
     codexAppServerArgs(input.launchArgs),
-    { env: environment, extendEnv: true },
+    { env: environment, extendEnv: false },
   );
   const child = yield* spawner
     .spawn(
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
         cwd: input.cwd,
         env: environment,
-        extendEnv: true,
+        extendEnv: false,
         // These short-lived probes have no independent lifetime. Keep them in
         // the Runtime's process group so Main can still stop them if it exits.
         detached: false,
@@ -658,7 +665,7 @@ export const probeCodexSkillsForCwd = Effect.fn("probeCodexSkillsForCwd")(functi
   readonly launchArgs?: string;
   readonly cwd: string;
   readonly exactCwd?: boolean;
-  readonly environment?: NodeJS.ProcessEnv;
+  readonly environment: NodeJS.ProcessEnv;
 }) {
   const { client } = yield* withCodexAppServerClient(input);
   const skillsResponse = yield* client.request("skills/list", { cwds: [input.cwd] });
@@ -742,7 +749,7 @@ export const prepareCodexProviderStatus = Effect.fn("prepareCodexProviderStatus"
     CodexErrors.CodexAppServerError,
     ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
   > = launchCodexProbeClient,
-  environment: NodeJS.ProcessEnv = process.env,
+  environment?: NodeJS.ProcessEnv,
   managedAuth?: ServerProviderAuth,
 ) {
   const now = yield* DateTime.now;
@@ -785,13 +792,22 @@ export const prepareCodexProviderStatus = Effect.fn("prepareCodexProviderStatus"
     });
   };
 
+  const processEnvironment =
+    environment ??
+    (yield* mergeProviderInstanceEnvironment(undefined, {
+      isolated: codexSettings.isolated,
+    }));
   const essential = yield* Effect.gen(function* () {
     client = yield* launch({
       binaryPath: codexSettings.binaryPath,
       homePath: codexSettings.homePath,
-      launchArgs: resolveCodexLaunchArgs(codexSettings.launchArgs, environment),
+      launchArgs: resolveCodexLaunchArgs(
+        codexSettings.launchArgs,
+        processEnvironment,
+        yield* HostProcess.Platform,
+      ),
       cwd,
-      environment,
+      environment: processEnvironment,
     });
     const initialize = yield* client.request("initialize", buildCodexInitializeParams());
     version = initialize.userAgent.match(/\/([^\s]+)/)?.[1] ?? null;

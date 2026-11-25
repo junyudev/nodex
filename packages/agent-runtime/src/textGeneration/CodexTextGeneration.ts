@@ -401,13 +401,21 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         getModelSelectionStringOptionValue(modelSelection, "reasoningEffort") ??
         DEFAULT_TEXT_GENERATION_REASONING_EFFORT;
       const serviceTier = resolved ? undefined : getCodexServiceTierOptionValue(modelSelection);
-      const launchArgs = resolveCodexLaunchArgs(effectiveConfig.launchArgs, effectiveEnvironment);
+      const platform = yield* HostProcess.Platform;
+      const launchArgs = resolveCodexLaunchArgs(
+        effectiveConfig.launchArgs,
+        effectiveEnvironment,
+        platform,
+      );
       const hostHome = yield* HostProcess.HomeDirectory;
       const configuredHome = expandHomePath(effectiveConfig.homePath, hostHome);
       const codexHome =
         configuredHome ||
-        effectiveEnvironment.CODEX_HOME ||
-        path.join(effectiveEnvironment.HOME || hostHome, ".codex");
+        HostProcess.readEnvironmentVariable(platform, effectiveEnvironment, "CODEX_HOME") ||
+        path.join(
+          HostProcess.readEnvironmentVariable(platform, effectiveEnvironment, "HOME") || hostHome,
+          ".codex",
+        );
       // Isolation drops customizations while retaining the endpoint and auth of the selected
       // installation. Managed Codex already supplies its own connection through its launch args.
       const connection =
@@ -418,6 +426,12 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
               effectiveEnvironment,
             )
           : undefined;
+      const launchEnvironment = HostProcess.mergeProcessEnvironments(
+        platform,
+        effectiveEnvironment,
+        connection?.environment,
+        configuredHome ? { CODEX_HOME: configuredHome } : undefined,
+      );
       const spawnCommand = yield* resolveSpawnCommand(
         effectiveConfig.binaryPath || "codex",
         [
@@ -455,14 +469,11 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           ...imagePaths.flatMap((imagePath) => ["--image", imagePath]),
           "-",
         ],
-        { env: effectiveEnvironment },
+        { env: launchEnvironment, extendEnv: false },
       );
       const command = ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        env: {
-          ...effectiveEnvironment,
-          ...connection?.environment,
-          ...(configuredHome ? { CODEX_HOME: configuredHome } : {}),
-        },
+        env: launchEnvironment,
+        extendEnv: false,
         cwd,
         shell: spawnCommand.shell,
         stdin: {

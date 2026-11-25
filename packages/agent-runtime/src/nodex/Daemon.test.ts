@@ -231,6 +231,120 @@ it("preserves actionable search cursor failures through real stdio", async () =>
   }
 });
 
+it("isolates invalid provider declarations at bootstrap and during reconfiguration", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-provider-declarations-"));
+  const provider = {
+    driver: "acpRegistry",
+    config: {
+      source: "local",
+      discovery: "explicit",
+      commandPath: process.execPath,
+      commandArgs: [fileURLToPath(new URL("./testing/acp-management-peer.mjs", import.meta.url))],
+    },
+    environment: [
+      { name: "ACP_MANAGEMENT_LOG", value: path.join(home, "peer.jsonl"), sensitive: false },
+    ],
+  };
+  const secret = "private-environment-fixture";
+  let runtime: Awaited<ReturnType<typeof startProcess>> | undefined;
+  try {
+    const daemon = await startProcess(home, {
+      type: "bootstrap",
+      providers: {
+        healthy: { ...provider, displayName: "Healthy" },
+        rejected: {
+          ...provider,
+          displayName: "Rejected",
+          environment: [{ name: "ProgramFiles(x86)", value: secret, sensitive: true }],
+        },
+        "1acp-uuid": { ...provider, displayName: "Invalid identity" },
+        " healthy": { ...provider, displayName: "Conflicting identity" },
+      },
+    });
+    runtime = daemon;
+    await daemon.waitForDiagnostic("Dropped provider declaration with an invalid instance ID");
+    const read = () => daemon.request("providers.read", { waitForChecks: false });
+    const initial = await read();
+    expect(initial).toMatchObject({
+      success: true,
+      output: expect.arrayContaining([
+        expect.objectContaining({ instanceId: "healthy", enabled: true, displayName: "Healthy" }),
+        expect.objectContaining({
+          instanceId: "rejected",
+          enabled: false,
+          displayName: "Rejected",
+          availability: "unavailable",
+          unavailableReason: expect.stringMatching(/environment.*name/i),
+        }),
+      ]),
+    });
+    expect(initial.success && initial.output).toHaveLength(2);
+    expect(JSON.stringify(initial)).not.toContain(secret);
+    const connect = (instanceId: string) =>
+      daemon.request("acp.connection.start", { instanceId, operationId: instanceId, cwd: home });
+    expect((await connect("rejected")).success).toBe(false);
+    expect((await connect("healthy")).success).toBe(true);
+    await expect
+      .poll(() => daemon.request("acp.operation.read", { operationId: "healthy" }))
+      .toMatchObject({ success: true, output: { phase: "succeeded" } });
+
+    expect(await daemon.request("providers.configure", { providers: [] })).toMatchObject({
+      success: false,
+    });
+    expect(
+      await daemon.request("providers.configure", {
+        providers: {
+          healthy: { ...provider, displayName: "Updated" },
+          rejected: { ...provider, displayName: "   " },
+          host_unavailable: {
+            ...provider,
+            enabled: true,
+            source: "nodex",
+            unavailable: { message: "Could not prepare this Agent." },
+          },
+        },
+      }),
+    ).toMatchObject({ success: true, output: { applied: true, deferredInstanceIds: [] } });
+    await expect.poll(read).toMatchObject({
+      success: true,
+      output: expect.arrayContaining([
+        expect.objectContaining({ instanceId: "healthy", enabled: true, displayName: "Updated" }),
+        expect.objectContaining({
+          instanceId: "rejected",
+          enabled: false,
+          availability: "unavailable",
+          unavailableReason: expect.stringContaining("displayName"),
+        }),
+        expect.objectContaining({
+          instanceId: "host_unavailable",
+          enabled: false,
+          availability: "unavailable",
+          unavailableReason: "Could not prepare this Agent.",
+        }),
+      ]),
+    });
+    expect((await connect("host_unavailable")).success).toBe(false);
+
+    expect(
+      await daemon.request("providers.configure", {
+        providers: {
+          healthy: { ...provider, displayName: "Updated" },
+          rejected: { ...provider, displayName: "Recovered" },
+          host_unavailable: { ...provider, displayName: "Prepared" },
+        },
+      }),
+    ).toMatchObject({ success: true, output: { applied: true, deferredInstanceIds: [] } });
+    expect((await connect("rejected")).success).toBe(true);
+    expect((await connect("host_unavailable")).success).toBe(true);
+    expect(await daemon.close()).toBe(0);
+    expect(daemon.invalidLines).toEqual([]);
+  } finally {
+    runtime?.child.kill("SIGKILL");
+    await runtime?.exit;
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 it("keeps provider refresh warnings after readiness off the JSON protocol stream", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-runtime-logging-"));
   const binary = path.join(home, "codex-fixture.mjs");

@@ -14,6 +14,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
+import { mergeProcessEnvironments } from "@nodex/runtime-shared/HostProcess";
+import { isHostProviderVariable } from "./instanceEnvironment.ts";
 
 /** Exact admitted native session incarnation and Run; never inferred from a reusable bearer. */
 export interface HostTurnIdentity {
@@ -104,19 +106,26 @@ export const withWorkspaceEnvironment = (
   environment: NodeJS.ProcessEnv,
   workspace: HostWorkspaceEnvironment | undefined,
   isolateProviderCredentials = false,
+  platform = process.platform,
 ): NodeJS.ProcessEnv => {
   if (workspace === undefined) return environment;
-  const next = { ...environment };
-  for (const name of workspace.exclude) delete next[name];
-  const merged = { ...next, ...workspace.set };
-  if (!isolateProviderCredentials) return merged;
+  const removed = Object.fromEntries(workspace.exclude.map((name) => [name, undefined]));
+  if (!isolateProviderCredentials) {
+    return mergeProcessEnvironments(platform, environment, removed, workspace.set);
+  }
   // Workspace setup can supply tools and project variables, but cannot redirect managed billing
   // or restore a native account home. Managed launch values remain authoritative.
-  const reserved = (name: string) => /^(?:HOME$|USERPROFILE$|HOMEDRIVE$|HOMEPATH$|XDG_CONFIG_HOME$|ANTHROPIC_|CLAUDE_|CODEX_|OPENAI_|NODEX_GATEWAY_API_KEY$)/iu.test(name);
-  return {
-    ...Object.fromEntries(Object.entries(merged).filter(([name]) => !reserved(name))),
-    ...Object.fromEntries(Object.entries(environment).filter(([name]) => reserved(name))),
-  };
+  const reserved = (name: string) =>
+    isHostProviderVariable(name) ||
+    /^(?:HOME|USERPROFILE|HOMEDRIVE|HOMEPATH|XDG_CONFIG_HOME)$/iu.test(name);
+  const workspaceChanges = (values: Readonly<NodeJS.ProcessEnv>) =>
+    Object.fromEntries(Object.entries(values).filter(([name]) => !reserved(name)));
+  return mergeProcessEnvironments(
+    platform,
+    environment,
+    workspaceChanges(removed),
+    workspaceChanges(workspace.set),
+  );
 };
 
 export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()(

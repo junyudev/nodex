@@ -165,8 +165,12 @@ const make = Effect.fn("NodePtyAdapter.make")(function* () {
       // the ConPTY path leaves the environment untouched, so Windows children
       // inherit a missing or 16-color TERM unless it is set here.
       const env =
-        platform === "win32" && input.env["TERM"] === undefined
-          ? { ...input.env, TERM: "xterm-256color" }
+        platform === "win32"
+          ? HostProcess.mergeProcessEnvironments(platform, input.env, {
+              TERM:
+                HostProcess.readEnvironmentVariable(platform, input.env, "TERM") ??
+                "xterm-256color",
+            })
           : input.env;
       const ptyProcess = yield* Effect.try({
         try: () => {

@@ -9,10 +9,11 @@ import * as SessionPause from "./SessionPause.ts";
 import type { AgentRuntimeOperations } from "./Interface.ts";
 import { RuntimeModelPolicy, executionProviders } from "./ModelPolicy.ts";
 import * as Delegation from "./Delegation.ts";
+import * as ProviderDeclarations from "./ProviderDeclarations.ts";
 import {
   isModelOn,
   spendsNodexCredit,
-  type ModelPolicy,
+  ModelPolicySchema,
 } from "../../../../src/shared/model-policy.ts";
 import { withSupportedRuntimeModes } from "./ProviderRuntimeModes.ts";
 import { CodexAppServerClientFactory } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
@@ -54,7 +55,6 @@ import {
   OrchestrationV2BackgroundTaskIds,
   PersistChatAttachmentsInput,
   PersistChatAttachmentsResult,
-  ProviderInstanceConfigMap,
   ProviderInstanceId,
   ProviderSessionId,
   OrchestrationV2ConversationMessage,
@@ -160,7 +160,6 @@ import type {
   AgentRuntimeIdentity,
   AgentRuntimeNotification,
   AgentSubagentOverviewItem,
-  AgentRuntimeConfiguration,
 } from "./Interface.ts";
 import { AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS } from "./TextGenerationLimits.ts";
 import { turnItemText } from "../orchestration-v2/turnItemContent.ts";
@@ -425,7 +424,7 @@ const AgentRequest = Schema.Union([
   request(
     "providers.configure",
     Schema.Struct({
-      providers: ProviderInstanceConfigMap,
+      providers: ProviderDeclarations.ProviderDeclarationsInput,
       automaticWorkAtOnce: Schema.optional(
         Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 16 })),
       ),
@@ -948,7 +947,6 @@ export const readIdentity = Effect.gen(function* () {
 /** Validates commands once at the transport boundary and only exposes bounded reads. */
 export const make = Effect.fn("AgentRuntime.makeService")(function* (
   notify: (notification: AgentRuntimeNotification) => Effect.Effect<void>,
-  initialProviders: AgentRuntimeConfiguration["providers"],
 ) {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const threads = yield* ThreadManagementService;
@@ -986,12 +984,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const instances = yield* ProviderInstanceRegistry;
   const modelPolicy = yield* RuntimeModelPolicy;
   const delegation = yield* Delegation.RuntimeDelegation;
-  const providerConfiguration = yield* ProviderConfiguration.make(
-    executionProviders(
-      (yield* modelPolicy.current).policy,
-      yield* Schema.decodeUnknownEffect(ProviderInstanceConfigMap)(initialProviders),
-    ),
-  );
+  const providerPolicy = yield* ProviderConfiguration.ProviderPolicy;
+  const providerConfiguration = yield* ProviderConfiguration.make(yield* providerPolicy.current);
   const processScope = yield* Scope.make("parallel");
   yield* Effect.addFinalizer((exit) => Scope.close(processScope, exit));
   const usageLedger = yield* UsageLedger.make({
@@ -1004,7 +998,6 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     identity.runtimeGeneration,
   );
   const nativeChildWork = yield* NativeChildWorkQuery;
-  const providerPolicy = yield* ProviderConfiguration.ProviderPolicy;
   const sessionMetadataOptions = {
     shell: (threadId: string) => projections.getThreadShell(ThreadId.make(threadId)),
     providerDriver: (instanceId: string) =>
@@ -1093,7 +1086,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         all.flatMap((provider) => {
           const declaration = policy[provider.instanceId];
           if (!declaration || (named && !named.includes(provider.instanceId))) return [];
-          if (declaration.source === "nodex" && declaration.enabled === false) return [];
+          if (
+            declaration.source === "nodex" &&
+            declaration.enabled === false &&
+            !declaration.unavailable
+          )
+            return [];
           return [
             {
               ...provider,
@@ -1399,6 +1397,11 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return result;
       }
       case "providers.configure": {
+        const previousPolicy = yield* modelPolicy.current;
+        const parsed = ModelPolicySchema.optional().safeParse(input.input.modelPolicy);
+        if (!parsed.success) return yield* Effect.fail(new Error("Invalid Agent model policy."));
+        const nextPolicy = parsed.data ?? previousPolicy.policy;
+        const declarations = yield* ProviderDeclarations.admit(input.input.providers);
         if (input.input.subagentsMayDelegate !== undefined)
           yield* delegation.replace(input.input.subagentsMayDelegate);
         if (input.input.automaticWorkAtOnce !== undefined) {
@@ -1407,17 +1410,14 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           );
         }
         const before = yield* providerPolicy.current;
-        const previousPolicy = yield* modelPolicy.current;
-        const nextPolicy =
-          (input.input.modelPolicy as ModelPolicy | undefined) ?? previousPolicy.policy;
-        const wanted = executionProviders(nextPolicy, input.input.providers);
+        const wanted = executionProviders(nextPolicy, declarations);
         // Close model admission before cancelling queues or releasing any credential-bearing process.
         yield* modelPolicy.replace({
           policy: nextPolicy,
-          providers: { ...before, ...input.input.providers },
+          providers: { ...before, ...declarations },
         });
         const retiring = Object.entries(before).filter(
-          ([id, entry]) => entry.source === "nodex" && !wanted[id as ProviderInstanceId],
+          ([id, entry]) => entry.source === "nodex" && !Object.hasOwn(wanted, id),
         );
         // Queue cancellation precedes native teardown: Stop alone holds queued work for later.
         if (retiring.length) yield* providerConfiguration.closeAdmission(wanted);
@@ -2307,7 +2307,5 @@ export class AgentRuntime extends Context.Service<
   Effect.Success<ReturnType<typeof make>>
 >()("@nodex/agent-runtime/Service") {}
 
-export const layer = (
-  notify: (notification: AgentRuntimeNotification) => Effect.Effect<void>,
-  initialProviders: AgentRuntimeConfiguration["providers"],
-) => Layer.effect(AgentRuntime, make(notify, initialProviders));
+export const layer = (notify: (notification: AgentRuntimeNotification) => Effect.Effect<void>) =>
+  Layer.effect(AgentRuntime, make(notify));

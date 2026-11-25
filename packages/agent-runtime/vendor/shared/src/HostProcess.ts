@@ -108,3 +108,35 @@ export const UserId = Context.Reference<number | undefined>("@nodex/runtime-shar
 });
 
 export const isWindows = Effect.map(Platform, (platform) => platform === "win32");
+
+const environmentKey = (platform: NodeJS.Platform, name: string) =>
+  platform === "win32" ? name.toUpperCase() : name;
+
+/** Later layers win, including removals. Windows names are case-insensitive. */
+export function mergeProcessEnvironments(
+  platform: NodeJS.Platform,
+  ...environments: readonly (Readonly<NodeJS.ProcessEnv> | undefined)[]
+): NodeJS.ProcessEnv {
+  const entries = new Map<string, readonly [string, string]>();
+  for (const environment of environments) {
+    for (const [name, value] of Object.entries(environment ?? {})) {
+      const key = environmentKey(platform, name);
+      if (value === undefined) entries.delete(key);
+      else entries.set(key, [name, value]);
+    }
+  }
+  return Object.fromEntries(entries.values());
+}
+
+/** Reads a copied environment with the same name semantics as the native process. */
+export function readEnvironmentVariable(
+  platform: NodeJS.Platform,
+  environment: Readonly<NodeJS.ProcessEnv> | undefined,
+  name: string,
+): string | undefined {
+  if (environment === undefined || platform !== "win32") return environment?.[name];
+  const key = environmentKey(platform, name);
+  return Object.entries(environment).findLast(([entry]) =>
+    environmentKey(platform, entry) === key
+  )?.[1];
+}

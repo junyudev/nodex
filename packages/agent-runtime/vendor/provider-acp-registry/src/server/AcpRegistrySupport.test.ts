@@ -270,6 +270,7 @@ describe("AcpRegistrySupport", () => {
           args: ["--profile", "acp", "", " spaced ", "$(touch injected); $VALUE"],
           cwd: "/workspace",
           env: environment,
+          extendEnv: false,
           shell: false,
         },
       });
@@ -311,9 +312,17 @@ describe("AcpRegistrySupport", () => {
         args: [],
         cwd: "/workspace",
         env: environment,
+        extendEnv: false,
         shell: false,
       });
       expect(resolved.agent).toBeUndefined();
+
+      const isolated = yield* resolver.resolve(
+        decodeAcpRegistrySettings({ source: "local", commandPath, inheritEnvironment: false }),
+        "/workspace",
+      );
+      expect(isolated.spawn.extendEnv).toBe(false);
+      expect(isolated.spawn.env).toEqual({});
 
       for (const extension of [".cmd", ".BAT"]) {
         const windowsResolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
@@ -426,6 +435,7 @@ describe("AcpRegistrySupport", () => {
           OVERRIDE_ME: "registry",
           REGISTRY_VALUE: "registry",
         },
+        extendEnv: false,
       });
       expect(requests).toEqual([registryUrl]);
     }).pipe(
@@ -554,7 +564,7 @@ describe("AcpRegistrySupport", () => {
     );
   });
 
-  it.effect("honors an exact Windows PATH override when launching a global package", () => {
+  it.effect("honors a Windows PATH override with different casing when launching a global package", () => {
     const agent = makeAgent({
       uvx: { package: "fast-agent-acp==0.10.1", args: ["--acp"] },
     });
@@ -571,11 +581,11 @@ describe("AcpRegistrySupport", () => {
       });
       yield* linuxResolver.resolve(settings(), "/workspace", toolchain.environment);
 
-      const windowsEnvironment = {
-        ...toolchain.environment,
-        Path: "C:\\host\\bin",
-        PATH: "C:\\provider\\bin",
-      };
+      const windowsEnvironment = HostProcess.mergeProcessEnvironments(
+        "win32",
+        toolchain.environment,
+        { Path: "C:\\provider\\bin" },
+      );
       const windowsResolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
         cacheDir,
         toolsDir: `${cacheDir}/tools`,
@@ -599,6 +609,7 @@ describe("AcpRegistrySupport", () => {
       );
       expectManagedPackagePath(resolved.spawn.command, resolved.spawn.env?.PATH, ";");
       expect(resolved.spawn.env?.PATH?.split(";").slice(1)).toEqual(["C:\\provider\\bin"]);
+      expect(resolved.spawn.env?.Path).toBeUndefined();
     }).pipe(
       Effect.scoped,
       Effect.provide(

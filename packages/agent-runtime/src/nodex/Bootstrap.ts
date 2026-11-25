@@ -1,5 +1,7 @@
 import { ModelPolicySchema, type ModelPolicy } from "../../../../src/shared/model-policy.ts";
 import * as Predicate from "effect/Predicate";
+import * as Schema from "effect/Schema";
+import { ProviderDeclarationsInput } from "./ProviderDeclarations.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
 
 /**
@@ -16,6 +18,8 @@ export interface AgentRuntimeBootstrap {
   readonly hostSessionPlugins?: true;
   readonly hostTools?: NonNullable<AgentRuntimeConfiguration["host"]>["tools"];
 }
+
+const isProviderDeclarationsInput = Schema.is(ProviderDeclarationsInput);
 
 /** Reads exactly one bootstrap line; later lines remain on the iterator for requests. */
 export async function readAgentRuntimeBootstrap(
@@ -37,7 +41,7 @@ export async function readAgentRuntimeBootstrap(
   if (
     !Predicate.isObject(frame) ||
     frame.type !== "bootstrap" ||
-    !Predicate.isObject(frame.providers)
+    !isProviderDeclarationsInput(frame.providers)
   )
     throw new Error("Agent Runtime expected a bootstrap frame first.");
   if (frame.hostTools !== undefined && !Array.isArray(frame.hostTools))

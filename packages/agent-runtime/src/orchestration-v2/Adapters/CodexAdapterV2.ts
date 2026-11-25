@@ -1776,23 +1776,26 @@ export const layerAppServerClientFactory: Layer.Layer<
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const { native: nativeEventLogger } = yield* ProviderEventLoggers.ProviderEventLoggers;
     const agentScope = yield* AgentScope;
-    const windowsSandbox = yield* makeCodexWindowsSandbox(yield* HostProcess.Platform);
+    const platform = yield* HostProcess.Platform;
+    const windowsSandbox = yield* makeCodexWindowsSandbox(platform);
 
     return CodexAppServerClientFactory.of({
       windowsSandbox,
       open: (input) =>
         Effect.gen(function* () {
           const scope = yield* Scope.Scope;
-          const environment = {
-            ...codexAppServerEnvironment(input.environment),
-            ...(input.settings.homePath ? { CODEX_HOME: input.settings.homePath } : {}),
-          };
+          const environment = codexAppServerEnvironment(
+            platform,
+            input.environment,
+            input.settings.homePath,
+          );
           const command = yield* makeCodexAppServerSpawnCommand({
             command: input.settings.binaryPath || "codex",
             args: codexAppServerArgs(
-              resolveCodexLaunchArgs(input.settings.launchArgs, input.environment),
+              resolveCodexLaunchArgs(input.settings.launchArgs, input.environment, platform),
             ),
             env: environment,
+            extendEnv: false,
             threadId: input.threadId,
           }).pipe(Effect.provideService(AgentScope, agentScope));
           const handle = yield* spawner.spawn(command).pipe(
@@ -1873,10 +1876,10 @@ export const createCodexAdapterV2 = (
       binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
       homePath: homeLayout.effectiveHomePath ?? "",
     } satisfies CodexSettings;
-    const processEnvironment = yield* mergeProviderInstanceEnvironment(
-      environment,
-      config.isolated ? {} : hostEnvironment,
-    );
+    const processEnvironment = yield* mergeProviderInstanceEnvironment(environment, {
+      isolated: config.isolated,
+      host: hostEnvironment,
+    });
     if (clientFactory.windowsSandbox) {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       yield* clientFactory.windowsSandbox.register(
@@ -1889,7 +1892,11 @@ export const createCodexAdapterV2 = (
           const { client } = yield* withCodexAppServerClient({
             binaryPath: runtime.config.binaryPath,
             homePath: runtime.config.homePath,
-            launchArgs: resolveCodexLaunchArgs(runtime.config.launchArgs, runtime.environment),
+            launchArgs: resolveCodexLaunchArgs(
+              runtime.config.launchArgs,
+              runtime.environment,
+              yield* HostProcess.Platform,
+            ),
             cwd: process.cwd(),
             environment: runtime.environment,
           }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));

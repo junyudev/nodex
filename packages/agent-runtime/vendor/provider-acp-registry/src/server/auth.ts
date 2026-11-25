@@ -242,7 +242,12 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
         cwd: options.cwd,
         cols: 80,
         rows: 24,
-        env: { ...options.environment, ...resolved.spawn.env, ...method.env },
+        env: HostProcess.mergeProcessEnvironments(
+          platform,
+          options.environment,
+          resolved.spawn.env,
+          method.env,
+        ),
       })
       .pipe(
         Effect.mapError((cause) =>

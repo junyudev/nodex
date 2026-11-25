@@ -91,7 +91,7 @@ function resolveSpawnExecutableWithNode(
     return candidates.find(isExecutable);
   }
 
-  for (const pathEntry of (readEnvPath(env) ?? "").split(pathDelimiterForPlatform(platform))) {
+  for (const pathEntry of (readEnvPath(env, platform) ?? "").split(pathDelimiterForPlatform(platform))) {
     const normalizedPathEntry = stripWrappingQuotes(pathEntry.trim());
     if (normalizedPathEntry.length === 0) continue;
     for (const candidate of candidates) {
@@ -401,16 +401,14 @@ export function mergePathValues(
   return merged.length > 0 ? merged.join(delimiter) : undefined;
 }
 
-function readEnvPath(env: NodeJS.ProcessEnv): string | undefined {
-  return env.PATH ?? env.Path ?? env.path;
-}
-
-function resolvePathEnvironmentVariable(env: NodeJS.ProcessEnv): string {
-  return readEnvPath(env) ?? "";
+function readEnvPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string | undefined {
+  return platform === "win32"
+    ? HostProcess.readEnvironmentVariable(platform, env, "PATH")
+    : (env.PATH ?? env.Path ?? env.path);
 }
 
 function resolveWindowsPathExtensions(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
-  const rawValue = env.PATHEXT;
+  const rawValue = HostProcess.readEnvironmentVariable("win32", env, "PATHEXT");
   const fallback = [".COM", ".EXE", ".BAT", ".CMD"];
   if (!rawValue) return fallback;
 
@@ -602,7 +600,7 @@ const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlat
     return yield* new CommandResolutionError({ command, reason: "not-found" });
   }
 
-  const pathValue = resolvePathEnvironmentVariable(env);
+  const pathValue = readEnvPath(env, platform) ?? "";
   if (pathValue.length === 0) {
     return yield* new CommandResolutionError({ command, reason: "not-found" });
   }
@@ -714,13 +712,9 @@ export const resolveSpawnCommand = Effect.fnUntraced(function* (
     return { command, args: [...args], shell: false };
   }
 
-  const hostEnvironment = yield* HostProcess.Environment;
-  const env =
-    options.env === undefined
-      ? hostEnvironment
-      : options.extendEnv
-        ? { ...hostEnvironment, ...options.env }
-        : options.env;
+  const env = options.extendEnv
+    ? HostProcess.mergeProcessEnvironments(platform, yield* HostProcess.Environment, options.env)
+    : (options.env ?? (options.extendEnv === false ? {} : yield* HostProcess.Environment));
   const resolveExecutable = yield* SpawnExecutableResolution;
   // The scan is synchronous and runs before every child process, so it shares
   // the PATH scan cache above. Explicit paths stay uncached for the same reason,
@@ -732,7 +726,7 @@ export const resolveSpawnCommand = Effect.fnUntraced(function* (
     "spawn",
     String(spawnResolverCacheId(resolveExecutable)),
     platform,
-    resolvePathEnvironmentVariable(env),
+    readEnvPath(env, platform) ?? "",
     resolveWindowsPathExtensions(env).join(";"),
     env.MSYSTEM ? "msystem" : "",
     command,
@@ -802,25 +796,12 @@ function readWindowsEnvironmentSafely(
   }
 }
 
-function mergeWindowsEnv(
-  currentEnv: NodeJS.ProcessEnv,
-  patch: Partial<Record<string, string>>,
-): NodeJS.ProcessEnv {
-  const nextEnv: NodeJS.ProcessEnv = { ...currentEnv };
-  for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) {
-      nextEnv[key] = value;
-    }
-  }
-  return nextEnv;
-}
-
 export const resolveWindowsEnvironment = Effect.fn("shell.resolveWindowsEnvironment")(function* (
   env: NodeJS.ProcessEnv,
 ): Effect.fn.Return<Partial<NodeJS.ProcessEnv>, never, FileSystem.FileSystem | Path.Path> {
   const readEnvironment = yield* WindowsShellEnvironment;
   const commandAvailable = yield* CommandAvailability;
-  const inheritedPath = readEnvPath(env);
+  const inheritedPath = readEnvPath(env, "win32");
   const shellPath = readWindowsEnvironmentSafely(readEnvironment, ["PATH"], {
     loadProfile: false,
   }).PATH;
@@ -830,7 +811,7 @@ export const resolveWindowsEnvironment = Effect.fn("shell.resolveWindowsEnvironm
   // desktop apps launch without the full interactive-shell PATH.
   const baselinePath = mergePathValues(mergedPath, knownCliPath, "win32");
   const baselinePatch: Partial<NodeJS.ProcessEnv> = baselinePath ? { PATH: baselinePath } : {};
-  const baselineEnv = mergeWindowsEnv(env, baselinePatch);
+  const baselineEnv = HostProcess.mergeProcessEnvironments("win32", env, baselinePatch);
 
   if (yield* commandAvailable("node", { env: baselineEnv })) {
     return baselinePatch;

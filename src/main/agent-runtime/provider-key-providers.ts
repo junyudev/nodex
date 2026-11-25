@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import * as Redacted from "effect/Redacted";
+import type * as Redacted from "effect/Redacted";
 import { codexAgent } from "../../shared/agents/codex";
 import { claudeAgent } from "../../shared/agents/claude";
 import {
@@ -9,7 +9,7 @@ import {
   providerKeyTarget,
   type ProviderKeyConnection,
 } from "../../shared/provider-keys";
-import { isolatedProviderEnvironment } from "./isolated-provider-environment";
+import { managedClaudeProvider } from "./managed-claude-provider";
 import { managedCodexProvider, type ManagedCodexComponent } from "./managed-codex-provider";
 import { providerKeyCodexCatalog } from "./provider-key-codex-catalog";
 
@@ -25,13 +25,15 @@ const codexKeyVariable = "CODEX_PROVIDER_API_KEY";
 export function providerKeyProviders(
   input: ManagedCodexComponent & {
     readonly home: string;
-    readonly environment: Readonly<Record<string, string | undefined>>;
-    readonly codexEnvironment?: Readonly<Record<string, string | undefined>>;
     readonly connections: readonly ProviderKeyConnection[];
     readonly keys: ReadonlyMap<string, Redacted.Redacted>;
   },
 ) {
-  const catalogs: { readonly path: string; readonly contents: string }[] = [];
+  const catalogs: {
+    readonly instanceId: string;
+    readonly path: string;
+    readonly contents: string;
+  }[] = [];
   const entries = input.connections.map((connection) => {
     const { id, displayName, models } = connection;
     const key = connection.enabled ? input.keys.get(id) : undefined;
@@ -42,13 +44,14 @@ export function providerKeyProviders(
     if (connection.agent === codexAgent.driver) {
       const homePath = join(root, codexAgent.driver);
       const catalog = providerKeyCodexCatalog(homePath, connection.preset, models);
-      if (catalog && key) catalogs.push(catalog);
+      if (catalog && key)
+        catalogs.push({ instanceId, path: catalog.path, contents: catalog.contents });
       return [
         instanceId,
         managedCodexProvider({
           codexBinary: input.codexBinary,
           codexUnavailable: input.codexUnavailable,
-          environment: input.codexEnvironment ?? input.environment,
+          codexSearchPath: input.codexSearchPath,
           homePath,
           displayName,
           models: customModels,
@@ -81,32 +84,14 @@ export function providerKeyProviders(
     const homePath = join(root, "claude");
     return [
       instanceId,
-      {
-        driver: claudeAgent.driver,
+      managedClaudeProvider({
+        homePath,
         displayName,
-        enabled: key !== undefined,
-        modelAllowlist: models.map((model) => model.id),
-        config: {
-          isolated: true,
-          binaryPath: "",
-          homePath,
-          customModels,
-        },
-        environment: key
-          ? isolatedProviderEnvironment(
-              input.environment,
-              {
-                CLAUDE_CONFIG_DIR: homePath,
-                ANTHROPIC_BASE_URL: baseUrl,
-                ANTHROPIC_AUTH_TOKEN: Redacted.value(key),
-                ...providerKeyClaudeModelEnvironment(models),
-                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-                CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
-              },
-              ["ANTHROPIC_AUTH_TOKEN"],
-            )
-          : [],
-      },
+        models: customModels,
+        key,
+        baseUrl,
+        settings: providerKeyClaudeModelEnvironment(models),
+      }),
     ] as const;
   });
   const providers = Object.fromEntries<(typeof entries)[number][1]>(entries);

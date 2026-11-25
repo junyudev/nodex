@@ -526,10 +526,9 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
         continuationKey: continuationIdentity.continuationKey,
       };
       const effectiveConfig = { ...config, enabled } satisfies AcpRegistrySettings;
-      const processEnvironment = yield* mergeProviderInstanceEnvironment(
-        environment,
-        config.inheritEnvironment === false ? {} : hostEnvironment,
-      );
+      const processEnvironment = yield* mergeProviderInstanceEnvironment(environment, {
+        host: config.inheritEnvironment === false ? {} : hostEnvironment,
+      });
       const orchestrationAdapter = yield* AcpRegistryAdapterV2Driver.create({
         instanceId,
         displayName,

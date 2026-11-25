@@ -13,16 +13,6 @@ const identity = {
 const input = {
   home: "/profile",
   codexBinary: "/runtime/codex",
-  environment: {
-    HOME: "/user",
-    CODEX_HOME: "/user/.codex",
-    CLAUDE_CONFIG_DIR: "/user/.claude",
-    OPENAI_API_KEY: "native-openai",
-    ANTHROPIC_AUTH_TOKEN: "native-claude",
-    PATH: "/bin",
-    HTTPS_PROXY: "http://127.0.0.1:7890",
-    SSH_AUTH_SOCK: "/tmp/agent.sock",
-  },
   managed: { identity, access: modelAccessFixture },
 };
 it("declares only the four managed models with private per-account homes and credentials", () => {
@@ -38,12 +28,18 @@ it("declares only the four managed models with private per-account homes and cre
     const environment = Object.fromEntries(
       provider.environment!.map((entry) => [entry.name, entry.value]),
     );
-    // Agent tools keep the user's shell: home, proxy and SSH agent stay; provider state does not.
-    expect(environment).toMatchObject({
-      HOME: "/user",
-      HTTPS_PROXY: "http://127.0.0.1:7890",
-      SSH_AUTH_SOCK: "/tmp/agent.sock",
-    });
+    // Only the account's own variables: execution supplies the host's, without its credentials.
+    expect(Object.keys(environment).sort()).toEqual(
+      provider.driver === "codex"
+        ? ["CODEX_HOME", "CODEX_SQLITE_HOME", "NODEX_GATEWAY_API_KEY"]
+        : [
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_BASE_URL",
+            "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+            "CLAUDE_CONFIG_DIR",
+          ],
+    );
     expect(
       path
         .relative(
@@ -53,9 +49,6 @@ it("declares only the four managed models with private per-account homes and cre
         .split(path.sep)
         .join("/"),
     ).toMatch(/^[a-f0-9]{32}\/(?:codex|claude)$/u);
-    expect(environment.OPENAI_API_KEY).toBeUndefined();
-    expect(JSON.stringify(provider)).not.toContain("native-openai");
-    expect(JSON.stringify(provider)).not.toContain("native-claude");
     expect(JSON.stringify(provider.config)).not.toContain("synthetic-gateway-key");
   }
   const codex = Object.values(providers).find((provider) => provider.driver === "codex")!;

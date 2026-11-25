@@ -1,3 +1,4 @@
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import { resolveManagedCodexHomeLayout } from "./CodexManagedHome.ts";
 import {
   CodexSettings,
@@ -46,6 +47,7 @@ export const makeCodexManagedRuntime = Effect.fn("makeCodexManagedRuntime")(func
   const config = yield* ServerConfig.ServerConfig;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const platform = yield* HostProcess.Platform;
   const auth = yield* makeCodexChatGptAuth({
     instanceId: options.instanceId,
     defaultReturnUrl: new URL(
@@ -94,18 +96,18 @@ export const makeCodexManagedRuntime = Effect.fn("makeCodexManagedRuntime")(func
       ),
     );
     // Ambient CLI overrides cannot redirect a Nodex-owned token to a different provider.
-    const environment: NodeJS.ProcessEnv = {
-      ...options.environment,
+    const environment = HostProcess.mergeProcessEnvironments(platform, options.environment, {
       ACCESS_TOKEN: credentials.accessToken,
       CODEX_HOME: homePath,
-    };
-    delete environment.NODEX_CODEX_LAUNCH_ARGS;
-    delete environment.OPENAI_API_KEY;
-    delete environment.OPENAI_BASE_URL;
+      NODEX_CODEX_LAUNCH_ARGS: undefined,
+      OPENAI_API_KEY: undefined,
+      OPENAI_BASE_URL: undefined,
+    });
     return {
       config: decodeSettings({
         enabled: options.enabled,
         setupMode: "managed",
+        ...(options.config.isolated === undefined ? {} : { isolated: options.config.isolated }),
         binaryPath: executable.executablePath,
         homePath,
         launchArgs: managedCodexLaunchArgs,

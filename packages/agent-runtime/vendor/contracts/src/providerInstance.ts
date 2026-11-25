@@ -142,6 +142,8 @@ export const ProviderInstanceConfig = Schema.Struct({
   modelAllowlist: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   enabled: Schema.optionalKey(Schema.Boolean),
   config: Schema.optionalKey(Schema.Unknown),
+  /** A sanitized explanation of why the Host could not prepare this instance for execution. */
+  unavailable: Schema.optionalKey(Schema.Struct({ message: TrimmedNonEmptyString })),
   componentUnavailable: Schema.optionalKey(Schema.Struct({
     installationSource: Schema.optionalKey(ProviderInstallationSource),
     reason: CodexPackageUnavailableReason,

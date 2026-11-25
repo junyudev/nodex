@@ -13,6 +13,7 @@ import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import { createModelCapabilities } from "@nodex/runtime-shared/model";
 import { resolveSpawnCommand } from "@nodex/runtime-shared/shell";
 import type {
@@ -268,6 +269,7 @@ export function buildClaudeCapabilitiesProbeQueryOptions(input: {
   readonly abortController: AbortController;
   readonly environment: NodeJS.ProcessEnv;
   readonly cwd: string | undefined;
+  readonly platform?: NodeJS.Platform;
 }): ClaudeQueryOptions {
   return {
     persistSession: false,
@@ -283,18 +285,21 @@ export function buildClaudeCapabilitiesProbeQueryOptions(input: {
     // SDK combines this empty explicit map with --strict-mcp-config.
     mcpServers: {},
     strictMcpConfig: true,
-    env: {
-      ...input.environment,
-      // Connected claude.ai MCP servers are discovered outside filesystem
-      // config; disable them independently for this health check.
-      ENABLE_CLAUDEAI_MCP_SERVERS: "false",
-      // This is a noninteractive health check, so IDE discovery cannot add any
-      // useful capability data. Skipping it also avoids Claude spawning a
-      // Windows `tasklist | findstr` process tree on every periodic refresh.
-      FORCE_CODE_TERMINAL: undefined,
-      CLAUDE_CODE_AUTO_CONNECT_IDE: "0",
-      CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL: "1",
-    },
+    env: HostProcess.mergeProcessEnvironments(
+      input.platform ?? process.platform,
+      input.environment,
+      {
+        // Connected claude.ai MCP servers are discovered outside filesystem
+        // config; disable them independently for this health check.
+        ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+        // This is a noninteractive health check, so IDE discovery cannot add any
+        // useful capability data. Skipping it also avoids Claude spawning a
+        // Windows `tasklist | findstr` process tree on every periodic refresh.
+        FORCE_CODE_TERMINAL: undefined,
+        CLAUDE_CODE_AUTO_CONNECT_IDE: "0",
+        CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL: "1",
+      },
+    ),
     ...(input.cwd ? { cwd: input.cwd } : {}),
     stderr: () => {},
   };
@@ -487,6 +492,7 @@ const probeClaudeCapabilities = (
       claudeSettings.binaryPath,
       claudeEnvironment,
     );
+    const platform = yield* HostProcess.Platform;
     return yield* Effect.tryPromise(async () => {
       const q = (await loadClaudeAgentSdk()).query({
         // Never yield — we only need initialization data, not a conversation.
@@ -500,6 +506,7 @@ const probeClaudeCapabilities = (
           abortController: abort,
           environment: claudeEnvironment,
           cwd,
+          platform,
         }),
       });
       const init = await q.initializationResult();

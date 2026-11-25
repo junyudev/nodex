@@ -58,10 +58,11 @@ const decodeOpenCodeHealth = Schema.decodeUnknownEffect(OpenCodeHealthSchema);
 export function resolveOpenCodeConfigContent(
   inputEnvironment: Readonly<Record<string, string | undefined>> | undefined,
   inheritedEnvironment: Readonly<Record<string, string | undefined>> = process.env,
+  platform = process.platform,
 ): string {
   return (
-    inputEnvironment?.OPENCODE_CONFIG_CONTENT ??
-    inheritedEnvironment.OPENCODE_CONFIG_CONTENT ??
+    HostProcess.readEnvironmentVariable(platform, inputEnvironment, "OPENCODE_CONFIG_CONTENT") ??
+    HostProcess.readEnvironmentVariable(platform, inheritedEnvironment, "OPENCODE_CONFIG_CONTENT") ??
     OPENCODE_EMPTY_CONFIG_CONTENT
   );
 }
@@ -73,6 +74,7 @@ export function resolveOpenCodeServerPassword(
     readonly environment?: Readonly<Record<string, string | undefined>>;
   },
   inheritedEnvironment: Readonly<Record<string, string | undefined>> = process.env,
+  platform = process.platform,
 ): string | undefined {
   if (input.serverPassword !== undefined) {
     return input.serverPassword;
@@ -80,9 +82,11 @@ export function resolveOpenCodeServerPassword(
   if (input.external) {
     return undefined;
   }
-  return input.environment === undefined
-    ? inheritedEnvironment.OPENCODE_SERVER_PASSWORD
-    : input.environment.OPENCODE_SERVER_PASSWORD;
+  return HostProcess.readEnvironmentVariable(
+    platform,
+    input.environment ?? inheritedEnvironment,
+    "OPENCODE_SERVER_PASSWORD",
+  );
 }
 
 const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 30_000;
@@ -660,11 +664,26 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         env: input.environment,
       });
       const spawnCommand = yield* resolveCommand(launch.command, launch.args, input.environment);
-      const serverPassword = resolveOpenCodeServerPassword({
-        external: false,
-        ...(input.serverPassword !== undefined ? { serverPassword: input.serverPassword } : {}),
-        ...(input.environment !== undefined ? { environment: input.environment } : {}),
-      });
+      const hostEnvironment = yield* HostProcess.Environment;
+      const serverPassword = resolveOpenCodeServerPassword(
+        {
+          external: false,
+          ...(input.serverPassword !== undefined ? { serverPassword: input.serverPassword } : {}),
+          ...(input.environment !== undefined ? { environment: input.environment } : {}),
+        },
+        hostEnvironment,
+        hostPlatform,
+      );
+      const environment = HostProcess.mergeProcessEnvironments(
+        hostPlatform,
+        input.environment ?? hostEnvironment,
+        {
+          ...(serverPassword !== undefined ? { OPENCODE_SERVER_PASSWORD: serverPassword } : {}),
+          OPENCODE_CONFIG_CONTENT: resolveOpenCodeConfigContent(
+            input.environment, hostEnvironment, hostPlatform,
+          ),
+        },
+      );
 
       // Scopes close in reverse order. Forking this before the group kill is
       // registered forgets the ledger entry only once the group is stopped.
@@ -676,19 +695,8 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
             killSignal: "SIGTERM",
             forceKillAfter: "1 second",
             shell: spawnCommand.shell,
-            env: {
-              ...input.environment,
-              ...(serverPassword !== undefined ? { OPENCODE_SERVER_PASSWORD: serverPassword } : {}),
-              // Respect an OPENCODE_CONFIG_CONTENT provided by the caller or
-              // the inherited process environment, only falling back to the
-              // empty config when neither is set. Setting it unconditionally
-              // previously clobbered the user's opencode config, hiding their
-              // providers/models. The value is set explicitly (rather than
-              // relying on inheritance) because `extendEnv` is false whenever
-              // `input.environment` is provided.
-              OPENCODE_CONFIG_CONTENT: resolveOpenCodeConfigContent(input.environment),
-            },
-            extendEnv: input.environment === undefined,
+            env: environment,
+            extendEnv: false,
           }),
         )
         .pipe(

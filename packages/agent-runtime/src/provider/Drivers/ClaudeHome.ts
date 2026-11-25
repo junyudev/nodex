@@ -26,7 +26,12 @@ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function
     return path.resolve(expandHomePath(homePath, home));
   }
   // Inherited env vars are not shell-expanded, so a literal `~` stays literal.
-  const inherited = environment?.CLAUDE_CONFIG_DIR?.trim() ?? "";
+  const inherited =
+    HostProcess.readEnvironmentVariable(
+      yield* HostProcess.Platform,
+      environment,
+      "CLAUDE_CONFIG_DIR",
+    )?.trim() ?? "";
   if (inherited.length > 0) {
     return path.resolve(inherited);
   }
@@ -41,8 +46,7 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
   const homePath = config.homePath.trim();
   if (homePath.length === 0) return resolvedBaseEnv;
   const resolvedHomePath = yield* resolveClaudeHomePath(config);
-  return {
-    ...resolvedBaseEnv,
+  return HostProcess.mergeProcessEnvironments(yield* HostProcess.Platform, resolvedBaseEnv, {
     // Isolate this instance's config via CLAUDE_CONFIG_DIR rather than HOME.
     // Overriding HOME also relocates the macOS login keychain lookup
     // ($HOME/Library/Keychains), so the spawned CLI can't find its stored
@@ -50,7 +54,7 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
     // Claude Code at its config dir directly while leaving HOME (and the
     // keychain) intact.
     CLAUDE_CONFIG_DIR: resolvedHomePath,
-  };
+  });
 });
 
 export const makeClaudeContinuationGroupKey = Effect.fn("makeClaudeContinuationGroupKey")(

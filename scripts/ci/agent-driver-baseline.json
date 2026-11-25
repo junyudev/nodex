@@ -357,8 +357,7 @@
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {
       "codex": 1,
-      "claude": 1,
-      "claudeAgent": 1
+      "claude": 1
     }
   },
   "src/main/platform/node/AcpProfilePaths.ts": {

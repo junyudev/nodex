@@ -54,7 +54,7 @@ it.live(
             ),
           ),
         );
-        const layer = Service.layer(notify, {}).pipe(
+        const layer = Service.layer(notify).pipe(
           Layer.provideMerge(host),
           Layer.provideMerge(bridge),
         );

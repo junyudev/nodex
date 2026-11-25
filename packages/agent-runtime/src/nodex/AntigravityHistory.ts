@@ -127,10 +127,9 @@ export const make = Effect.fn("AntigravityHistory.make")(function* () {
     return {
       home,
       settings,
-      executableEnvironment: yield* mergeProviderInstanceEnvironment(
-        profile.environment,
-        environment,
-      ),
+      executableEnvironment: yield* mergeProviderInstanceEnvironment(profile.environment, {
+        host: environment,
+      }),
     };
   });
 

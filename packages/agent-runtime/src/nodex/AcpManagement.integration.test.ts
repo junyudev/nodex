@@ -332,6 +332,16 @@ it.live(
           (yield* call("providers.configure", { providers: { [instanceId]: renamed } })).applied,
         ).toBe(true);
         expect(
+          (yield* call("providers.configure", {
+            providers: {
+              [instanceId]: {
+                ...renamed,
+                config: { ...renamed.config, nativeStorageScope: false },
+              },
+            },
+          })).applied,
+        ).toBe(true);
+        expect(
           Exit.isFailure(
             yield* call("providers.configure", {
               providers: {

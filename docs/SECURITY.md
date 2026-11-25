@@ -1186,8 +1186,11 @@ provides attribution, and removing it drops Agent authorship.
   directory using `SecretEncryption`. Public settings and renderer events carry only the key hint.
   Replacing or removing a key releases its previous secret after saving the settings change.
   Connect, key replacement, and model refresh explicitly send the key to the configured provider
-  for discovery. Passive settings and catalog reads make no discovery requests. The isolated
-  bundled Claude Code process receives the key for execution against that provider's endpoint.
+  for discovery. Passive settings and catalog reads make no discovery requests. The connection's
+  isolated Codex or Claude Code instance receives the key for execution against that provider's
+  endpoint. Nodex declares only the instance's own home, endpoint and credential; Agent execution
+  runs it in the host environment without the host's own provider variables, so it never uses
+  another account's credential, and every other host variable reaches its tools unchanged.
 - The optional Nodex account has a separate Profile-scoped Main owner. Public
   browser OAuth uses S256 PKCE, a random state and a temporary loopback callback.
   Token requests are bounded, reject redirects and remain at the configured

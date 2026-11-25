@@ -13,6 +13,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Schedule from "effect/Schedule";
 import * as TestClock from "effect/testing/TestClock";
 import type * as CodexClient from "effect-codex-app-server/client";
+import { vi } from "vite-plus/test";
 
 import {
   applyPreferredCodexDefaultModel,
@@ -324,6 +325,46 @@ it.live.skipIf(process.platform === "win32")(
       assert.strictEqual(snapshot.version, null);
       assert.include(snapshot.message, "Cannot parse config");
       assert.notMatch(snapshot.message ?? "", /exampleSecret|exampleBasicSecret|\u001b|aaaaa/);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live.skipIf(process.platform === "win32")(
+  "keeps host provider variables out of an isolated app-server probe",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-isolated-probe-" });
+      const binaryPath = home + "/probe";
+      const outputPath = home + "/probe-env";
+      const probeSettings = { ...config, binaryPath, homePath: home };
+      yield* fs.writeFileString(
+        binaryPath,
+        [
+          "#!/bin/sh",
+          "{",
+          "if printenv OPENAI_API_KEY >/dev/null; then echo host-key; fi",
+          "if printenv NODEX_CODEX_LAUNCH_ARGS >/dev/null; then echo host-args; fi",
+          'echo "$NODEX_TEST_PROBE_ENV"',
+          '} > "$NODEX_TEST_PROBE_OUTPUT"',
+          "exit 1",
+          "",
+        ].join("\n"),
+      );
+      yield* fs.chmod(binaryPath, 0o700);
+
+      vi.stubEnv("OPENAI_API_KEY", "test-host-key");
+      vi.stubEnv("NODEX_CODEX_LAUNCH_ARGS", "--enable host-override");
+      vi.stubEnv("NODEX_TEST_PROBE_ENV", "retained");
+      vi.stubEnv("NODEX_TEST_PROBE_OUTPUT", outputPath);
+      try {
+        yield* checkCodexProviderStatus({ ...probeSettings, isolated: true });
+        assert.equal(yield* fs.readFileString(outputPath), "retained\n");
+
+        yield* checkCodexProviderStatus(probeSettings);
+        assert.equal(yield* fs.readFileString(outputPath), "host-key\nhost-args\nretained\n");
+      } finally {
+        vi.unstubAllEnvs();
+      }
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

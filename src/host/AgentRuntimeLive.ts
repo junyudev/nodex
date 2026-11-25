@@ -1,6 +1,7 @@
 import { buildAgentProfileProvider } from "../main/agent-backend/profile-providers";
 import { agentDefinition } from "../shared/agents/registry";
 import { CODEX_BINDING, codexAgent } from "../shared/agents/codex";
+import { acpRegistryAgent } from "../shared/agents/acp-registry";
 import { declaredSubscriptionAgents } from "../shared/subscription-usage";
 
 import { ExecutionNode } from "./ExecutionNodeLive";
@@ -8,6 +9,7 @@ import {
   providerKeyComponentDemand,
   providerKeyProviders,
 } from "../main/agent-runtime/provider-key-providers";
+import { preparedProvider } from "../main/agent-runtime/provider-preparation";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
 import { ReadbackRuntime } from "./ReadbackRuntime";
@@ -671,62 +673,75 @@ const supervisor = Layer.effectContext(
         },
       };
       for (const profile of snapshot.agentProfiles) {
-        const launch = profile.enabled
-          ? yield* settings.agentProfileLaunchConfiguration(profile.driver, profile.id)
-          : null;
-        providers[profile.id] = yield* buildAgentProfileProvider(
-          launch?.profile ?? profile,
-          launch,
-          {
-            config,
-            environment,
-            shell,
-          },
+        providers[profile.id] = yield* preparedProvider(
+          profile.id,
+          { driver: profile.driver, displayName: profile.displayName },
+          Effect.gen(function* () {
+            const launch = profile.enabled
+              ? yield* settings.agentProfileLaunchConfiguration(profile.driver, profile.id)
+              : null;
+            return yield* buildAgentProfileProvider(launch?.profile ?? profile, launch, {
+              config,
+              environment,
+              shell,
+            });
+          }),
         );
       }
       for (const configured of snapshot.acpAgents.instances) {
         const id = configured.id;
         if (!id) continue;
-        const launch = configured.enabled
-          ? yield* settings.acpLaunchConfiguration(configured.id)
-          : null;
-        const provider = acpProviderConfiguration({
-          instance: configured,
-          inheritedEnvironment: environment,
-          environment: launch?.environment ?? {},
-          homeDirectory: config.homeDirectory,
-        });
-        const storageScopes = yield* Effect.tryPromise(() =>
-          acpProviderStorageScopes({
-            environment: provider.environment ?? [],
-            homeDirectory: config.homeDirectory,
-            platform: config.platform,
+        providers[id] = yield* preparedProvider(
+          id,
+          { driver: acpRegistryAgent.driver, displayName: configured.displayName },
+          Effect.gen(function* () {
+            const launch = configured.enabled ? yield* settings.acpLaunchConfiguration(id) : null;
+            const provider = acpProviderConfiguration({
+              instance: configured,
+              inheritedEnvironment: environment,
+              environment: launch?.environment ?? {},
+              homeDirectory: config.homeDirectory,
+            });
+            const storageScopes = yield* Effect.tryPromise(() =>
+              acpProviderStorageScopes({
+                environment: provider.environment ?? [],
+                homeDirectory: config.homeDirectory,
+                platform: config.platform,
+              }),
+            );
+            return { ...provider, config: { ...provider.config, ...storageScopes } };
           }),
         );
-        providers[id] = { ...provider, config: { ...provider.config, ...storageScopes } };
       }
       const managedAvailability = platform.usesExternalExecutable
         ? yield* readManagedCodexAvailability
         : availability;
       const managedPackage =
         managedAvailability.status === "available" ? managedAvailability.package : undefined;
-      const managedEnvironment =
-        platform.usesExternalExecutable && managedPackage?.additionalSearchPaths.length
-          ? {
-              ...environment,
-              PATH: [...managedPackage.additionalSearchPaths, environment.PATH ?? ""]
-                .filter(Boolean)
-                .join(config.platform === "win32" ? ";" : ":"),
-            }
-          : environment;
       const managedCodex = {
         codexBinary: managedPackage?.binaryPath,
         codexUnavailable: unavailableConfiguration(managedAvailability),
+        // Execution's own search path already has these unless the person runs another Codex.
+        ...(platform.usesExternalExecutable && managedPackage?.additionalSearchPaths.length
+          ? {
+              codexSearchPath: [...managedPackage.additionalSearchPaths, environment.PATH ?? ""]
+                .filter(Boolean)
+                .join(config.platform === "win32" ? ";" : ":"),
+            }
+          : {}),
       };
+      // Host policy admits what a person configured; Nodex declares only its own variables.
+      if (hostPolicy)
+        for (const [id, provider] of Object.entries(providers))
+          providers[id] = {
+            ...provider,
+            environment: provider.environment?.filter(({ name, value }) =>
+              isAgentProviderVariable(name, value, hostPolicy.coreHome),
+            ),
+          };
       const managed = managedNodexProviders({
         ...managedCodex,
         home: config.nodexHome,
-        environment: managedEnvironment,
         managed: isProviderOn(snapshot.modelPolicy, {
           instanceId: "nodex",
           driver: "codex",
@@ -746,12 +761,30 @@ const supervisor = Layer.effectContext(
       const { providers: keyProviders, catalogs } = providerKeyProviders({
         ...managedCodex,
         home: config.nodexHome,
-        environment,
-        codexEnvironment: managedEnvironment,
         connections: snapshot.providerKeys.connections,
         keys: new Map(keys.flatMap((key) => (Option.isSome(key) ? [key.value] : []))),
       });
-      Object.assign(providers, managed, keyProviders);
+      for (const [id, provider] of Object.entries({ ...managed, ...keyProviders })) {
+        const home = (provider.config as { readonly homePath: string }).homePath;
+        providers[id] = yield* preparedProvider(
+          id,
+          provider,
+          Effect.gen(function* () {
+            if (provider.enabled) yield* fs.makeDirectory(home, { recursive: true, mode: 0o700 });
+            for (const { path, contents } of catalogs.filter((entry) => entry.instanceId === id)) {
+              if (yield* fs.exists(path)) continue;
+              const temporary = `${path}.${randomUUID()}.tmp`;
+              yield* fs
+                .writeFileString(temporary, contents, { mode: 0o600 })
+                .pipe(
+                  Effect.andThen(fs.rename(temporary, path)),
+                  Effect.ensuring(fs.remove(temporary, { force: true }).pipe(Effect.ignore)),
+                );
+            }
+            return provider;
+          }),
+        );
+      }
       if (claudeCode) {
         const component = { ...claudeCode, ...claudeCodeReadiness(yield* claudeCodeState) };
         for (const [id, provider] of Object.entries(providers)) {
@@ -759,41 +792,10 @@ const supervisor = Layer.effectContext(
             providers[id] = { ...provider, config: { ...provider.config, claudeCode: component } };
         }
       }
-      const admittedProviders = hostPolicy
-        ? Object.fromEntries(
-            Object.entries(providers).map(([id, provider]) => [
-              id,
-              {
-                ...provider,
-                environment: provider.environment?.filter(({ name, value }) =>
-                  isAgentProviderVariable(name, value, hostPolicy.coreHome),
-                ),
-              },
-            ]),
-          )
-        : providers;
-      for (const provider of Object.values(managed)) {
-        const home = (provider.config as { homePath: string }).homePath;
-        yield* fs.makeDirectory(home, { recursive: true, mode: 0o700 });
-      }
-      for (const provider of Object.values(keyProviders)) {
-        if (provider.enabled)
-          yield* fs.makeDirectory(provider.config.homePath, { recursive: true, mode: 0o700 });
-      }
-      for (const { path, contents } of catalogs) {
-        if (yield* fs.exists(path)) continue;
-        const temporary = `${path}.${randomUUID()}.tmp`;
-        yield* fs
-          .writeFileString(temporary, contents, { mode: 0o600 })
-          .pipe(
-            Effect.andThen(fs.rename(temporary, path)),
-            Effect.ensuring(fs.remove(temporary, { force: true }).pipe(Effect.ignore)),
-          );
-      }
       const configuration: AgentRuntimeConfiguration = {
         home: join(config.nodexHome, "agent-runtime"),
         cwd: projectlessWorkspaceRoot,
-        providers: admittedProviders,
+        providers,
         automaticWorkAtOnce: snapshot.agentRuntime.automaticWorkAtOnce,
         pausedThreadIds: yield* heldThreadIds(modules),
         modelPolicy: snapshot.modelPolicy,

@@ -1,3 +1,4 @@
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -165,6 +166,7 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
   options: AcpClientTerminalsOptions,
 ): Effect.fn.Return<AcpClientTerminals, never, ChildProcessSpawner.ChildProcessSpawner> {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const platform = yield* HostProcess.Platform;
   const creationPermit = yield* Semaphore.make(1);
   const terminals = new Map<string, ManagedAcpTerminal>();
   let nextTerminalNumber = 1;
@@ -236,7 +238,12 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
             sessionEnvironment === undefined &&
             (request.env?.length ?? 0) === 0
               ? undefined
-              : { ...options.environment, ...sessionEnvironment, ...requestEnvironment };
+              : HostProcess.mergeProcessEnvironments(
+                  platform,
+                  options.environment,
+                  sessionEnvironment,
+                  requestEnvironment,
+                );
           // Each terminal owns a scope so the spawned process is reliably reaped:
           // closing the scope kills a still-running command and frees the handle.
           const terminalScope = yield* Scope.make();

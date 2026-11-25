@@ -133,10 +133,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       const httpClient = yield* HttpClient.HttpClient;
       const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const catalogService = yield* ModelCatalog.ModelCatalog;
-      const processEnv = yield* mergeProviderInstanceEnvironment(
-        environment,
-        config.isolated ? {} : process.env,
-      );
+      const processEnv = yield* mergeProviderInstanceEnvironment(environment, {
+        isolated: config.isolated,
+      });
       const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
