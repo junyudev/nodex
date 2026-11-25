@@ -1,49 +1,61 @@
-# Coordinator Behavior
+# Nodex Coordination Behavior
 
 ## Intent and authority
 
 Running many Agent chats at once makes the person the bottleneck: every chat finishes, asks,
-fails or stalls on its own. Nodex, the Profile's Coordinator, takes that coordination on. It routes
-every Inbox message, watches the chats it manages, and speaks in the Inbox only when the person
-must act or can use a result. The aim is the right help at the right time and nothing at any
-other time.
+fails or stalls on its own. Nodex takes that coordination on without becoming another chat to
+watch. It routes every Inbox message, derives whose move each piece of work needs, and tells the
+person only when they must act or can use a result. The aim is the right help at the right time
+and nothing at any other time.
 
-Rust Core owns the Coordinator binding, Managed chats, Work reports, Work events and their
-delivery batches, Agent work, Prerequisites, and every Inbox record Nodex writes. The Desktop
-Host owns the Coordinator's lifecycle and standing instructions, observing Managed chats,
-delivering Work events, automatic starts and notifications. Agent Runtime owns the Coordinator's
-conversation like any chat's. The renderer presents intake, Turns, answers and controls.
+Rust Core owns decision runs and the requests they settle, Managed chats, Work reports, Agent
+work, Prerequisites, Page Turns and every Inbox record Nodex writes. The Desktop Host starts
+decision runs, observes chats, starts work automatically and delivers notifications. Agent
+Runtime owns each decision run's conversation like any chat's. The renderer presents intake,
+Turns, answers and controls.
 
-See [ADR 0078](../adr/0078-nodex-coordinates-managed-work.md) and the
+See [ADR 0090](../adr/0090-nodex-decides-in-single-purpose-runs.md), which supersedes the
+persistent Coordinator chat of [ADR 0078](../adr/0078-nodex-coordinates-managed-work.md), and the
 [Inbox behavior](./inbox-behavior.md) it extends.
 
 ## Nodex
 
-- Nodex is one long-lived chat per Profile, created the first time it is needed and running on
-  the Agent and model chosen under `Nodex runs on` in Inbox settings. It never appears in the
-  sidebar, chat lists, search, or as a place to send work.
-- `Open Nodex` in the Inbox header opens its conversation like any chat. The person can talk to
-  it there; what arrives from Nodex itself (routing requests and work updates) reads `Sent by
-  Nodex`.
-- Nodex's conversation is working memory. What it decides lives in the Inbox, on Pages and in
-  linked chats, so `Start fresh` under Nodex in Inbox settings archives the conversation and the next
-  need starts a new one without losing anything.
-- Standing instructions reach Nodex on every turn: it routes and watches but never does the work
-  itself, never rewrites a request it starts on its own, attaches a message to an existing chat
-  only on an explicit reference, asks one concrete question at a time, and keeps each Turn note to a
-  sentence or two.
+- Nodex is what the app does for the person, not a chat they keep. It has no conversation of its
+  own: nothing in the sidebar, chat lists or search is Nodex, and nothing needs to be opened to
+  see what it did.
+- Each judgment that needs a model runs as a **decision run**: one short Agent run started for
+  one request, with only that request's context and the tools to answer it. Routing an Inbox
+  suggestion request and assessing an event Automation are decision runs. Core binds the run to
+  its request, and only that run may settle it. No context carries over between runs; everything a
+  decision needs comes in its request.
+- Decision runs use the Agent and model chosen under `Nodex runs on` in Inbox settings and work
+  in a Nodex-owned folder, never one created per request. They never appear among chats and get no
+  generated title.
+- Every decision says why and links to its run. A suggestion shows its rationale. In Activity, a
+  routed message, answered question or Automation assessment offers `How Nodex decided`, which
+  opens its read-only transcript. When the request ends, a run that is still working may finish
+  its last words for up to ninety seconds; after that Nodex stops it and withdraws its open
+  requests. A run that already finished is left as it ended.
+- Standing instructions reach each decision run: route but never do the work, never rewrite a
+  request it starts on its own, attach a message to an existing chat only on an explicit reference,
+  and keep every note short.
 
 ## Routing
 
-Every suggestion request in the Inbox is answered by Nodex, under the same rules, fences, time
-budget and failures as before (see [Suggestions](./inbox-behavior.md#suggestions)). A request
-reaches Nodex once, and its time counts from when Nodex starts on it, not while it waits behind
-Nodex's other work. An answer Nodex sends after its time ends, or after the request was
-replaced, records nothing. A form Nodex gets wrong is returned to it to correct, so a
-correctable mistake does not fail the request.
+Every suggestion request in the Inbox is answered by its own routing decision run, under the
+same rules, fences, time budget and failures as before (see
+[Suggestions](./inbox-behavior.md#suggestions)). Requests run side by side up to
+`Suggestions at once`. Paused requests keep their reserved slots until they resume or end.
+Event Automation assessments have their own budget of eight reservations. An assessment still
+waiting to start five minutes after handoff fails and frees its slot. A routing request reaches
+its run once, and its time counts from when that run starts. An answer that arrives after its time ends, or after the request was replaced, records
+nothing. A form the run gets wrong is returned to it to correct, so a correctable mistake does not
+fail the request. A run that ends without answering is asked once more in the same run; a second
+unanswered ending fails the request.
 
-Nodex knows what it already dispatched, so a message that clearly continues ongoing work goes to
-that work's chat. Replies to Nodex answers carry the answer with them.
+The request names the eligible Projects and chats, the work already dispatched for its messages
+and any explicit references, so a message that clearly continues ongoing work goes to that work's
+chat. Replies to Nodex answers carry the answer with them.
 
 Work handed to a Project chat is that Project's card. Confirming a new chat moves
 the message Page into the Project's primary Database in the same decision; sending
@@ -81,10 +93,9 @@ deferred waits for review even after the message returns.
 
 ## Managed chats
 
-A chat Nodex watches is managed. Every chat an Inbox dispatch starts or continues, and every chat
-a Page start opens, is managed from that moment. `Hand to Nodex` in a chat's menu hands any
-other active chat to Nodex, and `Take back from Nodex` returns a managed one; archived chats offer
-neither.
+A chat that Nodex hands work to is managed: every chat an Inbox dispatch starts or continues,
+every chat a Page start or plan step opens. It stays managed for its life. A managed chat's Page
+Turn speaks for it, so the person hears from the Page, not from each finished turn.
 
 The root Agent of a managed chat receives work instructions on each turn. It reports
 when the Page's work is ready for review, blocked, failed or unnecessary. Delegated
@@ -101,13 +112,16 @@ and failed leave Status unchanged. Each automatic move requires the expected pre
 and no person Status edit since that attempt began. An older chat's report remains evidence
 and cannot move a Page whose active chat has changed.
 
-Nodex hears about a managed chat when it:
+Nodex observes every active chat and turns what it sees into Page Turn facts. For a managed
+chat that means:
 
-- reports its work;
-- asks a question or waits for an approval, including a question that remains answerable after its turn ends;
-- ends a turn without reporting and with nothing waiting on the person;
-- fails;
-- seems stalled: an Agent in its work owes the next step but has shown no progress for twenty
+- a report of its work;
+- a question or approval waiting on the person, including a question that remains answerable
+  after its turn ends;
+- a completed Run that began after the chat became active on an In Progress Page assigned to
+  an Agent, with nothing reported and nothing waiting, which makes the Owner's reply next;
+- a failure;
+- an apparent stall: an Agent in its work owes the next step but has shown no progress for twenty
   minutes, with nothing waiting on the person.
 
 A managed chat stays working while its root or any delegated task, native subagent,
@@ -126,40 +140,36 @@ A pending question remains Attention until it is answered, cancelled or can no l
 answered. Ending its Run alone does not resolve it. A turn that ends with a question still
 waiting on the person produces no unreported-turn update.
 
-Nodex learns these by reading each managed chat's current state, without its transcript, when
-the chat changes, whenever chats are invalidated, and every two minutes, and comparing it with
-what it saw last. After a restart it compares with its saved observation, so work that ended or
-failed while the app was closed reaches Nodex once. Only a chat it has never observed since it became managed
-starts with a baseline: its existing finished work stays quiet, but its pending questions reach
-Nodex. The stall clock starts fresh after a restart; time with the app closed is never a stall.
-A chat Nodex cannot reach is never taken to have failed; a stall is a candidate for Nodex to check,
-never a change to the chat's status. A Run the person stopped stays quiet: it produces no failure
-or unreported-turn update, and Nodex does not nudge it.
+Nodex reads each chat's current state, without its transcript, when the chat changes, whenever
+chats are invalidated, and every two minutes. Each observation records the state, pending requests,
+queue, terminal outcome, stall and person-stop facts, and a short excerpt of the chat's last reply.
+After a restart the saved observation stands until a fresh one replaces it. The stall clock starts
+fresh after a restart; time with the app closed is never a stall. A chat Nodex cannot reach is
+never taken to have failed, and a stall never changes the chat's status. A Run the person stopped
+asks nothing of them: it produces neither a failure nor a reply Turn.
 
-Each of these reaches Nodex once, in a batch with others, even across restarts. Nodex decides what
-each means: most need nothing; a current Turn may receive a note when the derived text needs more context. It may ask a chat that stopped without reporting to report, or tell a chat
-that failed on a passing error to continue.
+Nothing in this is narrated by a model. The Turn says what happened and whose move is next, and
+the chat says the rest.
 
-Managed chats yield question, approval and terminal notifications to the Page Turn owner. Unmanaged chats retain their existing policy.
+Managed chats yield their question, approval and terminal notifications to their Page Turn (see
+[Nodex in the Inbox](#nodex-in-the-inbox)). Unmanaged chats keep their own notification policy.
 
 ## Nodex in the Inbox
 
 The Inbox shows what is the local Member's to handle. Work Pages enter through
-their current Turn, independently of any prose Nodex writes. Nodex uses
-`write_turn_note` only when context adds to the exact question, report summary,
-failure reason or finished Prerequisites already shown. Notes belong to the
-Page and current episode, use delivered Work events, and remain immutable.
-They contain at most 100 words. Exact event-set, body and notify retries reuse
-the note. An event cannot back two notes in one episode.
+their current Turn. A row shows the fact behind it: the exact question, the report
+summary, the failure reason, the finished Prerequisites, or for a reply Turn the
+chat's last reply.
 
-Question and approval episodes notify by rule. Nodex chooses notify for review,
-blocked, failed and stalled notes only when an interruption helps the person.
-The Member, Page and episode identify one durable notification intent. Repeated
-notes cannot interrupt twice; stale episodes cannot notify. Answers stay quiet.
-Main applies preferences, focus and OS permission.
+Turn episodes notify by rule when the Turn becomes the local Member's for a
+question, an approval, review, blocked, failed or a reply. Stalled and
+ready-to-start Turns wait quietly. The Member, Page and episode identify one
+durable notification intent, so an episode interrupts at most once and a stale
+episode cannot notify. Answers stay quiet. Main applies preferences, focus and OS
+permission.
 
-`answer_inbox_question` answers a pending intake question from Nodex's existing
-facts and handles it in the same transaction. Each question has one quiet answer.
+A routing decision run answers a pending intake question it can settle from Nodex's existing
+facts with `answer_inbox_question`, which handles it in the same transaction. Each question has one quiet answer.
 A reply to that answer is ordinary intake. A work-Page reply instead goes to its
 active chat as the person's unchanged message or exact pending-question answer;
 it creates no intake entry and never silently falls back to routing. The reply's
@@ -205,6 +215,7 @@ Board cards, List rows, the Page, CLI and work briefs use that same answer.
 | Owner · Stalled          | Existing stall detection finds no progress.                                                                        |
 | Owner · Triage           | An intake Page is in Triage with no active chat or delivery underway.                                              |
 | Owner · Review           | Status is In Review. For report-driven review, the latest ready report is current and the execution tree is quiet. |
+| Owner · Reply            | Agent work is In Progress and its active chat finished a completed Run with no current report and nothing pending. |
 | Prerequisite Page        | The first Prerequisite, ordered by Page identity, is unsatisfied.                                                  |
 | Start / Agent · Starting | An Agent Assignee has no active chat in Triage or Todo; automatic-start consent selects Starting.                  |
 | Member · Working         | A Member Assignee is In Progress.                                                                                  |
@@ -220,6 +231,7 @@ as you and names anyone else:
 | Question | Needs your answer     | Waiting for Alice’s answer   |
 | Approval | Needs your approval   | Waiting for Alice’s approval |
 | Review   | Ready for your review | Ready for Alice’s review     |
+| Reply    | Needs your reply      | Waiting for Alice’s reply    |
 | Blocked  | Blocked · needs you   | Blocked · needs Alice        |
 | Failed   | Failed · needs you    | Failed · needs Alice         |
 | Stalled  | Stalled · needs you   | Stalled · needs Alice        |
@@ -242,22 +254,24 @@ because it is the one executing; the Member remains the Assignee.
 A Page's Status row carries its Turn: the stage control, then the phrase, then its primary
 action: Resume for a Page hold, Resume Project for an inherited Project hold, Resume all work for
 a Space hold, Start for ready work, Accept for Review, and Open chat for Question, Approval,
-Blocked, Failed, Stalled or Working when there is an active chat. Start explains when this device
+Reply, Blocked, Failed, Stalled or Working when there is an active chat. Start explains when this device
 cannot run the work. A Page with work always shows its Status row; one without work keeps a plain
 Status row. The Assignee row names only the Assignee, such as GPT-5.5; its menu chooses the
 model and effort through the provider catalog.
 
 Main records revisioned observations for all active chats, including unmanaged
 chats: execution state, pending question/approval identities, queue class and
-position, terminal outcome, stall and person-stop facts. Unavailable observation
-is distinct from failed execution; it preserves unresolved attention until a
-fresh available observation resolves it. Only managed chats publish Coordinator
-events. Effective execution holds take precedence immediately after Done
+position, terminal outcome, stall and person-stop facts, and an excerpt of the
+last reply. Unavailable observation is distinct from failed execution; it
+preserves unresolved attention until a fresh available observation resolves it.
+Effective execution holds take precedence immediately after Done
 and Canceled and before attention. Core selects the most specific hold first: Page, Project, then Space. Resume clears only that hold; another applicable hold keeps the Page paused.
 
 Each continuous actor/reason pair has a durable Turn episode and start time.
 Repeated observations preserve it; actor or reason changes, including returning
-to a previous pair, start a new episode. Page-key renaming does not change the
+to a previous pair, normally start a new episode. A Reply episode follows the Owner, Page,
+active chat and completed Run. The same Run notifies the same Owner once across pause and resume.
+Page-key renaming does not change the
 blocking Page's identity. Changing applicable pause holds also begins a new episode. Hold changes invalidate every Page in their scope. Input changes and reverse Prerequisites invalidate
 Turn through their LocalCommit.
 
@@ -289,7 +303,7 @@ and PR link survive. Starting reopened work restores the same branch.
 
 **GitHub updates.** Sources deliver followed-thread Triggers straight to the Page's
 active chat as untrusted Host input through Runtime’s automatic-root admission and the
-same execution holds. The Coordinator does not reassess these updates. Human updates remain
+same execution holds. Nodex does not reassess these updates. Human updates remain
 eligible after completion; bot and CI updates wake only open work. A verified own
 PR supplies guarded lifecycle milestones; context follows never move Status.
 Unfollowed assignments, review requests and mentions enter the Inbox with GitHub
@@ -319,12 +333,10 @@ Threads stop, while queued inputs, retry intent and delegated results stay durab
 Holds survive application and Runtime restarts. Paused time does not spend a pending
 routing request’s deadline, including overlapping holds.
 
-Automatic starts, ready-to-start events, Inbox automatic confirmation and chat delivery,
-Coordinator work batches and nudges wait behind the effective hold. A Space hold also
-prevents new Host input to Nodex, including routing follow-ups. Monitoring continues to
-record facts. On resume, current facts reconcile and each still-live event is delivered
-once. A batch with held and eligible work is rebuilt so the eligible work can proceed;
-its held events remain pending. Already accepted input stays with Runtime.
+Automatic starts, Inbox automatic confirmation and chat delivery wait behind the effective
+hold. A Space hold also holds new decision runs and their follow-ups. Monitoring continues to
+record facts. On resume, current facts reconcile and held work proceeds once. Already accepted
+input stays with Runtime.
 
 The Composer keeps the person's draft and blocks Send while held. A separate `Resume to
 send` action clears the Page hold. Parent holds instead offer the explicitly named
@@ -365,9 +377,15 @@ Ready steps start through the Host scheduler after this transaction commits.
   automatically only when the person asked. Nodex's start of a Page set to Start automatically
   reads as Nodex on behalf of the consenting person; any other start reads as that Agent on
   behalf of the person it works for.
-- `write_turn_note { pageId, eventIds, body, notify }`: the Coordinator adds at most 100 words of context to the local Member's current Page Turn, backed by 1–8 delivered Work events. It decides whether review or a problem needs an interruption.
-- `answer_inbox_question { questionPageId, body }`: the Coordinator writes one quiet answer and handles that question atomically.
-- `inbox_suggest`, `write_turn_note` and `answer_inbox_question` are Coordinator-only tools.
+- `reply_to_origin { pageId, body }`: the root Agent of a Page's active chat tells the person who
+  asked on GitHub, in at most 100 words, once that work started and what it will do, and once its
+  result is ready or merged. It never sends routine progress or repeats itself.
+- `inbox_suggest { request_id, generation, … }` and
+  `answer_inbox_question { questionPageId, body }`: only the routing decision run bound to that
+  request may settle it or answer its question; the answer is one quiet Inbox answer handled
+  atomically.
+- `automation_assessment_read` and `automation_assessment_submit`: only the assessment decision
+  run bound to that request may read its evidence and submit judgments.
 
 ### Managed-chat handback
 

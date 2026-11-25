@@ -112,8 +112,7 @@ The unit is a work tree: a root Thread and all its delegated descendants, identi
   follow-ups to delegated children.
 - Automatic start: other root-Thread activations, including Host-launched Page work,
   Start automatically and `start_work`, scheduled and event-triggered Automations,
-  Agent-created Sessions and messages or forks into another root, and Host input to
-  the Profile Coordinator.
+  Agent-created Sessions and messages or forks into another root.
 
 Only an automatic start into an idle tree waits for capacity. Person activations and
 continuations proceed immediately, while execution holds and Pause still gate all work.
@@ -1156,16 +1155,19 @@ Workbench, sidebar, terminal, account, plugin and Automation commands use their 
 application owners with the same caller checks. Session messages, launches and forks
 use the canonical Runtime writer and stable command identities.
 
-Work tools follow [Coordinator behavior](coordinator-behavior.md#application-tools):
-`report_work` lets a chat linked to a Page report its work there, and `start_work` lets
-any Agent start a Page's work in a new managed chat, attributed to that Agent; neither
-can grant a Page an unattended start, and Nodex starts only work a person let start on
-its own. `inbox_suggest`, `write_turn_note` and `answer_inbox_question` belong to Nodex: Core refuses them
-from any Session other than the Profile's Coordinator. Host input to the Coordinator
-and managed-chat work updates are server-created messages, never the person's own, and
-read `Sent by Nodex`. The Host attaches Nodex's standing instructions, and those of a
-managed chat, on every turn through the same preparation hook as other Session
-instructions, so compaction and model changes never lose them.
+Work tools follow [Nodex coordination](nodex-coordination-behavior.md#application-tools).
+The root Agent of a linked chat can call `report_work`. Any verified Agent can call
+`start_work` to start a Page in a new managed chat on behalf of the person it works
+for. Nodex's automatic starts act for the Member who granted consent. The root Agent
+of the Page's active chat can use `reply_to_origin` to acknowledge the request on
+GitHub and announce its result.
+
+Core binds each decision run to one request. Only the bound routing run can use
+`inbox_suggest` and `answer_inbox_question` for its request. Only the bound assessment
+run can use `automation_assessment_read` and `automation_assessment_submit` for its
+request. Host input to these runs reads `Sent by Nodex`. The Host attaches instructions
+for decision runs and managed chats each turn through Session preparation, so
+compaction and model changes preserve them.
 
 Every provider attaches the application tools as one MCP server named `nodex_app`. Session
 tools address product Sessions by sessionId across Projects. The Runtime's task tools
@@ -1423,7 +1425,8 @@ authentication refreshes never count as user attention.
 Side chats have independent execution roots and no catalog row. Their questions,
 secret cards and approvals also reach their source Session whenever their own conversation
 would wait; nested side chats follow the source chain. Their execution activity remains
-independent. The work Coordinator uses the same execution tree as the sidebar. A Session is otherwise running while its root or a delegated conversation has a
+independent. The Host observes the same execution tree for Page Turns and the sidebar.
+A Session is otherwise running while its root or a delegated conversation has a
 live Run, and background while delegated or native background work is live or a delegated
 result will wake it; idle Sessions are absent. A Session whose next Run waits for the Runtime to admit it
 is queued, with its place in the queue; the sidebar, chat tabs and the phone show it as idle, and

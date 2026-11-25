@@ -280,14 +280,13 @@ Member attention changes invalidate the same Core-projected stream.
   notifications while its host runs: the personal desktop with Nodex open, or `nodex serve`. The
   phone needs no direct network path to the host for them.
 - The phone hears about exactly what the desktop considers worth telling, decided once for both: a
-  chat finishing, failing or stopping, asking for an approval or an answer, a chat snooze ending, and a Page Turn becoming yours: a question or approval a chat Nodex manages waits on, or a
-  review, block, failure or stall Nodex asks you to look at. Work that continues by itself, such as
-  a queued follow-up or delegated work that will wake the chat, is not a finish. Child and
-  background work that is absent from the chat list does not notify independently, a side chat's
-  reply stays beside the chat it came from, and a chat Nodex manages speaks through its Inbox posts
-  and Page Turns instead of as a chat. One moment is told once: a Turn waits beside the chat it came
-  from, so a newer notification for you there replaces it, and a Turn's question from a chat Nodex
-  does not manage is told only as that chat's own request.
+  chat finishing, failing or stopping, asking for an approval or an answer, a chat snooze
+  ending, and a Page Turn becoming yours for a question, approval, review, block, failure or
+  reply. Stalled and ready-to-start Turns stay quiet. Queued follow-ups and delegated work that
+  will wake the chat keep it active. Child and background work absent from the chat list stays
+  quiet, and a side chat's reply stays beside its source chat. A managed chat's notifications
+  come from its Page Turn. A newer notification for the same chat replaces the one waiting
+  for you.
 - A notification reaches only the Member it concerns, by the same rule that decides who may answer:
   a question goes to whoever asked for that Run, an approval to the Page Owner, each falling back to
   the other, a finished, failed or stopped Run to whoever asked for it, a reminder to whoever set

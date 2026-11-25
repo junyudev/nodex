@@ -62,10 +62,10 @@ when the current inbound update belongs elsewhere.
 The local Owner configures Sources in Settings; change Source configuration only
 when the person asks. Open Problems offer Reconnect, Retry
 or Open card in the Inbox; Activity records routing, milestones, delivery, replies
-and recovery. Only Nodex's Coordinator uses `reply_to_origin { pageId, body }`, at
-most 100 words, once to acknowledge work starting or announce its result ready or
-merged. Never use it for routine progress or repeat the same acknowledgement or
-result. Its origin address is fixed by the Page.
+and recovery. If you are the root Agent of the Page's active chat, use
+`reply_to_origin { pageId, body }` for a GitHub request. Send at most 100 words per
+reply: one acknowledgement naming what you will do when work starts, and one
+result when it is ready or merged. The Page supplies the origin address.
 
 ## Manage Automations
 

@@ -110,7 +110,7 @@ translated, and the Simplified Chinese terminology.
 | Status                    | 状态                   | Priority                | 优先级             |
 | Assignee                  | 负责人                 | Filter / Sort / Group   | 筛选 / 排序 / 分组 |
 | Inbox                     | 收件箱                 | Automation              | 自动化             |
-| Dry run / Ask first / Run | 试运行 / 先询问 / 运行 | Coordinator             | 协调者             |
+| Dry run / Ask first / Run | 试运行 / 先询问 / 运行 |                         |                    |
 | Space                     | 空间                   | Member                  | 成员               |
 | Profile                   | 个人资料               | Device                  | 设备               |
 | Remote access             | 远程访问               | Invite                  | 邀请               |

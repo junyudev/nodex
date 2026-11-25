@@ -153,12 +153,12 @@ for multi-window publication and recovery.
 
 ### Coordinated work and people
 
-Nodex, the Space's coordinating Agent, routes Inbox requests and follows the
-chats doing a Page's work. Each work Page has a Status, an Owner, one person or
-Agent Assignee and a current turn, so the Inbox holds only what needs its reader.
+Nodex routes Inbox requests and assesses event Automations in dedicated decision
+runs. Each work Page has a Status, an Owner, one person or Agent Assignee and a
+Turn derived from its work and active chat, so the Inbox shows what needs its reader.
 GitHub activity reaches the Page whose work it concerns. A team Space keeps each
 Member's Inbox, unread state and Devices separate, and records who made every
-change. Read [Coordinator Behavior](coordinator-behavior.md),
+change. Read [Nodex coordination](nodex-coordination-behavior.md),
 [Inbox Behavior](inbox-behavior.md), [Sources Behavior](sources-behavior.md),
 [Team Space Behavior](team-space-behavior.md) and
 [Nodex Mobile Behavior](mobile-companion-behavior.md).

@@ -96,10 +96,12 @@ Remote Members can read and edit Library content, Database values and Views,
 synchronize Documents, read Sources, recorded observations, Problems and Activity,
 retry failing deliveries or replies, and use the
 admitted collaboration commands, including the mixed Inbox read and its person
-Turn actions (answer an option, Reply, Accept and Start). Coordinator notes,
-Inbox answers and managed-chat handback require Agent authority; notification claiming is scoped to the requesting Member. Source configuration requires the local Owner,
-or an Agent acting for them, and the Host; origin replies require the Coordinator. Source ingestion, sender
-leases, send settlement and health recording remain Host producer
+Turn actions (answer an option, Reply, Accept and Start). Inbox answers require
+the routing decision run bound to the request. Managed-chat handback requires Agent
+authority, and notification claiming is scoped to the requesting Member. Source
+configuration requires the local Owner or an Agent acting for them, and the Host.
+An Agent replying to a Page's origin must be the root Agent of its active chat.
+Source ingestion, sender leases, send settlement and health recording remain Host producer
 capabilities. Execution authority, native paths, backup, restore, maintenance and
 host producer commands remain local capabilities. Members can read Automations and edit those set to Ask first or Dry run within scope. Only the
 exact Automation Owner may change its mode or edit one set to Run, independent of their
@@ -250,9 +252,10 @@ catalog. An interactive response in a hosted chat shows as unavailable rather th
 starting this computer's sandbox, and its sends never check this computer's Windows
 sandbox. Nothing a team window offers fails after a click or loads forever.
 
-The shared host kernel owns the Coordinator, Work and Inbox dispatch, Sources,
-Automations, execution holds and notification intents. Main embeds it for the personal
-Space; `nodex serve` embeds it for a headless team Space. A team desktop never
+The shared host kernel starts decision runs and owns Work and Inbox dispatch,
+Sources, Automation execution, hold enforcement and notification delivery. Main
+embeds it for the personal Space, and `nodex serve` embeds it for a headless team
+Space. A team desktop never
 acquires those producers. See [Hosting a team Space](../team-space-hosting.md).
 
 When the execution host is available, Start sends the Page to that host. Accept
@@ -262,10 +265,8 @@ Inbox decisions also travel to the host from a desktop or phone: Start chat,
 accepting a suggestion, choosing an existing chat to send to, asking for or
 stopping a suggestion, and retrying a delivery. The host resolves the Agent from
 its own catalog and confirms with the requesting Member's authority, so the chat
-answers to them.
-Open Nodex opens the host's Coordinator conversation. The provider picker reads
-the host's catalog and configured instances, using the host's own credentials;
-desktop provider settings cannot select a host executable.
+answers to them. The provider picker reads the host's catalog and configured
+instances using the host's credentials. The host selects its own executable.
 
 Hosted conversation reads and text replies travel through the selected Space's
 authenticated Core connection to its execution owner. They never use the
@@ -380,9 +381,9 @@ attention: other Members' sidebars and snoozes stay as they are. A Member drags 
 into any order; the `Manual order` of unpinned chats is the host's, which a Member's sidebar
 shows but does not rearrange. Archiving a chat ends
 every Member's attention to it, as it does for a chat on a personal desktop: its pins,
-reminders and unread state go, and restoring it brings none of them back. Handing a chat to
-Nodex and Section placement are not available for hosted chats on a team desktop. Mark as
-read or unread remains.
+reminders and unread state go, and restoring it brings none of them back. Section
+placement is unavailable for hosted chats on a team desktop. Mark as read or unread
+remains available.
 
 Canceled requests retain their remote session. Concurrent losses of the same
 connection share a replacement. A pinned Device renewal that proves withdrawal
@@ -399,8 +400,9 @@ never enter a team renderer.
 
 Event Automation filters and their Source picker are host-only, including when an
 editor is restored from a saved route. They do not fetch Source options in a
-team Space. Recent Automation decisions keep the same Space as the editor; Coordinator
-assessment tools and assessment delivery run only on the Space's host.
+team Space. Recent Automation decisions keep the same Space as the editor. The
+Space's host starts assessment decision runs, and only the run bound to a request
+can use its assessment tools.
 
 ## Actors and personal attention
 

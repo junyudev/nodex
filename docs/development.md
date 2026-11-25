@@ -641,28 +641,27 @@ never starts an Agent:
 vp run dev --home "$HOME/repo/nodex/runs.local/automations-ask-in-inbox" --seed automations/ask-in-inbox
 ```
 
-`nodex-coordinator` shows Nodex's posts, a three-card plan, and a request Nodex
-already started in Inbox Activity. Its Nodex Project has managed work in every
-state, including a chat second in line on its own checkout, a paused card and a
-card with an open pull request, plus an Ask card, two Waits for edges, and an
-automatic step waiting for its prerequisite. Seeded checkouts and pull requests
-are Core records only; nothing is checked out. The Project Inbox also has a ready-to-start attention post, which
-is itself a Page on the Board.
+`nodex-coordination` shows Page Turns, including a chat that needs a reply, an
+Inbox answer, a three-card plan, and a request Nodex started. The handled request
+links to its routing decision in Activity. The Nodex Project includes a queued chat
+on its own checkout, a paused card, a card with an open pull request, and plan
+steps waiting for Prerequisites. Seeded checkouts and pull requests are Core
+records. The Project Inbox also shows a Page that is ready to start.
 
 ```bash
-vp run dev --home "$HOME/repo/nodex/runs.local/work-router-scenario" --seed nodex-coordinator
+vp run dev --home "$HOME/repo/nodex/runs.local/work-router-scenario" --seed nodex-coordination
 ```
 
-The recipe uses public Core operations. The Host binds a Coordinator Session;
-Agent command envelopes record reports and Nodex posts against persisted
-execution identities. Suggestions begin Host routing and settle through the
-same command as `inbox_suggest`; the completed request uses Nodex confirmation
-and outbox completion without launching an Agent. Native chat status uses the
-same seed adapter as `sidebar/chat-status`. The bootstrap Project is archived,
-leaving one active Project. `tests/e2e/nodex-coordinator.spec.ts` captures the
-Inbox, Activity, Board, Page Agent row, settings and reply composer in light theme
-at the default window size. Screenshots go to Playwright's output and
-`notes.local/artifacts/work-router/screenshots/` in the primary checkout.
+The recipe uses public Core operations. Page starts admit managed work, and Agent
+commands record reports under their persisted execution identities. Inbox advice
+and answers use request-bound decision runs. The recipe settles launches and
+records execution evidence without calling a live Agent. Native chat status uses
+the same seed adapter as `sidebar/chat-status`. The bootstrap Project is archived,
+leaving one active Project.
+
+`tests/e2e/nodex-coordination.spec.ts` exercises the Inbox, Activity, Board, Page
+Agent row and reply composer in light theme. Screenshots go to Playwright's
+output by default.
 
 `inbox/suggestion-spend` seeds the Library Inbox with a current New chat suggestion,
 an outdated suggestion after a Page edit, a message with no advice requested, a
@@ -764,9 +763,9 @@ never continues or writes the source's native conversations.
 Before Core accepts work on first open, it pauses copied heartbeats, clock and
 GitHub Automations, disables GitHub Sources and automatic Inbox starts, and
 pauses Agent-assigned Page work. It cancels copied Automation decisions and
-retries, pending Inbox routing and dispatch, Coordinator batches, Page work
-launches, and incoming and outgoing GitHub deliveries. Copied chats leave
-Coordinator management. The clone also clears reminder deliveries and phone
+retries, pending Inbox routing and dispatch, Automation assessments, Page work
+launches, and incoming and outgoing GitHub deliveries. Copied chats become
+unmanaged. The clone also clears reminder deliveries and phone
 notification registrations, and retires unfinished checkout preparation and
 cleanup. Calendar recurrences remain on the calendar. Resume standing work in
 the clone or review and submit a fresh dispatch when you want it to run.

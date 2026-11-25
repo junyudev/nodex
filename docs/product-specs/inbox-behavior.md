@@ -72,7 +72,7 @@ Activity, the header's second tab beside Inbox, is the one timeline of everythin
 done in its scope, newest first and grouped by local calendar day. Its filters read the same
 Core projection, each with one cursor bound to the scope and filter:
 
-- **All:** every fact below, with deliveries, Channel replies and Turn notes.
+- **All:** every fact below, with deliveries and Channel replies.
 - **Messages:** handled messages. Each decision about a message is one fact: sent to a chat,
   filed in a Project, saved to Notes, added to Todo, marked done, or returned to the Inbox after handling. A routing suggestion is not a
   fact of its own: one still open belongs to the Inbox, and the decision that settles it is the
@@ -87,7 +87,9 @@ one exists, and a trailing link naming its subject. Clicking a row expands it on
 surface, without nested cards. Activity has no message composer. Actors are Nodex, a Source, a
 Member or a chat, as supported by each committed fact. Pages, chats and remote URLs remain links
 to their own evidence. Windows are bounded and newest first. Project Activity shows the
-associated Project's facts at the time of each decision.
+associated Project's facts at the time of each decision. Expanding a routed message,
+answered question or Automation assessment with a recorded decision run reveals
+`How Nodex decided`, which opens that run read-only.
 
 Descriptions name the committed event with a past-tense verb and a quoted message or chat,
 retaining the reason separately. Actor glyphs use the monochrome Nodex mark, GitHub, person or
@@ -152,7 +154,7 @@ hydrate only after the bounded fact window is selected.
   directly in its chosen Project's Database.
 - Dispatch preserves the entry's original Inbox, authoring Member and origin
   Actor. Relocation and assignment history name the Actor confirming the handoff,
-  including a Coordinator acting on a Member's behalf. The receiving Agent stays
+  including Nodex acting on a Member's behalf. The receiving Agent stays
   separate from this authorship. Library Activity still shows the message and the
   Project chat or plan it went to.
 - The whole message, read as message text, becomes the Page body, and the stream
@@ -410,7 +412,7 @@ Turn still defers it.
   half, `Choose another time`, confirms the suggestion with a different time. The row offers no
   second Snooze. A suggested time that has passed disables the decision and says to choose another.
 
-## Turns, notes and answers
+## Turns and answers
 
 Core returns one mixed window of `intake`, `turn` and `answer` rows. All share
 one time-and-identity ordering and one scope-bound cursor. Counts use the same
@@ -419,7 +421,7 @@ stay visible without increasing it. `all` includes every Project; `library`
 means messages without a Project.
 
 A Turn row belongs to the local Member and has reason question, approval,
-review, blocked, failed or stalled. A managed chat's attention includes live approvals
+review, reply, blocked, failed or stalled. A managed chat's attention includes live approvals
 from delegated descendants and questions handed to the person, using the same tree
 rollup as root Session activity. Questions still owned by a delegating Agent do not
 create person attention. Ready-to-start appears only for a Page with
@@ -434,12 +436,12 @@ what to do about it. The card keeps to its own content's width, so its actions
 stay beside the words they answer.
 The first line shows the Page's title and whose move the Page waits for, in
 the words its Status row uses for the reader, such as `Needs your answer` or
-`Ready for your review`. Beneath it are one or two lines of the current episode's
-newest Turn note, led by Nodex's monochrome mark, named Note from Nodex, only
-when Nodex wrote that text. Without a note Core shows the exact pending question,
-report summary, failure reason, or which Prerequisites finished. Text longer than
-its two lines offers `Show more`, which opens the whole text in place, a report
-or note as the Markdown it was written in, and `Show less` closes it.
+`Ready for your review`. Beneath it, the row shows the fact behind the Turn,
+such as the exact pending question, report summary, failure reason or finished
+Prerequisites. A reply Turn says `Needs your reply` and shows an excerpt of the
+active chat's last reply when available. The text starts at two lines. When it
+overflows, `Show more` expands it in place, with reports rendered as Markdown.
+`Show less` collapses it.
 
 Actions revalidate the episode. Questions show the exact option labels: four
 buttons then More… when needed, plus Reply. Review puts the outlined Open chat
@@ -448,10 +450,11 @@ Open PR icon before these buttons. For Agent-reported work, these actions appear
 once the execution tree is quiet and the ready report is still current. A later
 round in the active chat returns report-driven review to In Progress unless the
 person has since chosen a Status.
-Blocked, failed and stalled offer Reply. Newly ready work offers Start. All
+Reply, blocked, failed and stalled Turns offer Reply. Newly ready work offers Start. All
 other Turns offer Open chat, which opens the Page's active chat or the Page when
-it has none. Questions with options show Open chat as an icon. Approval, blocked,
-failed, stalled and questions without options show it as a filled button.
+it has none. Questions with options show Open chat as an icon. Approval, reply,
+blocked, failed, stalled and questions without options show it as a filled
+button.
 The Page's Active chat and the Inbox show the same decision. Answering or approving
 a request in either place clears that request from both. In review, the Active chat's
 composer carries the decision on one line attached to it: the Turn's words, the Page,
@@ -481,37 +484,31 @@ approval or an invalid required choice is explained with Open chat; there is
 no fallback to intake routing. A reply retains its authored episode across
 restart and never becomes an intake entry.
 
-Only the Coordinator writes `write_turn_note { pageId, eventIds, body, notify }`.
-The note is immutable, at most 100 words by countWords, and binds to the current
-local-Member episode. Events must have been delivered to that Coordinator and
-concern the Page or its active chat. Each event backs one note per episode;
-exact retries preserve the note. A note neither creates a row nor changes order.
-
-`answer_inbox_question { questionPageId, body }` creates a quiet answer Page and moves its pending question to Done atomically. One question has one answer; exact
-retries reuse it. Answers look like Nodex's conversation messages. Reply to an
-answer continues with Nodex as ordinary intake, retaining the answer's context.
+The routing decision run bound to a pending intake question can call
+`answer_inbox_question { questionPageId, body }`. Core creates its quiet answer
+Page and moves the question to Done in one transaction. Exact retries reuse its
+one answer. The answer appears as a message from Nodex. Replying to it creates
+ordinary intake with the answer's context.
 
 ## Suggestions
 
 Nodex gives routing advice for Pages whose current Turn is triage. Leaving Triage
 withdraws an unfinished request and supersedes any unconfirmed suggestion.
 
-Each suggestion request reaches Nodex's conversation as a message carrying its
-Inbox entries, images, and possible destinations. Nodex records the answer with
-`inbox_suggest`. A request keeps its conversation and deadline across restarts.
-Starting Nodex fresh leaves any unsettled requests with the previous conversation.
-Five requests can await Nodex by default. Inbox settings can raise or lower that
-limit. A request has five minutes from when Nodex starts on it: time it waits
-behind Nodex's other work does not count, and requests Nodex takes up together
-share one start, kept across restarts. A request Nodex has not started thirty
-minutes after it was handed over fails with Retry. Nodex can correct an invalid
-answer within its deadline. If Nodex ends its turn without answering, it gets
-one follow-up naming the unanswered request and its latest refusal, if any.
-This follow-up survives app restarts and keeps the original deadline. If Nodex
-ends that follow-up without answering, the request fails immediately with Retry
-and an explanation.
-Answers that arrive after settlement, replacement, withdrawal, or failure record
-nothing. The request text remains in its conversation after the Inbox entry is deleted.
+Each suggestion request starts its own routing decision run with the Inbox entries,
+images and possible destinations. The run records its answer with `inbox_suggest`.
+Routing runs proceed in parallel up to `Suggestions at once`, five by default.
+A paused routing request keeps its reserved slot. Event Automation assessments use
+their own fixed budget. A request has five minutes from when its run starts. A request still waiting to start
+thirty minutes after handoff fails with Retry. The run can correct an invalid
+answer within its deadline. If it ends without answering, the same run gets one
+follow-up naming the unanswered request and its latest refusal, if any. The
+request's run, follow-up and deadline survive app restarts. If the run ends that
+follow-up without answering, the request fails immediately with Retry and an
+explanation. Answers that arrive after settlement, replacement, withdrawal or
+failure record nothing. When the request ends, Nodex stops any remaining execution
+and withdraws its open requests. The transcript remains available after the Inbox
+entry is deleted.
 
 When Suggestions choose models is off, each routing request explicitly offers
 no Agent choices. New chats use the Inbox default; Nodex must leave the Agent,
@@ -560,8 +557,8 @@ to sixteen, rather than being split by the automatic batch size. Each request
 and response is fenced by its identity; an old success or failure cannot
 replace a newer request.
 
-Up to five requests can await Nodex at once, admitted oldest first.
-`Settings → Inbox` changes the limit, from one to sixteen. Raising it admits waiting messages at once; lowering it stops nothing
+Requests are admitted oldest first.
+`Settings → Inbox` sets `Suggestions at once` from one to sixteen. Raising it admits waiting messages at once; lowering it stops nothing
 already running, and new requests wait until fewer are. Messages sent while the
 limit is reached wait for the next free place and are gathered into one request
 then, which keeps a long burst from spending a request per message.
@@ -614,12 +611,10 @@ what the chat delivers, and nothing the user asked for is ever an addition, so
 dropping one never drops a requirement. A suggestion carries as many additions
 as it finds worth offering, up to twelve of 600 characters each.
 
-The Coordinator receives standing routing instructions on every turn. Its
-normal Runtime configuration and permissions apply, while its role directs it
-to treat captured text, personal and Project instructions, and lookup results
-as routing data. It leaves the receiving chat to follow that chat's own
-instructions and does not restate them in a proposal. Routing preferences are
-the user's standing instructions for these decisions.
+Each routing decision run receives Nodex's standing routing instructions and the
+person's routing preferences. It treats captured text, personal and Project
+instructions, and lookup results as routing data. The receiving chat follows its
+own instructions.
 
 Image markers use `[Image #N]`, followed by ` (caption: <alt text>)` when the
 occurrence has alt text. Within a message, repeated occurrences of a Library
@@ -647,9 +642,9 @@ the Inbox's scope, covering every message and changing nothing stay above them.
 So turning the guide off and writing the same knowledge, or a different view, as
 preferences takes effect at least as strongly as the guide did.
 
-Only the verified Coordinator Session may submit `inbox_suggest`. Its strict
-tool schema and the Inbox validator constrain the output; validation errors
-are returned to the Coordinator for correction without settling the request.
+Only the routing decision run bound to the request may submit `inbox_suggest`.
+The tool schema and the Inbox validator constrain the output. The run can correct
+validation errors while the request is open.
 
 A Project's Inbox narrows that context to the Project. Its messages are already
 that Project's Pages, so a new chat starts in the Project, an existing chat must
@@ -1073,7 +1068,6 @@ creates a second message, and does not count against the Agent budget again.
     Database's views, the Inbox showing its count;
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox;
-  - `Open Nodex`, the Nodex mark, which opens Nodex's own conversation;
   - `Inbox settings`, a panel that changes in place what routes and how new
     chats start. Each section shows its model, with the composer's model menu,
     then its switches: under `Nodex`, when suggestions run beside its title,
@@ -1090,8 +1084,7 @@ creates a second message, and does not count against the Agent budget again.
   - under `Nodex`: when suggestions run (automatically, when the user asks, or
     never), `Let Nodex start chats for me` (off by default), and `Nodex runs on` (the Agent,
     model, effort and speed selected in the model menu);
-  - how many suggestions can await Nodex at once, five by default;
-  - `Start fresh` archives Nodex's conversation;
+  - `Suggestions at once`, the limit for concurrent routing decision runs, five by default;
   - free-text routing preferences are the user's standing instructions to Nodex
     and take priority over its defaults;
   - under `New chats`:
@@ -1115,8 +1108,8 @@ creates a second message, and does not count against the Agent budget again.
   the saved choice unavailable. Only a loaded catalog can establish that a choice
   is missing or unavailable, and an Agent whose status check has not answered yet,
   such as one still timing out while its models load, shows Checking models while
-  Nodex checks again; work that needs it, Open Nodex included, waits for that
-  check within its bounded catalog wait. Agent setting changes refresh the choices.
+  Nodex checks again. Work that needs that Agent waits for the check within
+  its bounded catalog wait. Agent setting changes refresh the choices.
   An unavailable instance retains its real name rather than appearing as another Agent.
   The automatic Agent choice prefers Codex when available and uses another available
   Agent when needed. Suggestions use an Agent that supports Inbox generation. An
@@ -1155,9 +1148,9 @@ Authenticated remote Members may read Activity, the mixed Inbox projection and t
 window, retry Problems, and take person actions including setting and clearing their own
 deferrals, answering an option, Reply, Accept and Start. Commands retain their
 current episode and request fences, and receipt replay belongs to the initiating
-Member. Turn notes and Inbox answers require the Coordinator's Agent authority;
-managed-chat handback requires captured Agent execution authority. These Agent tools
-cannot be called directly by a remote Member. A connected Desktop reads and claims its
+Member. Inbox suggestions and answers require the routing decision run bound
+to the request. Managed-chat handback requires captured Agent execution authority.
+A connected Desktop reads and claims its
 Member's notification intents. The Space Host refreshes Inbox views at deferral deadlines and delivers phone
 notifications. New commands remain denied remotely until explicitly admitted.
 

@@ -144,7 +144,7 @@ tools through its own MCP host. Session creation, reads, messages and questions
 use the same Runtime writer as managed work. Browser, Computer Use, windows and
 other desktop-only tools are unavailable on a headless host and are not advertised.
 
-Members can start assigned work, open Nodex, read and reply to hosted chats
+Members can start assigned work, read and reply to hosted chats
 (including Queue, Steer and queued-reply controls, the chats' images, and the
 images, files and Page references a reply attaches), edit their own messages,
 fork them and open side chats, answer Inbox questions, accept ready work and pause
