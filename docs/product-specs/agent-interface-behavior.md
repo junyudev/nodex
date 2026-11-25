@@ -406,6 +406,10 @@ messages. A native source without causal Run evidence keeps its Run null and use
 independent five-message budget for that native connection. A retry with the same
 `idempotencyKey` returns the original receipt without another message or quota charge.
 The tool gives the Agent's requesting Member a routing decision. It starts no work.
+Nodex guidance asks an Agent to use it for evidence-backed findings outside its task, such as
+a defect, a recurring friction or a better long-term design, instead of widening its change:
+only when the finding matters beyond the task and no existing Page holds it, usually none per
+task, and named in the Agent's reply. A delegated Agent returns such findings to its delegator.
 The Member can snooze that episode or clear its deferral from Snoozed.
 The backing Page retains full Profile content access, including for planning, child
 and background Agents. See [Inbox Behavior](./inbox-behavior.md).
