@@ -413,6 +413,10 @@ DevTools port so different homes can run concurrently. Pass
 `0` through `65535` when a stable endpoint is needed. The command-line option
 overrides `NODEX_REMOTE_DEBUGGING_PORT` when both are set.
 
+`vp run dev` and `vp run test:e2e` can launch the desktop app directly from an Agent
+terminal. Both launchers remove the inherited `ELECTRON_RUN_AS_NODE` setting from
+their Electron app environment.
+
 On both platforms, development preparation and `vp run build` stage
 standalone Node with `stage:codex-runtime:cached`. Main verifies
 `.generated/node-runtime/<platform>-<arch>` before Agent execution. The

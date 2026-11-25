@@ -151,6 +151,7 @@ describe("dev launcher", () => {
       arguments: parsed,
       environment: {
         NODEX_AGENT_SHELL: "1",
+        ELECTRON_RUN_AS_NODE: "1",
         NODEX_AGENT_PROFILE_HOME: "/outer",
         NODEX_CLI_TASK_ID: "outer",
         // The Host composes this with the machine's own separators.
@@ -161,6 +162,7 @@ describe("dev launcher", () => {
       architecture: "arm64",
     });
     expect(plan.environment.NODEX_AGENT_SHELL).toBeUndefined();
+    expect(plan.environment).not.toHaveProperty("ELECTRON_RUN_AS_NODE");
     expect(plan.environment.NODEX_CLI_TASK_ID).toBeUndefined();
     expect(plan.environment.PATH).toBe("/usr/bin");
     expect(plan.mode).toBe("hmr");
@@ -370,11 +372,12 @@ describe("dev launcher", () => {
   test("selects a build-first built application plan", () => {
     const plan = createDevLaunchPlan({
       arguments: parseDevLauncherArguments(["--build"]),
-      environment: { NODEX_REMOTE_DEBUGGING_PORT: "9333" },
+      environment: { NODEX_REMOTE_DEBUGGING_PORT: "9333", ELECTRON_RUN_AS_NODE: "1" },
       home: HOME,
       platform: "darwin",
     });
     expect(plan.mode).toBe("built");
+    expect(plan.environment).not.toHaveProperty("ELECTRON_RUN_AS_NODE");
     expect(plan.preparation.map((command) => command.args.at(-1))).toEqual([
       "electron:prepare",
       "core:binaries:build:release",

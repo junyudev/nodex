@@ -1,6 +1,7 @@
 import path from "node:path";
 import { _electron, type ElectronApplication } from "playwright";
 import { isolatedElectronArguments } from "../isolated-run/electron-arguments";
+import { electronApplicationEnvironment } from "../isolated-run/electron-environment";
 
 export type ElectronTestWindowPresentation = "background" | "foreground";
 type LaunchOptions = NonNullable<Parameters<typeof _electron.launch>[0]> & {
@@ -15,6 +16,7 @@ export function launchTestElectron({
   const foreground = process.env.NODEX_E2E_WINDOWS === "foreground" || windows === "foreground";
   return _electron.launch({
     ...options,
+    env: electronApplicationEnvironment(options.env ?? process.env),
     args: [
       ...(foreground
         ? []

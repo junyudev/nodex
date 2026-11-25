@@ -48,6 +48,7 @@ import { materializeDevelopmentSeed } from "./scenarios/harness/development-seed
 import { CROSS_PROVIDER_SCENARIO_ID } from "./scenarios/scenarios/agent-cross-provider-delegation";
 import { assertSeededSourceFolder } from "./scenarios/seed/source-folder";
 import { isolatedElectronArguments } from "./isolated-run/electron-arguments";
+import { electronApplicationEnvironment } from "./isolated-run/electron-environment";
 import {
   rustDevCargoOutputDirectory,
   rustDevRuntimeExecutable,
@@ -338,7 +339,7 @@ export const createDevLaunchPlan = (input: {
   const usesSkillsSeed =
     (input.arguments.seed ?? input.home.manifest.seed?.id) === SKILLS_PAGES_SCENARIO_ID;
   const environment: NodeJS.ProcessEnv = {
-    ...withoutAgentShell(input.environment),
+    ...electronApplicationEnvironment(withoutAgentShell(input.environment)),
     ...developmentFeatureEnvironment(enabledFeatures),
     ...(input.arguments.build
       ? {

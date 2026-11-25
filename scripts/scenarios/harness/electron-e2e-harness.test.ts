@@ -22,10 +22,12 @@ const fixture = {
 test("launches the scenario build independently of the parent development renderer", async () => {
   vi.stubEnv("ELECTRON_RENDERER_URL", "http://localhost:45958");
   vi.stubEnv("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "parent-client");
+  vi.stubEnv("ELECTRON_RUN_AS_NODE", "1");
   await launchNodexElectronApplication(fixture);
   const environment = launch.mock.calls[0]?.[0].env;
   expect(environment).not.toHaveProperty("ELECTRON_RENDERER_URL");
   expect(environment).not.toHaveProperty("CODEX_INTERNAL_ORIGINATOR_OVERRIDE");
+  expect(environment).not.toHaveProperty("ELECTRON_RUN_AS_NODE");
   expect(environment).toMatchObject({ NODEX_HOME: fixture.nodexHome, NODE_ENV: "test" });
 });
 
