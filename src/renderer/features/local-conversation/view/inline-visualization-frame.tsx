@@ -93,6 +93,7 @@ function VisualizationFrame({
       html,
       hostId: stateHostId,
       openLink: (request) => callbacks.current.openLink?.(request) ?? openLink(request),
+      readOpenNodexReference: () => owner.readOpenNodexReference(id),
       mountTarget: surface,
       ...(attempt === 0 ? { claimStandby: (locale) => owner.claimStandby(locale) } : {}),
       initialHeight: owner.readFrame(id)?.initialHeight,

@@ -875,15 +875,47 @@ test("visualization links use preferences only after Main consumes the guest ges
     expect.objectContaining({ href: "https://example.com/plot?utm_source=widget&view=1" }),
   );
 });
-test("a pending visualization navigation cannot outlive its active presentation", async () => {
-  const authorization = deferred<boolean>();
+test("visualization Nodex links return to the renderer after Main authorizes the gesture", async () => {
+  const openNodexReference = vi.fn(async () => true);
   const openLink = vi.fn(async () => true);
-  const runtime = mountRuntime({ openLink });
+  mountRuntime({ readOpenNodexReference: () => openNodexReference, openLink });
   const attempt = await readAttempt(0);
-  boundary.external.mockImplementationOnce(() => authorization.promise);
-  const pending = attempt.input.handlers.openExternal({ href: "https://example.com/" });
-  runtime.setActive(false);
-  authorization.resolve(true);
-  await pending;
+  const href = "nodex://views/view-1";
+  boundary.external.mockResolvedValueOnce(false);
+  await attempt.input.handlers.openExternal({ href });
+  expect(openNodexReference).not.toHaveBeenCalled();
+  await attempt.input.handlers.openExternal({ href });
+  expect(openNodexReference).toHaveBeenCalledExactlyOnceWith(
+    { kind: "view", viewId: "view-1" },
+    expect.any(Function),
+  );
+  expect(boundary.external).toHaveBeenCalledWith(
+    expect.objectContaining({ channel: "codex:visualization:open-external" }),
+    {
+      href,
+      sandboxId: attempt.input.expectedSandboxId,
+      initId: "synthetic-init",
+      openNodexInRenderer: true,
+    },
+  );
   expect(openLink).not.toHaveBeenCalled();
 });
+
+test.each(["https://example.com/", "nodex://views/view-1"])(
+  "a pending visualization link to %s cannot open after its presentation becomes inactive and resumes",
+  async (href) => {
+    const authorization = deferred<boolean>();
+    const openLink = vi.fn(async () => true);
+    const openNodexReference = vi.fn(async () => true);
+    const runtime = mountRuntime({ openLink, readOpenNodexReference: () => openNodexReference });
+    const attempt = await readAttempt(0);
+    boundary.external.mockImplementationOnce(() => authorization.promise);
+    const pending = attempt.input.handlers.openExternal({ href });
+    runtime.setActive(false);
+    runtime.setActive(true);
+    authorization.resolve(true);
+    await pending;
+    expect(openLink).not.toHaveBeenCalled();
+    expect(openNodexReference).not.toHaveBeenCalled();
+  },
+);

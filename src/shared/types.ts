@@ -2195,6 +2195,8 @@ export interface CodexVisualizationConsumeGestureInput {
 
 export interface CodexVisualizationOpenExternalInput extends CodexVisualizationConsumeGestureInput {
   readonly href: string;
+  /** Main validates the request and consumes the gesture; the Workbench opens the reference. */
+  readonly openNodexInRenderer?: boolean;
 }
 
 export type CodexConversationImageAssetResolveResult =

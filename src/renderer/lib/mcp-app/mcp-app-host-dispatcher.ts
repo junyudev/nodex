@@ -8,6 +8,8 @@ import {
   type McpAppScopeSnapshot,
 } from "../../../shared/mcp-app/mcp-app-scope";
 import { JsonValueSchema } from "../../../shared/nodex-agent-tools/base-schemas";
+import { parseNodexDestination } from "../../../shared/nodex-reference";
+import type { OpenGuestNodexReference } from "../nodex-reference-router";
 import {
   defineRendererCommand,
   invokePlainCommand,
@@ -67,6 +69,7 @@ function parseToolCall(value: unknown): {
 
 export interface McpAppHostDispatcherOptions {
   readonly openLink?: (request: LinkOpenRequest) => Promise<boolean>;
+  readonly openNodexReference?: OpenGuestNodexReference;
   readonly hostId?: string;
   readonly getDisplayMode?: () => string;
   readonly isFirstParty?: boolean;
@@ -218,6 +221,12 @@ export class McpAppHostDispatcher {
       request = parseMcpAppLinkRequest(value);
     } catch {
       throw new McpAppRpcError("Invalid external navigation request", -32_602);
+    }
+    const openNodexReference = this.#options.openNodexReference;
+    const destination = parseNodexDestination(request.href);
+    if (destination && openNodexReference) {
+      await openNodexReference(destination, this.#options.isCurrent);
+      return;
     }
     const forceExternal =
       this.#options.getDisplayMode?.() === "modal" ||

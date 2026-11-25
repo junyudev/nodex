@@ -1,4 +1,11 @@
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import {
   decideNodexReferenceOpen,
   type NodexContentPlacement,
@@ -181,4 +188,35 @@ export function NodexReferenceSourceProvider({
 
 export function useNodexReferenceSource(): NodexReferenceSource {
   return useContext(NodexReferenceSourceContext);
+}
+
+export type OpenGuestNodexReference = (
+  destination: NodexDestination,
+  isCurrent?: () => boolean,
+) => Promise<boolean>;
+
+/** Guests request a plain open. Retained guests read the latest committed navigation context. */
+export function useGuestNodexReferenceOpener(
+  conversationSessionId?: string,
+): OpenGuestNodexReference | undefined {
+  const router = useNodexReferenceRouter();
+  const declaredSource = useNodexReferenceSource();
+  const source = conversationSessionId
+    ? { surface: "conversation" as const, sessionId: conversationSessionId }
+    : declaredSource;
+  const context = useRef({ router, source });
+  useLayoutEffect(() => {
+    context.current = { router, source };
+  });
+  const open = useCallback<OpenGuestNodexReference>(async (destination, isCurrent) => {
+    const { router, source } = context.current;
+    if (!router) return false;
+    const result = await router.open(destination, {
+      source,
+      gesture: { kind: "menu", action: "open" },
+      isCurrent,
+    });
+    return result !== "failed";
+  }, []);
+  return router ? open : undefined;
 }

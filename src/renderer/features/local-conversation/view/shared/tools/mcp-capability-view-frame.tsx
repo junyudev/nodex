@@ -1,4 +1,5 @@
 import { useIntl } from "@/lib/i18n";
+import { useGuestNodexReferenceOpener } from "@/lib/nodex-reference-router";
 import { useLinkOpening } from "@/lib/web-link-navigation";
 import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { Maximize2, Minimize2 } from "@/components/shared/icons/generic-icons";
@@ -43,6 +44,7 @@ export function McpCapabilityViewFrame({
   const sendFollowUpMessage = useMcpAppFollowUpHandler();
   const source = useConversationMarkdownSource();
   const links = useLinkOpening();
+  const openNodexReference = useGuestNodexReferenceOpener();
   const readContextRecipient = useComposerAppModelContextRecipient(source);
   const isSidePanel = mode === "side-panel";
 
@@ -80,6 +82,7 @@ export function McpCapabilityViewFrame({
       ...(sendFollowUpMessage ? { sendFollowUpMessage } : {}),
       modelContext,
       openLink: links?.openLink,
+      openNodexReference,
       hostId: source?.hostId,
     });
     return () => {
@@ -94,6 +97,7 @@ export function McpCapabilityViewFrame({
     source,
     readContextRecipient,
     links?.openLink,
+    openNodexReference,
   ]);
 
   const subscribeRuntime = useCallback(
