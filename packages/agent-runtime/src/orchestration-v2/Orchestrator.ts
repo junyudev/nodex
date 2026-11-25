@@ -10792,7 +10792,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   ) {
     const projection = yield* loadProjectionForCommand(command, ["providerThreads"]);
     const requested = new Set(command.taskIds);
-    const tasks = liveBackgroundWork(projection).filter((task) => requested.has(task.taskId));
+    const tasks = liveBackgroundWork(projection).filter(
+      (task) => task.stoppable !== false && requested.has(task.taskId),
+    );
     const { turnItems } = yield* loadProjectionForCommand(command, ["turnItems"], {
       turnItemIds: tasks.flatMap((task) =>
         task.turnItemId === undefined ? [] : [task.turnItemId],

@@ -44,6 +44,7 @@ describe("Agent Runtime background tasks", () => {
             kind: "background_task",
             threadId: "child",
             threadTitle: "Audit auth",
+            stoppable: false,
           }),
         ],
         (taskId) => taskId === "watch",
@@ -78,8 +79,8 @@ describe("Agent Runtime background tasks", () => {
         command: null,
         owner: "Audit auth",
         startedAtMs: null,
-        stoppable: true,
-        canStop: true,
+        stoppable: false,
+        canStop: false,
         stopping: false,
       },
     ]);

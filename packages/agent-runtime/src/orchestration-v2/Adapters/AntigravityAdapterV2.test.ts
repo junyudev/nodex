@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Fixture writes the Agent’s native task record.
+import { DatabaseSync } from "node:sqlite";
+
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import { ModelPolicyError } from "../../nodex/ModelPolicy.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -8,6 +11,7 @@ import {
   ChatFileAttachment,
   MessageId,
   NodeId,
+  type OrchestrationV2PendingBackgroundTask,
   ProjectId,
   ProviderInstanceId,
   ProviderSessionId,
@@ -1098,11 +1102,18 @@ describe("AntigravityAdapterV2 html_render pages", () => {
  */
 const openSessionWithRunningCommand = Effect.fn("openSessionWithRunningCommand")(function* (
   commandInput: Record<string, unknown>,
-  /** The prompt launches one agy 1.5 subagent instead; its records live below this profile. */
-  detachedChildProfile?: string,
-  /** agy 1.5.11 answers a steered prompt once the next one arrives, which runs to `releaseSteer`. */
-  steering?: { readonly agentVersion: string; readonly holdsFirstPrompt: boolean },
+  options: {
+    readonly detachedChildProfile?: string;
+    readonly backgroundProfile?: string;
+    readonly rejectFirstBackgroundPublish?: boolean;
+    readonly steering?: { readonly agentVersion: string; readonly holdsFirstPrompt: boolean };
+  } = {},
 ) {
+  const { detachedChildProfile, backgroundProfile, steering } = options;
+  const profileDirectory = detachedChildProfile ?? backgroundProfile;
+  const rosters = yield* Queue.unbounded<ReadonlyArray<OrchestrationV2PendingBackgroundTask>>();
+  const backgroundPublishFailed = yield* Deferred.make<void>();
+  let rejectFirstBackgroundPublish = options.rejectFirstBackgroundPublish === true;
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
@@ -1203,7 +1214,7 @@ const openSessionWithRunningCommand = Effect.fn("openSessionWithRunningCommand")
     },
     withProcess: (_stop, task) => task,
     defaultModel: Effect.undefined,
-    ...(detachedChildProfile === undefined ? {} : { profileDirectory: detachedChildProfile }),
+    ...(profileDirectory === undefined ? {} : { profileDirectory }),
   });
   const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
     runtimeMode: "full-access",
@@ -1216,6 +1227,20 @@ const openSessionWithRunningCommand = Effect.fn("openSessionWithRunningCommand")
     providerSessionId: ProviderSessionId.make("provider-session-antigravity-wake"),
     modelSelection,
     runtimePolicy,
+    ...(backgroundProfile === undefined
+      ? {}
+      : {
+          reportBackgroundTasks: (thread) =>
+            Effect.gen(function* () {
+              if (rejectFirstBackgroundPublish) {
+                rejectFirstBackgroundPublish = false;
+                yield* Deferred.succeed(backgroundPublishFailed, undefined);
+                return yield* Effect.die("temporary roster write failure");
+              }
+              yield* Queue.offer(rosters, thread.pendingBackgroundTasks ?? []);
+              return true;
+            }),
+        }),
   });
   const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
   yield* session.events.pipe(
@@ -1290,6 +1315,8 @@ const openSessionWithRunningCommand = Effect.fn("openSessionWithRunningCommand")
     send,
     startTurn,
     until,
+    nextBackgroundRoster: Queue.take(rosters),
+    backgroundPublishFailed: Deferred.await(backgroundPublishFailed),
     throughTerminal: until((event) => event.type === "turn.terminal"),
     // The reply before end_turn closes when the prompt settles, held open or not.
     throughPromptSettled: until(
@@ -1386,6 +1413,145 @@ describe("AntigravityAdapterV2 work after the prompt ends", () => {
     }).pipe(Effect.provide(layerSession)),
   );
 
+  it.effect.each(["ACP completion", "native task exit"])(
+    "removes the background command and its output on %s",
+    (completion) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const profile = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-ag-shell-" });
+        const sessionId = "mock-session-1";
+        const taskId = `${sessionId}/task-2`;
+        const conversations = path.join(profile, "antigravity-acp", "conversations");
+        yield* fs.makeDirectory(conversations, { recursive: true });
+        const output = path.join(
+          profile,
+          "antigravity-acp",
+          "brain",
+          sessionId,
+          ".system_generated",
+          "tasks",
+        );
+        yield* fs.makeDirectory(output, { recursive: true });
+
+        const database = yield* Effect.acquireRelease(
+          Effect.sync(() => new DatabaseSync(path.join(conversations, `${sessionId}.db`))),
+          (db) => Effect.sync(() => db.close()),
+        );
+        const field = (number: number, value: Buffer | string) => {
+          const bytes = Buffer.from(value);
+          return Buffer.concat([Buffer.from([number * 8 + 2, bytes.length]), bytes]);
+        };
+        const metadata = (callId: string) =>
+          field(4, Buffer.concat([field(1, callId), field(2, "run_command")]));
+        database.exec(`CREATE TABLE steps (
+        idx INTEGER PRIMARY KEY, status INTEGER, step_type INTEGER, step_format INTEGER,
+        metadata BLOB, task_details BLOB, step_payload BLOB
+      )`);
+        const insert = database.prepare(
+          "INSERT INTO steps (idx, status, step_type, step_format, metadata, task_details) VALUES (?, 2, 132, 0, ?, ?)",
+        );
+        // An unrelated running command in the native history is outside this turn.
+        insert.run(1, metadata("untracked"), field(1, `${sessionId}/task-1`));
+        insert.run(2, metadata("call_fetch"), null);
+        const daemon = completion === "ACP completion";
+        const {
+          command,
+          session,
+          providerThread,
+          send,
+          startTurn,
+          throughTerminal,
+          throughPromptSettled,
+          until,
+          nextBackgroundRoster,
+          backgroundPublishFailed,
+        } = yield* openSessionWithRunningCommand(
+          { IsDaemon: daemon, WaitMsBeforeAsync: 500, toolSummary: "Verify the change" },
+          { backgroundProfile: profile, rejectFirstBackgroundPublish: !daemon },
+        );
+        yield* startTurn(1, false);
+        const terminalEvents = yield* daemon ? throughTerminal : throughPromptSettled;
+        const item = terminalEvents.find(
+          (event) =>
+            event.type === "turn_item.updated" && event.turnItem.type === "command_execution",
+        );
+        if (item?.type !== "turn_item.updated") {
+          return yield* Effect.die("The command must have a projected turn item.");
+        }
+        yield* TestClock.adjust("1 second");
+        assert.isNull(yield* session.readTaskOutput!({ providerThread, taskId }));
+
+        // The provider writes task_details only when the shell moves into the background.
+        const handedOffAt = field(8, Buffer.from([8, 42]));
+        database
+          .prepare("UPDATE steps SET task_details = ? WHERE idx = 2")
+          .run(Buffer.concat([field(1, taskId), handedOffAt]));
+        yield* TestClock.adjust("1 second");
+        if (!daemon) {
+          yield* backgroundPublishFailed;
+          yield* TestClock.adjust("1 second");
+        }
+        assert.deepEqual(yield* nextBackgroundRoster, [
+          {
+            taskId,
+            kind: "command",
+            stoppable: false,
+            turnItemId: item.turnItem.id,
+            startedAt: DateTime.makeUnsafe(42_000),
+            command: "node fetch_throughput.mjs",
+            description: "Verify the change",
+          },
+        ]);
+        assert.isTrue(yield* session.hasPendingBackgroundWork!);
+        assert.deepEqual(yield* session.readTaskOutput!({ providerThread, taskId }), {
+          text: "",
+          truncated: false,
+          totalBytes: 0,
+        });
+        yield* fs.writeFileString(path.join(output, "task-2.log"), "checks queued\n");
+        assert.deepEqual(yield* session.readTaskOutput!({ providerThread, taskId }), {
+          text: "checks queued\n",
+          truncated: false,
+          totalBytes: 14,
+        });
+        const unrelated = `${sessionId}/task-1`;
+        assert.isNull(yield* session.readTaskOutput!({ providerThread, taskId: unrelated }));
+
+        const longOutput = "x".repeat(8 * 1024) + "next";
+        yield* fs.writeFileString(path.join(output, "task-2.log"), longOutput);
+        assert.deepEqual(yield* session.readTaskOutput!({ providerThread, taskId }), {
+          text: longOutput.slice(-8 * 1024),
+          truncated: true,
+          totalBytes: longOutput.length,
+        });
+
+        if (daemon) {
+          // The ACP terminal can arrive just before the Agent updates its native record.
+          yield* send({
+            sessionUpdate: "tool_call_update",
+            ...command,
+            status: "completed",
+            rawOutput: { exit_code: 0, output: "checks passed" },
+          });
+        } else {
+          database.exec("UPDATE steps SET status = 3 WHERE idx = 2");
+        }
+        yield* TestClock.adjust("1 second");
+        assert.deepEqual(yield* nextBackgroundRoster, []);
+        assert.isNull(yield* session.readTaskOutput!({ providerThread, taskId }));
+        if (!daemon) {
+          yield* until(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.type === "command_execution" &&
+              event.turnItem.status === "completed",
+          );
+          assert.isFalse(yield* session.hasPendingBackgroundWork!);
+        }
+      }).pipe(Effect.provide(layerSession)),
+  );
+
   // Frames as agy 1.5.11 sent them for `run_command` with `WaitMsBeforeAsync`: the prompt returns
   // end_turn while the command runs, and the agent replies when the command finishes.
   it.effect("keeps the run open while a command the agent waits for still runs", () =>
@@ -1439,10 +1605,12 @@ describe("AntigravityAdapterV2 work after the prompt ends", () => {
   // and goes on under the new one. session/cancel would end its running commands and subagents.
   it.effect("steers a running prompt with the next one and leaves its work running", () =>
     Effect.gen(function* () {
-      const opened = yield* openSessionWithRunningCommand({}, undefined, {
-        agentVersion: "1.5.11",
-        holdsFirstPrompt: true,
-      });
+      const opened = yield* openSessionWithRunningCommand(
+        {},
+        {
+          steering: { agentVersion: "1.5.11", holdsFirstPrompt: true },
+        },
+      );
       const { session, providerThread, command, usage, send, startTurn, until } = opened;
       assert.isTrue(session.providerSession.capabilities.turns.supportsActiveSteering);
       yield* startTurn(1, false);
@@ -1541,10 +1709,13 @@ describe("AntigravityAdapterV2 work after the prompt ends", () => {
         sender: "mock-session-1",
         sourceMetadata: { tool: { toolCall: { id: "call_research", name: "invoke_subagent" } } },
       });
-      const opened = yield* openSessionWithRunningCommand({}, profile, {
-        agentVersion: "1.5.11",
-        holdsFirstPrompt: false,
-      });
+      const opened = yield* openSessionWithRunningCommand(
+        {},
+        {
+          detachedChildProfile: profile,
+          steering: { agentVersion: "1.5.11", holdsFirstPrompt: false },
+        },
+      );
       const { session, providerThread, usage, send, startTurn, until, throughPromptSettled } =
         opened;
       yield* startTurn(1, false);
@@ -1622,7 +1793,7 @@ describe("AntigravityAdapterV2 work after the prompt ends", () => {
       if (duringPrompt) yield* report;
 
       const { usage, offers, send, startTurn, until, throughPromptSettled } =
-        yield* openSessionWithRunningCommand({}, profile);
+        yield* openSessionWithRunningCommand({}, { detachedChildProfile: profile });
       yield* startTurn(1, false);
       const statuses = (events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>) =>
         events.flatMap((event) =>
@@ -1661,7 +1832,7 @@ describe("AntigravityAdapterV2 work after the prompt ends", () => {
         prefix: "nodex-antigravity-kids-",
       });
       const { usage, offers, send, startTurn, throughTerminal } =
-        yield* openSessionWithRunningCommand({}, profile);
+        yield* openSessionWithRunningCommand({}, { detachedChildProfile: profile });
       yield* startTurn(1, false);
       yield* throughTerminal;
       yield* send({

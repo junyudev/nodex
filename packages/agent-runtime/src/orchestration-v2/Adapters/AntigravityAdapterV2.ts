@@ -36,12 +36,17 @@ import {
   readAntigravityChildrenAtWork,
 } from "../../provider/acp/AntigravityChildWork.ts";
 import { readAntigravityClientTextFile } from "../../provider/acp/AntigravityClientFiles.ts";
+import {
+  readAntigravityBackgroundCommands,
+  readAntigravityBackgroundCommandOutput,
+} from "../../provider/acp/AntigravityBackgroundCommands.ts";
 import { watchAntigravityPromptOutcome } from "../../provider/acp/AntigravityTurnOutcome.ts";
 import {
   antigravityApprovalOptions,
   antigravityCommandOutlivesPrompt,
   antigravitySubagentOutput,
   classifyAntigravitySubagentToolCall,
+  describeAntigravityBackgroundCommand,
   extractAntigravityUserInputQuestion,
   makeAntigravityReadRepair,
   makeAntigravityUserInputResponse,
@@ -325,6 +330,13 @@ export function makeAntigravityAcpAdapterFlavor(
     ...(profileDirectory === undefined
       ? {}
       : {
+          backgroundCommands: {
+            describe: describeAntigravityBackgroundCommand,
+            read: (sessionId, commands) =>
+              readAntigravityBackgroundCommands(profileDirectory, sessionId, commands),
+            readOutput: (sessionId, taskId) =>
+              readAntigravityBackgroundCommandOutput(profileDirectory, sessionId, taskId),
+          },
           watchPromptOutcome: (sessionId: string) =>
             watchAntigravityPromptOutcome(profileDirectory, sessionId),
           subagentsOutlivingPrompt: ({ sessionId, nativeTaskIds }) =>

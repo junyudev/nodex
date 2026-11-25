@@ -39,6 +39,7 @@ const BackgroundTask = Schema.Struct({
   startedAt: Schema.NullOr(Schema.String),
   /** The Run whose work started the task, when its turn item says. */
   runId: Schema.NullOr(Schema.String),
+  stoppable: Schema.optional(Schema.Boolean),
 });
 export type RootActivityBackgroundTask = typeof BackgroundTask.Type;
 const decodeBackgroundTasks = Schema.decodeUnknownEffect(
@@ -265,6 +266,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             json_extract(background_task, '$.description') AS description,
             json_extract(background_task, '$.command') AS command,
             json_extract(background_task, '$.startedAt') AS started_at,
+            json_extract(background_task, '$.stoppable') AS stoppable,
             (SELECT item.run_id FROM orchestration_v2_projection_turn_items AS item
               WHERE item.turn_item_id = json_extract(background_task, '$.turnItemId')) AS run_id,
             ROW_NUMBER() OVER (PARTITION BY rooted.thread_id, json_extract(background_task, '$.taskId')
@@ -278,9 +280,13 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           FROM roster_tasks WHERE duplicate_position = 1
         ), background_tasks AS MATERIALIZED (
           SELECT root_thread_id,
-            json_group_array(json_object('threadId', thread_id, 'threadTitle', thread_title,
-              'taskId', task_id, 'kind', task_kind, 'description', description,
-              'command', command, 'startedAt', started_at, 'runId', run_id)) AS background_tasks_json
+            json_group_array(json_patch(
+              json_object('threadId', thread_id, 'threadTitle', thread_title,
+                'taskId', task_id, 'kind', task_kind, 'description', description,
+                'command', command, 'startedAt', started_at, 'runId', run_id),
+              CASE WHEN stoppable IS NULL THEN '{}' ELSE
+                json_object('stoppable', json(CASE stoppable WHEN 0 THEN 'false' ELSE 'true' END))
+              END)) AS background_tasks_json
           FROM (SELECT * FROM ranked_tasks WHERE position <= ${EXECUTION_ACTIVITY_BACKGROUND_TASK_LIMIT}
             ORDER BY root_thread_id, position)
           GROUP BY root_thread_id

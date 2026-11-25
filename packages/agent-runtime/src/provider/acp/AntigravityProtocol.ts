@@ -56,6 +56,25 @@ export function antigravityCommandOutlivesPrompt(toolCall: AcpToolCallState): bo
   return toolCall.kind === "execute" && !(Predicate.isObject(input) && input.IsDaemon === true);
 }
 
+/** Discover only native shell calls whose command can be matched to agy's task record. */
+export function describeAntigravityBackgroundCommand(toolCall: AcpToolCallState) {
+  const input = toolCall.data.rawInput;
+  if (
+    toolCall.kind !== "execute" ||
+    !Predicate.isObject(input) ||
+    typeof input.CommandLine !== "string"
+  ) {
+    return undefined;
+  }
+  const wait = input.WaitMsBeforeAsync;
+  const description =
+    typeof input.toolSummary === "string" ? input.toolSummary.trim().slice(0, 2_000) : "";
+  return {
+    handoffWaitMs: typeof wait === "number" && Number.isSafeInteger(wait) && wait > 0 ? wait : 0,
+    ...(description.length === 0 ? {} : { description }),
+  };
+}
+
 /** Native questions share the permission method, but their choices are not approvals. */
 export function isAntigravityUserInputRequest(
   request: EffectAcpSchema.RequestPermissionRequest,

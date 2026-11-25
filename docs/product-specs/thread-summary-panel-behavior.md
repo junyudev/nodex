@@ -228,11 +228,11 @@ always explains it. Each row shows the name the Agent gave the work, a shell,
 bell or generic icon for its kind, and how long it has run; its tooltip adds the
 exact command. Selecting a row opens the end of its output beneath it, following
 new output every two seconds, or says the Agent cannot show output for that
-task. Hovering a row reveals Stop; with two or more tasks the section header
-offers Stop all, which stops exactly the listed tasks and never the Agent's
-reply or its subagents. A stopped row reads `Stopping…` until the Agent ends the
-task, and a task still listed fifteen seconds after an accepted Stop can be
-stopped again. See [Agent Runtime Behavior](agent-runtime-behavior.md).
+task. When the Agent supports stopping a task independently, hovering its row
+reveals Stop. With two or more such tasks, Stop all stops those tasks without
+interrupting the Agent's reply or its subagents. A stopped row reads
+`Stopping…` until the Agent ends the task, and a task still listed fifteen
+seconds after an accepted Stop can be stopped again. See [Agent Runtime Behavior](agent-runtime-behavior.md).
 
 ## Computer Use and Browser
 
