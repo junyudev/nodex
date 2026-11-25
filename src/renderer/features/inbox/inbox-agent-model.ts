@@ -3,7 +3,6 @@ import type { UsageReading } from "@/lib/usage-meter";
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
-import type { AgentSessionConfigOption } from "../../../shared/agent-conversation";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
 import type { AgentRuntimeLaunch } from "../../../shared/agent-runtime-api";
 import {
@@ -244,8 +243,6 @@ export interface InboxAgentPickerModel {
   readonly reasoningEffort: string;
   readonly serviceTier: string | null;
   readonly serviceTierName: string | null;
-  /** An effort control for Agents whose picker reads model options rather than effort levels. */
-  readonly configOptions: readonly AgentSessionConfigOption[];
 }
 
 /** Projects a choice onto the shared model picker, which lists concrete models only. */
@@ -276,7 +273,6 @@ export function inboxAgentPickerModel(
     provider && model
       ? inboxModelEffort(model, inboxRequestedEffort(provider, choice, purpose))
       : null;
-  const descriptor = effortDescriptor(model);
   const speed = inboxServiceTier(model, choice.serviceTier);
   return {
     entries,
@@ -290,24 +286,6 @@ export function inboxAgentPickerModel(
       : [],
     reasoningEffort: effort ?? "default",
     ...speed,
-    configOptions:
-      kind !== "codex" && kind !== "claudeAgent" && descriptor?.type === "select" && effort
-        ? [
-            {
-              id: descriptor.id,
-              name: descriptor.label,
-              description: descriptor.description ?? null,
-              category: "thought_level",
-              type: "select",
-              currentValue: effort,
-              options: descriptor.options.map((option) => ({
-                value: option.id,
-                name: option.label,
-                description: option.description ?? null,
-              })),
-            },
-          ]
-        : [],
   };
 }
 

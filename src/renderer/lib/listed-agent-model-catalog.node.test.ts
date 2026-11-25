@@ -65,7 +65,6 @@ describe("listedModelCatalog", () => {
     });
     expect(catalog.refresh).toBeUndefined();
     expect(catalog.manage).toBeUndefined();
-    expect(catalog.configOptions).toBeUndefined();
   });
 
   it.each([
@@ -109,7 +108,6 @@ describe("listedModelCatalog", () => {
       selection: { kind: "claudeAgent", model: "opus", reasoningEffort: "max", serviceTier: null },
       onSelectionChange,
     });
-    expect(catalog.configOptions).toBeUndefined();
     await catalog.choose({ binding, model: "opus" });
     expect(onSelectionChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ model: "opus", reasoningEffort: "max" }),
@@ -122,13 +120,13 @@ describe("listedModelCatalog", () => {
     );
   });
 
-  it("offers another Agent's advertised effort levels as its Effort option", async () => {
+  it("lets another Agent's owner fit its effort to the next model", async () => {
     const onSelectionChange = vi.fn();
     const binding = { driver: "acpRegistry", instanceId: "work" } as const;
     const selection = {
       kind: "acp",
       model: "deep",
-      reasoningEffort: "default",
+      reasoningEffort: "high",
       serviceTier: null,
     } as const;
     const catalog = listedModelCatalog({
@@ -138,20 +136,6 @@ describe("listedModelCatalog", () => {
       selection,
       onSelectionChange,
     });
-    expect(catalog.configOptions).toMatchObject([
-      {
-        name: "Effort",
-        type: "select",
-        currentValue: "low",
-        options: [{ value: "low" }, { value: "high" }],
-      },
-    ]);
-    const [option] = catalog.configOptions ?? [];
-    await catalog.changeConfig?.(option!.id, "high");
-    expect(onSelectionChange).toHaveBeenLastCalledWith(
-      { ...selection, reasoningEffort: "high" },
-      "reasoningEffort",
-    );
     // The owner fits "none" to the next model's advertised levels.
     await catalog.choose({ binding, model: "fast" });
     expect(onSelectionChange).toHaveBeenLastCalledWith(

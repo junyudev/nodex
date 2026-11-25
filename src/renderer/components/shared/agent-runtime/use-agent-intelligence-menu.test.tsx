@@ -161,71 +161,71 @@ test("uses Codex's default slider position and applies effort and speed to the s
   ]);
 });
 
-test.each([
-  [OPENCODE, "variant"],
-  [{ driver: "antigravity", instanceId: "work" } as const, "thinking_level"],
-])(
-  "projects %o's thought-level select from the same choices used in the footer",
-  async (binding, optionId) => {
+test.each([OPENCODE, { driver: "antigravity", instanceId: "work" } as const])(
+  "puts %o's effort levels on the shared track and lists only its other options",
+  async (binding) => {
+    const onSelectionChange = vi.fn();
     const changeConfig = vi.fn(async () => {});
-    const { result } = renderHook(() =>
-      useAgentIntelligenceMenu({
-        catalog: {
-          entries: [],
-          selected: { binding, model: "model" },
-          loading: false,
-          choose: () => {},
-          changeConfig,
-          configOptions: [
-            {
-              id: "thought-toggle",
-              type: "boolean",
-              category: "thought_level",
-              name: "Thinking",
-              description: null,
-              currentValue: true,
-            },
-            {
-              id: optionId,
-              type: "select",
-              category: "thought_level",
-              name: "Effort",
-              description: null,
-              currentValue: "deep",
-              options: [
-                {
-                  group: "effort",
-                  name: "Effort",
-                  options: [
-                    { value: "light", name: "Light", description: null },
-                    { value: "deep", name: "Deep", description: "Think longer" },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        models: [],
-        selection: {
-          kind: binding.driver,
-          model: "model",
-          reasoningEffort: "none",
-          serviceTier: null,
-        },
-        onSelectionChange: () => {},
-      }),
-    );
-    const { effort, configOptions, fast, ultracode } = result.current;
-    expect(effort?.choices).toEqual([
-      { value: "light", label: "Light", description: null, current: false },
-      { value: "deep", label: "Deep", description: "Think longer", current: true },
-    ]);
-    expect(configOptions[1]?.choices).toBe(effort?.choices);
+    const model = {
+      ...catalogModel("model"),
+      supportedReasoningEfforts: [
+        { reasoningEffort: "low", description: "" },
+        { reasoningEffort: "xhigh", description: "Think longest" },
+      ],
+      defaultReasoningEffort: "low",
+    };
+    const props = {
+      catalog: {
+        entries: [],
+        selected: { binding, model: model.id },
+        loading: false,
+        choose: () => {},
+        changeConfig,
+        configOptions: [
+          {
+            id: "agent",
+            type: "select",
+            category: null,
+            name: "Agent",
+            description: null,
+            currentValue: "build",
+            options: [
+              { value: "build", name: "Build", description: null },
+              { value: "plan", name: "Plan", description: null },
+            ],
+          },
+        ],
+      },
+      models: [model],
+      selection: {
+        kind: binding.driver,
+        model: model.id,
+        reasoningEffort: "xhigh",
+        serviceTier: null,
+      },
+      onSelectionChange,
+    } satisfies Parameters<typeof useAgentIntelligenceMenu>[0];
+    const { result } = renderHook(() => useAgentIntelligenceMenu(props));
+    const { effortSlider, effort, reasoningLabel, configOptions, fast, ultracode } = result.current;
+    expect(effortSlider).toMatchObject({
+      stops: [
+        { value: "low", label: "Low" },
+        { value: "xhigh", label: "Extra High", description: "Think longest" },
+      ],
+      value: "xhigh",
+      isDefault: false,
+    });
+    expect(reasoningLabel).toBe("Extra High");
+    expect(configOptions.map(({ id }) => id)).toEqual(["agent"]);
     expect(fast).toBeNull();
     expect(ultracode).toBeNull();
 
-    await effort!.choose("light");
-    expect(changeConfig).toHaveBeenCalledExactlyOnceWith(optionId, "light");
+    await effort!.choose("low");
+    expect(onSelectionChange).toHaveBeenCalledExactlyOnceWith(
+      { ...props.selection, reasoningEffort: "low" },
+      "reasoningEffort",
+    );
+    expect(changeConfig).not.toHaveBeenCalled();
   },
 );
 

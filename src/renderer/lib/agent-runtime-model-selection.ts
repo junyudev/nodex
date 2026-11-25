@@ -190,13 +190,14 @@ export function requireAgentRuntimeModelSelection(
   return { provider, model, selection };
 }
 
+/** Every Agent's levels read alike, except an Agent that calls its lowest level Light. */
 export const agentEffortLabel = (
   kind: AgentBackendBinding["driver"],
   effort: string,
   intl: IntlShape = getIntl(),
 ): string =>
-  kind === "claudeAgent" && effort === "low"
-    ? intl.formatMessage({ id: "lib.agentRuntimeModelSelection.claudeLow", defaultMessage: "Low" })
+  effort === "low" && !agentDefinition(kind).lightLowEffort
+    ? intl.formatMessage({ id: "lib.agentRuntimeModelSelection.low", defaultMessage: "Low" })
     : formatCodexReasoningEffortLabel(effort, intl);
 
 /** The catalog already names the same instance the product stores. */
@@ -267,7 +268,7 @@ export function projectAgentRuntimeModel(
     hidden: false,
     supportedReasoningEfforts: choices.map((option) => ({
       reasoningEffort: option.id,
-      description: option.description ?? option.label,
+      description: option.description ?? "",
     })),
     defaultReasoningEffort:
       effort?.type === "select"

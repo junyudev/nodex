@@ -2162,42 +2162,41 @@ export function useAgentRuntimeConversationAdapter(input: {
             ? [{ id: "serviceTier", value: serviceTierDescriptor.currentValue }]
             : undefined,
         ) ?? null);
+  // Effort reaches the picker as the model's levels, so the options here are the rest.
   const configOptions: import("../../../shared/agent-conversation").AgentSessionConfigOption[] =
-    modelOptions.map((option) => {
-      const chosen = selection.options?.find((value) => value.id === option.id)?.value;
-      const common = {
-        id: option.id,
-        name: option.label,
-        description: option.description ?? null,
-        category:
-          isAgentRuntimeEffortOption(option) ||
-          (selection.binding.driver === "opencode" && option.id === "variant")
-            ? "thought_level"
-            : null,
-      };
-      if (option.type === "boolean")
+    modelOptions
+      .filter((option) => option !== effortDescriptor)
+      .map((option) => {
+        const chosen = selection.options?.find((value) => value.id === option.id)?.value;
+        const common = {
+          id: option.id,
+          name: option.label,
+          description: option.description ?? null,
+          category: null,
+        };
+        if (option.type === "boolean")
+          return {
+            ...common,
+            type: "boolean",
+            currentValue: typeof chosen === "boolean" ? chosen : (option.currentValue ?? false),
+          };
         return {
           ...common,
-          type: "boolean",
-          currentValue: typeof chosen === "boolean" ? chosen : (option.currentValue ?? false),
+          type: "select",
+          currentValue:
+            typeof chosen === "string" && option.options.some((value) => value.id === chosen)
+              ? chosen
+              : (option.currentValue ??
+                option.options.find((value) => value.isDefault)?.id ??
+                option.options[0]?.id ??
+                ""),
+          options: option.options.map((value) => ({
+            value: value.id,
+            name: value.label,
+            description: value.description ?? null,
+          })),
         };
-      return {
-        ...common,
-        type: "select",
-        currentValue:
-          typeof chosen === "string" && option.options.some((value) => value.id === chosen)
-            ? chosen
-            : (option.currentValue ??
-              option.options.find((value) => value.isDefault)?.id ??
-              option.options[0]?.id ??
-              ""),
-        options: option.options.map((value) => ({
-          value: value.id,
-          name: value.label,
-          description: value.description ?? null,
-        })),
-      };
-    });
+      });
   const changeConfig = async (id: string, value: string | boolean) => {
     const option = modelOptions.find((candidate) => candidate.id === id);
     if (
@@ -2630,14 +2629,8 @@ export function useAgentRuntimeConversationAdapter(input: {
     models,
     selectedModel,
     selectedEffort: resolvedEffort,
-    reasoningEffortOptions: modelOptions.flatMap((option) =>
-      isAgentRuntimeEffortOption(option)
-        ? option.options.map((choice) => ({
-            reasoningEffort: choice.id,
-            description: choice.description ?? choice.label,
-          }))
-        : [],
-    ),
+    reasoningEffortOptions:
+      models.find((model) => model.id === selectedModel)?.supportedReasoningEfforts ?? [],
     runtimeMode: presentation.runtimeMode,
     supportedRuntimeModes: provider?.supportedRuntimeModes,
     defaultRuntimeMode,

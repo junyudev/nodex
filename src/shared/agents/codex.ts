@@ -10,6 +10,7 @@ export const codexAgent = {
   accent: "#8e9bff",
   modelFamilies: ["GPT-", "GPT "],
   redundantModelQualifiers: ["codex"],
+  lightLowEffort: true,
   settingsAnchor: "codex",
   profileBased: false,
   registryAgentIds: ["codex-acp"],
