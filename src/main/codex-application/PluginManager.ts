@@ -349,13 +349,17 @@ export const live = (options: {
         installedRaw(context).pipe(Effect.map((response) => policy.project(response, "local")));
       const observePackage = yield* makeInstalledPluginCache(options.codexHome);
       // Codex evaluates each Project's own source roots and configuration when listing plugins.
+      // Browser, Chrome and Computer Use reach other Agents as Desktop Tools, from their own
+      // verified roots, so the catalog leaves them out rather than deliver them twice.
       const loadCatalog = Effect.fn("PluginManager.loadCatalog")(function* (
         projectId: string | null,
       ) {
         const context = yield* resolve({ hostId: "local", projectId });
         const [inventory, scope] = yield* Effect.all([installed(context), scopes]);
         const packages = yield* readPluginCatalog(
-          inventory.marketplaces.flatMap(({ plugins }) => plugins),
+          inventory.marketplaces
+            .flatMap(({ plugins }) => plugins)
+            .filter(({ id }) => !policy.managed(id, "local")),
           scope,
           observePackage,
         );

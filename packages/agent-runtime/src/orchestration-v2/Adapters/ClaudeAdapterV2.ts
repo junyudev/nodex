@@ -10185,7 +10185,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             pluginSkills: plugins?.skillsRoot
               ? plugins.skills.map((skill) => ({
                   name: SESSION_SKILLS_PLUGIN_NAME + ":" + skill.alias,
-                  path: path.join(plugins.skillsRoot!, "skills", skill.alias, "SKILL.md"),
+                  path: path.join(plugins.skillsRoot!, skill.directory, "SKILL.md"),
                   ...(skill.userInvocable === false ? { userInvocable: false as const } : {}),
                 }))
               : [],

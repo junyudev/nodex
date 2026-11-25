@@ -35,7 +35,9 @@ const tools: readonly Tool[] = [
   {
     name: "read_plugin_skill",
     description:
-      "Read a listed skill and its supporting file paths, or read one supporting text file.",
+      "Read a listed skill and its supporting file paths, or read one supporting text file. " +
+      "A file path is relative to the skill's directory and can reach the rest of its plugin, " +
+      "such as ../../references/guide.md.",
     inputSchema: {
       type: "object",
       properties: {
@@ -51,6 +53,10 @@ const tools: readonly Tool[] = [
 function result(value: unknown, isError = false): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value) }], ...(isError && { isError }) };
 }
+
+/** A path from the skill's directory. Package reads resolve it and keep it inside the plugin. */
+const pluginRelativePath = (value: string) =>
+  value && !value.startsWith("/") && !/[\\\0:]/u.test(value) ? value : undefined;
 
 function supportingFiles(files: PackageFiles, directory: string) {
   const paths: string[] = [];
@@ -80,9 +86,8 @@ export function skillCatalog(source: SkillCatalogSource) {
       const input = Schema.decodeUnknownOption(readInput)(args);
       if (input._tag === "None") return result({ error: "Invalid skill selection." }, true);
       const { pluginId, skill, file } = input.value;
-      const relative = file === undefined ? "SKILL.md" : packageRelativePath(file);
-      if (!relative || relative === ".")
-        return result({ error: "Invalid supporting file path." }, true);
+      const relative = file === undefined ? "SKILL.md" : pluginRelativePath(file);
+      if (!relative) return result({ error: "Invalid supporting file path." }, true);
       const installation = source.find(([id]) => id === pluginId)?.[1];
       const directory = installation?.skills?.find(
         (entry) => entry.valid && entry.directory === skill,

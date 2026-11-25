@@ -67,6 +67,7 @@ const fixture = async (root: string) => {
     join(root, "skills/gauge/SKILL.md"),
     "---\nname: gauge\ndescription: Read a gauge.\nallowed-tools: Bash\nhooks: { PostToolUse: [] }\n---\nRead it.\n",
   );
+  await put(join(root, "references/scale.md"), "Gauge scale");
   await put(
     join(root, ".mcp.json"),
     JSON.stringify({
@@ -209,14 +210,22 @@ it.effect(
       const attached = yield* sessions.open("claude", { ...request, projectId: "project-a" });
       expect(opened.sort()).toEqual(["gauge", "public"]);
       expect(attached?.skills.map(({ alias }) => alias)).toEqual(["gauge"]);
-      expect(yield* Effect.promise(() => readdir(attached!.skillsRoot!))).toEqual([
-        ".claude-plugin",
-        "skills",
-      ]);
-      const skill = yield* Effect.promise(() =>
-        readFile(join(attached!.skillsRoot!, "skills/gauge/SKILL.md"), "utf8"),
-      );
+      const skillsRoot = attached!.skillsRoot!;
+      const skillDirectory = join(skillsRoot, attached!.skills[0]!.directory);
+      expect(attached!.skills[0]!.directory).toBe("plugins/example/skills/gauge");
+      expect(
+        yield* Effect.promise(async () =>
+          JSON.parse(await readFile(join(skillsRoot, ".claude-plugin/plugin.json"), "utf8")),
+        ),
+      ).toEqual({ name: "nodex-session-skills", skills: ["./plugins/example/skills/gauge"] });
+      const skill = yield* Effect.promise(() => readFile(join(skillDirectory, "SKILL.md"), "utf8"));
       expect(skill).not.toMatch(/allowed-tools|hooks/);
+      // Paths a Skill names relative to its plugin reach the plugin's own files.
+      expect(
+        yield* Effect.promise(() =>
+          readFile(join(skillDirectory, "../../references/scale.md"), "utf8"),
+        ),
+      ).toBe("Gauge scale");
       scope = ALL_PROJECTS;
       expect(yield* sessions.revision("claude")).not.toBe(attached?.revision);
       expect(revoked.sort()).toEqual(["gauge", "public"]);
@@ -499,16 +508,19 @@ it.effect("shares a single in-flight projection across Projects and Runtime conn
 
     yield* sessions.close("first");
     yield* TestClock.adjust(SKILL_PROJECTION_IDLE_TTL);
-    expect(yield* Effect.promise(() => readdir(sharedRoot!))).toContain("skills");
+    expect(yield* Effect.promise(() => readdir(sharedRoot!))).toContain("plugins");
     yield* secondConnection.close("second");
     const reused = yield* sessions.open("reused", requestB);
     expect(reused?.skillsRoot).toBe(sharedRoot);
     expect(second.skillCatalog?.bearerToken).toBe("catalog-1");
     expect(reused?.skillCatalog?.bearerToken).toBe("catalog-2");
-    expect(catalogs.map((catalog) => catalog.map(([, source]) => source.packageRoot))).toEqual([
-      [sharedRoot],
-      [sharedRoot],
-    ]);
+    expect(
+      catalogs.map((catalog) =>
+        catalog.map(([, source]) => [source.packageRoot, source.skills?.map((s) => s.directory)]),
+      ),
+    ).toEqual(
+      Array(2).fill([[join(sharedRoot, "plugins/example"), ["skills/gauge", "skills/other"]]]),
+    );
     expect(inventories).toBe(1);
     yield* sessions.close("reused");
     expect(revoked).toEqual(["catalog-1", "catalog-2"]);
@@ -590,9 +602,9 @@ for (const failure of ["skills", "MCP"] as const) {
       if (failure === "skills") {
         // The broken package's Skills are left out; its servers still reach the Session.
         expect(attached?.skills.map(({ alias }) => alias)).toEqual(["gauge"]);
-        expect(yield* Effect.promise(() => readdir(join(attached!.skillsRoot!, "skills")))).toEqual(
-          ["gauge"],
-        );
+        expect(
+          yield* Effect.promise(() => readdir(join(attached!.skillsRoot!, "plugins"))),
+        ).toEqual(["healthy"]);
         expect(attached?.mcpServers.map(({ pluginId }) => pluginId)).toEqual([
           "broken@local",
           "broken@local",

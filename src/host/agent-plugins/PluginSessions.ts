@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -186,21 +186,21 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
       }),
     ).pipe(Effect.map((perPlugin) => perPlugin.flat()));
     const skillsRoot = projection?.root ?? null;
-    const skills = projection ? [...projection.skillsByPlugin.values()].flat() : [];
+    const skills = projection ? [...projection.plugins.values()].flatMap((p) => p.skills) : [];
     const catalogEntries = projection
       ? Array.from(
-          projection.skillsByPlugin,
-          ([id, skills]) =>
+          projection.plugins,
+          ([id, plugin]) =>
             [
               id,
               {
-                packageRoot: projection.root,
+                packageRoot: join(projection.root, plugin.directory),
                 servers: [],
                 generation: revision,
                 dataRoot: "",
-                skills: skills.map(({ alias, description }) => ({
+                skills: plugin.skills.map(({ alias, directory, description }) => ({
                   name: alias,
-                  directory: "skills/" + alias,
+                  directory: posix.relative(plugin.directory, directory) || ".",
                   description,
                   valid: true,
                   diagnostics: [],
@@ -233,7 +233,7 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
       pluginIds: eligible
         .filter(
           ({ id: pluginId }) =>
-            projection?.skillsByPlugin.has(pluginId) ||
+            projection?.plugins.has(pluginId) ||
             servers.some((server) => server.pluginId === pluginId),
         )
         .map(({ id: pluginId }) => pluginId),

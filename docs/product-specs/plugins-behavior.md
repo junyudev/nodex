@@ -93,10 +93,12 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
   starts or resumes; other Agents pick it up before their next turn.
 - **Agents.** Codex uses every part of a plugin. Claude Code, Antigravity and the other ACP
   Agents receive its skills and the MCP servers Nodex can run itself: local command servers and
-  servers that need no sign-in. Local command servers receive their declared environment and
+  servers that need no sign-in. A skill arrives with the rest of its plugin's files, so the
+  scripts, references and assets it names by a path relative to its plugin work as they do in
+  Codex. Local command servers receive their declared environment and
   plugin paths. On Windows, they also receive the system root. Servers that need a sign-in, connected
   apps and hooks stay in Codex, because their credentials and review live there; Installation ›
-  Agents names them.
+  Agents names them. Browser, Chrome and Computer Use reach every Agent once, as Desktop Tools.
   OpenCode does not receive plugins yet. Disabling or uninstalling a plugin, or narrowing its
   Projects, cuts off its servers for other Agents as soon as Nodex reads the change; a call
   already running finishes, and its result is not returned.
@@ -108,7 +110,7 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
   during preparation. Claude Code and ACP chats that support reactivation pick up the available
   plugins on a later reply. Claude Code waits for any background work to finish before adding
   plugins to a chat that opened without them. Chats with the same plugins share one prepared
-  copy of their skills, so opening several chats at once copies nothing again. A plugin's
+  copy of their plugins, so opening several chats at once copies nothing again. A plugin's
   skills or servers that cannot be prepared are left out of the reply, and the rest still
   reach it. A Codex chat waits for the plugins instead, because Codex needs them to start.
 
