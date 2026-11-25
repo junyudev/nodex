@@ -89,8 +89,6 @@ const runningCommandIgnoresTerm = process.env.NODEX_ACP_RUNNING_COMMAND_IGNORE_T
 const runningCommandPidPath = process.env.NODEX_ACP_RUNNING_COMMAND_PID_PATH;
 const runningCommandSeparateSession =
   process.env.NODEX_ACP_RUNNING_COMMAND_SEPARATE_SESSION === "1";
-const exitAfterRunningCommandLaunch =
-  process.env.NODEX_ACP_EXIT_AFTER_RUNNING_COMMAND_LAUNCH === "1";
 const omitXAiPromptCompleteStopReason =
   process.env.NODEX_ACP_OMIT_XAI_PROMPT_COMPLETE_STOP_REASON === "1";
 const failLoadSession = process.env.NODEX_ACP_FAIL_LOAD_SESSION === "1";
@@ -1556,10 +1554,6 @@ const program = Effect.gen(function* () {
             rawOutput: { task_id: "task-running-1", status: "running" },
           },
         });
-        if (exitAfterRunningCommandLaunch) {
-          yield* Effect.sleep("100 millis");
-          return yield* Effect.sync(() => process.exit(0));
-        }
         // Stay open until session/cancel so interrupt tests can observe a running tool.
         while (!cancelledSessions.has(requestedSessionId)) {
           yield* Effect.sleep("25 millis");

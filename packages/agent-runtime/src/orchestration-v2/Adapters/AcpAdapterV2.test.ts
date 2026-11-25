@@ -57,6 +57,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 import type * as EffectAcpSchema from "effect-acp/compat";
+import { expect } from "vite-plus/test";
 
 import * as TestProviderHost from "@nodex/provider-testing/TestProviderHost";
 import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
@@ -3325,6 +3326,9 @@ describe("AcpAdapterV2", () => {
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => cleanupPublishedDetachedFixture(commandPidPath)),
       );
+      const processTree = AcpSessionRuntime.makePosixProcessTreeController("linux");
+      const observedProcessIds = new Set<number>();
+      let nativeRuntime: AcpSessionRuntime.AcpSessionRuntime["Service"] | undefined;
       const instanceId = ProviderInstanceId.make("acp-test-provider-exit");
       const adapter = yield* makeAcpAdapterV2({
         instanceId,
@@ -3340,9 +3344,20 @@ describe("AcpAdapterV2", () => {
             processGroupTerminationGrace: 0,
             environment: {
               NODEX_ACP_EMIT_RUNNING_COMMAND_THEN_HANG: "1",
-              NODEX_ACP_EXIT_AFTER_RUNNING_COMMAND_LAUNCH: "1",
               NODEX_ACP_RUNNING_COMMAND_PID_PATH: commandPidPath,
               NODEX_ACP_RUNNING_COMMAND_SEPARATE_SESSION: "1",
+            },
+            posixProcessTreeController: {
+              ...processTree,
+              identity: (pid) => {
+                const identity = processTree.identity(pid);
+                if (identity !== undefined) observedProcessIds.add(pid);
+                return identity;
+              },
+            },
+            wrapRuntime: (runtime) => {
+              nativeRuntime = runtime;
+              return runtime;
             },
           }),
         },
@@ -3366,21 +3381,27 @@ describe("AcpAdapterV2", () => {
         modelSelection,
         runtimePolicy,
       });
-      yield* runtime
-        .startTurn(
-          makeTurnInput({
-            threadId,
-            providerThread,
-            instanceId,
-            runtimePolicy,
-            now: yield* DateTime.now,
-          }),
-        )
-        .pipe(Effect.exit, Effect.forkScoped);
+      yield* runtime.startTurn(
+        makeTurnInput({
+          threadId,
+          providerThread,
+          instanceId,
+          runtimePolicy,
+          now: yield* DateTime.now,
+        }),
+      );
 
       const published = yield* waitForPublishedProcessIds(fileSystem, commandPidPath, 3);
       assert.isTrue(Option.isSome(published), "detached fixture must publish all process IDs");
       const pids = Option.getOrThrow(published);
+      // Without cgroup delegation, the ownership sampler must see the tree while
+      // it is still attached to the provider. Only then let the mock exit.
+      yield* Effect.promise(() =>
+        expect.poll(() => pids.filter((pid) => !observedProcessIds.has(pid))).toEqual([]),
+      );
+      assert.isTrue(pids.every(processExists), "the published fixture processes must be live");
+      if (nativeRuntime === undefined) return yield* Effect.die("Expected the mock ACP runtime");
+      yield* nativeRuntime.notify("_test/exit", {});
       assert.isTrue(
         Option.isSome(yield* waitForProcessesToExit(pids)),
         "provider termination must reap the detached launcher, Bash, and sleep processes",
@@ -8896,13 +8917,17 @@ describe("AcpAdapterV2", () => {
       const mockAgentPath = yield* path.fromFileUrl(
         new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
       );
-      const protocolEvents = yield* Queue.bounded<EffectAcpProtocol.AcpProtocolLogEvent>(256);
+      const promptSettled = yield* Deferred.make<void>();
       const instanceId = ProviderInstanceId.make("acp-test");
       const childSessionId = "mock-child-session-direct-stop-deferred-terminal";
       let subagentPhase: "spawn" | "complete" = "spawn";
       type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
       let sessionUpdateHandler: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
       const adapter = yield* makeAcpAdapterV2({
+        testHooks: {
+          afterPromptSettledWithBackgroundWork: () =>
+            Deferred.succeed(promptSettled, undefined).pipe(Effect.asVoid),
+        },
         instanceId,
         flavor: {
           driver: ACP_TEST_DRIVER,
@@ -8938,7 +8963,6 @@ describe("AcpAdapterV2", () => {
             mockAgentPath,
             environment: { NODEX_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS: "1" },
             ownDetachedProcessGroup: true,
-            protocolEvents,
             wrapRuntime: (runtime) => ({
               ...runtime,
               handleSessionUpdate: (handler) =>
@@ -8986,18 +9010,7 @@ describe("AcpAdapterV2", () => {
       yield* runtime.startTurn(
         makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now }),
       );
-      yield* Stream.fromQueue(protocolEvents).pipe(
-        Stream.filter(
-          (event) =>
-            event.direction === "incoming" &&
-            event.stage === "raw" &&
-            typeof event.payload === "string" &&
-            event.payload.includes('"stopReason"'),
-        ),
-        Stream.runHead,
-      );
-      yield* Effect.yieldNow;
-      yield* Effect.yieldNow;
+      yield* Deferred.await(promptSettled).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
 
       const providerTurnId = idAllocator.derive.providerTurn({
         driver: ACP_TEST_DRIVER,
@@ -9026,7 +9039,6 @@ describe("AcpAdapterV2", () => {
           rawOutput: { content: "SUB_DONE" },
         },
       });
-      yield* Effect.yieldNow;
       let completedBeforeStop = 0;
       let polled = yield* Queue.poll(events);
       while (Option.isSome(polled)) {
