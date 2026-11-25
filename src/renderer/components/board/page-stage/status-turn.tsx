@@ -20,6 +20,7 @@ import { startWork } from "@/lib/work-graph-runtime";
 const CHAT_REASONS = new Set<PageTurn["reason"]>([
   "question",
   "approval",
+  "reply",
   "blocked",
   "failed",
   "stalled",

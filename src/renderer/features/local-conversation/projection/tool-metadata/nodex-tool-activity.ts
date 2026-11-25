@@ -808,7 +808,6 @@ const AUTHORED_MESSAGE_ARGUMENTS: Readonly<Record<string, string>> = {
   send_to_inbox: "body",
   report_work: "summary",
   hand_back_message: "reason",
-  write_turn_note: "body",
   answer_inbox_question: "body",
   reply_to_origin: "body",
 };
@@ -1778,26 +1777,6 @@ const NODEX_TOOL_ACTIVITY = {
       ],
     );
   },
-  write_turn_note: (call) =>
-    activity(
-      call,
-      "task",
-      {
-        id: "conversation.nodexToolActivity.writeNoteOn",
-        defaultMessage:
-          "{phase, select, active {Writing note on} failed {Couldn't write note on} other {Wrote note on}}",
-      },
-      [
-        workPagePart(
-          stringValue(asRecord(call.arguments), "pageId"),
-          getIntl().formatMessage({
-            id: "conversation.nodexToolActivity.page",
-            defaultMessage: "page",
-          }),
-        ),
-      ],
-      authored(call),
-    ),
   answer_inbox_question: (call) =>
     activity(
       call,

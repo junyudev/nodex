@@ -1,20 +1,16 @@
 import { FormattedMessage, useIntl, type MessageDescriptor, defineMessage } from "@/lib/i18n";
 import { isRemoteSpace } from "@/lib/renderer-space";
-import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
 import { InboxProblemRow } from "./inbox-problem-row";
 import { SpaceExecutionHoldControl } from "@/components/workbench/execution-hold-controls";
 import { useInboxClock } from "./use-inbox-clock";
 import { consumeInboxEntryOpen, useInboxEntryOpen } from "../../lib/inbox-entry-navigation";
-import { openNodex } from "../../lib/inbox-runtime";
 import { InboxTurnRow } from "./inbox-turn-row";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { acceptReviewWithUndo, reviewKey, useAcceptedReviews } from "@/lib/page-accept-undo";
 import { openExternalUrl } from "@/lib/file-system-operations";
 import { startWork } from "../../lib/work-graph-runtime";
-import { readableIpcError } from "@/lib/ipc-error-message";
-import { toast } from "@/components/ui/toast";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -39,7 +35,6 @@ import {
   TodoIcon,
   BoardIcon,
   AerialViewIcon,
-  NodexLogoMarkIcon,
   CheckmarkIcon,
   ClockIcon,
   CloseIcon,
@@ -157,7 +152,6 @@ function InboxHeader({
   onOpenDatabase,
   onOpenPage,
   onOpenSettings,
-  onOpenNodex,
 }: {
   readonly view: InboxView;
   readonly inboxCount: number;
@@ -174,11 +168,8 @@ function InboxHeader({
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenPage: (pageId: string) => void;
   readonly onOpenSettings: () => void;
-  /** Opens Nodex's own conversation, where the reader can talk to it directly. */
-  readonly onOpenNodex: () => void;
 }) {
   const intl = useIntl();
-  const hostAvailable = useSpaceHostAvailable();
   return (
     // An Inbox is its Scene's Home tab, so it tops the tab like a Board's views do.
     <header className={cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0")}>
@@ -215,16 +206,6 @@ function InboxHeader({
       </div>
       <div className="ml-auto flex items-center gap-0.5">
         <SpaceExecutionHoldControl />
-        <ToolbarIconButton
-          label={intl.formatMessage({
-            id: "inbox.inboxRoute.openNodex",
-            defaultMessage: "Open Nodex",
-          })}
-          onClick={onOpenNodex}
-          disabled={!hostAvailable}
-        >
-          <NodexLogoMarkIcon monochrome className="icon-sm" />
-        </ToolbarIconButton>
         {notesPageId ? (
           <ToolbarIconButton
             label={intl.formatMessage({
@@ -804,19 +785,6 @@ export function InboxRoute({
       onOpenDatabase={onOpenDatabase}
       onOpenAgents={onOpenAgents}
       onOpenSettings={onOpenSettings}
-      onOpenNodex={() =>
-        void openNodex().then(onOpenSession, (error: unknown) =>
-          toast.danger(
-            readableIpcError(
-              error,
-              intl.formatMessage({
-                id: "inbox.inboxRoute.couldnTOpenNodex",
-                defaultMessage: "Couldn’t open Nodex",
-              }),
-            ),
-          ),
-        )
-      }
     />
   );
 

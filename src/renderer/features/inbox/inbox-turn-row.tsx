@@ -4,13 +4,7 @@ import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import type { InboxItem } from "../../../shared/inbox";
 import { PageTurnChip } from "@/components/workbench/page-turn-chip";
-import {
-  ChatIcon,
-  ChevronDownIcon,
-  ClockIcon,
-  NodexLogoMarkIcon,
-  OpenExternalIcon,
-} from "@/components/shared/icons";
+import { ChatIcon, ChevronDownIcon, ClockIcon, OpenExternalIcon } from "@/components/shared/icons";
 import { Reply } from "@/components/shared/icons/generic-icons";
 import { InboxIconAction } from "./inbox-icon-action";
 import { describeBackFromSnooze } from "./inbox-snooze";
@@ -89,13 +83,14 @@ export function InboxTurnRow({
   const replyable =
     reason === "question" ||
     reason === "review" ||
+    reason === "reply" ||
     reason === "blocked" ||
     reason === "failed" ||
     reason === "stalled";
   const unavailable = replyable && !data.active_chat;
   const openChatAsIcon = reason === "question" && data.options.length > 0;
   // A pending question is the Agent's exact words; everything else is written as Markdown.
-  const exactQuestion = reason === "question" && !data.note_id;
+  const exactQuestion = reason === "question";
   const problem =
     error ??
     data.delivery_error ??
@@ -140,18 +135,6 @@ export function InboxTurnRow({
             />
           </div>
           <div className="flex min-w-0 items-start gap-1.5 text-sm text-token-description-foreground">
-            {data.note_id ? (
-              <span
-                role="img"
-                aria-label={intl.formatMessage({
-                  id: "inbox.inboxTurnRow.noteFromNodex",
-                  defaultMessage: "Note from Nodex",
-                })}
-                className="shrink-0"
-              >
-                <NodexLogoMarkIcon monochrome className="mt-0.5 size-3.5 shrink-0" />
-              </span>
-            ) : null}
             <TurnBody key={item.body} body={item.body} markdown={!exactQuestion} />
           </div>
         </div>

@@ -93,26 +93,6 @@ function flattenActionIds(items: ReturnType<typeof buildSessionContextMenuItems>
 }
 
 describe("session context menu model", () => {
-  test.each([
-    [false, "Hand to Nodex"],
-    [true, "Take back from Nodex"],
-  ])("names the management toggle for a chat with managed=%s", (managed, label) => {
-    const items = buildSessionContextMenuItems({ session: makeSession({ managed }) });
-    expect(items).toContainEqual({
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
-      label,
-      enabled: true,
-      iconKey: "nodex",
-    });
-  });
-
-  test("hides management for archived chats", () => {
-    const items = buildSessionContextMenuItems({
-      session: makeSession({ archived: true, managed: true }),
-    });
-    expect(flattenActionIds(items)).not.toContain(SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged);
-  });
-
   test("offers an enabled Fork chat action for a Runtime Session", () => {
     const items = buildSessionContextMenuItems({
       session: makeSession({
@@ -169,7 +149,6 @@ describe("session context menu model", () => {
       ...chatSnoozePresets(MENU_OPENED_AT).map((preset) =>
         sessionSnoozedUntilActionId(preset.snoozedUntil),
       ),
-      SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
       SESSION_CONTEXT_MENU_ACTION_IDS.archive,
       "separator",
       "session.moveToProject",
@@ -201,14 +180,13 @@ describe("session context menu model", () => {
   test("shows the exact command accelerators without registering global shortcuts", () => {
     const items = buildSessionContextMenuItems({ session: makeSession() });
     const accelerators = items
-      .slice(0, 7)
+      .slice(0, 6)
       .map((item) => (item.type === "separator" ? null : item.accelerator));
     expect(accelerators).toEqual([
       "Alt+CommandOrControl+P",
       "Alt+CommandOrControl+R",
       "Shift+CommandOrControl+U",
       "Alt+CommandOrControl+E",
-      undefined,
       undefined,
       "Shift+CommandOrControl+A",
     ]);

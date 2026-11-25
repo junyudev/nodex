@@ -561,6 +561,7 @@ async function renderStage(
   options: {
     backgroundAgentDetail?: boolean;
     executionAvailable?: boolean;
+    decisionRecord?: boolean;
     routeActive?: boolean;
     rightPanelComposerOverlayEnabled?: boolean;
     rightPanelComposerOverlayTarget?: HTMLElement;
@@ -609,6 +610,7 @@ async function renderStage(
                 searchOpenTick={0}
                 backgroundAgentDetail={options.backgroundAgentDetail === true}
                 executionAvailable={options.executionAvailable}
+                decisionRecord={options.decisionRecord}
                 routeActive={options.routeActive}
                 rightPanelComposerOverlayEnabled={options.rightPanelComposerOverlayEnabled}
                 rightPanelComposerOverlayTarget={options.rightPanelComposerOverlayTarget}
@@ -1007,7 +1009,7 @@ test("imported native history pages remain readable without a Composer or execut
 });
 
 describe("ConnectedThreadStage archived resume behavior", () => {
-  test.each(["child", "archived", "unavailable"] as const)(
+  test.each(["child", "archived", "unavailable", "decision"] as const)(
     "loads readonly Runtime Codex history through its Session owner (%s)",
     async (surface) => {
       invokeCalls = [];
@@ -1043,10 +1045,17 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         runtime,
         backgroundAgentDetail: surface === "child",
         executionAvailable: surface !== "unavailable",
+        decisionRecord: surface === "decision",
       });
       await waitFor(() => expect(loadHistory).toHaveBeenCalledWith(summary.threadId));
       if (surface !== "archived") await view.findByText("Remove the redundant transitions.");
       expect(runtime.resume).not.toHaveBeenCalled();
+      // A decision run reads as Nodex's record and never offers a composer.
+      expect(view.queryByText(/kept as a record and takes no messages/u) !== null).toBe(
+        surface === "decision",
+      );
+      if (surface === "decision")
+        expect(view.container.querySelector('[contenteditable="true"]')).toBeNull();
       expect(
         invokeCalls.filter((call) =>
           ["codex:thread:history-hydration:prepare", "codex:thread:resume:prepare"].includes(

@@ -29,6 +29,7 @@ import { InboxIconAction, InboxIconActions } from "./inbox-icon-action";
 import { InboxMessageDocument } from "./inbox-message-document";
 import { InboxChatStatusDot } from "./inbox-outcome";
 import {
+  activityDecisionSessionId,
   formatInboxTime,
   groupByDay,
   type InboxOutcome,
@@ -118,6 +119,11 @@ export function InboxActivityFilters({
   );
 }
 
+/** Nodex's mark as an action glyph: the run behind one of its decisions. */
+const NodexDecisionIcon = ({ className }: { readonly className?: string }) => (
+  <NodexLogoMarkIcon monochrome className={className} />
+);
+
 function ActorGlyph({ row }: { readonly row: ActivityRow }) {
   const actor = row.actor;
   return (
@@ -206,6 +212,7 @@ function ActivityLine({
     }
   };
   const target = outcome?.open ?? null;
+  const decisionSessionId = activityDecisionSessionId(row);
   return (
     <li
       data-activity-id={row.id}
@@ -270,6 +277,16 @@ function ActivityLine({
               <span className="shrink-0 font-mono text-[11px]">{item.pageKey}</span>
             ) : null}
             <InboxIconActions>
+              {decisionSessionId ? (
+                <InboxIconAction
+                  label={intl.formatMessage({
+                    id: "inbox.inboxActivity.howNodexDecided",
+                    defaultMessage: "How Nodex decided",
+                  })}
+                  icon={NodexDecisionIcon}
+                  onClick={() => handlers.onOpenSession(decisionSessionId)}
+                />
+              ) : null}
               {item && target ? (
                 <InboxIconAction
                   label={

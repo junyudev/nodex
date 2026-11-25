@@ -34,7 +34,6 @@ export const turnRow = (reason: TurnReason, options: string[] = []): InboxItem =
       since: "2026-11-05T00:00:00Z",
       episode: "episode",
     },
-    note_id: null,
     options,
     active_chat: {
       session_id: "chat",

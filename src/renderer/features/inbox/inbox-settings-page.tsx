@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { readableIpcError } from "@/lib/ipc-error-message";
-import { resetNodex } from "@/lib/inbox-runtime";
 import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
 import {
   InboxChatAgentPicker,
@@ -195,9 +194,9 @@ export function InboxSettingsPage() {
             defaultMessage: "Nodex runs on",
           })}
           description={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.nodexRoutesOftenSoItsDefault",
+            id: "inbox.inboxSettingsPage.nodexDecidesInShortRuns",
             defaultMessage:
-              "Nodex routes often and never does the work itself, so its default is each Agent's economical model.",
+              "Each decision is one short run with only what it needs, and Nodex never does the work itself, so its default is each Agent's economical model.",
           })}
         >
           <div className="w-72 max-w-full">
@@ -227,48 +226,6 @@ export function InboxSettingsPage() {
             disabled={settings.suggestions === "off"}
             onChange={(suggestionConcurrency, settled) => save({ suggestionConcurrency }, settled)}
           />
-        </SettingRow>
-        <SettingRow
-          label={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.startNodexFresh",
-            defaultMessage: "Start Nodex fresh",
-          })}
-          description={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.nodexSConversationIsOnly",
-            defaultMessage:
-              "Nodex’s conversation is only its working memory; what it decided stays in your Inbox, Pages, and chats. Starting fresh archives the conversation, and the next message begins a new one.",
-          })}
-        >
-          <NodexButton
-            variant="secondary"
-            size="sm"
-            onClick={() =>
-              void resetNodex().then(
-                () =>
-                  toast.success(
-                    intl.formatMessage({
-                      id: "inbox.inboxSettingsPage.nodexWillStartFresh",
-                      defaultMessage: "Nodex will start fresh",
-                    }),
-                  ),
-                (error) =>
-                  toast.danger(
-                    readableIpcError(
-                      error,
-                      intl.formatMessage({
-                        id: "inbox.inboxSettingsPage.nodexCouldNotStartFresh",
-                        defaultMessage: "Nodex could not start fresh",
-                      }),
-                    ),
-                  ),
-              )
-            }
-          >
-            <FormattedMessage
-              id="inbox.inboxSettingsPage.startFresh"
-              defaultMessage="Start fresh"
-            />
-          </NodexButton>
         </SettingRow>
       </SectionBlock>
       <SectionBlock

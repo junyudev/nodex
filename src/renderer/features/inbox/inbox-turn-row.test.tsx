@@ -8,6 +8,7 @@ afterEach(cleanup);
 test.each([
   ["approval", "Open chat"],
   ["review", "Accept"],
+  ["reply", "Open chat"],
   ["blocked", "Open chat"],
   ["failed", "Open chat"],
   ["stalled", "Open chat"],
@@ -39,7 +40,6 @@ test("answers exact labels and puts only extra options in More", async () => {
     />,
   );
   expect(screen.getByText("The exact question or report")).toBeTruthy();
-  expect(screen.queryByLabelText("Note from Nodex")).toBeNull();
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Second" }));
     await Promise.resolve();
@@ -52,17 +52,14 @@ test("answers exact labels and puts only extra options in More", async () => {
   });
   await waitFor(() => expect(handlers.onAnswer).toHaveBeenCalledWith("Fifth"));
 });
-test.each(["review", "failed"] as const)(
-  "explains undeliverable %s replies beside the current note",
+test.each(["review", "failed", "reply"] as const)(
+  "explains undeliverable %s replies beside the fact",
   (reason) => {
     const item = row(reason);
     render(
-      <InboxTurnRow
-        item={{ ...item, turn: { ...item.turn!, note_id: "note", active_chat: null } }}
-        {...props()}
-      />,
+      <InboxTurnRow item={{ ...item, turn: { ...item.turn!, active_chat: null } }} {...props()} />,
     );
-    expect(screen.getByLabelText("Note from Nodex")).toBeTruthy();
+    expect(screen.getByText("The exact question or report")).toBeTruthy();
     expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
     expect(screen.getByRole("button", { name: "Open chat" })).toBeTruthy();
@@ -102,20 +99,22 @@ test.each([
   ["question", "Needs your answer"],
   ["approval", "Needs your approval"],
   ["review", "Ready for your review"],
+  ["reply", "Needs your reply"],
   ["failed", "Failed · needs you"],
   ["ready_to_start", "Ready to start"],
 ] as const)("words a %s turn as the reader's own", (reason, phrase) => {
   render(<InboxTurnRow item={row(reason)} {...props()} />);
   expect(screen.getByText(phrase)).toBeTruthy();
 });
-test("a note from Nodex leads with its mark, not a label", () => {
-  const item = row("review");
-  render(
-    <InboxTurnRow item={{ ...item, turn: { ...item.turn!, note_id: "note" } }} {...props()} />,
-  );
-  const mark = screen.getByRole("img", { name: "Note from Nodex" });
-  expect(mark.querySelector("svg")?.getAttribute("data-nodex-logo-mark")).toBe("monochrome");
-  expect(screen.queryByText(/Nodex note/u)).toBeNull();
+test("a reply turn quotes the chat and answers it from the Inbox", async () => {
+  const handlers = props();
+  render(<InboxTurnRow item={row("reply")} {...handlers} />);
+  expect(screen.getByText("The exact question or report")).toBeTruthy();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+    await Promise.resolve();
+  });
+  expect(handlers.onReply).toHaveBeenCalledOnce();
 });
 test("a move that can wait is set aside until a chosen time", async () => {
   const handlers = props();

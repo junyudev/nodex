@@ -2,6 +2,7 @@ import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { defineMessage, getIntl, type MessageDescriptor, type IntlShape } from "@/lib/i18n";
 import { CoreApiError } from "@/lib/core-api-error";
 import type {
+  ActivityRow,
   InboxChat,
   InboxAgentChoice,
   InboxDispatchAction,
@@ -1268,6 +1269,14 @@ export function inboxTimestampSeparators(
     return sinceMs > USER_TURN_TIMESTAMP_GAP_MS ? sentAtMs : null;
   });
 }
+
+/** The decision run that made a Nodex decision in Activity, when Core recorded it. */
+export const activityDecisionSessionId = (row: Pick<ActivityRow, "evidence">): string | null => {
+  const evidence = row.evidence;
+  if (typeof evidence !== "object" || evidence === null) return null;
+  const id = (evidence as { readonly decision_session_id?: unknown }).decision_session_id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+};
 
 export const formatInboxTime = (at: string, intl: IntlShape = getIntl()): string =>
   intl.formatTime(at, { hour: "numeric", minute: "2-digit" });

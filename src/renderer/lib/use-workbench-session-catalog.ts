@@ -174,7 +174,6 @@ export interface WorkbenchSessionCatalog {
     settled: boolean,
   ) => Promise<readonly string[]>;
   readonly setPinned: (session: ProjectSession, pinned: boolean) => Promise<ProjectSession | null>;
-  readonly setManaged: (session: ProjectSession, managed: boolean) => Promise<void>;
   readonly rename: (session: ProjectSession, title: string) => Promise<ProjectSession>;
   readonly archive: (session: ProjectSession) => Promise<readonly WorkbenchSessionPresentation[]>;
   readonly unarchive: (session: ProjectSession) => Promise<void>;
@@ -724,13 +723,6 @@ export function useWorkbenchSessionCatalog({
     },
     [queryClient],
   );
-  const setManaged = useCallback(
-    async (session: ProjectSession, managed: boolean): Promise<void> => {
-      await workspaceSessionCommands.setManaged(session.id, { managed });
-      await refresh(session.projectId);
-    },
-    [refresh],
-  );
   const setPinned = useCallback(
     async (session: ProjectSession, pinned: boolean): Promise<ProjectSession | null> => {
       if (session.projectId === null) return null;
@@ -1000,7 +992,6 @@ export function useWorkbenchSessionCatalog({
     setSettled,
     setSnooze,
     setPinned,
-    setManaged,
     rename,
     archive,
     unarchive,

@@ -89,8 +89,7 @@ describe("a hosted chat's lifecycle", () => {
       SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
     ])
       expect(offered).toContain(id);
-    for (const id of [SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged, "session.section"])
-      expect(offered).not.toContain(id);
+    expect(offered).not.toContain("session.section");
     expect(offered).toContain(SESSION_CONTEXT_MENU_ACTION_IDS.fork);
   });
 

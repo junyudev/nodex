@@ -14,7 +14,6 @@ import {
   TRASH_PATHS,
   WORKTREE_PATH,
 } from "./icon-geometry";
-import { NODEX_LOGO_GEOMETRY, NODEX_LOGO_VIEW_BOX } from "./nodex-logo";
 
 export {
   ARCHIVE_BOX_PATH as ARCHIVE_BOX_ICON_PATH,
@@ -111,7 +110,6 @@ export const SESSION_CONTEXT_MENU_ICON_SVG_BY_KEY: Record<NativeContextMenuIconK
   splitRight: splitIconSvg("right"),
   splitUp: splitIconSvg("up"),
   splitDown: splitIconSvg("down"),
-  nodex: `<svg width="20" height="20" viewBox="${NODEX_LOGO_VIEW_BOX}" fill="none" xmlns="http://www.w3.org/2000/svg">${NODEX_LOGO_GEOMETRY}</svg>`,
 };
 
 export function getNativeContextMenuIconSvg(iconKey: NativeContextMenuIconKey): string {

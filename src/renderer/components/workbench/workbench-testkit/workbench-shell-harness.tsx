@@ -4095,20 +4095,6 @@ export function renderWorkbench({
         return { changed, value: updated };
       });
     }
-    if (channel === "project-sessions:set-managed") {
-      const command = readWorkspaceCommandEnvelope(channel, args);
-      const sessionId = String(command.payload.sessionId);
-      const managed = command.payload.managed === true;
-      return completeWorkspaceCommand(command, command, () => {
-        const session = Object.values(sessionState)
-          .flat()
-          .find((item) => item.id === sessionId);
-        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
-        const changed = session.managed !== managed;
-        if (changed) sessionState = replaceSession(sessionState, { ...session, managed });
-        return { changed, value: { managed, since: managed ? session.createdAt : null } };
-      });
-    }
     if (channel === "project-sessions:set-pinned") {
       const command = readWorkspaceCommandEnvelope(channel, args);
       const sessionId = String(command.payload.sessionId);
