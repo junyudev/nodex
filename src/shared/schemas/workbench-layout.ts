@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { acpRegistryAgent } from "../agents/acp-registry";
+import { repairLegacyAcpInstanceId } from "../agents/legacy-identity";
 import type {
   WorkbenchLayoutDockSnapshot,
   WorkbenchLayoutFilesStageTab,
@@ -787,12 +789,30 @@ const WorkbenchHomeLocationSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("inbox") }).strict(),
 ]) satisfies z.ZodType<WorkbenchHomeLocation>;
 
+/** Restore a saved Agent settings deep link to the repaired ACP instance. */
+function migrateAcpSettingsPath(path: string): string {
+  const hashIndex = path.indexOf("#");
+  if (hashIndex < 0) return path;
+  const route = path.slice(0, hashIndex);
+  if (route.split("?", 1)[0] !== "/settings/agent") return path;
+  try {
+    const anchor = decodeURIComponent(path.slice(hashIndex + 1));
+    const prefix = acpRegistryAgent.profileAnchorPrefix;
+    if (!anchor.startsWith(prefix)) return path;
+    const id = anchor.slice(prefix.length);
+    const repaired = repairLegacyAcpInstanceId(id);
+    return repaired === id ? path : `${route}#${prefix}${repaired}`;
+  } catch {
+    return path;
+  }
+}
+
 const PersistedWorkbenchLocationV9Schema = z.discriminatedUnion("kind", [
   ...WorkbenchStableLocationSchema.options,
   z
     .object({
       kind: z.literal("settings"),
-      path: z.string().min(1),
+      path: z.string().min(1).transform(migrateAcpSettingsPath),
       returnTo: WorkbenchStableLocationSchema,
     })
     .strict(),

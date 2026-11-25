@@ -6,6 +6,7 @@ import { antigravityAgent } from "../../shared/agents/antigravity";
 import { claudeAgent } from "../../shared/agents/claude";
 import {
   legacyAgentInstanceId,
+  repairLegacyAcpInstanceId,
   type LegacyAgentProfileKind,
 } from "../../shared/agents/legacy-identity";
 import { openCodeAgent } from "../../shared/agents/opencode";
@@ -19,7 +20,7 @@ import {
   type AgentSecretChanges,
   type StoredAgentEnvironment,
 } from "./agent-environment-storage";
-import { readStoredAcpInstances } from "./acp-agent-environment";
+import { readStoredAcpInstances, type StoredAcpInstances } from "./acp-agent-environment";
 import {
   readStoredAgentProfiles,
   toStoredProfile,
@@ -184,7 +185,7 @@ export function migrateLegacyAgentProfiles(
   previous: LegacyProfileTables,
   changes: AgentSecretChanges,
 ) {
-  const agent_instances = readStoredAgentProfiles(
+  return readStoredAgentProfiles(
     legacyDrivers.flatMap((legacy) => {
       const { kind, definition, table } = legacy;
       return rowsFor(source, previous, legacy).map((row) => {
@@ -219,28 +220,39 @@ export function migrateLegacyAgentProfiles(
       });
     }),
   );
-  const acp_agent_instances =
-    previous.acp_agent_instances && previous.agent_instance_identity_version !== 1
-      ? readStoredAcpInstances(previous.acp_agent_instances).map((profile) => {
-          // ACP keeps its own records and secret namespace.
-          const kind = acpRegistryAgent.settingsAnchor;
-          const id = legacyAgentInstanceId(kind, profile.id);
-          return {
-            ...profile,
-            id,
-            environment: migrateLegacyEnvironment(
-              changes,
-              source,
-              kind,
-              kind,
-              profile.id,
-              id,
-              profile.environment,
-            ),
-          };
-        })
-      : previous.acp_agent_instances;
-  return { agent_instances, acp_agent_instances };
+}
+
+/** Rebind only the affected ACP secrets. Native profile paths and installation receipts are explicit. */
+export function migrateAcpInstanceIds(
+  source: AgentProfileStorage,
+  stored: StoredAcpInstances,
+  changes: AgentSecretChanges,
+  rekeyLegacyTable = false,
+) {
+  const rewritten = new Map<string, string>();
+  const kind = acpRegistryAgent.settingsAnchor;
+  let changed = false;
+  const instances = stored.map((profile) => {
+    const repaired = repairLegacyAcpInstanceId(profile.id);
+    const id = rekeyLegacyTable ? legacyAgentInstanceId(kind, profile.id) : repaired;
+    if (id === profile.id) return profile;
+    changed = true;
+    if (repaired !== profile.id) rewritten.set(profile.id, id);
+    return {
+      ...profile,
+      id,
+      environment: migrateLegacyEnvironment(
+        changes,
+        source,
+        kind,
+        kind,
+        profile.id,
+        id,
+        profile.environment,
+      ),
+    };
+  });
+  return changed ? { instances: readStoredAcpInstances(instances), rewritten } : null;
 }
 
 /**
@@ -252,10 +264,10 @@ export function migrateLegacyAgentProfiles(
  */
 export function migrateBuiltInAcpInstances(
   source: AgentProfileStorage,
-  previous: { readonly agent_instances?: unknown[]; readonly acp_agent_instances?: unknown[] },
+  previous: { readonly agent_instances?: unknown[] },
+  instances: StoredAcpInstances,
   changes: AgentSecretChanges,
 ) {
-  const instances = readStoredAcpInstances(previous.acp_agent_instances);
   const duplicates = instances.filter((instance) => acpInstanceBuiltInAgent(instance));
   if (!duplicates.length) return null;
   const profiles = readStoredAgentProfiles(previous.agent_instances);

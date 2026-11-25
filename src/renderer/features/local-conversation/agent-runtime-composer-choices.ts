@@ -7,6 +7,8 @@ import { spaceStorageKeyFor } from "../../../shared/space-personal-state";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
 import {
   AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY,
+  AGENT_RUNTIME_MODEL_OPTIONS_STORAGE_KEY,
+  AGENT_RUNTIME_NEW_CHAT_CHOICE_STORAGE_KEY,
   AgentRuntimeComposerChoiceSchema,
   AgentRuntimeComposerOptionsSchema,
   AgentRuntimeComposerSelectionSchema,
@@ -104,7 +106,7 @@ export const agentRuntimeComposerChoicesAtom = persistedAtom<AgentRuntimeCompose
 
 export const agentRuntimeModelOptionMemoryAtom = persistedAtom<AgentRuntimeModelOptionMemory>({
   debugLabel: "agent-runtime-model-option-memory",
-  storageKey: "agent-runtime-model-options-v1",
+  storageKey: AGENT_RUNTIME_MODEL_OPTIONS_STORAGE_KEY,
   defaultValue: {},
   hydration: "eager",
   synchronization: "cross-window",
@@ -114,8 +116,6 @@ export const agentRuntimeModelOptionMemoryAtom = persistedAtom<AgentRuntimeModel
     ),
 });
 
-const NEW_CHAT_CHOICE_KEY = "agent-runtime-new-chat-choice-v1";
-
 /**
  * Where a Space remembers what its new chats start on. Hosts offer different Agents and models,
  * so each team Space keeps its own choice for its Member; the personal Space keeps the desktop's.
@@ -123,7 +123,9 @@ const NEW_CHAT_CHOICE_KEY = "agent-runtime-new-chat-choice-v1";
 export const newChatChoiceStorageKey = (
   space: Pick<SpaceConnectionSummary, "kind" | "spaceId" | "memberId">,
 ): string =>
-  space.kind === "team" ? spaceStorageKeyFor(space, NEW_CHAT_CHOICE_KEY) : NEW_CHAT_CHOICE_KEY;
+  space.kind === "team"
+    ? spaceStorageKeyFor(space, AGENT_RUNTIME_NEW_CHAT_CHOICE_STORAGE_KEY)
+    : AGENT_RUNTIME_NEW_CHAT_CHOICE_STORAGE_KEY;
 
 const newChatChoiceAtoms = new Map<string, PersistedAtomDefinition<AgentModelSelection | null>>();
 

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { legacyAgentInstanceId } from "../../../shared/agents/legacy-identity";
 import { acpInstanceStatus, acpProviderId } from "./acp-agent-model";
 import { createAcpAgentsOwner } from "./acp-agents-owner";
 import {
@@ -134,17 +135,20 @@ describe("ACP Agents owner", () => {
     expect(status()).toBe("Connecting");
   });
 
-  test("a reloaded window resumes polling the operation it started", async () => {
-    const journal = memoryJournal(
-      JSON.stringify([{ instanceId: "qoder-main", kind: "connect", operationId: "op-9" }]),
-    );
-    const { main, owner } = setup([registryInstance()], journal);
+  test.each([
+    ["qoder-main", "qoder-main"],
+    ["9-old-id", legacyAgentInstanceId("acp", "9-old-id")],
+  ])("a reloaded window resumes polling its operation on %s", async (storedId, id) => {
+    const entry = { instanceId: storedId, kind: "connect", operationId: "op-9" };
+    const journal = memoryJournal(JSON.stringify([entry]));
+    const { main, owner } = setup([registryInstance({ id })], journal);
     await settleAll();
     expect(main.runtime.readOperation).toHaveBeenCalledWith({ operationId: "op-9" });
-    expect(owner.getSnapshot().activities.get("qoder-main")).toMatchObject({
+    expect(owner.getSnapshot().activities.get(id)).toMatchObject({
       operationId: "op-9",
       phase: "running",
     });
+    expect(journal.current()).toBe(JSON.stringify([{ ...entry, instanceId: id }]));
   });
 
   test("a stale operation answer cannot replace a newer operation for the instance", async () => {

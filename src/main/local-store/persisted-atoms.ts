@@ -1,3 +1,4 @@
+import { migrateAcpComposerChoices } from "../../shared/agent-runtime-composer-choice-migration";
 import { syncDirectory } from "../platform/node/filesystem-durability";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, open, rename, rm } from "node:fs/promises";
@@ -75,15 +76,20 @@ export class PersistedAtomStore {
   }
 
   readState(): PersistedAtomState {
-    this.#stateCache ??= readPersistedAtomsFile(this.#atomsPath);
+    if (!this.#stateCache) {
+      const stored = readPersistedAtomsFile(this.#atomsPath);
+      this.#stateCache = migrateAcpComposerChoices(stored);
+      if (this.#stateCache !== stored) {
+        this.#revision += 1;
+        this.#scheduleWrite();
+      }
+    }
     return { ...this.#stateCache };
   }
 
   readSnapshot(): PersistedAtomSnapshot {
-    return {
-      revision: this.#revision,
-      values: this.readState(),
-    };
+    const values = this.readState();
+    return { revision: this.#revision, values };
   }
 
   /** Committed mutations have one delivery source, including Main-owned writes. */

@@ -1,8 +1,9 @@
 import { afterEach, expect, it } from "vite-plus/test";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parse, stringify } from "smol-toml";
+import { isProviderInstanceId } from "@nodex/agent-runtime/contracts";
 import {
   AcpAgentSettingsUpdateSchema,
   type AcpAgentInstanceInput,
@@ -11,10 +12,14 @@ import {
   getAcpAgentSettings,
   getAcpLaunchConfiguration,
   getAgentProfiles,
+  getAgentRuntimeSettings,
+  getInboxSettings,
+  getModelPolicy,
   migrateProfileAgentProfiles,
   updateAcpAgentSettings,
 } from "./application-settings-persistence";
 import { readStoredAcpInstances, writeAcpInstances } from "./acp-agent-environment";
+import { withAgentSecretChanges } from "./agent-environment-storage";
 const roots: string[] = [];
 const fixture = () => {
   const root = mkdtempSync(path.join(tmpdir(), "nodex-acp-settings-"));
@@ -85,6 +90,148 @@ it("migrates local package settings without changing identity or requiring the o
   expect(getAcpAgentSettings(source)).toEqual(migrated);
   expect(readFileSync(source.settingsPath, "utf8")).not.toContain("packageRoot");
 });
+it("repairs invalid routing IDs and keeps Profile choices, credentials and storage in place", () => {
+  const source = fixture();
+  const oldId = "0e09b4cb-93f2-4137-b171-43cd32579819";
+  const home = path.join(source.root, oldId);
+  mkdirSync(home);
+  writeFileSync(path.join(home, "credential"), "native credential");
+  const oldRef = withAgentSecretChanges(({ stage }) =>
+    stage({ ...source, backend: "acp" }, oldId, "QODER_TOKEN", "local-secret"),
+  );
+  const valid = { ...instance(), id: "a-canonical-id" };
+  const model = "provider-specific/model";
+  const unrelatedException = JSON.stringify(["codex", oldId]);
+  writeFileSync(
+    source.settingsPath,
+    stringify({
+      server: {
+        agent_instances: [],
+        acp_agent_instances: [
+          valid,
+          {
+            ...instance(),
+            id: oldId,
+            agentDefinitionId: `local-${oldId}`,
+            credentials: { kind: "isolated-home", home },
+            environment: [
+              { name: "QODER_TOKEN", sensitive: true, secretRef: oldRef },
+              { name: "QODER_CONFIG_DIR", sensitive: false, value: home },
+            ],
+          },
+        ],
+        inbox_chat_agent: oldId,
+        inbox_chat_model: model,
+        inbox_suggestion_agent: oldId,
+        writing_model: { instanceId: oldId, model },
+        title_model: { instanceId: oldId, model: "old-title-model" },
+        model_policy: {
+          nodexOff: false,
+          exceptions: [JSON.stringify([oldId, model]), unrelatedException],
+          agentsMayChooseCredit: false,
+        },
+      },
+    }),
+  );
+  expect(() => getAcpAgentSettings(source)).toThrow("Invalid saved ACP Agent settings");
+
+  migrateProfileAgentProfiles(source);
+
+  const [unchanged, repaired] = getAcpAgentSettings(source).instances;
+  expect(unchanged).toEqual(valid);
+  expect(repaired?.id).not.toBe(oldId);
+  expect(isProviderInstanceId(repaired?.id)).toBe(true);
+  const id = repaired!.id;
+  expect(repaired).toMatchObject({
+    agentDefinitionId: `local-${oldId}`,
+    credentials: { kind: "isolated-home", home },
+    environment: [
+      { name: "QODER_TOKEN", sensitive: true, value: null },
+      { name: "QODER_CONFIG_DIR", sensitive: false, value: home },
+    ],
+  });
+  expect(getAcpLaunchConfiguration(source, id).environment).toEqual({
+    QODER_TOKEN: "local-secret",
+    QODER_CONFIG_DIR: home,
+  });
+  expect(readFileSync(path.join(home, "credential"), "utf8")).toBe("native credential");
+  expect(getInboxSettings(source)).toMatchObject({
+    chatAgent: { instanceId: id, model },
+    suggestionAgent: { instanceId: id },
+  });
+  expect(getAgentRuntimeSettings(source).writingModel).toEqual({ instanceId: id, model });
+  expect(getModelPolicy(source).exceptions).toEqual([
+    JSON.stringify([id, model]),
+    unrelatedException,
+  ]);
+  const migrated = readFileSync(source.settingsPath, "utf8");
+  expect(parse(migrated)).toMatchObject({
+    server: { title_model: { instanceId: id, model: "old-title-model" } },
+  });
+  const directory = path.join(source.root, "agent-secrets/acp");
+  const refs = readdirSync(directory);
+  expect(refs).toHaveLength(1);
+  expect(refs).not.toContain(oldRef);
+
+  migrateProfileAgentProfiles(source);
+  expect(readFileSync(source.settingsPath, "utf8")).toBe(migrated);
+  expect(readdirSync(directory)).toEqual(refs);
+});
+
+it.each([undefined, 1])(
+  "repairs old package rows during legacy Profile migration (%s)",
+  (version) => {
+    const source = fixture();
+    const longId = `a${"b".repeat(64)}`;
+    const oldIds = [longId, "agent/with punctuation"];
+    writeFileSync(
+      source.settingsPath,
+      stringify({
+        server: {
+          ...(version ? { agent_instance_identity_version: version } : {}),
+          acp_agent_instances: oldIds.map((id) => ({
+            id,
+            agentDefinitionId: "packaged-agent",
+            packageRoot: "/old/package",
+            nodeExecutable: "/old/node",
+            enabled: false,
+            credentials: { kind: "inherit-host-profile" },
+            proxy: "isolated",
+          })),
+          inbox_suggestion_agent: longId,
+          model_policy: {
+            providersOff: ["nodex", longId],
+            exceptions: [JSON.stringify([longId, "example-model"])],
+            agentsMayChooseCredit: false,
+          },
+        },
+      }),
+    );
+    migrateProfileAgentProfiles(source);
+    const ids = getAcpAgentSettings(source).instances.map(({ id }) => id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids.every(isProviderInstanceId)).toBe(true);
+    expect(getInboxSettings(source).suggestionAgent.instanceId).toBe(ids[0]);
+    expect(getModelPolicy(source)).toEqual({
+      nodexOff: true,
+      exceptions: [JSON.stringify([ids[0], "example-model"])],
+      agentsMayChooseCredit: false,
+    });
+  },
+);
+
+it("rejects new ACP settings rows with invalid runtime IDs", () => {
+  for (const id of ["0starts-with-digit", "a".repeat(65), "contains spaces", "contains/slash"])
+    expect(
+      AcpAgentSettingsUpdateSchema.safeParse({ instances: [{ ...instance(), id }] }).success,
+    ).toBe(false);
+  expect(
+    AcpAgentSettingsUpdateSchema.safeParse({ instances: [{ ...instance(), id: "a".repeat(64) }] })
+      .success,
+  ).toBe(true);
+});
+
 it("encrypts each instance's secrets, retains redacted markers and preserves arguments exactly", () => {
   const source = fixture();
   const saved = updateAcpAgentSettings(

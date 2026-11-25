@@ -4,6 +4,14 @@ import { rename } from "node:fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { PersistedAtomStore } from "./persisted-atoms";
+import {
+  AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY,
+  AGENT_RUNTIME_MODEL_OPTIONS_STORAGE_KEY,
+  AGENT_RUNTIME_NEW_CHAT_CHOICE_STORAGE_KEY,
+  AgentRuntimeComposerChoiceSchema,
+} from "../../shared/agent-runtime-composer-choice-storage";
+import { legacyAgentInstanceId } from "../../shared/agents/legacy-identity";
+import { spaceStorageKeyFor } from "../../shared/space-personal-state";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -32,6 +40,59 @@ afterEach(() => {
 });
 
 describe("persisted atom local store", () => {
+  test("durably rekeys ACP Composer drafts, new chat defaults and model option memory", async () => {
+    await withTempStore(async (store, atomsPath) => {
+      const oldId = "0e09b4cb-93f2-4137-b171-43cd32579819";
+      const id = legacyAgentInstanceId("acp", oldId);
+      const options = [{ id: "thinking", value: "medium" }];
+      const selection = {
+        binding: { driver: "acpRegistry", instanceId: oldId },
+        model: "native/model",
+        options,
+      };
+      const otherSelection = { binding: { driver: "codex", instanceId: "codex" }, model: oldId };
+      const teamKey = spaceStorageKeyFor(
+        { spaceId: "team", memberId: "member" },
+        AGENT_RUNTIME_NEW_CHAT_CHOICE_STORAGE_KEY,
+      );
+      const state = {
+        [AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY]: {
+          draft: { selection, runtimeMode: "full-access" },
+          otherDraft: { selection: otherSelection },
+        },
+        [AGENT_RUNTIME_MODEL_OPTIONS_STORAGE_KEY]: { [oldId]: { [selection.model]: options } },
+        [AGENT_RUNTIME_NEW_CHAT_CHOICE_STORAGE_KEY]: selection,
+        [teamKey]: selection,
+        unrelated: { instanceId: oldId },
+      };
+      writeFileSync(atomsPath, JSON.stringify(state));
+      const migratedSelection = { ...selection, binding: { ...selection.binding, instanceId: id } };
+      const expected = {
+        ...state,
+        [AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY]: {
+          draft: { selection: migratedSelection, runtimeMode: "full-access" },
+          otherDraft: { selection: otherSelection },
+        },
+        [AGENT_RUNTIME_MODEL_OPTIONS_STORAGE_KEY]: { [id]: { [selection.model]: options } },
+        [AGENT_RUNTIME_NEW_CHAT_CHOICE_STORAGE_KEY]: migratedSelection,
+        [teamKey]: migratedSelection,
+      };
+      const snapshot = store.readSnapshot();
+      expect(snapshot.values).toEqual(expected);
+      expect(
+        AgentRuntimeComposerChoiceSchema.parse(
+          expected[AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY].draft,
+        ).selection,
+      ).toEqual(migratedSelection);
+      await store.whenDurable(snapshot.revision);
+      expect(readFile(atomsPath)).toEqual(expected);
+      expect(new PersistedAtomStore(atomsPath).readSnapshot()).toEqual({
+        revision: 0,
+        values: expected,
+      });
+    });
+  });
+
   test("delivers committed updates and batch deletion once, without letting delivery fail a commit", async () => {
     await withTempStore(async (store, atomsPath) => {
       const events: Array<{ key: string; value: unknown; revision: number }> = [];

@@ -1,5 +1,7 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
+import { isProviderInstanceId } from "@nodex/agent-runtime/contracts";
+import { newAcpAgentInstanceId } from "../../../shared/acp-agent-settings";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithAppMaitai } from "@/test/app-maitai";
 import { AcpAgentAddDialog } from "./acp-agent-add-dialog";
@@ -11,6 +13,12 @@ import {
   registryAgent,
   registryInstance,
 } from "./acp-agents.test-fixtures";
+
+test("generates unique IDs accepted by the Runtime", () => {
+  const ids = Array.from({ length: 128 }, newAcpAgentInstanceId);
+  expect(ids.every(isProviderInstanceId)).toBe(true);
+  expect(new Set(ids).size).toBe(ids.length);
+});
 
 const press = async (element: HTMLElement) =>
   act(async () => {
@@ -288,6 +296,7 @@ describe("Add ACP Agent dialog", () => {
     await press(view.getByRole("button", { name: "Add and connect" }));
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     const added = main.settings().instances[0]!;
+    expect(isProviderInstanceId(added.id)).toBe(true);
     expect(added.source).toEqual({
       kind: "local",
       executable: "qoder",

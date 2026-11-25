@@ -1,4 +1,5 @@
 import { newAgentInstanceId } from "../../../shared/agents/instance-id";
+import { repairLegacyAcpInstanceId } from "../../../shared/agents/legacy-identity";
 import { agentAccountsRuntime, type AgentAccountsRuntime } from "../../lib/agent-accounts-runtime";
 import {
   createAgentAccountOwner,
@@ -195,7 +196,11 @@ export function createAcpAgentsOwner(input: {
   function readJournal(): JournalEntry[] {
     try {
       const value = JSON.parse(journal.read() ?? "[]") as unknown;
-      return Array.isArray(value) ? (value as JournalEntry[]).slice(0, 32) : [];
+      return Array.isArray(value)
+        ? (value as JournalEntry[])
+            .slice(0, 32)
+            .filter((entry) => typeof entry?.instanceId === "string")
+        : [];
     } catch {
       return [];
     }
@@ -208,6 +213,13 @@ export function createAcpAgentsOwner(input: {
       /* Session storage is a reload convenience; operations continue in the Runtime. */
     }
   };
+
+  const repairedJournal = journalEntries.map((entry) => {
+    const instanceId = repairLegacyAcpInstanceId(entry.instanceId);
+    return instanceId === entry.instanceId ? entry : { ...entry, instanceId };
+  });
+  if (repairedJournal.some((entry, index) => entry !== journalEntries[index]))
+    writeJournal(repairedJournal);
 
   const publish = (patch: Partial<AcpAgentsSnapshot>) => {
     snapshot = { ...snapshot, ...patch };

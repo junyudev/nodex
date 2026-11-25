@@ -2,7 +2,9 @@
 
 ACP instances connect user-selected Agents to Nodex conversations. Each named instance owns a
 stable configuration identity and a particular native environment. The same Agent can have several
-instances. Registry, login and installation state do not replace that identity or the product Session.
+instances. Nodex generates routing IDs that start with an ASCII letter and contain up to 64 ASCII
+letters, digits, hyphens or underscores. Registry, login and installation state do not replace an
+instance's identity or the product Session.
 
 ## Configuration and installation
 
