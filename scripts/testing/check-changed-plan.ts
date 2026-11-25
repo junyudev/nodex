@@ -3,13 +3,13 @@ import {
   APP_TEST_SUITES,
   isNativeExecutable,
   nativeRequirements,
-  ownerOfTest,
   type NativeExecutableId,
   type SuiteId,
 } from "../../config/test-suites.ts";
 import { classifyChangedPaths, shouldCheckSearchKernelWasm } from "../ci/classify-change.ts";
 import type { CiGatePlan } from "../ci/ci-gate-plan.ts";
 import { selectStaticChecks, STATIC_CHECKS } from "../ci/verify-static.ts";
+import { isCodeFile } from "./focused-tests.ts";
 import type { CachedPass, SelectionEvidence } from "./test-cache-store.ts";
 interface StepCommand {
   readonly args: readonly string[];
@@ -34,40 +34,6 @@ export type CheckStep = { readonly name: string; readonly lane?: "rust" } & (
     }
   | { readonly kind: "skip"; readonly reason: string }
 );
-
-const codeFile = /\.[cm]?[jt]sx?$/u;
-export const isTestFile = (file: string) => /\.(?:test\.[cm]?[jt]sx?|integration\.ts)$/u.test(file);
-
-export function findFocusedTests(
-  changed: readonly string[],
-  present: ReadonlySet<string>,
-  siblings: (directory: string) => readonly string[],
-): Partial<Record<SuiteId, string[]>> {
-  const candidates = new Set<string>();
-  const directories = new Map<string, readonly string[]>();
-  for (const file of changed) {
-    if (isTestFile(file)) {
-      if (present.has(file)) candidates.add(file);
-      continue;
-    }
-    if (!codeFile.test(file)) continue;
-    const lastSlash = file.lastIndexOf("/");
-    const directory = file.slice(0, lastSlash + 1);
-    const stem = file.slice(lastSlash + 1).replace(codeFile, "");
-    const entries = directories.get(directory) ?? siblings(directory);
-    directories.set(directory, entries);
-    for (const name of entries) {
-      if (name.startsWith(stem + ".") && isTestFile(name)) candidates.add(directory + name);
-    }
-  }
-
-  const result: Partial<Record<SuiteId, string[]>> = {};
-  for (const file of [...candidates].sort()) {
-    const owner = ownerOfTest(file);
-    if (owner?.tier === "default") (result[owner.suite] ??= []).push(file);
-  }
-  return result;
-}
 
 /** Full-workspace CI lanes omit the path list so broad changes stay below ARG_MAX. */
 export const rustGateEnvironment = (plan: CiGatePlan, files: readonly string[]) => ({
@@ -140,7 +106,7 @@ function feedbackSteps(present: readonly string[], checkI18n: boolean): CheckSte
             ...fileCommands(["fmt", "--check", "--no-error-on-unmatched-pattern"], present),
             ...fileCommands(
               ["exec", "tsx", "scripts/ci/lint-warning-ratchet.ts", "--files"],
-              present.filter((file) => codeFile.test(file)),
+              present.filter((file) => isCodeFile(file)),
             ),
           ],
         }
@@ -182,7 +148,7 @@ export function planCheckSteps(
           if (check.id === "display-language-catalogs") return [];
           if (check.id === "react-compiler-coverage")
             return focusedCompilerCommands(
-              present.filter((file) => file.startsWith("src/renderer/") && codeFile.test(file)),
+              present.filter((file) => file.startsWith("src/renderer/") && isCodeFile(file)),
             ).map((item) => ({ ...item, label: check.name }));
           return [{ args: check.command, label: check.name }];
         }),
@@ -298,7 +264,7 @@ export function planFastCheckSteps(
   rustPackages: readonly string[],
 ) {
   const compiler = focusedCompilerCommands(
-    present.filter((file) => file.startsWith("src/renderer/") && codeFile.test(file)),
+    present.filter((file) => file.startsWith("src/renderer/") && isCodeFile(file)),
   );
   const steps: CheckStep[] = [
     ...feedbackSteps(present, touchesSource(files)),

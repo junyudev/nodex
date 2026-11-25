@@ -18,7 +18,6 @@ import {
 } from "./check-changed-main-ci.ts";
 import {
   deferNativeTests,
-  findFocusedTests,
   observedChangedInput,
   planCheckSteps,
   planFastCheckSteps,
@@ -27,6 +26,7 @@ import {
   selectFocusedBrowserTests,
   type CheckStep,
 } from "./check-changed-plan.ts";
+import { findFocusedTests } from "./focused-tests.ts";
 import {
   formatSummary,
   idleQueueTime,
@@ -234,6 +234,51 @@ describe("fast check selection", () => {
       ).toEqual({ files: [test], unaffected: 0, unrecorded: 1, unobservable: 0 });
     }
   });
+
+  it.each([
+    {
+      changed: [component],
+      present: [component],
+      expected: ["widget.head.nightly.test.tsx", "widget.nightly.test.tsx", "widget.test.tsx"],
+    },
+    {
+      changed: [test],
+      present: [test],
+      expected: ["widget.head.nightly.test.tsx", "widget.nightly.test.tsx", "widget.test.tsx"],
+    },
+    { changed: [component], present: [], expected: ["widget.test.tsx"] },
+    {
+      changed: ["src/renderer/elsewhere/widget.tsx"],
+      present: ["src/renderer/elsewhere/widget.tsx"],
+      expected: [],
+    },
+    {
+      changed: ["src/renderer/components/widget.nightly.test.tsx"],
+      present: ["src/renderer/components/widget.nightly.test.tsx"],
+      expected: ["widget.nightly.test.tsx"],
+    },
+  ])(
+    "selects only edited or same-stem nightly suites for $changed",
+    ({ changed, present, expected }) => {
+      const directory = "src/renderer/components/";
+      const siblings = (dirname: string) =>
+        dirname === directory
+          ? [
+              "widget.test.tsx",
+              "widget.head.nightly.test.tsx",
+              "widget.nightly.test.tsx",
+              "widget.stress.test.tsx",
+              "widgetOther.nightly.test.tsx",
+              "parent.nightly.test.tsx",
+            ]
+          : [];
+      const focused = findFocusedTests(changed, new Set(present), siblings, true);
+      expect(focused.renderer ?? []).toEqual(expected.map((name) => directory + name));
+      expect(findFocusedTests(changed, new Set(present), siblings).renderer ?? []).toEqual(
+        expected.filter((name) => !name.includes(".nightly.")).map((name) => directory + name),
+      );
+    },
+  );
 
   it("keeps a sibling test with no pass and skips known unobservable files", () => {
     const focused = findFocusedTests([component], new Set([component]), () => [

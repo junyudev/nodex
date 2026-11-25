@@ -2,7 +2,12 @@ import { createRequire } from "node:module";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { runtimeForSuite, suiteConfig, type SuiteId } from "../../config/test-suites.ts";
+import {
+  NIGHTLY_TEST_SUITES,
+  runtimeForSuite,
+  suiteConfig,
+  type SuiteId,
+} from "../../config/test-suites.ts";
 import { withoutAgentShell } from "../../src/main/platform/node/agent-shell-environment.ts";
 import { runCommand, type Command } from "../tooling/process.ts";
 
@@ -72,10 +77,20 @@ export interface TestRuntimeIdentity {
   readonly arch: string;
 }
 
-export async function discoverSuiteManifest(
+/** Related arguments start at the checkout, which can differ from the suite root. */
+export function resolveRelatedPaths(related: string | readonly string[] | undefined) {
+  if (related === undefined) return;
+  const files = typeof related === "string" ? [related] : related;
+  return files.map((file) => path.resolve(file));
+}
+
+export const discoveryModes = ["run", "related", "default-with-related-nightly"] as const;
+type DiscoveryMode = (typeof discoveryModes)[number];
+
+async function discoverManifest(
   suite: SuiteId,
   args: readonly string[],
-  related: boolean,
+  mode: DiscoveryMode,
   context: Pick<Command, "cwd" | "env" | "signal">,
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nodex-test-discovery-"));
@@ -91,7 +106,7 @@ export async function discoverSuiteManifest(
         path.join(import.meta.dirname, "discover-tests.mts"),
         suite,
         output,
-        related ? "related" : "run",
+        mode,
         ...args,
       ],
       { ...context, env },
@@ -125,6 +140,33 @@ export async function discoverSuiteManifest(
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+export async function discoverSuiteManifest(
+  suite: SuiteId,
+  args: readonly string[],
+  mode: DiscoveryMode,
+  context: Pick<Command, "cwd" | "env" | "signal">,
+) {
+  if (mode !== "related" || context.env?.NODEX_TEST_TIER !== "related")
+    return discoverManifest(suite, args, mode, context);
+
+  // The default import graph and nightly filename selection use their own suite globs.
+  const discoverTier = (tier: "default" | "nightly") =>
+    discoverManifest(suite, args, mode, {
+      ...context,
+      env: { ...context.env, NODEX_TEST_TIER: tier },
+    });
+  if (!NIGHTLY_TEST_SUITES.includes(suite)) return discoverTier("default");
+  const [ordinary, nightly] = await Promise.all([discoverTier("default"), discoverTier("nightly")]);
+  return {
+    ...ordinary,
+    files: [...new Set([...ordinary.files, ...nightly.files])].sort(),
+    isolated: ordinary.isolated && nightly.isolated,
+    configDependencies: [
+      ...new Set([...ordinary.configDependencies, ...nightly.configDependencies]),
+    ].sort(),
+  };
 }
 
 export async function discoverSuite(

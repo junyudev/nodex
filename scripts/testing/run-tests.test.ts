@@ -1,13 +1,17 @@
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { parseTestSelection, runTests } from "./run-tests";
 import {
   CODEX_SCALE_TEST,
+  filesForSuite,
   NATIVE_PIP_PROBE_TEST,
   YJS_YRS_TEST,
   type SuiteId,
 } from "../../config/test-suites";
 import type { Command } from "../tooling/process";
+import { discoverSuite } from "./runtime.ts";
 
 const result = (exitCode = 0) => ({ exitCode, signal: null, durationMs: 1 });
 const root = path.resolve(".");
@@ -74,19 +78,21 @@ describe("test execution", () => {
       related: false,
       args,
     });
-    expect(parseTestSelection(["core-client", "--related", ...args], "default").related).toBe(true);
+    expect(parseTestSelection(["core-client", "--related", ...args], "default")).toMatchObject({
+      related: true,
+      tier: "related",
+    });
     expect(parseTestSelection(["standard"], "stress").tier).toBe("default");
     expect(parseTestSelection(["nightly"], "default")).toMatchObject({
       tier: "nightly",
-      suites: [
+      suites: expect.arrayContaining([
         "unit",
-        "agent-runtime",
         "core-client",
         "main",
         "renderer",
         "integration",
         "browser",
-      ],
+      ]),
     });
     expect(parseTestSelection(["live"], "default")).toEqual({
       suites: ["agent-runtime"],
@@ -295,6 +301,89 @@ test("declares the locked Agent runtime for a discovered real-history pressure g
   expect(events).toEqual(["native", "test"]);
 });
 
+test("uses sibling nightly selection alongside the default graph or cached CI collection", async () => {
+  const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nodex-related-tests-")));
+  const project = "src/main";
+  const source = project + "/fixture";
+  const changed = source + "/changed.ts";
+  const relatedDefault = source + "/related.node.test.ts";
+  const relatedNightly = source + "/changed.nightly.node.test.ts";
+  const crossCutting = source + "/deep.nightly.node.test.ts";
+  const unrelatedDefault = source + "/unrelated.node.test.ts";
+  const unrelatedNightly = source + "/unrelated.nightly.node.test.ts";
+  const stress = source + "/changed.stress.node.test.ts";
+  try {
+    await Promise.all([
+      mkdir(path.join(cwd, source), { recursive: true }),
+      mkdir(path.join(cwd, "config")),
+    ]);
+    const files = {
+      [changed]: "export const value = 1;",
+      [relatedDefault]: "import './changed.ts';",
+      [relatedNightly]: "",
+      [crossCutting]: "import './related.node.test.ts';",
+      [unrelatedDefault]: "",
+      [unrelatedNightly]: "",
+      [stress]: "import './changed.ts';",
+    };
+    await Promise.all(
+      Object.entries(files).map(([file, content]) => writeFile(path.join(cwd, file), content)),
+    );
+    const signal = new AbortController().signal;
+    const root = path.join(cwd, project);
+    const config = path.join(cwd, "config/vitest.core-client.config.ts");
+    const discover = async (
+      scope: "default" | "related" | "nightly",
+      mode: Parameters<typeof discoverSuite>[2],
+      args: readonly string[],
+    ) => {
+      const globs = Object.fromEntries(
+        (["default", "related", "nightly"] as const).map((tier) => {
+          const { include, exclude } = filesForSuite("core-client", tier);
+          return [
+            tier,
+            { include: include.map((glob) => glob.replace(project + "/", "")), exclude },
+          ];
+        }),
+      );
+      await writeFile(
+        config,
+        "const suites = " +
+          JSON.stringify(globs) +
+          "\n" +
+          "export default { root: " +
+          JSON.stringify(root) +
+          ", test: suites[process.env.NODEX_TEST_TIER] };",
+      );
+      return discoverSuite("core-client", args, mode, {
+        cwd,
+        signal,
+        env: { ...process.env, NODEX_TEST_TIER: scope },
+      });
+    };
+    expect(await discover("related", "related", ["./" + changed])).toEqual([
+      relatedNightly,
+      relatedDefault,
+    ]);
+    expect(await discover("related", "related", ["./" + unrelatedNightly])).toEqual([
+      unrelatedNightly,
+    ]);
+    expect(await discover("related", "default-with-related-nightly", ["./" + changed])).toEqual([
+      relatedNightly,
+      relatedDefault,
+      unrelatedDefault,
+    ]);
+    expect(await discover("default", "run", [])).toEqual([relatedDefault, unrelatedDefault]);
+    expect(await discover("nightly", "run", [])).toEqual([
+      relatedNightly,
+      crossCutting,
+      unrelatedNightly,
+    ]);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 describe("Browser process environment", () => {
   test.each([
     { name: "full", args: ["browser"], tier: "default" },
@@ -307,11 +396,13 @@ describe("Browser process environment", () => {
       name: "related",
       args: ["browser", "--related", "src/renderer/example.tsx"],
       tier: "default",
+      expectedTier: "related",
     },
     { name: "stress", args: ["browser"], tier: "stress" },
   ] as const)(
     "retires isolated realms in the $name runner before Vitest starts",
-    async ({ args, tier }) => {
+    async (fixture) => {
+      const { args, tier } = fixture;
       const environment = {
         TMPDIR: "/task temporary directory",
         NODE_OPTIONS: "--enable-source-maps",
@@ -323,6 +414,7 @@ describe("Browser process environment", () => {
         env: environment,
         signal: new AbortController().signal,
         prepare: async () => ({ executables: {} }),
+        discover: async () => ["src/renderer/example.browser.test.tsx"],
         execute: async (selected) => {
           command = selected;
           return result();
@@ -334,7 +426,7 @@ describe("Browser process environment", () => {
       expect(command?.env).toEqual({
         ...environment,
         SHLVL: "1",
-        NODEX_TEST_TIER: tier,
+        NODEX_TEST_TIER: "expectedTier" in fixture ? fixture.expectedTier : tier,
         VITEST_CHROMIUM_GC_FORCE: "1",
         NODE_ENV: "test",
       });

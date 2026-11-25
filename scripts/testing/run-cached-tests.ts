@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   nativeRequirements,
+  NIGHTLY_TEST_SUITES,
+  ownerOfTest,
   parseTestSuite,
   runtimeForSuite,
   suiteConfig,
@@ -73,6 +75,7 @@ export type CachedSuiteContext = {
     readonly host: string | undefined;
     readonly directory: string;
     readonly select: (file: string) => boolean;
+    readonly relatedPaths?: readonly string[];
   };
   prepare?: typeof prepareNativeArtifacts;
 };
@@ -112,7 +115,7 @@ async function collectSuiteInputs(
   const caPath = env.NODE_EXTRA_CA_CERTS;
   const command = runtimeCommand(suite, [], { cwd: root, env, signal }).command;
   const [manifest, epoch, workspace, extra, ca, executable] = await Promise.all([
-    selectedManifest ?? discoverSuiteManifest(suite, filters, false, { cwd: root, env, signal }),
+    selectedManifest ?? discoverSuiteManifest(suite, filters, "run", { cwd: root, env, signal }),
     cacheEpoch(directory),
     context.workspace?.() ?? workspaceInputs(root, resultsRoot),
     (browser
@@ -517,28 +520,40 @@ export async function runCachedSuite(
   priority: readonly string[] = [],
 ): Promise<number> {
   const start = performance.now();
-  const tier = resolveVitestTestTier(context.env.NODEX_TEST_TIER);
-  const env: NodeJS.ProcessEnv = { ...testRuntimeEnvironment(context.env), NODEX_TEST_TIER: tier };
+  const { linuxCI } = context;
+  const env: NodeJS.ProcessEnv = {
+    ...testRuntimeEnvironment(context.env),
+    NODEX_TEST_TIER: resolveVitestTestTier(context.env.NODEX_TEST_TIER ?? "default"),
+  };
   delete env.NODEX_TEST_OBSERVATIONS;
   delete env.NODEX_TEST_OBSERVATION_ROOT;
   delete env.NODEX_TEST_OBSERVATION_RUNTIME;
   delete env.NODEX_TEST_OBSERVATION_CHILD;
   delete env.NODEX_TEST_TRANSFORM_CACHES;
   if (context.signal.aborted) return 130;
-  const { linuxCI } = context;
   let manifest: Awaited<ReturnType<typeof discoverSuiteManifest>> | undefined;
   if (linuxCI) {
     const { repositoryRoot: cwd, signal } = context;
     if (runtimeForSuite(suite) === "electron-node")
       await prepareElectronRuntime({ projectRoot: cwd });
-    manifest = await discoverSuiteManifest(suite, filters, false, { cwd, env, signal });
+    const relatedPaths = NIGHTLY_TEST_SUITES.includes(suite) ? linuxCI.relatedPaths : undefined;
+    manifest = await discoverSuiteManifest(
+      suite,
+      relatedPaths ?? filters,
+      relatedPaths ? "default-with-related-nightly" : "run",
+      { cwd, env: relatedPaths ? { ...env, NODEX_TEST_TIER: "related" } : env, signal },
+    );
     if (!manifest.files.length) throw new Error("Application suite has no tests: " + suite);
-    context = { ...context, exactFiles: manifest.files.filter(linuxCI.select) };
-    if (!context.exactFiles?.length) {
+    const exactFiles = manifest.files.filter(linuxCI.select);
+    if (!exactFiles.length) {
       process.stdout.write(`[test-cache] ${suite}: no files in this shard\n`);
       return 0;
     }
+    if (relatedPaths && exactFiles.some((file) => ownerOfTest(file)?.tier === "nightly"))
+      env.NODEX_TEST_TIER = "related";
+    context = { ...context, exactFiles };
   }
+  const tier = resolveVitestTestTier(env.NODEX_TEST_TIER);
   const runUncached = () =>
     runIsolatedTests(
       { suites: [suite], tier, related: false, args: filters },
@@ -555,7 +570,7 @@ export async function runCachedSuite(
     (linuxCI
       ? process.platform !== "linux" || !linuxCI.host
       : Boolean(env.CI) || process.platform !== "darwin") ||
-    tier !== "default" ||
+    (tier !== "default" && tier !== "related") ||
     env.NODEX_TEST_CACHE === "off" ||
     (env.NODEX_TEST_TIMINGS && !linuxCI) ||
     env.PWDEBUG ||

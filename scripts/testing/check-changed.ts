@@ -1,11 +1,9 @@
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -36,8 +34,6 @@ import { readMainCiNotice } from "./check-changed-main-ci.ts";
 import {
   changesRustWorkspace,
   deferNativeTests,
-  findFocusedTests,
-  isTestFile,
   observedChangedInput,
   planCheckSteps,
   planFastCheckSteps,
@@ -65,6 +61,7 @@ import { nativeArtifactPackage, prepareNativeArtifacts } from "./native-artifact
 import { readPreparedNativeTests } from "./native-test-readiness.ts";
 import { runIsolatedTests } from "./run-tests.ts";
 import { testRuntimeEnvironment } from "./runtime.ts";
+import { findCheckoutFocusedTests, isTestFile, presentFiles } from "./focused-tests.ts";
 import {
   cacheDirectory,
   digestCachePath,
@@ -353,17 +350,6 @@ export function validationLanes(semanticReady: Promise<void>) {
   };
 }
 
-function presentSiblings(root: string, directory: string): string[] {
-  try {
-    return readdirSync(path.join(root, directory), { withFileTypes: true })
-      .filter((entry) => entry.isFile())
-      .map((entry) => entry.name);
-  } catch (error) {
-    if (!isMissing(error) && (error as NodeJS.ErrnoException).code !== "ENOTDIR") throw error;
-    return [];
-  }
-}
-
 async function runAfter<T>(
   ready: Promise<void>,
   label: string,
@@ -411,7 +397,9 @@ async function planAffectedTests(
     APP_TEST_SUITES.map(async (suite) => {
       const files = bySuite.get(suite) ?? [];
       const focus = new Set(focused[suite]);
-      if (suite === "browser") return [suite, selectFocusedBrowserTests(files, focus)] as const;
+      const nightly = [...focus].filter((file) => ownerOfTest(file)?.tier === "nightly");
+      if (suite === "browser")
+        return [suite, selectFocusedBrowserTests([...files, ...nightly], focus)] as const;
       const directory = cacheDirectory(root, process.env, suite);
       const candidates = [];
       // Retained passes can be large. Bound open files and discard each pass after matching.
@@ -426,7 +414,8 @@ async function planAffectedTests(
           )),
         );
       }
-      return [suite, selectAffectedTests(candidates, focus)] as const;
+      const selected = selectAffectedTests(candidates, focus);
+      return [suite, { ...selected, files: [...selected.files, ...nightly].sort() }] as const;
     }),
   );
   return Object.fromEntries(tests);
@@ -467,15 +456,15 @@ function readRustChanges(root: string, files: readonly string[]) {
   };
 }
 
-function prepareFastNativeTests(affected: ReadonlySet<string>): typeof prepareNativeArtifacts {
+function prepareFastNativeTests(
+  buildable: ReadonlySet<NativeExecutableId>,
+): typeof prepareNativeArtifacts {
   return async (artifacts, context) => {
     const current = readPreparedNativeTests(context, artifacts.filter(isNativeExecutable));
     const remaining = artifacts.filter(
       (artifact) => !isNativeExecutable(artifact) || !current[artifact],
     );
-    const stale = remaining
-      .filter(isNativeExecutable)
-      .find((artifact) => !affected.has(nativeArtifactPackage(artifact)));
+    const stale = remaining.filter(isNativeExecutable).find((artifact) => !buildable.has(artifact));
     if (stale)
       throw new Error(
         `${stale} preparation changed while the check was queued. Rerun the fast check.`,
@@ -541,13 +530,9 @@ async function checkChanged(
     write(
       `[check:changed] ${full ? "Full" : "Fast"} check · ${files.length} changed paths since ${base.slice(0, 12)} (${ref})`,
     );
-    const present = files.filter((file) =>
-      lstatSync(path.join(root, file), { throwIfNoEntry: false })?.isFile(),
-    );
-    const presentFiles = new Set(present);
-    const focused = findFocusedTests(files, presentFiles, (directory) =>
-      presentSiblings(root, directory),
-    );
+    const present = presentFiles(root, files);
+    const presentSet = new Set(present);
+    const focused = findCheckoutFocusedTests(root, files, !full, presentSet);
     const resultsRoot = path.dirname(path.dirname(cacheDirectory(root, process.env, "unit")));
     let workspace: ReturnType<typeof workspaceInputs> | undefined;
     const getWorkspace = () => (workspace ??= workspaceInputs(root, resultsRoot));
@@ -559,23 +544,34 @@ async function checkChanged(
         root,
         (await getWorkspace()).files,
         files,
-        presentFiles,
+        presentSet,
         focused,
         signal,
       );
       const rust = readRustChanges(root, files);
-      const selectedArtifacts = APP_TEST_SUITES.flatMap((suite) =>
-        nativeRequirements(suite, tests[suite].files).filter(isNativeExecutable),
-      );
+      const selectedArtifacts = new Set<NativeExecutableId>();
+      const buildable = new Set<NativeExecutableId>();
+      for (const suite of APP_TEST_SUITES) {
+        const nightly = tests[suite].files.filter((file) => ownerOfTest(file)?.tier === "nightly");
+        for (const artifact of nativeRequirements(suite, tests[suite].files).filter(
+          isNativeExecutable,
+        )) {
+          selectedArtifacts.add(artifact);
+          if (rust.affected.has(nativeArtifactPackage(artifact))) buildable.add(artifact);
+        }
+        // A related nightly test provides the deep check for this change, even on a cold worktree.
+        for (const artifact of nativeRequirements(suite, nightly).filter(isNativeExecutable))
+          buildable.add(artifact);
+      }
       const current = readPreparedNativeTests(
         { repositoryRoot: root, env: testRuntimeEnvironment(process.env) },
-        [...new Set(selectedArtifacts)],
+        [...selectedArtifacts],
       );
       const canRun = (artifact: NativeExecutableId) =>
-        current[artifact] !== undefined || rust.affected.has(nativeArtifactPackage(artifact));
+        current[artifact] !== undefined || buildable.has(artifact);
       for (const suite of APP_TEST_SUITES)
         tests[suite] = deferNativeTests(suite, tests[suite], canRun);
-      prepare = prepareFastNativeTests(rust.affected);
+      prepare = prepareFastNativeTests(buildable);
       const runMs = Math.round(performance.now() - started);
       steps.push({ name: "test selection", outcome: "pass", runMs, queueMs: 0 });
       write(`[check:changed] pass test selection (run ${duration(runMs)}, queue 0.00s)`);
@@ -595,6 +591,9 @@ async function checkChanged(
       ...(await runStepQueue(plan, concurrency, signal, async (step, index) => {
         const name = String(index);
         if (step.kind === "cached") {
+          const scope = step.exactFiles?.some((file) => ownerOfTest(file)?.tier === "nightly")
+            ? "related"
+            : "default";
           return runStep(
             step.name,
             (stepContext) =>
@@ -603,7 +602,7 @@ async function checkChanged(
                 [],
                 {
                   ...stepContext,
-                  env: { ...stepContext.env, NODEX_TEST_TIER: "default" },
+                  env: { ...stepContext.env, NODEX_TEST_TIER: scope },
                   repositoryRoot: root,
                   exactFiles: step.exactFiles,
                   prepare,
@@ -630,7 +629,7 @@ async function checkChanged(
             ({ env, signal, onStdout, onStderr }) =>
               lanes.suite("browser", env, signal, () =>
                 runIsolatedTests(
-                  { suites: ["browser"], tier: "default", related: false, args: [] },
+                  { suites: ["browser"], tier: "related", related: false, args: [] },
                   { repositoryRoot: root, exactFiles: step.files, env, signal, onStdout, onStderr },
                 ),
               ),

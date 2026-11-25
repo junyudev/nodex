@@ -933,14 +933,18 @@ checks that the search kernel's committed WASM digest is still current.
 
 The fast tier reads the test result store before starting Vitest. It selects
 files that recorded a changed input, as well as changed, new, and sibling
-tests. It counts and skips tests known to have unobservable inputs. Chromium
-runs only changed, new, and sibling browser tests through the ordinary runner.
-The full Chromium suite runs in CI and with `--full`.
+tests. It counts and skips default tests known to have unobservable inputs.
+A nightly suite runs when its file, same-named source, or same-named default
+test changes in the same directory. Cross-cutting nightly matrices run in
+Nightly CI and release certification. Chromium runs changed, new, and sibling
+browser tests through the ordinary runner. The full default Chromium suite
+runs in CI and with `--full`.
 
 Selected Node, jsdom, and Electron tests go through the result cache. Tests
 requiring a native executable use a current build prepared by the test runner
 in this worktree. The fast tier builds missing executables when the change
-touches their Rust inputs and reports other native tests as left to CI.
+touches their Rust inputs or selects a nightly test that needs them. It reports
+other native tests with missing executables as left to CI.
 
 Use `vp run check:changed --full` for a complete local run when CI is
 unavailable or for macOS-specific changes. It checks all default Vitest suites,
@@ -1338,7 +1342,7 @@ tests:
 | `dual-window`      | `runtime-short` and a three-paragraph reply, observed by two windows            | Upstream observations per Thread and Runtime → Main bytes per window                                                                             |
 
 ```bash
-NODEX_TEST_TIER=nightly vp run test:agent-runtime packages/agent-runtime/src/orchestration-v2/testkit/StreamSteadyWork.nightly.integration.test.ts
+vp run test:agent-runtime packages/agent-runtime/src/orchestration-v2/testkit/StreamSteadyWork.integration.test.ts
 NODEX_TEST_TIER=nightly vp run test:core-client src/main/agent-runtime/AgentRuntimeConversationWork.nightly.node.test.ts
 vp run test:core-client:stress src/main/agent-runtime/AgentRuntimeConversationWork.stress.node.test.ts
 ```

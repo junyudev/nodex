@@ -14,7 +14,7 @@ import {
   type SuiteId,
   type NativeArtifactId,
 } from "../../config/test-suites.ts";
-import { resolveVitestTestTier, type VitestTestTier } from "../../config/vitest-test-tier.ts";
+import { resolveVitestTestTier, type VitestTestScope } from "../../config/vitest-test-tier.ts";
 import { runCommand, withCommandSignal, type Command } from "../tooling/process.ts";
 import { prepareNativeArtifacts, preparedNativeEnvironment } from "./native-artifacts.ts";
 import { discoverSuite, testRuntimeEnvironment, vitestCommand } from "./runtime.ts";
@@ -22,7 +22,7 @@ import { prepareElectronRuntime } from "../prepare-electron-runtime.ts";
 
 export interface TestSelection {
   readonly suites: readonly SuiteId[];
-  readonly tier: VitestTestTier;
+  readonly tier: VitestTestScope;
   readonly related: boolean;
   readonly args: readonly string[];
 }
@@ -61,7 +61,12 @@ export function parseTestSelection(
       "The suite owns its config. Pass focused paths directly, without a standalone --.",
     );
   }
-  return { suites: [parseTestSuite(name)], tier, related, args: forwarded };
+  return {
+    suites: [parseTestSuite(name)],
+    tier: related && tier === "default" ? "related" : tier,
+    related,
+    args: forwarded,
+  };
 }
 
 interface TestRunContext {
@@ -79,6 +84,9 @@ interface TestRunContext {
 }
 
 export async function runTests(selection: TestSelection, context: TestRunContext): Promise<number> {
+  if (selection.related && !context.isolatedVitestDirectory)
+    return runIsolatedTests(selection, context);
+
   // Tests run as independent Nodex processes: an Agent shell that launched the run must not leak its CLI binding.
   const environment: NodeJS.ProcessEnv = {
     ...testRuntimeEnvironment(context.env),
@@ -90,6 +98,9 @@ export async function runTests(selection: TestSelection, context: TestRunContext
     signal: context.signal,
   };
   const requirements: NativeArtifactId[] = [];
+  const relatedFiles = new Map<SuiteId, readonly string[]>();
+  const usesExactRelated =
+    selection.related && (selection.tier === "related" || selection.tier === "nightly");
   if (context.signal.aborted) return 130;
   // Discovery also runs under Electron; prepare before either path resolves its lazy executable.
   if (selection.suites.some((suite) => runtimeForSuite(suite) === "electron-node")) {
@@ -100,18 +111,20 @@ export async function runTests(selection: TestSelection, context: TestRunContext
   for (const suite of selection.suites) {
     if (context.signal.aborted) return 130;
     const needsSelection =
-      nativeRequirements(suite).length > 0 &&
-      (selection.tier !== "default" || selection.related || selection.args.length > 0);
+      usesExactRelated ||
+      (nativeRequirements(suite).length > 0 &&
+        (selection.tier !== "default" || selection.related || selection.args.length > 0));
     const files =
       context.exactFiles ??
       (needsSelection
         ? await (context.discover ?? discoverSuite)(
             suite,
             selection.args,
-            selection.related,
+            selection.related ? "related" : "run",
             commandContext,
           )
         : undefined);
+    if (usesExactRelated && files) relatedFiles.set(suite, files);
     requirements.push(...nativeRequirements(suite, files));
     if (requiresAgentRuntime(suite, selection.tier, files)) requirements.push("agent-runtime");
   }
@@ -123,6 +136,18 @@ export async function runTests(selection: TestSelection, context: TestRunContext
   });
   for (const suite of selection.suites) {
     if (context.signal.aborted) return 130;
+    const files = relatedFiles.get(suite);
+    if (files?.length === 0) {
+      (context.onStdout ?? ((output: string) => process.stdout.write(output)))(
+        "No affected test files found, exiting with code 0\n",
+      );
+      continue;
+    }
+    if (files && context.isolatedVitestDirectory)
+      await writeFile(
+        path.join(context.isolatedVitestDirectory, "files.json"),
+        JSON.stringify(files),
+      );
     const command = {
       ...vitestCommand(
         suite,

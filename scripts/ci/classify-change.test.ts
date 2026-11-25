@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 
 import { APP_TEST_SUITES, STATIC_GROUPS } from "./ci-gate-plan";
@@ -164,30 +167,64 @@ describe("CI change classification", () => {
   });
 
   test.each([
-    "src/main/core-client/example.nightly.node.test.ts",
-    "src/renderer/example.nightly.browser.test.tsx",
-    "scripts/ci/example.nightly.test.ts",
-    "packages/landing/src/example.nightly.jsdom.test.ts",
-    "packages/agent-runtime/src/platform/example.nightly.integration.test.ts",
-  ])("sends changes to %s only to type and CI contracts", (path) => {
+    ["src/main/core-client/example.nightly.node.test.ts", "core-client"],
+    ["src/renderer/example.nightly.browser.test.tsx", "browser"],
+    ["scripts/ci/example.nightly.test.ts", "unit"],
+    ["packages/landing/src/example.nightly.jsdom.test.ts", "renderer"],
+    ["src/host/example.nightly.integration.ts", "integration"],
+  ])("runs changes to %s in the owning suite", (path, suite) => {
     expect(classifyChangedPaths([path, "docs/CI.md"])).toMatchObject({
-      appTestSuites: [],
+      appTestSuites: [suite],
       docsOnly: false,
       protocolContracts: false,
+      relatedPaths: [path],
       staticGroups: ["types", "ci-contracts"],
-      testMode: "none",
+      testMode: "related",
       windowsChecks: false,
     });
   });
 
-  test("keeps existing test selection when a source edit also adds nightly coverage", () => {
+  test("adds changed nightly coverage to a source edit's related plan", () => {
     const source = "src/main/boards/board-queries.ts";
     const nightly = "scripts/ci/example.nightly.test.ts";
     expect(classifyChangedPaths([source, nightly])).toMatchObject({
-      appTestSuites: ["core-client", "main", "integration"],
-      relatedPaths: [source],
+      appTestSuites: ["unit", "core-client", "main", "integration"],
+      relatedPaths: [source, nightly],
       staticGroups: ["types", "source-ownership", "ci-contracts", "repository-contracts"],
       testMode: "related",
+    });
+    expect(classifyChangedPaths([source, nightly], { forceFullTests: true })).toMatchObject({
+      appTestSuites: ["core-client", "main", "integration"],
+      relatedPaths: [],
+      testMode: "full",
+    });
+  });
+
+  test("adds the runtime owner of a nightly sibling that differs from the default owner", () => {
+    const repositoryRoot = mkdtempSync(path.join(os.tmpdir(), "nodex-classify-nightly-"));
+    const ordinary = "src/renderer/widget.test.tsx";
+    const nightly = "src/renderer/widget.nightly.integration.ts";
+    try {
+      mkdirSync(path.join(repositoryRoot, "src/renderer"), { recursive: true });
+      for (const file of [ordinary, nightly]) writeFileSync(path.join(repositoryRoot, file), "");
+      expect(classifyChangedPaths([ordinary], { repositoryRoot })).toMatchObject({
+        relatedPaths: [ordinary],
+        appTestSuites: ["renderer", "integration"],
+        testMode: "related",
+      });
+    } finally {
+      rmSync(repositoryRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("combines Landing gates with a nightly test outside Landing", () => {
+    const landing = "packages/landing/src/example.ts";
+    const nightly = "src/main/example.nightly.test.ts";
+    expect(classifyChangedPaths([landing, nightly])).toMatchObject({
+      landingOnly: false,
+      appTestSuites: ["unit", "main", "renderer"],
+      relatedPaths: [landing, nightly],
+      staticGroups: ["types", "source-ownership", "ci-contracts", "landing"],
     });
   });
 
