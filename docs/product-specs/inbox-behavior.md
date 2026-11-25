@@ -1061,11 +1061,14 @@ creates a second message, and does not count against the Agent budget again.
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox;
   - `Open Nodex`, the Nodex mark, which opens Nodex's own conversation;
-  - `Inbox settings`, a panel that changes in place what routes and what new
-    chats run on: under `Nodex`, when suggestions run, what Nodex runs on, and
-    `Let Nodex start chats for me`; then whether suggestions choose each new chat's models
-    and the model new chats otherwise run on, each with the composer's model
-    menu. `Routing preferences and more` opens `Settings → Inbox`.
+  - `Inbox settings`, a panel that changes in place what routes and how new
+    chats start. Each section shows its model, with the composer's model menu,
+    then its switches: under `Nodex`, when suggestions run beside its title,
+    what Nodex runs on, and `Let Nodex start chats for me`; under `New chats`,
+    the model they otherwise run on, whether suggestions choose each one's
+    models, then `Use a worktree` and `Open beside their message`, which also
+    hold for chats started by hand and so stay available while suggestions
+    are off. `Routing preferences and more` opens `Settings → Inbox`.
 
   Each Inbox is a tab, so its header spans the tab like a Board's: views at
   the start and tools at the end, in the same places as on every other tab.
@@ -1078,17 +1081,20 @@ creates a second message, and does not count against the Agent budget again.
   - `Start fresh` archives Nodex's conversation;
   - free-text routing preferences are the user's standing instructions to Nodex
     and take priority over its defaults;
-  - whether a chat the Inbox starts opens with its message Pages in its right
-    panel, which is on by default;
-  - whether suggestions choose each new chat's models, which is on by default;
-  - what chats the Inbox starts run on otherwise, chosen with the composer's
-    model menu: the Agent, its model, and the model's effort and speed;
-  - whether suggestions read Nodex's model guide, which is on by default and can
-    be read in full there. It covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4
-    Neon. Each note speaks for one named model, judged on its own: sibling or
-    older models, such as GPT-6.2 Astra or GPT-6.1 Sol, and groups of models,
-    such as those a provider offers free, carry no note. The guide changes with Nodex; the user's own view of each
-    model belongs in the routing preferences.
+  - under `New chats`:
+    - whether suggestions choose each new chat's models, which is on by default;
+    - what chats the Inbox starts run on otherwise, chosen with the composer's
+      model menu: the Agent, its model, and the model's effort and speed;
+    - whether suggestions read Nodex's model guide, which is on by default and can
+      be read in full there. It covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4
+      Neon. Each note speaks for one named model, judged on its own: sibling or
+      older models, such as GPT-6.2 Astra or GPT-6.1 Sol, and groups of models,
+      such as those a provider offers free, carry no note. The guide changes with Nodex; the user's own view of each
+      model belongs in the routing preferences;
+    - whether a chat the Inbox starts works in its message Page's worktree,
+      which is on by default and which each message can still choose;
+    - whether a chat the Inbox starts opens with its message Pages in its right
+      panel, which is on by default.
 
   Choices read the Runtime's existing provider and model catalog without forcing
   discovery on open. Cached choices remain visible during background refresh;

@@ -101,6 +101,23 @@ describe("the Inbox's settings panel", () => {
     );
   });
 
+  test("sets where new chats work and what opens beside them, even while suggestions are off", async () => {
+    const agents = inboxAgentsFixture({
+      settings: { ...DEFAULT_INBOX_SETTINGS, suggestions: "off" },
+    });
+    render(<InboxAgentsPopover agents={agents} onOpenSettings={vi.fn()} />);
+    await click(screen.getByRole("button", { name: "Inbox settings" }));
+    const chooseModels = await screen.findByRole("switch", { name: "Suggestions choose models" });
+    expect(
+      chooseModels.hasAttribute("disabled") ||
+        chooseModels.getAttribute("aria-disabled") === "true",
+    ).toBe(true);
+    await click(screen.getByRole("switch", { name: "Use a worktree" }));
+    expect(agents.save).toHaveBeenLastCalledWith({ newChatsUseWorktrees: false });
+    await click(screen.getByRole("switch", { name: "Open beside their message" }));
+    expect(agents.save).toHaveBeenLastCalledWith({ showPageBesideNewChats: false });
+  });
+
   test("hands routing preferences to Settings and closes", async () => {
     const onOpenSettings = vi.fn();
     render(<InboxAgentsPopover agents={inboxAgentsFixture()} onOpenSettings={onOpenSettings} />);

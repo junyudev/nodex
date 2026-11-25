@@ -304,48 +304,11 @@ export function InboxSettingsPage() {
         </div>
       </SectionBlock>
       <SectionBlock
-        title={intl.formatMessage({ id: "inbox.inboxSettingsPage.chats", defaultMessage: "Chats" })}
+        title={intl.formatMessage({
+          id: "inbox.inboxSettingsPage.newChatsSection",
+          defaultMessage: "New chats",
+        })}
       >
-        <SettingRow
-          label={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.showTheMessageBesideNew",
-            defaultMessage: "Show the message beside new chats",
-          })}
-          description={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.aChatTheInboxStarts",
-            defaultMessage:
-              "A chat the Inbox starts opens with its message’s Page in the right panel.",
-          })}
-        >
-          <NodexSwitch
-            ariaLabel={intl.formatMessage({
-              id: "inbox.inboxSettingsPage.showTheMessageBesideNew",
-              defaultMessage: "Show the message beside new chats",
-            })}
-            checked={settings.showPageBesideNewChats}
-            onCheckedChange={(showPageBesideNewChats) => save({ showPageBesideNewChats })}
-          />
-        </SettingRow>
-        <SettingRow
-          label={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.newChatsUseAWorktree",
-            defaultMessage: "New chats use a worktree",
-          })}
-          description={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.aChatTheInboxStarts2",
-            defaultMessage:
-              "A chat the Inbox starts for a message works in its Page’s worktree, apart from your checkout. Off, it runs in the Project’s checkout. Each message can still choose.",
-          })}
-        >
-          <NodexSwitch
-            ariaLabel={intl.formatMessage({
-              id: "inbox.inboxSettingsPage.newChatsUseAWorktree",
-              defaultMessage: "New chats use a worktree",
-            })}
-            checked={settings.newChatsUseWorktrees}
-            onCheckedChange={(newChatsUseWorktrees) => save({ newChatsUseWorktrees })}
-          />
-        </SettingRow>
         <SettingRow
           label={intl.formatMessage({
             id: "inbox.inboxSettingsPage.suggestionsChooseModels",
@@ -418,6 +381,46 @@ export function InboxSettingsPage() {
           />
         </SettingRow>
         <InboxModelGuide />
+        <SettingRow
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.newChatsUseAWorktree",
+            defaultMessage: "New chats use a worktree",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.aChatTheInboxStarts2",
+            defaultMessage:
+              "A chat the Inbox starts for a message works in its Page’s worktree, apart from your checkout. Off, it runs in the Project’s checkout. Each message can still choose.",
+          })}
+        >
+          <NodexSwitch
+            ariaLabel={intl.formatMessage({
+              id: "inbox.inboxSettingsPage.newChatsUseAWorktree",
+              defaultMessage: "New chats use a worktree",
+            })}
+            checked={settings.newChatsUseWorktrees}
+            onCheckedChange={(newChatsUseWorktrees) => save({ newChatsUseWorktrees })}
+          />
+        </SettingRow>
+        <SettingRow
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.showTheMessageBesideNew",
+            defaultMessage: "Show the message beside new chats",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.aChatTheInboxStarts",
+            defaultMessage:
+              "A chat the Inbox starts opens with its message’s Page in the right panel.",
+          })}
+        >
+          <NodexSwitch
+            ariaLabel={intl.formatMessage({
+              id: "inbox.inboxSettingsPage.showTheMessageBesideNew",
+              defaultMessage: "Show the message beside new chats",
+            })}
+            checked={settings.showPageBesideNewChats}
+            onCheckedChange={(showPageBesideNewChats) => save({ showPageBesideNewChats })}
+          />
+        </SettingRow>
       </SectionBlock>
     </SettingsPageSurface>
   );

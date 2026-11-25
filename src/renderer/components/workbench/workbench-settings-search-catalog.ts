@@ -311,7 +311,16 @@ export const settingsMessages = defineMessages({
     id: "settings.search.inbox.routingPreferencesDescription",
     defaultMessage: "Standing instructions suggestions follow over Nodex's own guidance.",
   },
-  inboxSearchChats: { id: "settings.search.inbox.chats", defaultMessage: "Chats" },
+  inboxSearchNewChats: { id: "settings.search.inbox.newChats", defaultMessage: "New chats" },
+  inboxSearchWorktree: {
+    id: "settings.search.inbox.worktree",
+    defaultMessage: "New chats use a worktree",
+  },
+  inboxSearchWorktreeDescription: {
+    id: "settings.search.inbox.worktreeDescription",
+    defaultMessage:
+      "A chat the Inbox starts works in its Page's worktree, apart from your checkout.",
+  },
   inboxSearchShowMessage: {
     id: "settings.search.inbox.showMessage",
     defaultMessage: "Show the message beside new chats",
@@ -2280,17 +2289,22 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
-        title: settingsMessages.inboxSearchChats,
+        title: settingsMessages.inboxSearchNewChats,
         entries: [
-          entry(
-            settingsMessages.inboxSearchShowMessage,
-            settingsMessages.inboxSearchShowMessageDescription,
-            ["page", "right panel", "side panel", "open"],
-          ),
           entry(
             settingsMessages.inboxSearchNewChatsRunOn,
             settingsMessages.inboxSearchNewChatsRunOnDescription,
             ["dispatch", "runtime", "model", "effort", "speed"],
+          ),
+          entry(
+            settingsMessages.inboxSearchWorktree,
+            settingsMessages.inboxSearchWorktreeDescription,
+            ["worktree", "checkout", "branch", "isolate"],
+          ),
+          entry(
+            settingsMessages.inboxSearchShowMessage,
+            settingsMessages.inboxSearchShowMessageDescription,
+            ["page", "right panel", "side panel", "open"],
           ),
         ],
       },

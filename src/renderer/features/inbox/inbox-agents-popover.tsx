@@ -40,7 +40,7 @@ function Section({
 }: {
   readonly title: string;
   readonly hint: string;
-  /** Sits at the title's trailing edge, such as the switch that turns the section on. */
+  /** Sits at the title's trailing edge: how the whole section works, such as when Nodex routes. */
   readonly control?: ReactNode;
   readonly children: ReactNode;
 }) {
@@ -58,9 +58,41 @@ function Section({
   );
 }
 
+/** A preference inside a section: one quiet line, with a hint only when the label can't say it all. */
+function SwitchRow({
+  label,
+  hint = null,
+  checked,
+  disabled = false,
+  onCheckedChange,
+}: {
+  readonly label: string;
+  readonly hint?: string | null;
+  readonly checked: boolean;
+  readonly disabled?: boolean;
+  readonly onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 text-xs text-token-text-secondary">
+      <span className="min-w-0">
+        {label}
+        {hint ? <span className="block text-token-description-foreground">{hint}</span> : null}
+      </span>
+      <NodexSwitch
+        size="compact"
+        ariaLabel={label}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+      />
+    </label>
+  );
+}
+
 /**
- * The Inbox's settings gear. What writes suggestions and what new chats run on change in place,
- * without leaving the Inbox; routing preferences and the rest stay in Settings.
+ * The Inbox's settings gear. What routes, and what new chats run on, where they work and what
+ * opens beside them, change in place without leaving the Inbox; routing preferences and what is
+ * set once stay in Settings. Each section reads the same way: its model, then its switches.
  */
 export function InboxAgentsPopover({
   agents,
@@ -126,32 +158,21 @@ export function InboxAgentsPopover({
               trigger="field"
               disabled={!suggestions || !ready}
             />
-            <label className="flex items-center justify-between gap-3 text-xs text-token-text-secondary">
-              <span className="min-w-0">
-                <FormattedMessage
-                  id="inbox.inboxAgentsPopover.letNodexStartChatsFor"
-                  defaultMessage="Let Nodex start chats for me"
-                />
-                <span className="block text-token-description-foreground">
-                  <FormattedMessage
-                    id="inbox.inboxAgentsPopover.whatYouClearlyAskFor"
-                    defaultMessage="What you clearly ask for starts without a click."
-                  />
-                </span>
-              </span>
-              <NodexSwitch
-                size="compact"
-                ariaLabel={intl.formatMessage({
-                  id: "inbox.inboxAgentsPopover.startChats",
-                  defaultMessage: "Let Nodex start chats for me",
-                })}
-                checked={agents.settings.dispatchMode === "act_on_requests"}
-                disabled={!suggestions}
-                onCheckedChange={(start) =>
-                  void agents.save({ dispatchMode: start ? "act_on_requests" : "suggest" })
-                }
-              />
-            </label>
+            <SwitchRow
+              label={intl.formatMessage({
+                id: "inbox.inboxAgentsPopover.startChats",
+                defaultMessage: "Let Nodex start chats for me",
+              })}
+              hint={intl.formatMessage({
+                id: "inbox.inboxAgentsPopover.whatYouClearlyAskFor",
+                defaultMessage: "What you clearly ask for starts without a click.",
+              })}
+              checked={agents.settings.dispatchMode === "act_on_requests"}
+              disabled={!suggestions}
+              onCheckedChange={(start) =>
+                void agents.save({ dispatchMode: start ? "act_on_requests" : "suggest" })
+              }
+            />
           </Section>
           <Section
             title={intl.formatMessage({
@@ -169,22 +190,45 @@ export function InboxAgentsPopover({
                     defaultMessage: "Every new chat runs on this.",
                   })
             }
-            control={
-              <NodexSwitch
-                size="compact"
-                ariaLabel={intl.formatMessage({
-                  id: "inbox.inboxAgentsPopover.chooseModels",
-                  defaultMessage: "Suggestions choose models",
-                })}
-                checked={agents.settings.suggestionsChooseModels}
-                disabled={!suggestions}
-                onCheckedChange={(suggestionsChooseModels) =>
-                  void agents.save({ suggestionsChooseModels })
-                }
-              />
-            }
           >
             <InboxChatAgentPicker agents={agents} trigger="field" disabled={!ready} />
+            <SwitchRow
+              label={intl.formatMessage({
+                id: "inbox.inboxAgentsPopover.chooseModels",
+                defaultMessage: "Suggestions choose models",
+              })}
+              checked={agents.settings.suggestionsChooseModels}
+              disabled={!suggestions}
+              onCheckedChange={(suggestionsChooseModels) =>
+                void agents.save({ suggestionsChooseModels })
+              }
+            />
+            {/* Where a chat works and what opens beside it hold for chats started by hand too,
+                so they stay on while suggestions are off. */}
+            <div className="flex flex-col gap-2 pt-1">
+              <SwitchRow
+                label={intl.formatMessage({
+                  id: "inbox.inboxAgentsPopover.useAWorktree",
+                  defaultMessage: "Use a worktree",
+                })}
+                checked={agents.settings.newChatsUseWorktrees}
+                disabled={!agents.settingsReady}
+                onCheckedChange={(newChatsUseWorktrees) =>
+                  void agents.save({ newChatsUseWorktrees })
+                }
+              />
+              <SwitchRow
+                label={intl.formatMessage({
+                  id: "inbox.inboxAgentsPopover.openBesideTheirMessage",
+                  defaultMessage: "Open beside their message",
+                })}
+                checked={agents.settings.showPageBesideNewChats}
+                disabled={!agents.settingsReady}
+                onCheckedChange={(showPageBesideNewChats) =>
+                  void agents.save({ showPageBesideNewChats })
+                }
+              />
+            </div>
           </Section>
           <button
             type="button"
