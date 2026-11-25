@@ -119,12 +119,12 @@ export interface CoreLibraryModuleAdapter {
   ): Promise<PageOwnershipPathReadModel | null>;
   findPageLocation(
     pageId: string,
-  ): Promise<{ readonly pageId: string; readonly projectId: string } | null>;
+  ): Promise<{ readonly pageId: string; readonly projectId: string | null } | null>;
   findViewLocation(viewId: string): Promise<{
     readonly viewId: string;
     readonly dataSourceId: string;
     readonly databaseId: string;
-    readonly projectId: string;
+    readonly projectId: string | null;
   } | null>;
   readPageLifecyclePreflight(
     projectId: string | null,
@@ -2407,7 +2407,7 @@ export const createCoreLibraryModuleAdapter = (
       if (value.page_id !== pageId) {
         throw new Error("Core Page location escaped its requested identity");
       }
-      return value.project_id ? { pageId: value.page_id, projectId: value.project_id } : null;
+      return { pageId: value.page_id, projectId: value.project_id ?? null };
     },
     findViewLocation: async (viewId) => {
       const snapshot = await input.client.libraryRead({
@@ -2422,12 +2422,11 @@ export const createCoreLibraryModuleAdapter = (
       if (value.view_id !== viewId) {
         throw new Error("Core View location escaped its requested identity");
       }
-      if (!value.project_id) return null;
       return {
         viewId: value.view_id,
         dataSourceId: value.data_source_id,
         databaseId: value.database_id,
-        projectId: value.project_id,
+        projectId: value.project_id ?? null,
       };
     },
     readPageLifecyclePreflight: async (projectId, pageId) => {

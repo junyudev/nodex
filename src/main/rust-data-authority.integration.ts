@@ -2259,9 +2259,11 @@ describe("Electron native data authority", () => {
           },
         },
       });
-      await expect(
-        rootLibrary.findPageLocation("page:electron-library-adapter"),
-      ).resolves.toBeNull();
+      // A Page in the Library has a location without a Project, so its links open in Space.
+      await expect(rootLibrary.findPageLocation("page:electron-library-adapter")).resolves.toEqual({
+        pageId: "page:electron-library-adapter",
+        projectId: null,
+      });
       const libraryPageDetail = await rootLibrary.readLibraryPageDetail(
         "page:electron-library-adapter",
       );

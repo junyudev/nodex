@@ -199,6 +199,8 @@ mismatched Space is rejected in Main; it never falls back to personal content.
 Copied Page, View and Session links include their Space. External unqualified links
 are refused; relative mentions stay within their Document’s Space. Main resolves a qualified
 link against that connection before navigating, switching the renderer when needed.
+Pages and Views can resolve directly in the Space's Library without a Project.
+A Page link can also identify a Block with a `#<block-id>` fragment after the Space qualifier.
 
 Remote transport loss shows Reconnecting… while the connection retries. A window
 opened while its host is down, or one that lost its host, reads everything it shows

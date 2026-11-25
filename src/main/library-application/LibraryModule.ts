@@ -111,12 +111,12 @@ export class LibraryModule extends Context.Service<
     ) => LibraryEffect<PageOwnershipPathReadModel | null>;
     readonly findPageLocation: (
       pageId: string,
-    ) => LibraryEffect<{ readonly pageId: string; readonly projectId: string } | null>;
+    ) => LibraryEffect<{ readonly pageId: string; readonly projectId: string | null } | null>;
     readonly findViewLocation: (viewId: string) => LibraryEffect<{
       readonly viewId: string;
       readonly dataSourceId: string;
       readonly databaseId: string;
-      readonly projectId: string;
+      readonly projectId: string | null;
     } | null>;
     readonly readPageLifecyclePreflight: (
       projectId: string | null,

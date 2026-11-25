@@ -13,6 +13,7 @@ export interface SpaceDeepLinkTarget {
 
 export interface PageDeepLinkTarget extends SpaceDeepLinkTarget {
   pageId: string;
+  blockId?: string;
 }
 
 export interface SessionDeepLinkTarget extends SpaceDeepLinkTarget {
@@ -29,9 +30,46 @@ export type NodexDeepLinkTarget =
   | (ViewDeepLinkTarget & { readonly kind: "view" });
 
 export type ResolvedSpaceDeepLink = {
-  readonly spaceId?: string;
   readonly projectId: string | null;
 } & NodexDeepLinkTarget;
+
+export type QualifiedSpaceDeepLink = ResolvedSpaceDeepLink & { readonly spaceId: string };
+
+export type DeepLinkOpenEvents = {
+  [Target in QualifiedSpaceDeepLink as `deeplink:open-${Target["kind"]}`]: Omit<Target, "kind">;
+};
+
+export function isDeepLinkOpenChannel(channel: string): channel is keyof DeepLinkOpenEvents {
+  return (
+    channel === "deeplink:open-page" ||
+    channel === "deeplink:open-session" ||
+    channel === "deeplink:open-view"
+  );
+}
+
+export function isDeepLinkOpenPayload<Channel extends keyof DeepLinkOpenEvents>(
+  channel: Channel,
+  value: unknown,
+): value is DeepLinkOpenEvents[Channel] {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Record<string, unknown>;
+  if (typeof payload.spaceId !== "string" || !normalizeDeepLinkId(payload.spaceId)) return false;
+  if (typeof payload.projectId !== "string" && payload.projectId !== null) return false;
+
+  switch (channel) {
+    case "deeplink:open-page":
+      return (
+        typeof payload.pageId === "string" &&
+        !!normalizeDeepLinkId(payload.pageId) &&
+        (payload.blockId === undefined ||
+          (typeof payload.blockId === "string" && !!normalizeDeepLinkId(payload.blockId)))
+      );
+    case "deeplink:open-session":
+      return typeof payload.sessionId === "string" && !!normalizeDeepLinkId(payload.sessionId);
+    case "deeplink:open-view":
+      return typeof payload.viewId === "string" && !!normalizeDeepLinkId(payload.viewId);
+  }
+}
 
 const spaceSuffix = (target: SpaceDeepLinkTarget): string =>
   target.spaceId === undefined ? "" : `?spaceId=${encodeDeepLinkId(target.spaceId)}`;
@@ -45,16 +83,17 @@ function normalizeDeepLinkId(value: string): string | null {
     : null;
 }
 
-function decodePathSegment(value: string): string | null {
+function decodeDeepLinkId(value: string): string | null {
   try {
-    return decodeURIComponent(value);
+    return normalizeDeepLinkId(decodeURIComponent(value));
   } catch {
     return null;
   }
 }
 
 export function buildPageDeepLink(target: PageDeepLinkTarget): string {
-  return `${NODEX_PAGE_DEEPLINK_PREFIX}${encodeDeepLinkId(target.pageId)}${spaceSuffix(target)}`;
+  const fragment = target.blockId === undefined ? "" : `#${encodeDeepLinkId(target.blockId)}`;
+  return `${NODEX_PAGE_DEEPLINK_PREFIX}${encodeDeepLinkId(target.pageId)}${spaceSuffix(target)}${fragment}`;
 }
 
 export function buildSessionDeepLink(target: SessionDeepLinkTarget): string {
@@ -73,7 +112,10 @@ function encodeDeepLinkId(value: string): string {
   return encodeURIComponent(normalized);
 }
 
-function parseDeepLinkId(value: string, kind: string): string | null {
+function parseDeepLinkTarget(
+  value: string,
+  kind: string,
+): { url: URL; id: string; space: SpaceDeepLinkTarget } | null {
   if (
     value.trim() !== value ||
     value.slice(0, 8).toLowerCase() !== `${NODEX_DEEPLINK_PROTOCOL}//`
@@ -94,18 +136,18 @@ function parseDeepLinkId(value: string, kind: string): string | null {
   const host = url.hostname.trim().toLowerCase();
   const pathSegments = url.pathname.split("/");
 
-  const encodedId =
+  const id =
     host === kind && pathSegments.length === 2
-      ? normalizeDeepLinkId(decodePathSegment(pathSegments[1] ?? "") ?? "")
+      ? decodeDeepLinkId(pathSegments[1] ?? "")
       : host.length === 0 && pathSegments.length === 3 && pathSegments[1]?.toLowerCase() === kind
-        ? normalizeDeepLinkId(decodePathSegment(pathSegments[2] ?? "") ?? "")
+        ? decodeDeepLinkId(pathSegments[2] ?? "")
         : null;
-
-  return encodedId;
+  if (!id) return null;
+  const space = parseSpace(url);
+  return space ? { url, id, space } : null;
 }
 
-function parseSpace(value: string): SpaceDeepLinkTarget | null {
-  const url = new URL(value);
+function parseSpace(url: URL): SpaceDeepLinkTarget | null {
   const ids = url.searchParams.getAll("spaceId");
   if (!ids.length) return {};
   if (ids.length !== 1 || !normalizeDeepLinkId(ids[0]!)) return null;
@@ -113,19 +155,20 @@ function parseSpace(value: string): SpaceDeepLinkTarget | null {
 }
 
 export function parsePageDeepLink(value: string): PageDeepLinkTarget | null {
-  const pageId = parseDeepLinkId(value, NODEX_PAGE_DEEPLINK_KIND);
-  const space = pageId ? parseSpace(value) : null;
-  return pageId && space ? { ...space, pageId } : null;
+  const target = parseDeepLinkTarget(value, NODEX_PAGE_DEEPLINK_KIND);
+  if (!target) return null;
+  const { url, id: pageId, space } = target;
+  if (!url.hash) return url.href.endsWith("#") ? null : { ...space, pageId };
+  const blockId = decodeDeepLinkId(url.hash.slice(1));
+  return blockId ? { ...space, pageId, blockId } : null;
 }
 
 export function parseSessionDeepLink(value: string): SessionDeepLinkTarget | null {
-  const sessionId = parseDeepLinkId(value, NODEX_SESSION_DEEPLINK_KIND);
-  const space = sessionId ? parseSpace(value) : null;
-  return sessionId && space ? { ...space, sessionId } : null;
+  const target = parseDeepLinkTarget(value, NODEX_SESSION_DEEPLINK_KIND);
+  return target ? { ...target.space, sessionId: target.id } : null;
 }
 
 export function parseViewDeepLink(value: string): ViewDeepLinkTarget | null {
-  const viewId = parseDeepLinkId(value, NODEX_VIEW_DEEPLINK_KIND);
-  const space = viewId ? parseSpace(value) : null;
-  return viewId && space ? { ...space, viewId } : null;
+  const target = parseDeepLinkTarget(value, NODEX_VIEW_DEEPLINK_KIND);
+  return target ? { ...target.space, viewId: target.id } : null;
 }

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
+import { isDeepLinkOpenChannel, isDeepLinkOpenPayload } from "../shared/nodex-deeplink";
 import { installStatePreservingWebviewMoves } from "./state-preserving-webview-moves";
 import {
   EXECUTE_FOCUSED_HISTORY_CHANNEL,
@@ -215,6 +216,10 @@ contextBridge.exposeInMainWorld("api", {
       };
     }
     const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => {
+      if (isDeepLinkOpenChannel(event)) {
+        if (args.length === 1 && isDeepLinkOpenPayload(event, args[0])) callback(args[0]);
+        return;
+      }
       if (args.length !== 1) {
         callback(...args);
         return;

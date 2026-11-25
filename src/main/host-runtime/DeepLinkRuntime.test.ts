@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { assert, it } from "@effect/vitest";
 import type { BrowserWindow } from "electron";
+import { buildSessionDeepLink } from "../../shared/nodex-deeplink";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
 import { DeepLinkRuntime, DeepLinkRuntimeError, live } from "./DeepLinkRuntime";
 
@@ -29,7 +30,9 @@ it.effect("keeps the newest queued targets behind readiness and flushes resolved
       personalSpaceId: "personal",
       resolve: (target) => Effect.succeed({ ...target, projectId: "project-1" }),
     });
-    assert.isFalse(yield* runtime.handle("nodex://pages/ambiguous"));
+    assert.isFalse(yield* runtime.handle("nodex://sessions/chat"));
+    const trayLink = buildSessionDeepLink({ sessionId: "chat", spaceId: "personal" });
+    assert.isTrue(yield* runtime.handle(trayLink));
     assert.isTrue(yield* runtime.handle("nodex://pages/old?spaceId=personal"));
     assert.isTrue(yield* runtime.handle("nodex://pages/new?spaceId=personal"));
     assert.strictEqual(sent.length, 0);
@@ -38,20 +41,23 @@ it.effect("keeps the newest queued targets behind readiness and flushes resolved
     assert.strictEqual(sent.length, 0);
     rendererReady = true;
     yield* runtime.flush;
-    assert.strictEqual(sent.length, 1);
-    assert.strictEqual(sent[0]?.channel, "deeplink:open-page");
-    assert.deepStrictEqual(sent[0]?.payload, {
-      spaceId: "personal",
-      projectId: "project-1",
-      pageId: "new",
-    });
+    assert.deepStrictEqual(sent, [
+      {
+        channel: "deeplink:open-session",
+        payload: { spaceId: "personal", projectId: "project-1", sessionId: "chat" },
+      },
+      {
+        channel: "deeplink:open-page",
+        payload: { spaceId: "personal", projectId: "project-1", pageId: "new" },
+      },
+    ]);
     assert.isNull(yield* runtime.extractFromArgv(["--flag"]));
   }),
 );
 
-it.effect("resolves a qualified link only in its Space and delivers to that Space's renderer", () =>
+it.effect("delivers projectless links with their coordinates to the addressed Space", () =>
   Effect.gen(function* () {
-    const sent: Array<{ window: string; payload: unknown }> = [];
+    const sent: Array<{ window: string; channel: string; payload: unknown }> = [];
     const windowFor = (spaceId: string, id: number) =>
       ({
         isDestroyed: () => false,
@@ -60,7 +66,8 @@ it.effect("resolves a qualified link only in its Space and delivers to that Spac
           getURL: () => (spaceId === "personal" ? "app://-/" : `app://-/?spaceId=${spaceId}`),
           isDestroyed: () => false,
           isLoadingMainFrame: () => false,
-          send: (_channel: string, payload: unknown) => sent.push({ window: spaceId, payload }),
+          send: (channel: string, payload: unknown) =>
+            sent.push({ window: spaceId, channel, payload }),
         },
       }) as unknown as BrowserWindow;
     const personal = windowFor("personal", 1);
@@ -80,7 +87,7 @@ it.effect("resolves a qualified link only in its Space and delivers to that Spac
       personalSpaceId: "personal",
       resolve: (target) =>
         target.spaceId === "team"
-          ? Effect.succeed({ ...target, projectId: "team-project" })
+          ? Effect.succeed({ ...target, projectId: null })
           : Effect.fail(
               new DeepLinkRuntimeError({
                 operation: "unknown-space",
@@ -89,11 +96,13 @@ it.effect("resolves a qualified link only in its Space and delivers to that Spac
             ),
     });
     yield* links.markReady;
-    yield* links.handle("nodex://pages/same-page?spaceId=team");
+    const pageLink = "nodex://pages/same-page?spaceId=team#block%2Fone";
+    assert.strictEqual(yield* links.extractFromArgv(["--flag", pageLink]), pageLink);
     assert.deepStrictEqual(sent, [
       {
         window: "team",
-        payload: { spaceId: "team", pageId: "same-page", projectId: "team-project" },
+        channel: "deeplink:open-page",
+        payload: { spaceId: "team", pageId: "same-page", projectId: null, blockId: "block/one" },
       },
     ]);
     assert.strictEqual(
@@ -101,7 +110,11 @@ it.effect("resolves a qualified link only in its Space and delivers to that Spac
       "Failure",
     );
     assert.strictEqual(sent.length, 1);
-    yield* links.handle("nodex://pages/another-page?spaceId=team");
-    assert.strictEqual(sent.length, 2);
+    yield* links.handle("nodex://views/same-view?spaceId=team");
+    assert.deepStrictEqual(sent[1], {
+      window: "team",
+      channel: "deeplink:open-view",
+      payload: { spaceId: "team", viewId: "same-view", projectId: null },
+    });
   }),
 );

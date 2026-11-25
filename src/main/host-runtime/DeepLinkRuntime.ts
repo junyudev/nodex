@@ -10,8 +10,9 @@ import {
   parseSessionDeepLink,
   parseViewDeepLink,
   type NodexDeepLinkTarget,
-  type ResolvedSpaceDeepLink,
+  type QualifiedSpaceDeepLink,
 } from "../../shared/nodex-deeplink";
+import type { IpcEvents } from "../../shared/ipc-api";
 import { rendererSpaceParameter } from "../../shared/space-ipc-policy";
 import { safeSendToWindow } from "../ipc-safe-send";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
@@ -29,7 +30,7 @@ interface SpaceLinkResolver {
   readonly personalSpaceId: string;
   readonly resolve: (
     target: NodexDeepLinkTarget & { readonly spaceId: string },
-  ) => Effect.Effect<ResolvedSpaceDeepLink | null, DeepLinkRuntimeError>;
+  ) => Effect.Effect<QualifiedSpaceDeepLink | null, DeepLinkRuntimeError>;
 }
 
 export class DeepLinkRuntime extends Context.Service<
@@ -55,14 +56,14 @@ export const live = (options: DeepLinkRuntimeOptions) =>
       const state = yield* Ref.make({
         ready: false,
         pending: [] as NodexDeepLinkTarget[],
-        resolved: [] as ResolvedSpaceDeepLink[],
+        resolved: [] as QualifiedSpaceDeepLink[],
       });
       let spaces: SpaceLinkResolver | null = null;
       const fail = (cause: unknown) =>
         new DeepLinkRuntimeError({ operation: "resolve-link", cause });
       const resolve = (
         target: NodexDeepLinkTarget,
-      ): Effect.Effect<ResolvedSpaceDeepLink | null, DeepLinkRuntimeError> => {
+      ): Effect.Effect<QualifiedSpaceDeepLink | null, DeepLinkRuntimeError> => {
         if (!target.spaceId)
           return Effect.fail(fail(new Error("A Space-qualified link is required")));
         if (!spaces) return Effect.fail(fail(new Error("Space routing is not ready")));
@@ -88,7 +89,8 @@ export const live = (options: DeepLinkRuntimeOptions) =>
           )
             continue;
           const { kind, ...payload } = target;
-          if (!safeSendToWindow(window, `deeplink:open-${kind}`, [payload])) continue;
+          const channel = `deeplink:open-${kind}` satisfies keyof IpcEvents;
+          if (!safeSendToWindow(window, channel, [payload])) continue;
           yield* Ref.update(state, (current) => ({
             ...current,
             resolved: current.resolved.filter((entry) => entry !== target),

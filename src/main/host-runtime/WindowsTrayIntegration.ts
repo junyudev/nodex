@@ -1,4 +1,5 @@
 import { getMainIntl } from "../i18n/main-intl";
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -6,6 +7,7 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { randomUUID } from "node:crypto";
 import { buildSessionDeepLink } from "../../shared/nodex-deeplink";
+import { rendererSpaceParameter } from "../../shared/space-ipc-policy";
 import { getWorkbenchSceneReturnLocation } from "../../shared/workbench-layout";
 import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessionActivity";
 import { MainConfig } from "../app/MainConfig";
@@ -37,6 +39,7 @@ export const live = Layer.effect(
     const windows = yield* WindowRuntime;
     const applicationWindows = yield* ApplicationWindowRuntime;
     const links = yield* DeepLinkRuntime;
+    const personalSpaceId = (yield* CoreAuthority).identity.libraryId;
     const workspace = yield* ProjectWorkspace;
     const chats = yield* ChatSearch;
     const activity = yield* AgentRuntimeSessionActivity;
@@ -98,22 +101,28 @@ export const live = Layer.effect(
             ),
           );
 
+    const openChat = (sessionId: string) =>
+      links.handle(buildSessionDeepLink({ sessionId, spaceId: personalSpaceId }));
     yield* tray.actions.pipe(
       Stream.runForEach((action) =>
         Effect.gen(function* () {
           if (action.kind === "open") return yield* Effect.sync(applicationWindows.focusLast);
           if (action.kind === "quit") return yield* electron.quit;
           if (action.kind === "chat") {
-            yield* links.handle(buildSessionDeepLink({ sessionId: action.sessionId }));
+            yield* openChat(action.sessionId);
             return;
           }
           if (action.kind === "new-chat") {
             const window = windows.getLastFocused();
-            const location = window
-              ? getWorkbenchSceneReturnLocation(
-                  windows.bootstrap(window.webContents.id).layout.location,
-                )
+            const focusedSpaceId = window
+              ? (rendererSpaceParameter(window.webContents.getURL()) ?? personalSpaceId)
               : null;
+            const location =
+              window && focusedSpaceId === personalSpaceId
+                ? getWorkbenchSceneReturnLocation(
+                    windows.bootstrap(window.webContents.id).layout.location,
+                  )
+                : null;
             const projectId =
               location?.kind === "project"
                 ? location.projectId
@@ -124,7 +133,7 @@ export const live = Layer.effect(
               operationId: randomUUID(),
               payload: { candidateSessionId: randomUUID(), projectId },
             });
-            yield* links.handle(buildSessionDeepLink({ sessionId: value.id }));
+            yield* openChat(value.id);
             return;
           }
           const catalog = yield* chats.search({ query: "", limit: 60 });
