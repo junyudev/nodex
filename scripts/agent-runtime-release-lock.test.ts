@@ -1,10 +1,21 @@
-import { resolve } from "node:path";
-import { expect, test } from "vite-plus/test";
+import path, { resolve } from "node:path";
+import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   CODEX_APP_SERVER_REQUIRED_ARTIFACTS,
   parseCodexAppServerReleaseLock,
   readCodexAppServerReleaseLock,
+  type CodexAppServerReleaseLock,
 } from "./agent-runtime-release-lock";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import {
+  createAgentRuntimeRelockCandidate,
+  parseAgentRuntimeRelockCli,
+  writeAgentRuntimeRelockCandidate,
+} from "./relock-agent-runtime";
+import { stageCodexRuntime } from "./stage-codex-runtime";
 
 const HASH = "a".repeat(64);
 const COMMIT = "316795b3cf2a45e90d121d9f46499d4658b2645c";
@@ -235,4 +246,176 @@ test("rejects managed installation archives from another release or target", () 
   const targetBuilds = wrongTarget.builds as Record<string, Record<string, unknown>>;
   targetBuilds["win32-x64"]!.targetTriple = "x86_64-unknown-linux-musl";
   expect(() => parseCodexAppServerReleaseLock(wrongTarget)).toThrow("targetTriple");
+});
+
+describe("relocking an official runtime archive", () => {
+  const roots: string[] = [];
+  const sha256 = (value: string | Buffer): string =>
+    createHash("sha256").update(value).digest("hex");
+  const skipPlatformInspection = () => undefined;
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  function createArchive(
+    root: string,
+    target: string,
+    version: string,
+    requiredArtifacts: readonly string[],
+  ): string {
+    const packageRoot = path.join(root, `package-${target}`);
+    mkdirSync(packageRoot, { recursive: true });
+    writeFileSync(
+      path.join(packageRoot, "codex-package.json"),
+      `${JSON.stringify({
+        entrypoint: "bin/codex",
+        execServer: "bin/codex-exec-server",
+        layoutVersion: 1,
+        pathDir: "codex-path",
+        resourcesDir: "codex-resources",
+        target,
+        variant: "codex",
+        version,
+      })}\n`,
+    );
+    const executableArtifacts = new Set([
+      "bin/codex",
+      "bin/codex-code-mode-host",
+      "bin/codex-exec-server",
+      "codex-path/rg",
+      "codex-resources/voice/bin/codex-voice-host",
+    ]);
+    for (const artifact of requiredArtifacts) {
+      if (artifact === "codex-package.json") continue;
+      const filePath = path.join(packageRoot, artifact);
+      mkdirSync(path.dirname(filePath), { recursive: true });
+      const executable = executableArtifacts.has(artifact);
+      writeFileSync(filePath, executable ? "#!/bin/sh\nexit 0\n" : `fixture:${artifact}\n`);
+      chmodSync(filePath, executable ? 0o755 : 0o644);
+    }
+    const archivePath = path.join(root, `codex-package-${target}.tar.gz`);
+    execFileSync("/usr/bin/tar", [
+      "-czf",
+      archivePath,
+      "-C",
+      packageRoot,
+      "bin",
+      "codex-package.json",
+      "codex-path",
+      "codex-resources",
+    ]);
+    return archivePath;
+  }
+
+  function fixture() {
+    const projectRoot = mkdtempSync(path.join(os.tmpdir(), "nodex-runtime-relock-test-"));
+    roots.push(projectRoot);
+    const licensePath = path.join(projectRoot, "resources/third-party/codex/LICENSE");
+    const noticePath = path.join(projectRoot, "resources/third-party/codex/NOTICE");
+    mkdirSync(path.dirname(licensePath), { recursive: true });
+    writeFileSync(licensePath, "license\n");
+    writeFileSync(noticePath, "notice\n");
+    const lock = JSON.parse(
+      readFileSync(path.resolve("resources/agent-runtime/codex-app-server.lock.json"), "utf8"),
+    ) as CodexAppServerReleaseLock;
+    lock.notices.licenseSha256 = sha256("license\n");
+    lock.notices.noticeSha256 = sha256("notice\n");
+    const arm64ArchivePath = createArchive(
+      projectRoot,
+      "aarch64-apple-darwin",
+      lock.appServerRuntimeVersion,
+      lock.requiredArtifacts,
+    );
+    const manifestBody = `${sha256(readFileSync(arm64ArchivePath))}  ${path.basename(arm64ArchivePath)}\n`;
+    writeFileSync(path.join(projectRoot, lock.upstream.checksumManifest.assetName), manifestBody);
+    lock.upstream.checksumManifest.sha256 = sha256(manifestBody);
+    lock.upstream.checksumManifest.size = Buffer.byteLength(manifestBody);
+    const lockPath = path.join(projectRoot, "resources/agent-runtime/codex-app-server.lock.json");
+    mkdirSync(path.dirname(lockPath), { recursive: true });
+    writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+    return {
+      lock,
+      arm64ArchivePath,
+      lockPath,
+      projectRoot,
+    };
+  }
+
+  test.skipIf(process.platform === "win32")(
+    "relocks the official archive and produces stageable metadata",
+    async () => {
+      const input = fixture();
+      const candidate = await createAgentRuntimeRelockCandidate({
+        ...input,
+        agentRuntimePlatformContractVerifier: skipPlatformInspection,
+        outputPath: path.join(input.projectRoot, "candidate.json"),
+        projectRootPath: input.projectRoot,
+      });
+
+      expect(candidate.schemaVersion).toBe(1);
+      expect(candidate.upstream).toEqual(input.lock.upstream);
+      expect(candidate.builds["darwin-arm64"].archiveSha256).toBe(
+        sha256(readFileSync(input.arm64ArchivePath)),
+      );
+      const unpackedSize = input.lock.requiredArtifacts.reduce(
+        (bytes, artifact) =>
+          bytes +
+          readFileSync(path.join(input.projectRoot, "package-aarch64-apple-darwin", artifact))
+            .byteLength,
+        0,
+      );
+      expect(candidate.builds["darwin-arm64"].unpackedSize).toBe(unpackedSize);
+      expect(candidate.builds["darwin-arm64"].entrypointSha256).toBe(sha256("#!/bin/sh\nexit 0\n"));
+      expect(candidate.builds["darwin-arm64"].runtimeMetadataSha256).not.toBe("0".repeat(64));
+
+      const immutableCandidatePath = path.join(input.projectRoot, "review/candidate.lock.json");
+      writeAgentRuntimeRelockCandidate(immutableCandidatePath, candidate);
+      expect(() => writeAgentRuntimeRelockCandidate(immutableCandidatePath, candidate)).toThrow();
+
+      const candidatePath = path.join(input.projectRoot, "candidate.lock.json");
+      writeFileSync(candidatePath, `${JSON.stringify(candidate, null, 2)}\n`);
+      await expect(
+        stageCodexRuntime({
+          agentRuntimePlatformContractVerifier: skipPlatformInspection,
+          archivePath: input.arm64ArchivePath,
+          lockPath: candidatePath,
+          outputPath: path.join(input.projectRoot, "verified"),
+          projectRootPath: input.projectRoot,
+          targetArch: "arm64",
+          targetPlatform: "darwin",
+        }),
+      ).resolves.toMatchObject({
+        appServerRuntimeVersion: input.lock.appServerRuntimeVersion,
+        targetArch: "arm64",
+      });
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "requires explicit archives, base lock, and non-canonical output",
+    () => {
+      expect(() => parseAgentRuntimeRelockCli(["--out", "/tmp/candidate.json"])).toThrow(
+        "official Codex release archive",
+      );
+      expect(() =>
+        parseAgentRuntimeRelockCli([
+          "--arm64",
+          "/tmp/arm64.tar.gz",
+          "--out",
+          "/tmp/candidate.json",
+        ]),
+      ).toThrow("--base-lock is required");
+      expect(() =>
+        parseAgentRuntimeRelockCli([
+          "--arm64",
+          "/tmp/arm64.tar.gz",
+          "--base-lock",
+          "/tmp/base.json",
+          "--out",
+          path.resolve("resources/agent-runtime/codex-app-server.lock.json"),
+        ]),
+      ).toThrow("must not overwrite the canonical");
+    },
+  );
 });

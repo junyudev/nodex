@@ -1,14 +1,15 @@
 import {
+  PUSH_KEY_BYTES,
   decodePushKey,
   encodeDeviceLink,
-  PUSH_KEY_BYTES,
   spaceMemberKey,
 } from "@nodex/mobile-protocol";
 import * as Scheduler from "effect/Scheduler";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FakeHost, fakePlatform } from "./fake-host.test-support";
-import type { DeliveredNotification, MobilePush, PushPermission } from "./platform";
+import { type DeliveredNotification, type MobilePush, type PushPermission } from "./platform";
 import { createMobileRuntime, type MobileRuntime } from "./runtime";
+import { subjectOfNotificationRequest, targetOfNotification } from "./notification-payload";
 
 const route = "https://host-a:3000/";
 const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
@@ -377,5 +378,52 @@ describe("notifications", () => {
     runtime.notifications.clearDelivered({ pageId: "page-1", sessionId: "session-1" });
     await tick(10);
     expect(push.dismissed).toEqual(["turn", "chat"]);
+  });
+});
+
+const tapped = (trigger: unknown) => ({ notification: { request: { trigger } } });
+
+describe("targetOfNotification", () => {
+  it("finds the chat in what the notification extension attached", () => {
+    expect(
+      targetOfNotification(tapped({ type: "push", payload: { sessionId: "s1", hostId: "h1" } })),
+    ).toEqual({ kind: "chat", sessionId: "s1", hostId: "h1" });
+    expect(targetOfNotification(tapped({ type: "push", payload: { sessionId: "s1" } }))).toEqual({
+      kind: "chat",
+      sessionId: "s1",
+      hostId: null,
+    });
+  });
+
+  it("opens a Page Turn's chat, or its Page when it waits on none", () => {
+    expect(
+      targetOfNotification(
+        tapped({ type: "push", payload: { sessionId: "s1", pageId: "p1", hostId: "h1" } }),
+      ),
+    ).toEqual({ kind: "chat", sessionId: "s1", hostId: "h1" });
+    expect(
+      targetOfNotification(tapped({ type: "push", payload: { pageId: "p1", hostId: "h1" } })),
+    ).toEqual({ kind: "page", pageId: "p1", hostId: "h1" });
+  });
+
+  it("is null for a notification that names neither", () => {
+    expect(targetOfNotification(tapped(null))).toBeNull();
+    expect(targetOfNotification(tapped({ type: "push", payload: { n: "sealed" } }))).toBeNull();
+    expect(targetOfNotification(tapped({ type: "push", payload: { sessionId: "" } }))).toBeNull();
+    expect(targetOfNotification(tapped({ type: "push", payload: { sessionId: 3 } }))).toBeNull();
+  });
+});
+
+describe("subjectOfNotificationRequest", () => {
+  it("keeps both the chat and the Page a Page Turn's notification is about", () => {
+    expect(
+      subjectOfNotificationRequest({
+        trigger: { type: "push", payload: { sessionId: "s1", pageId: "p1", hostId: "h1" } },
+      }),
+    ).toEqual({ sessionId: "s1", pageId: "p1", hostId: "h1" });
+    expect(
+      subjectOfNotificationRequest({ trigger: { type: "push", payload: { pageId: "p1" } } }),
+    ).toEqual({ sessionId: null, pageId: "p1", hostId: null });
+    expect(subjectOfNotificationRequest({ trigger: { type: "push", payload: {} } })).toBeNull();
   });
 });

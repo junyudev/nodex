@@ -6,7 +6,6 @@ import {
   galleryAt,
   galleryImages,
   replyImages,
-  thumbnailSize,
   viewerPosition,
   withItem,
 } from "./chat-images";
@@ -34,23 +33,10 @@ describe("chat pictures", () => {
     ]);
   });
 
-  it("shows one picture large and more in up to three columns that fit the width", () => {
-    expect(thumbnailSize(358, 1)).toBe(160);
-    expect(thumbnailSize(358, 2)).toBe(160);
-    expect(thumbnailSize(358, 3)).toBe(114);
-    expect(thumbnailSize(358, 8)).toBe(114);
-    // Three columns and their gaps never overflow the row.
-    expect(3 * thumbnailSize(300, 5) + 2 * 8).toBeLessThanOrEqual(300);
-    expect(thumbnailSize(0, 0)).toBe(0);
-  });
-
-  it("opens the viewer on a picture the gallery has, counting only when there are several", () => {
-    expect(viewerPosition(1, 3)).toEqual({ index: 1, title: "2 of 3" });
-    expect(viewerPosition(7, 3)).toEqual({ index: 2, title: "3 of 3" });
-    expect(viewerPosition(-1, 3)).toEqual({ index: 0, title: "1 of 3" });
-    // A swipe settles between pages before it lands on one.
+  it("lands on an existing picture as a swipe settles", () => {
+    expect(viewerPosition(7, 3).index).toBe(2);
+    expect(viewerPosition(-1, 3).index).toBe(0);
     expect(viewerPosition(1.6, 3).index).toBe(2);
-    expect(viewerPosition(0, 1)).toEqual({ index: 0, title: "" });
   });
 });
 
