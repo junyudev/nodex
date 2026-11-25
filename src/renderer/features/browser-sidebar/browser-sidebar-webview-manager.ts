@@ -3,7 +3,6 @@ import {
   makeBrowserSidebarTabKey,
   type BrowserSidebarBrowserUseCaptureSurfaceEvent,
   type BrowserSidebarDestroyWebviewRequest,
-  type BrowserSidebarSize,
   type BrowserSidebarTabIdentity,
   type BrowserSidebarTabSnapshot,
   type BrowserSidebarThemeVariant,
@@ -39,6 +38,10 @@ export interface BrowserSidebarWebviewBounds {
 }
 
 type WebviewHostKey = BrowserSidebarTabIdentity;
+type CaptureSurface = Pick<
+  BrowserSidebarBrowserUseCaptureSurfaceEvent,
+  "surfaceSize" | "preferExistingBounds"
+>;
 
 interface ManagedWebviewInput extends WebviewHostKey {
   browserStorageId?: string;
@@ -126,7 +129,7 @@ interface ManagedBrowserWebviewHost {
   resync(): void;
   shouldDestroyForHostRequest(request: BrowserSidebarDestroyWebviewRequest): boolean;
   send(channel: string, ...args: unknown[]): void;
-  setBrowserUseCaptureSurfaceSize(size: BrowserSidebarSize | null): void;
+  setCaptureSurface(surface: CaptureSurface | null): void;
   sync(input: ResolvedSyncWebviewInput): void;
 }
 
@@ -140,7 +143,7 @@ class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
   isVisible = false;
   mountGeneration = 0;
   private bounds: BrowserSidebarWebviewBounds | null = null;
-  private browserUseCaptureSurfaceSize: BrowserSidebarSize | null = null;
+  private captureSurface: CaptureSurface | null = null;
   private readonly disposers: Array<() => void> = [];
   private readonly pendingMessages = new Map<string, unknown[]>();
   private domReady = false;
@@ -259,9 +262,9 @@ class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
     }
   }
 
-  setBrowserUseCaptureSurfaceSize(size: BrowserSidebarSize | null): void {
+  setCaptureSurface(surface: CaptureSurface | null): void {
     if (this.disposed) return;
-    this.browserUseCaptureSurfaceSize = size;
+    this.captureSurface = surface;
     this.syncContainerStyle();
   }
 
@@ -271,22 +274,29 @@ class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
   }
 
   private syncContainerStyle(): void {
-    const captureSurfaceSize = this.browserUseCaptureSurfaceSize;
-    const isCapturing =
-      captureSurfaceSize !== null && captureSurfaceSize.width > 0 && captureSurfaceSize.height > 0;
-    const bounds = isCapturing
-      ? {
-          height: captureSurfaceSize.height,
-          width: captureSurfaceSize.width,
-          x: 0,
-          y: 0,
-        }
-      : this.bounds;
+    const captureSize = this.captureSurface?.surfaceSize;
+    const hasCaptureSurface = Boolean(
+      captureSize && captureSize.width > 0 && captureSize.height > 0,
+    );
+    const useExistingBounds =
+      this.captureSurface?.preferExistingBounds === true &&
+      this.bounds !== null &&
+      this.bounds.width > 1 &&
+      this.bounds.height > 1;
+    const captureBounds =
+      captureSize && hasCaptureSurface && !useExistingBounds
+        ? { ...captureSize, x: 0, y: 0 }
+        : null;
+    const bounds = captureBounds ?? this.bounds;
     const shouldPaint =
-      (this.shouldPaint || isCapturing) && bounds !== null && bounds.width > 0 && bounds.height > 0;
-    const shouldPresent = shouldPaint && this.isVisible && !isCapturing;
+      (this.shouldPaint || hasCaptureSurface) &&
+      bounds !== null &&
+      bounds.width > 0 &&
+      bounds.height > 0;
+    const shouldPresent =
+      this.shouldPaint && shouldPaint && this.isVisible && captureBounds === null;
     const shouldPaintHidden =
-      shouldPaint && (isCapturing || (!this.isVisible && this.hostKind === "retained"));
+      shouldPaint && !shouldPresent && (hasCaptureSurface || this.hostKind === "retained");
     if ((shouldPresent || shouldPaintHidden) && bounds) {
       Object.assign(this.container.style, {
         position: "fixed",
@@ -425,7 +435,7 @@ class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
 }
 
 export class BrowserSidebarRendererWebviewManager {
-  private readonly browserUseCaptureSurfaceSizes = new Map<string, BrowserSidebarSize>();
+  private readonly browserUseCaptureSurfaces = new Map<string, CaptureSurface>();
   private readonly hosts = new Map<string, ManagedBrowserWebviewHost>();
   private readonly mountGenerations = new Map<string, number>();
   private readonly hostGenerations = new Map<string, number>();
@@ -548,7 +558,7 @@ export class BrowserSidebarRendererWebviewManager {
     };
     const host = this.getWebview(resolvedInput);
     this.reservedHostGenerations.delete(key);
-    host.setBrowserUseCaptureSurfaceSize(this.browserUseCaptureSurfaceSizes.get(key) ?? null);
+    host.setCaptureSurface(this.browserUseCaptureSurfaces.get(key) ?? null);
     host.sync(resolvedInput);
     const annotationMode = this.annotationModes.get(key);
     if (annotationMode) {
@@ -810,11 +820,11 @@ export class BrowserSidebarRendererWebviewManager {
   setBrowserUseCaptureSurface(event: BrowserSidebarBrowserUseCaptureSurfaceEvent): void {
     const key = makeHostKey(event);
     if (event.surfaceSize) {
-      this.browserUseCaptureSurfaceSizes.set(key, event.surfaceSize);
+      this.browserUseCaptureSurfaces.set(key, event);
     } else {
-      this.browserUseCaptureSurfaceSizes.delete(key);
+      this.browserUseCaptureSurfaces.delete(key);
     }
-    this.hosts.get(key)?.setBrowserUseCaptureSurfaceSize(event.surfaceSize);
+    this.hosts.get(key)?.setCaptureSurface(event.surfaceSize ? event : null);
   }
 
   destroyWebviewAtHostRequest(
@@ -863,7 +873,7 @@ export class BrowserSidebarRendererWebviewManager {
       this.reservedHostGenerations.delete(key);
       this.annotationModes.delete(key);
       this.annotationDesignPreviews.delete(key);
-      this.browserUseCaptureSurfaceSizes.delete(key);
+      this.browserUseCaptureSurfaces.delete(key);
     }
   }
 
@@ -934,7 +944,7 @@ export class BrowserSidebarRendererWebviewManager {
     this.reservedHostGenerations.clear();
     this.annotationModes.clear();
     this.annotationDesignPreviews.clear();
-    this.browserUseCaptureSurfaceSizes.clear();
+    this.browserUseCaptureSurfaces.clear();
     this.hostClaims.clear();
     for (const state of this.hostReconciliations.values()) {
       if (state.retryTimeout !== null) clearTimeout(state.retryTimeout);

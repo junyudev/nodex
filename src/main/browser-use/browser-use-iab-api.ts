@@ -24,6 +24,7 @@ import type { BrowserUsePolicyReader } from "./browser-use-policy-store";
 const DEFAULT_CDP_COMMAND_TIMEOUT_MS = 20_000;
 const DEFAULT_PAGE_READY_TIMEOUT_MS = 15_000;
 const DEFAULT_CURSOR_ARRIVAL_TIMEOUT_MS = 1_500;
+const DEFAULT_SCREENSHOT_TIMEOUT_MS = 5_000;
 const CAPTURE_SURFACE_READY_TIMEOUT_MS = 1_000;
 const CAPTURE_SURFACE_POLL_INTERVAL_MS = 16;
 const MIN_BROWSER_USE_VIEWPORT_WIDTH = 240;
@@ -171,16 +172,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readCaptureSurfaceSize(
-  method: string,
   commandParams: Record<string, unknown> | undefined,
 ): { height: number; width: number } | null {
-  if (
-    method !== "Page.captureScreenshot" ||
-    commandParams?.captureBeyondViewport !== true ||
-    !isRecord(commandParams.clip)
-  ) {
-    return null;
-  }
+  if (commandParams?.captureBeyondViewport !== true || !isRecord(commandParams.clip)) return null;
   const { height, width } = commandParams.clip;
   if (
     typeof height !== "number" ||
@@ -192,36 +186,28 @@ function readCaptureSurfaceSize(
   ) {
     return null;
   }
-  return {
-    height: Math.ceil(height),
-    width: Math.ceil(width),
-  };
+  return { height: Math.ceil(height), width: Math.ceil(width) };
 }
 
-function isCaptureSurfaceReady(
-  metrics: unknown,
-  target: { height: number; width: number },
-): boolean {
-  if (!isRecord(metrics)) return false;
-  const viewport = isRecord(metrics.cssVisualViewport)
-    ? metrics.cssVisualViewport
-    : isRecord(metrics.visualViewport)
-      ? metrics.visualViewport
-      : null;
-  if (!viewport) return false;
-  const width =
-    typeof viewport.clientWidth === "number"
-      ? viewport.clientWidth
-      : typeof viewport.width === "number"
-        ? viewport.width
-        : 0;
-  const height =
-    typeof viewport.clientHeight === "number"
-      ? viewport.clientHeight
-      : typeof viewport.height === "number"
-        ? viewport.height
-        : 0;
-  return width >= target.width && height >= target.height;
+function readCaptureViewport(metrics: unknown) {
+  if (!isRecord(metrics)) return null;
+  const viewport = metrics.cssVisualViewport ?? metrics.visualViewport;
+  if (!isRecord(viewport)) return null;
+  const width = viewport.clientWidth ?? viewport.width;
+  const height = viewport.clientHeight ?? viewport.height;
+  const { pageX: x, pageY: y } = viewport;
+  // The renderer shelves guests without paint bounds at one pixel.
+  if (
+    typeof width !== "number" ||
+    !Number.isFinite(width) ||
+    width <= 1 ||
+    typeof height !== "number" ||
+    !Number.isFinite(height) ||
+    height <= 1
+  ) {
+    return null;
+  }
+  return { width, height, x: typeof x === "number" ? x : 0, y: typeof y === "number" ? y : 0 };
 }
 
 function assertAllowedBrowserUseNavigationUrl(value: unknown): string {
@@ -240,6 +226,7 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
   private readonly buildFlavor: string;
   private readonly cdpCommandTimeoutMs: number;
   private readonly controlledTabs = new Map<number, ControlledBrowserUseTab>();
+  private readonly capturingTabs = new Set<number>();
   private readonly cdpDisposers = new Map<number, () => void>();
   private readonly cursorArrivalTimeoutMs: number;
   private readonly debuggerTargetIdsBySessionId = new Map<string, string>();
@@ -696,7 +683,29 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     ) {
       throw new Error(`Unsupported Browser Use target command: ${params.method}`);
     }
-    const contents = await this.waitForLiveTab(tab);
+    const screenshot = params.method === "Page.captureScreenshot";
+    const requestedTimeout = params.timeoutMs;
+    const screenshotTimeout = Math.min(
+      this.cdpCommandTimeoutMs,
+      typeof requestedTimeout === "number" &&
+        Number.isFinite(requestedTimeout) &&
+        requestedTimeout > 0
+        ? requestedTimeout
+        : DEFAULT_SCREENSHOT_TIMEOUT_MS,
+    );
+    const screenshotDeadline = screenshot
+      ? (await this.asyncRuntime.now()) + screenshotTimeout
+      : null;
+    const contents = await this.waitForLiveTab(
+      tab,
+      screenshot
+        ? {
+            timeoutMs: Math.min(screenshotTimeout, this.pageReadyTimeoutMs),
+            error:
+              "The Browser tab is still attaching. Retry the screenshot when the tab is ready.",
+          }
+        : undefined,
+    );
     const debuggerPort = contents.debugger;
     if (!debuggerPort) throw new Error("Browser debugger is unavailable");
     if (!debuggerPort.isAttached()) debuggerPort.attach("1.3");
@@ -786,29 +795,85 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
         );
       }
     }
-    const captureSurfaceSize = readCaptureSurfaceSize(params.method, params.commandParams);
-    if (captureSurfaceSize) {
-      this.browser.setCaptureSurface({
-        ...toIdentity(this.route, tab.browserTabId),
-        surfaceSize: captureSurfaceSize,
-      });
-    }
-    try {
-      if (captureSurfaceSize) {
-        await this.waitForCaptureSurface(debuggerPort, captureSurfaceSize);
-      }
-      return await this.asyncRuntime.deadline(
-        () => debuggerPort.sendCommand(params.method, params.commandParams, targetSessionId),
-        this.cdpCommandTimeoutMs,
-        `Timed out executing Browser Use CDP command ${params.method}`,
+    if (screenshotDeadline !== null) {
+      return await this.captureScreenshot(
+        tab,
+        contents,
+        debuggerPort,
+        params.commandParams,
+        targetSessionId,
+        screenshotDeadline,
       );
-    } finally {
-      if (captureSurfaceSize) {
-        this.browser.setCaptureSurface({
-          ...toIdentity(this.route, tab.browserTabId),
-          surfaceSize: null,
-        });
+    }
+    return await this.asyncRuntime.deadline(
+      () => debuggerPort.sendCommand(params.method, params.commandParams, targetSessionId),
+      this.cdpCommandTimeoutMs,
+      `Timed out executing Browser Use CDP command ${params.method}`,
+    );
+  }
+
+  private async captureScreenshot(
+    tab: ControlledBrowserUseTab,
+    contents: BrowserWebContentsLike,
+    debuggerPort: NonNullable<BrowserWebContentsLike["debugger"]>,
+    commandParams: Record<string, unknown> | undefined,
+    targetSessionId: string | undefined,
+    deadline: number,
+  ): Promise<{ data: string }> {
+    if (this.capturingTabs.has(tab.id)) {
+      throw new Error(
+        "A screenshot is already in progress for this Browser tab. Retry when it finishes.",
+      );
+    }
+    const identity = toIdentity(this.route, tab.browserTabId);
+    const captureSize = readCaptureSurfaceSize(commandParams);
+    const viewportSize = this.browser.getTab(identity)?.viewport ?? makeBrowserUseViewport();
+    this.capturingTabs.add(tab.id);
+    try {
+      this.browser.setCaptureSurface({
+        ...identity,
+        surfaceSize: captureSize ?? { width: viewportSize.width, height: viewportSize.height },
+        ...(captureSize === null ? { preferExistingBounds: true } : {}),
+      });
+      const viewport = await this.waitForCaptureSurface(debuggerPort, captureSize, deadline);
+      if (
+        this.disposed ||
+        contents.isDestroyed() ||
+        this.browser.getWebContents(identity) !== contents
+      ) {
+        throw new Error(
+          "The Browser tab changed before it could be captured. Retry the screenshot.",
+        );
       }
+      if (!viewport) {
+        throw new Error(
+          "The Browser tab has no paintable viewport yet. Retry the screenshot when the tab is ready.",
+        );
+      }
+
+      // The Browser service supplies a viewport clip from an earlier layout read. Explicit
+      // clips and full-page captures set captureBeyondViewport and keep their original coordinates.
+      const clip = commandParams?.clip;
+      const screenshotParams =
+        !targetSessionId && commandParams?.captureBeyondViewport === undefined && isRecord(clip)
+          ? { ...commandParams, clip: { ...clip, ...viewport } }
+          : commandParams;
+      const noFrame =
+        "The Browser tab did not produce a screenshot frame. It may still be painting or its window may be hidden. Retry the screenshot.";
+      const timeLeft = deadline - (await this.asyncRuntime.now());
+      if (timeLeft <= 0) throw new Error(noFrame);
+      const result = await this.asyncRuntime.deadline(
+        () => debuggerPort.sendCommand("Page.captureScreenshot", screenshotParams, targetSessionId),
+        timeLeft,
+        noFrame,
+      );
+      if (!isRecord(result) || typeof result.data !== "string" || !result.data) {
+        throw new Error(noFrame);
+      }
+      return { data: result.data };
+    } finally {
+      this.capturingTabs.delete(tab.id);
+      this.browser.setCaptureSurface({ ...identity, surfaceSize: null });
     }
   }
 
@@ -1088,7 +1153,10 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     return tab;
   }
 
-  private async waitForLiveTab(tab: ControlledBrowserUseTab): Promise<BrowserWebContentsLike> {
+  private async waitForLiveTab(
+    tab: ControlledBrowserUseTab,
+    wait?: { error: string; timeoutMs: number },
+  ): Promise<BrowserWebContentsLike> {
     const identity = toIdentity(this.route, tab.browserTabId);
     const readReadyContents = (): BrowserWebContentsLike | null => {
       const snapshot = this.browser.getTab(identity);
@@ -1125,9 +1193,9 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
         if (attachedDuringSubscription) succeed(attachedDuringSubscription);
         return unsubscribe;
       },
-      this.pageReadyTimeoutMs,
+      wait?.timeoutMs ?? this.pageReadyTimeoutMs,
       () => {
-        throw new Error(`Timed out waiting for Browser Use tab ${tab.id}`);
+        throw new Error(wait?.error ?? `Timed out waiting for Browser Use tab ${tab.id}`);
       },
     );
   }
@@ -1306,23 +1374,39 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
 
   private async waitForCaptureSurface(
     debuggerPort: NonNullable<BrowserWebContentsLike["debugger"]>,
-    target: { height: number; width: number },
-  ): Promise<void> {
-    const deadline = (await this.asyncRuntime.now()) + CAPTURE_SURFACE_READY_TIMEOUT_MS;
-    do {
+    target: { height: number; width: number } | null,
+    screenshotDeadline: number,
+  ): Promise<ReturnType<typeof readCaptureViewport>> {
+    const deadline = Math.min(
+      screenshotDeadline,
+      (await this.asyncRuntime.now()) + CAPTURE_SURFACE_READY_TIMEOUT_MS,
+    );
+    let viewport: ReturnType<typeof readCaptureViewport> = null;
+    for (
+      let remaining = deadline - (await this.asyncRuntime.now());
+      remaining > 0;
+      remaining = deadline - (await this.asyncRuntime.now())
+    ) {
       try {
-        const now = await this.asyncRuntime.now();
         const metrics = await this.asyncRuntime.deadline(
           () => debuggerPort.sendCommand("Page.getLayoutMetrics", {}),
-          Math.max(1, deadline - now),
-          "Timed out waiting for the Browser Use capture surface",
+          remaining,
+          "The Browser tab did not report its viewport",
         );
-        if (isCaptureSurfaceReady(metrics, target)) return;
+        viewport = readCaptureViewport(metrics);
+        if (
+          viewport &&
+          (!target || (viewport.width >= target.width && viewport.height >= target.height))
+        ) {
+          return viewport;
+        }
       } catch {
-        return;
+        return viewport;
       }
-      await this.asyncRuntime.sleep(CAPTURE_SURFACE_POLL_INTERVAL_MS);
-    } while ((await this.asyncRuntime.now()) < deadline);
+      await this.asyncRuntime.sleep(Math.min(remaining, CAPTURE_SURFACE_POLL_INTERVAL_MS));
+    }
+    // Chromium can capture beyond the viewport without an exact-size surface.
+    return viewport;
   }
 }
 

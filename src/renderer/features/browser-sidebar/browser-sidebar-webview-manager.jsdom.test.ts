@@ -512,7 +512,7 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     expect(panelRoot?.style.zIndex).toBe(String(APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX));
   });
 
-  test("temporarily paints the current visible guest on the Browser Use capture surface", () => {
+  test("keeps the visible guest in place for viewport screenshots and resizes it for larger captures", () => {
     const manager = createManager();
     const identity = {
       browserConversationId: "session-1",
@@ -531,6 +531,15 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     });
     const root = getManagerRoot();
     const webview = root?.querySelector("webview");
+
+    manager.setBrowserUseCaptureSurface({
+      ...identity,
+      surfaceSize: { height: 720, width: 1280 },
+      preferExistingBounds: true,
+    });
+    expect(root?.getAttribute("data-browser-sidebar-webview-visible")).toBe("true");
+    expect(root?.style.width).toBe(`${visibleBounds.width}px`);
+    expect(root?.style.height).toBe(`${visibleBounds.height}px`);
 
     manager.setBrowserUseCaptureSurface({
       ...identity,

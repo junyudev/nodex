@@ -468,6 +468,8 @@ export interface BrowserSidebarBrowserUseViewportEvent extends BrowserSidebarTab
 
 export interface BrowserSidebarBrowserUseCaptureSurfaceEvent extends BrowserSidebarTabIdentity {
   surfaceSize: BrowserSidebarSize | null;
+  /** Viewport screenshots use this size only when the host has no usable bounds. */
+  preferExistingBounds?: true;
 }
 
 export type BrowserBrowsingDataKind = "cookies" | "cache" | "site-data" | "history" | "downloads";
