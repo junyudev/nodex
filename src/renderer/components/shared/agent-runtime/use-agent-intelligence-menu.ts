@@ -381,7 +381,6 @@ function projectConfigOptions(catalog: AgentModelCatalogPresentation, intl: Intl
             }));
       return {
         id: option.id,
-        thoughtLevel: option.type === "select" && option.category === "thought_level",
         label: option.name,
         value,
         choices,
@@ -402,7 +401,9 @@ export function useAgentIntelligenceMenu(
   const intl = useIntl();
   const { catalog, selection, models, provider, onSelectionChange } = props;
   const isCodex = selection.kind === "codex";
-  const hasNativeEffort = isCodex || selection.kind === "claudeAgent";
+  // Codex and Claude show every option their models have as a control of its own; any other
+  // Agent lists the options beyond effort as it names them.
+  const hasNativeOptions = isCodex || selection.kind === "claudeAgent";
   const native = provider?.nativeIntelligence;
   const { overlay, changeNative } = useNativeIntelligenceWrites(native);
   const currentKey = agentModelKey(catalog.selected.binding, catalog.selected.model);
@@ -422,17 +423,17 @@ export function useAgentIntelligenceMenu(
   const reasoningOptions = isCodex
     ? resolveCodexReasoningEffortOptions(selection.model, models)
     : (currentModel?.supportedReasoningEfforts ?? []);
-  const nativeControls = !props.modelOnly && hasNativeEffort;
-  const stops = nativeControls
-    ? resolveIntelligenceEffortStops(
+  // Every Agent's effort is the same ordinal choice, so it takes the same track.
+  const stops = props.modelOnly
+    ? []
+    : resolveIntelligenceEffortStops(
         {
           efforts: reasoningOptions,
           label: (effort) => agentEffortLabel(selection.kind, effort, intl),
           canDisableThinking: native?.capabilities.disableThinking === true,
         },
         intl,
-      )
-    : [];
+      );
   const committedEffort = resolveIntelligenceEffortPosition({
     stops,
     selected: selection.reasoningEffort,
@@ -482,8 +483,7 @@ export function useAgentIntelligenceMenu(
   const effortSlider =
     stops.length > 1 ? { stops, ...position, flow: speedInForce, choose: chooseEffort } : null;
   const configOptions =
-    props.modelOnly || hasNativeEffort ? [] : projectConfigOptions(catalog, intl);
-  const thoughtLevel = configOptions.find((option) => option.thoughtLevel);
+    props.modelOnly || hasNativeOptions ? [] : projectConfigOptions(catalog, intl);
   const effort = effortSlider
     ? {
         label: reasoningLabel,
@@ -495,9 +495,7 @@ export function useAgentIntelligenceMenu(
         })),
         choose: chooseEffort,
       }
-    : thoughtLevel?.choose && thoughtLevel.choices.length > 1
-      ? { label: reasoningLabel, choices: thoughtLevel.choices, choose: thoughtLevel.choose }
-      : null;
+    : null;
 
   const speed =
     speedTiers.length > 0
@@ -598,9 +596,9 @@ export function useAgentIntelligenceMenu(
           choose: changeMode,
         }
       : null;
-  const hasOptions = nativeControls
-    ? Boolean(effortSlider || thinking || speed || fast || ultracode || context)
-    : configOptions.length > 0 || Boolean(modes?.availableModes.length);
+  const hasOptions =
+    Boolean(effortSlider || thinking || speed || fast || ultracode || context || mode) ||
+    configOptions.length > 0;
 
   return {
     catalog,

@@ -148,12 +148,12 @@ test("exposes boolean and native mode controls plus provider setup with a single
 });
 
 test("dismisses option menus before asynchronous writes and keeps them closed after settlement", async () => {
-  const variantWrite = pendingWrite();
+  const verbosityWrite = pendingWrite();
   const modeWrite = pendingWrite();
   const changeConfig = vi.fn();
   const changeMode = vi.fn();
   function DeferredPicker() {
-    const [variant, setVariant] = useState("low");
+    const [verbosity, setVerbosity] = useState("low");
     const [mode, setMode] = useState("build");
     return (
       <Picker
@@ -161,11 +161,11 @@ test("dismisses option menus before asynchronous writes and keeps them closed af
           configOptions: [
             {
               type: "select",
-              id: "variant",
-              name: "Variant",
-              category: "thought_level",
+              id: "verbosity",
+              name: "Verbosity",
+              category: null,
               description: null,
-              currentValue: variant,
+              currentValue: verbosity,
               options: [
                 { value: "low", name: "low", description: null },
                 { value: "high", name: "high", description: null },
@@ -174,8 +174,8 @@ test("dismisses option menus before asynchronous writes and keeps them closed af
           ],
           changeConfig: async (id, value) => {
             changeConfig(id, value);
-            await variantWrite.promise;
-            setVariant(String(value));
+            await verbosityWrite.promise;
+            setVerbosity(String(value));
           },
           modes: {
             currentModeId: mode,
@@ -194,16 +194,16 @@ test("dismisses option menus before asynchronous writes and keeps them closed af
     );
   }
   const view = renderWithMaitai(<DeferredPicker />);
-  await click(await view.findByRole("button", { name: "Variant low" }));
+  await click(await view.findByRole("button", { name: "Verbosity low" }));
   await click(await view.findByRole("menuitem", { name: "high" }));
-  await waitFor(() => expect(changeConfig).toHaveBeenCalledWith("variant", "high"));
+  await waitFor(() => expect(changeConfig).toHaveBeenCalledWith("verbosity", "high"));
   await waitFor(() => expect(view.queryByRole("menuitem", { name: "high" })).toBeNull());
-  expect(view.getByRole("button", { name: "Variant low" }).hasAttribute("disabled")).toBe(true);
+  expect(view.getByRole("button", { name: "Verbosity low" }).hasAttribute("disabled")).toBe(true);
   await act(async () => {
-    variantWrite.resolve();
-    await variantWrite.promise;
+    verbosityWrite.resolve();
+    await verbosityWrite.promise;
   });
-  await view.findByRole("button", { name: "Variant high" });
+  await view.findByRole("button", { name: "Verbosity high" });
   await waitFor(() => expect(view.queryByRole("menuitem", { name: "high" })).toBeNull());
   await click(await view.findByRole("button", { name: "Mode build" }));
   await click(await view.findByRole("menuitem", { name: "plan" }));

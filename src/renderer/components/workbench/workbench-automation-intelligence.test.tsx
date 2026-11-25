@@ -237,15 +237,14 @@ test("automations can run an ACP instance with its exact advertised model and op
     reasoningEffort: "low",
   });
 
-  // The model's advertised effort levels stay choosable.
+  // The model's advertised effort levels take the same track as every Agent's.
   await click(trigger);
-  const effort = await view.findByRole("button", { name: "Effort Light" });
+  const effort = await view.findByRole("slider", { name: "Effort" });
+  expect(effort.getAttribute("aria-valuetext")).toBe("Low");
   await act(async () => {
-    fireEvent.pointerDown(effort, { button: 0, ctrlKey: false });
-    fireEvent.click(effort);
+    fireEvent.keyDown(effort, { key: "ArrowRight" });
     await Promise.resolve();
   });
-  await click(await view.findByRole("menuitem", { name: "High" }));
   expect(changed.mock.lastCall?.[0]).toMatchObject({
     model: "scripted-deep",
     reasoningEffort: "high",

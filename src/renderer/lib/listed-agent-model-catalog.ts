@@ -1,11 +1,9 @@
-import { getIntl } from "@/lib/i18n";
 import type { AgentIntelligenceSelection } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import type { AgentModelCatalogPresentation } from "@/components/shared/agent-runtime/agent-model-picker";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { fitCodexServiceTierSelection } from "../../shared/codex-service-tier";
 import type { CodexExecutionProfileChange } from "../../shared/codex-execution-profile";
 import type { AgentModelOption, CodexReasoningEffort } from "../../shared/types";
-import { agentEffortLabel } from "./agent-runtime-model-selection";
 import { formatCodexModelLabel, resolveCodexReasoningEffortOptions } from "./codex-thread-settings";
 
 /** A Codex model change keeps an effort the next model offers, else its default, High, then its first. */
@@ -53,12 +51,9 @@ export function resolveListedModelEffort(
   return "none";
 }
 
-const LISTED_EFFORT_OPTION_ID = "reasoningEffort";
-
 /**
  * A model picker catalog for one Agent whose models arrive as a plain list, such as a remote
- * Codex host or an automation. Codex and Claude efforts are native controls in the picker;
- * any other Agent's advertised effort levels become its Effort option.
+ * Codex host or an automation. Each model's effort levels travel with it to the picker.
  */
 export function listedModelCatalog(input: {
   readonly binding: AgentBackendBinding;
@@ -72,11 +67,6 @@ export function listedModelCatalog(input: {
 }): AgentModelCatalogPresentation {
   const { binding, label, models, selection, onSelectionChange } = input;
   const listed = models.filter((model) => !model.hidden);
-  const current = listed.find((model) => model.id === selection.model);
-  const efforts =
-    selection.kind === "codex" || selection.kind === "claudeAgent"
-      ? []
-      : (current?.supportedReasoningEfforts ?? []);
   return {
     entries: listed.map((model) => ({
       binding,
@@ -99,45 +89,5 @@ export function listedModelCatalog(input: {
           : selection.serviceTier;
       onSelectionChange({ ...selection, model: model.id, reasoningEffort, serviceTier }, "model");
     },
-    ...(current && efforts.length > 0
-      ? {
-          configOptions: [
-            {
-              id: LISTED_EFFORT_OPTION_ID,
-              name:
-                selection.kind === "antigravity"
-                  ? getIntl().formatMessage({
-                      id: "lib.listedAgentModelCatalog.thinkingLevel",
-                      defaultMessage: "Thinking level",
-                    })
-                  : "Effort",
-              description: null,
-              category: "thought_level",
-              type: "select",
-              currentValue: efforts.some(
-                (option) => option.reasoningEffort === selection.reasoningEffort,
-              )
-                ? selection.reasoningEffort
-                : (efforts.find(
-                    (option) => option.reasoningEffort === current.defaultReasoningEffort,
-                  )?.reasoningEffort ?? efforts[0]!.reasoningEffort),
-              options: efforts.map((option) => ({
-                value: option.reasoningEffort,
-                name: agentEffortLabel(selection.kind, option.reasoningEffort),
-                description: option.description || null,
-              })),
-            },
-          ],
-          changeConfig: async (id, value) => {
-            if (
-              id !== LISTED_EFFORT_OPTION_ID ||
-              !efforts.some((option) => option.reasoningEffort === value) ||
-              typeof value !== "string"
-            )
-              return;
-            onSelectionChange({ ...selection, reasoningEffort: value }, "reasoningEffort");
-          },
-        }
-      : {}),
   };
 }

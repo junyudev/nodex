@@ -309,11 +309,7 @@ export function InboxAgentPicker({
           const target = agentSettingsTarget(model.selected.binding);
           openAgentSettings?.(target.kind, target.instanceId);
         },
-        configOptions: model.configOptions,
         toggles,
-        changeConfig: async (_id, next) => {
-          if (typeof next === "string") chooseOptions({ reasoningEffort: next });
-        },
         // A choice for one decision can become the Inbox's own, so the two never drift apart unseen.
         actions: differs
           ? [

@@ -2688,7 +2688,7 @@ describe("Host OpenCode setup", () => {
   });
 });
 
-it("projects OpenCode variant and thought selectors as reasoning choices", async () => {
+it("offers a model's reasoning control as its effort levels, never as an option row", async () => {
   const binding = { driver: "opencode", instanceId: "reasoning-options" } as const;
   const model = "model";
   const openCode: AgentRuntimeProvider = {
@@ -2701,15 +2701,23 @@ it("projects OpenCode variant and thought selectors as reasoning choices", async
         slug: model,
         capabilities: {
           optionDescriptors: [
-            { id: "variant", label: "Reasoning level" },
-            { id: "thoughtBudget", label: "Thought budget" },
-            { id: "agent", label: "Agent" },
-          ].map(({ id, label }) => ({
-            id,
-            label,
-            type: "select",
-            options: [{ id: "default", label: "Default" }],
-          })),
+            {
+              id: "variant",
+              role: "reasoning",
+              label: "Reasoning",
+              type: "select",
+              options: [
+                { id: "low", label: "Low" },
+                { id: "xhigh", label: "Xhigh" },
+              ],
+            },
+            {
+              id: "agent",
+              label: "Agent",
+              type: "select",
+              options: [{ id: "build", label: "Build" }],
+            },
+          ],
         },
       },
     ],
@@ -2731,17 +2739,15 @@ it("projects OpenCode variant and thought selectors as reasoning choices", async
     { wrapper: RuntimeWorkbench },
   );
   await waitFor(() =>
-    expect(
-      result.current.provider.modelCatalog?.configOptions?.map(({ id, category }) => [
-        id,
-        category,
-      ]),
-    ).toEqual([
-      ["variant", "thought_level"],
-      ["thoughtBudget", "thought_level"],
-      ["agent", null],
+    expect(result.current.provider.modelCatalog?.configOptions?.map(({ id }) => id)).toEqual([
+      "agent",
     ]),
   );
+  expect(
+    result.current.models
+      .find((entry) => entry.id === model)
+      ?.supportedReasoningEfforts.map(({ reasoningEffort }) => reasoningEffort),
+  ).toEqual(["low", "xhigh"]);
   await act(async () => unmount());
 });
 

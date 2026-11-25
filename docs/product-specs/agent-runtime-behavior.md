@@ -673,9 +673,12 @@ managed-worktree ownership is attached only after the durable execution is verif
 ## Model choices
 
 Effort and speed are written under each model's own option names: Codex reasoning effort
-and service tier, Claude effort with its thinking, speed, Ultracode and context choices.
+and service tier, Claude effort with its thinking, speed, Ultracode and context choices, an
+ACP Agent's thought level such as Antigravity's Thinking Level, and OpenCode's variant.
 Every model choice uses one menu: the models, then effort as one track of the model's
-levels, with Fast and Ultracode as icon toggles beside it whose tooltips say what each does.
+levels on every Agent, with Fast and Ultracode as icon toggles beside it whose tooltips say
+what each does. Levels read alike on every Agent, except that Codex calls its lowest Light.
+An Agent's other options, such as OpenCode's Agent, follow the track as rows of their own.
 A Claude model that can turn thinking off shows Off below its lowest level, and an effort
 the user never chose rests on the model default, marked Default. The model button shows the
 Fast and Ultracode icons while they are on, and `/fast` and `/ultracode` toggle them from the

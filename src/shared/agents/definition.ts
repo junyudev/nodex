@@ -76,6 +76,8 @@ export interface AgentDefinition {
   readonly accent?: string;
   readonly modelFamilies?: readonly string[];
   readonly redundantModelQualifiers?: readonly string[];
+  /** Calls its lowest effort level Light, where every other Agent says Low. */
+  readonly lightLowEffort?: true;
   readonly settingsAnchor?: string;
   readonly profileAnchorPrefix?: string;
   readonly profileBased: boolean;

@@ -553,8 +553,7 @@
   "src/renderer/features/inbox/inbox-agent-model.ts": {
     "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
     "literals": {
-      "codex": 4,
-      "claudeAgent": 1
+      "codex": 3
     }
   },
   "src/renderer/features/insights/insights-charts.tsx": {
@@ -587,8 +586,7 @@
     "literals": {
       "codex": 7,
       "claudeAgent": 7,
-      "antigravity": 1,
-      "opencode": 1
+      "antigravity": 1
     }
   },
   "src/renderer/features/local-conversation/agent-runtime-subagent-overview.ts": {
@@ -736,8 +734,7 @@
   "src/renderer/lib/agent-runtime-model-selection.ts": {
     "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
     "literals": {
-      "antigravity": 1,
-      "claudeAgent": 1
+      "antigravity": 1
     }
   },
   "src/renderer/lib/agent-settings-navigation.tsx": {
@@ -779,9 +776,9 @@
   "src/renderer/lib/listed-agent-model-catalog.ts": {
     "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
     "literals": {
-      "codex": 3,
-      "claudeAgent": 2,
-      "antigravity": 2
+      "codex": 2,
+      "claudeAgent": 1,
+      "antigravity": 1
     }
   },
   "src/renderer/lib/model-policy-stopped-work.ts": {
