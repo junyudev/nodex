@@ -200,11 +200,13 @@ it.effect("never stalls while the chat only waits on commands, then restarts the
       },
     );
     const observe = (previous: ManagedChatObservation | null, now: number) =>
-      source.read("chat").pipe(
-        Effect.map((facts) =>
-          diff({ sessionId: "chat", facts, previous, now, latestReportAt: null }),
-        ),
-      );
+      source
+        .read("chat")
+        .pipe(
+          Effect.map((facts) =>
+            diff({ sessionId: "chat", facts, previous, now, latestReportAt: null }),
+          ),
+        );
     let step = yield* observe(null, 0);
     assert.equal(step.observed.state, "working");
     // A background command can run quietly for far longer than the stall grace.
