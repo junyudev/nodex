@@ -1,15 +1,22 @@
 import { describe, expect, test } from "vite-plus/test";
-import { resolveInboxModel, type InboxAgentChoice } from "../../../shared/inbox";
 import {
+  DEFAULT_INBOX_AGENT_CHOICE,
+  resolveInboxModel,
+  type InboxAgentChoice,
+} from "../../../shared/inbox";
+import {
+  chooseInboxChatOptions,
   chooseInboxModel,
   describeInboxAgent,
   inboxAgentLine,
   inboxAgentPickerModel,
   inboxAgentShortLine,
+  pinInboxAgentChoice,
 } from "./inbox-agent-model";
 import {
   CLAUDE_INSTANCE,
   CLAUDE_INSTANCE_ID,
+  claudeProvider,
   codexProvider,
   inboxAgentsFixture,
 } from "./inbox-agents.test-support";
@@ -201,6 +208,28 @@ describe("what an Inbox chat runs on", () => {
     ).toBe("Codex · GPT-6.2 Sol · Light");
   });
 
+  test("suggestions on Claude default to Sonnet, and to the catalog default without it", () => {
+    const sonnet = {
+      ...claudeProvider().models[0]!,
+      slug: "claude-sonnet-5-5",
+      name: "Sonnet 5.5",
+      isDefault: false,
+    };
+    const claude = codex({ instanceId: CLAUDE_INSTANCE_ID });
+    const withSonnet = inboxAgentsFixture({
+      providers: [{ ...claudeProvider(), models: [...claudeProvider().models, sonnet] }],
+    });
+    expect(inboxAgentShortLine(describeInboxAgent(withSonnet, claude, "suggestion"))).toBe(
+      "Work · Sonnet 5.5 · High",
+    );
+    expect(inboxAgentShortLine(describeInboxAgent(withSonnet, claude, "chat"))).toBe(
+      "Work · Opus 5.5 · High",
+    );
+    expect(
+      inboxAgentShortLine(describeInboxAgent(inboxAgentsFixture(), claude, "suggestion")),
+    ).toBe("Work · Opus 5.5 · High");
+  });
+
   test("an effort the model does not offer runs at the model's own, as the Inbox says", () => {
     const catalog = inboxAgentsFixture();
     // Suggestions ask Claude for medium, which this Opus does not offer. Left unset, a utility
@@ -217,6 +246,24 @@ describe("what an Inbox chat runs on", () => {
 });
 
 describe("choosing in the Inbox's model menu", () => {
+  test("an effort set on Nodex's default keeps the model it runs on, so it stops following", () => {
+    const catalog = inboxAgentsFixture();
+    const suggestion = chooseInboxChatOptions(
+      pinInboxAgentChoice(catalog, DEFAULT_INBOX_AGENT_CHOICE, "suggestion"),
+      { reasoningEffort: "medium" },
+    );
+    expect(suggestion).toEqual(codex({ model: "gpt-6-astra", reasoningEffort: "medium" }));
+    // A chosen choice is already the person's, and nothing to pin waits for the catalog.
+    expect(pinInboxAgentChoice(catalog, codex(), "chat")).toEqual(codex());
+    expect(
+      pinInboxAgentChoice(
+        inboxAgentsFixture({ providers: [] }),
+        DEFAULT_INBOX_AGENT_CHOICE,
+        "chat",
+      ),
+    ).toBe(DEFAULT_INBOX_AGENT_CHOICE);
+  });
+
   test("reads a GPT model's version apart from its variant without renaming the model", () => {
     const sol = {
       ...codexProvider().models[0]!,

@@ -15,6 +15,7 @@ import {
   inboxDefaultSuggestionModel,
   inboxModelEffort,
   inboxRequestedEffort,
+  isAutomaticInboxAgentChoice,
   resolveInboxAgentChoice,
   resolveInboxModel,
   supportsInboxStructuredGeneration,
@@ -335,6 +336,28 @@ export function chooseInboxModel(
         : null,
     serviceTier: inboxServiceTier(model, choice.serviceTier).serviceTier,
   };
+}
+
+/**
+ * The Agent and model a choice runs on now, named outright. Changing anything about Nodex's
+ * default makes the whole choice the person's, so nothing they set shifts when Nodex's pick does.
+ */
+export function pinInboxAgentChoice(
+  catalog: InboxAgentCatalog,
+  choice: InboxAgentChoice,
+  purpose: InboxAgentPurpose,
+): InboxAgentChoice {
+  if (!isAutomaticInboxAgentChoice(choice)) return choice;
+  const resolved = resolveInboxAgentChoice(catalog.providers, choice, purpose);
+  const provider = catalog.providers.find(
+    (candidate) => candidate.instanceId === resolved.instanceId,
+  );
+  const model =
+    provider &&
+    (purpose === "suggestion"
+      ? inboxDefaultSuggestionModel(provider)
+      : inboxDefaultChatModel(provider));
+  return model ? { ...resolved, model: model.slug } : choice;
 }
 
 /** An effort or speed change keeps the chosen Agent and model. */

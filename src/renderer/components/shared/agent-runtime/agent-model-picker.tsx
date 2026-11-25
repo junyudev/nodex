@@ -579,7 +579,17 @@ export function AgentModelPickerView({
                 changeOpen(false);
               }}
             >
-              {action.label}
+              <NodexMenuRowContent
+                trailing={
+                  action.hint ? (
+                    <span className="truncate text-xs text-token-description-foreground">
+                      {action.hint}
+                    </span>
+                  ) : undefined
+                }
+              >
+                {action.label}
+              </NodexMenuRowContent>
             </NodexDropdownActionRow>
           ))}
           {runtimeOptions.length > 0 || models.error ? <NodexDropdownSeparator /> : null}

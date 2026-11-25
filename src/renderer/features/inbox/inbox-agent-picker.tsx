@@ -1,7 +1,8 @@
-import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
+import { FormattedMessage, defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useProviderKeyUsageAccounts } from "../provider-keys/use-provider-key-usage-accounts";
 import { forwardRef, useState, type ComponentPropsWithoutRef, type ReactElement } from "react";
 import {
+  DEFAULT_INBOX_AGENT_CHOICE,
   DEFAULT_INBOX_SETTINGS,
   type InboxAgentChoice,
   type InboxSettings,
@@ -31,6 +32,7 @@ import {
   inboxAgentLine,
   inboxAgentPickerModel,
   inboxAgentShortLine,
+  pinInboxAgentChoice,
   sameInboxAgentChoice,
   type InboxAgentCatalog,
   type InboxAgentPresentation,
@@ -205,10 +207,19 @@ export function InboxAgentPicker({
   useMountAction(openOnMount && !disabled, () => changeOpen(true));
   const model = inboxAgentPickerModel(agents, value, purpose);
   const presentation = describeInboxAgent(agents, value, purpose, intl);
+  // An effort or speed set on Nodex's default keeps the model it ran on, so it stops following.
+  const chooseOptions = (change: Parameters<typeof chooseInboxChatOptions>[1]) =>
+    onChange(chooseInboxChatOptions(pinInboxAgentChoice(agents, value, purpose), change));
   const differs =
     scope === "message" &&
     purpose === "chat" &&
     !sameInboxAgentChoice(value, agents.settings.chatAgent);
+  // The Inbox's own choices say when Nodex picks them, and can go back to that.
+  const isDefault = scope === "inbox" && sameInboxAgentChoice(value, DEFAULT_INBOX_AGENT_CHOICE);
+  const defaultPresentation =
+    scope === "inbox" && !isDefault
+      ? describeInboxAgent(agents, DEFAULT_INBOX_AGENT_CHOICE, purpose, intl)
+      : null;
   const triggerButton =
     trigger === "field" ? (
       <NodexSettingsDropdownTrigger
@@ -219,6 +230,11 @@ export function InboxAgentPicker({
         )}
       >
         <InboxAgentLabel presentation={presentation} />
+        {isDefault ? (
+          <span className="ms-auto shrink-0 ps-2 text-token-description-foreground">
+            <FormattedMessage id="inbox.inboxAgentPicker.default" defaultMessage="Default" />
+          </span>
+        ) : null}
       </NodexSettingsDropdownTrigger>
     ) : trigger === "inline" ? (
       <InboxAgentInlineTrigger presentation={presentation} />
@@ -273,10 +289,8 @@ export function InboxAgentPicker({
         serviceTier: model.serviceTier,
       }}
       onSelectionChange={(next, change) => {
-        if (change === "reasoningEffort")
-          onChange(chooseInboxChatOptions(value, { reasoningEffort: next.reasoningEffort }));
-        else if (change === "serviceTier")
-          onChange(chooseInboxChatOptions(value, { serviceTier: next.serviceTier }));
+        if (change === "reasoningEffort") chooseOptions({ reasoningEffort: next.reasoningEffort });
+        else if (change === "serviceTier") chooseOptions({ serviceTier: next.serviceTier });
       }}
       catalog={{
         entries: model.entries,
@@ -298,8 +312,7 @@ export function InboxAgentPicker({
         configOptions: model.configOptions,
         toggles,
         changeConfig: async (_id, next) => {
-          if (typeof next === "string")
-            onChange(chooseInboxChatOptions(value, { reasoningEffort: next }));
+          if (typeof next === "string") chooseOptions({ reasoningEffort: next });
         },
         // A choice for one decision can become the Inbox's own, so the two never drift apart unseen.
         actions: differs
@@ -312,7 +325,21 @@ export function InboxAgentPicker({
                 run: () => void agents.save({ chatAgent: value }),
               },
             ]
-          : [],
+          : defaultPresentation
+            ? [
+                {
+                  label: intl.formatMessage({
+                    id: "inbox.inboxAgentPicker.useTheDefault",
+                    defaultMessage: "Use the default",
+                  }),
+                  // What the default runs on now, so going back is never a guess.
+                  ...(defaultPresentation.status === "ready"
+                    ? { hint: inboxAgentShortLine(defaultPresentation) }
+                    : {}),
+                  run: () => onChange(DEFAULT_INBOX_AGENT_CHOICE),
+                },
+              ]
+            : [],
       }}
     />
   );

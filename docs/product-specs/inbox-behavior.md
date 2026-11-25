@@ -1121,15 +1121,22 @@ creates a second message, and does not count against the Agent budget again.
   The automatic Agent choice prefers Codex when available and uses another available
   Agent when needed. Suggestions use an Agent that supports Inbox generation. An
   explicitly configured Agent stays selected and reports when it is unavailable.
-  Suggestions run often, so an omitted suggestion model resolves to
-  GPT-6.2 Sol on Codex, and otherwise, or when the catalog lacks it, to that
-  instance's catalog default. They look things up and choose models as well as
+  Suggestions run often, so an omitted suggestion model resolves to an
+  economical one: GPT-6.2 Sol on Codex and Claude Sonnet 5.5 on Claude, and
+  otherwise, or when the catalog lacks it, that instance's catalog default.
+  They look things up and choose models as well as
   routing, so an omitted suggestion effort is high on Codex and medium on Claude.
   Until a chat model is chosen, chats the Inbox
   starts use the Agent's catalog default model at that model's own effort and
   speed. A chosen effort or speed the model does not offer falls back to the
   model's own; choosing another model keeps the ones it also offers. Messages
   sent to an existing chat use that chat's own Agent and model.
+  Until the user chooses, what suggestions and new chats run on is Nodex's
+  default, re-read from the catalog each time, and both pickers say `Default`.
+  Choosing a model, or an effort or speed on the default, saves the Agent and
+  model it runs on with it, so a chosen choice never shifts with Nodex's. The
+  menu of a chosen choice offers `Use the default`, naming what the default
+  runs on now, to follow Nodex's choice again.
 
 ## Current limits
 
