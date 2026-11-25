@@ -2,7 +2,11 @@ import path from "node:path";
 
 import { describe, expect, test } from "vite-plus/test";
 
-import { selectAffectedRustPackageNames, type CargoMetadata } from "./run-affected-rust.ts";
+import {
+  selectAffectedRustPackageNames,
+  selectRustTestBinaryPrerequisites,
+  type CargoMetadata,
+} from "./run-affected-rust.ts";
 
 const root = path.resolve("/repo");
 const metadata: CargoMetadata = {
@@ -69,5 +73,15 @@ describe("affected Rust workspace selection", () => {
       "external",
       "server",
     ]);
+  });
+});
+
+describe("Rust test binary prerequisites", () => {
+  test("builds Core for CLI integration tests when Core itself is not selected", () => {
+    expect(selectRustTestBinaryPrerequisites(["nodex-cli"])).toEqual([
+      { package: "nodex-core-server", bin: "nodex-core" },
+    ]);
+    expect(selectRustTestBinaryPrerequisites(["nodex-cli", "nodex-core-server"])).toEqual([]);
+    expect(selectRustTestBinaryPrerequisites(["nodex-core"])).toEqual([]);
   });
 });

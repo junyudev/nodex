@@ -92,6 +92,25 @@ const run = (
   return captureOutput ? result.stdout : "";
 };
 
+/**
+ * Integration tests that start another workspace binary need it built even when its package is
+ * not affected: the CLI's data tests start Core.
+ */
+const TEST_BINARY_PREREQUISITES: Readonly<
+  Record<string, { readonly package: string; readonly bin: string }>
+> = {
+  "nodex-cli": { package: "nodex-core-server", bin: "nodex-core" },
+};
+
+export function selectRustTestBinaryPrerequisites(
+  packages: readonly string[],
+): readonly { readonly package: string; readonly bin: string }[] {
+  return packages.flatMap((name) => {
+    const prerequisite = TEST_BINARY_PREREQUISITES[name];
+    return prerequisite && !packages.includes(prerequisite.package) ? [prerequisite] : [];
+  });
+}
+
 const packageArguments = (packages: readonly string[]): readonly string[] =>
   packages.flatMap((packageName) => ["--package", packageName]);
 
@@ -129,6 +148,12 @@ const main = (): void => {
     );
     return;
   }
+  for (const prerequisite of selectRustTestBinaryPrerequisites(packages))
+    run(
+      "cargo",
+      ["build", "--all-features", "--package", prerequisite.package, "--bin", prerequisite.bin],
+      cwd,
+    );
   run("cargo", ["nextest", "run", "--all-features", "--profile", "ci", ...selected], cwd);
   run("cargo", ["test", "--doc", "--all-features", ...selected], cwd);
 };
