@@ -50,6 +50,7 @@ const allow = () => Effect.succeed("allow" as const);
 const make = (options: Partial<PluginMcpBrokerOptions> = {}) =>
   makePluginMcpBroker({
     executableSearchPath: [dirname(process.execPath)],
+    windowsSystemRoot: process.env.SYSTEMROOT,
     resolveHeaders: () => Effect.succeed({ Authorization: "Bearer from-host-secret-port" }),
     ...options,
   });

@@ -171,9 +171,12 @@ const pluginBroker = Layer.effect(
   PluginMcpBroker,
   Effect.gen(function* () {
     const { environment } = yield* MainConfig;
-    const path = Object.entries(environment).find(([key]) => key.toUpperCase() === "PATH")?.[1];
+    // Windows environment names are case-insensitive.
+    const variable = (name: string) =>
+      Object.entries(environment).find(([key]) => key.toUpperCase() === name)?.[1];
     return yield* makePluginMcpBroker({
-      executableSearchPath: path?.split(delimiter).filter(isAbsolute) ?? [],
+      executableSearchPath: variable("PATH")?.split(delimiter).filter(isAbsolute) ?? [],
+      windowsSystemRoot: variable("SYSTEMROOT"),
       resolveHeaders: ({ declaredHeaders }) => Effect.succeed(declaredHeaders),
     });
   }).pipe(

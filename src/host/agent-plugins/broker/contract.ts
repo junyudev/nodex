@@ -52,6 +52,8 @@ export interface PluginMcpBrokerOptions {
   readonly resolveHeaders: PluginMcpSecrets;
   /** Trusted absolute directories for resolving bare commands. Never passed as child environment. */
   readonly executableSearchPath: readonly string[];
+  /** Host `SYSTEMROOT`, which native Windows servers need during startup. Ignored elsewhere. */
+  readonly windowsSystemRoot?: string;
   readonly connectTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
   /** Maximum time to drain requests before forcing upstream shutdown. Defaults to 35 seconds. */

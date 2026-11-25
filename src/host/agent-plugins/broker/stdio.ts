@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { IsolatedMcpStdioTransport } from "../../../main/platform/node/IsolatedMcpStdioTransport";
 import type { AgentPluginTransport } from "../../../shared/agent-plugins/types";
-import type { PluginMcpInstallation } from "./contract";
+import type { PluginMcpBrokerOptions, PluginMcpInstallation } from "./contract";
 
 const windows = sep === "\\";
 // libuv fills in these entries on Windows when omitted. Empty entries suppress that inheritance.
@@ -50,7 +50,7 @@ async function searchCommand(command: string, directories: readonly string[]) {
 export async function prepareStdio(
   installation: PluginMcpInstallation,
   declaration: Extract<AgentPluginTransport, { type: "stdio" }>,
-  searchPath: readonly string[],
+  host: Pick<PluginMcpBrokerOptions, "executableSearchPath" | "windowsSystemRoot">,
 ): Promise<Transport> {
   if (!isAbsolute(installation.packageRoot) || !isAbsolute(installation.dataRoot))
     throw new Error("Expected absolute installation paths");
@@ -67,7 +67,7 @@ export async function prepareStdio(
   const command = declaration.command.replace(/^\$\{(?:CLAUDE_)?PLUGIN_ROOT\}\//, "./");
   const path = command.startsWith("./")
     ? await executable(await inside(root, resolve(root, command)))
-    : await searchCommand(command, searchPath);
+    : await searchCommand(command, host.executableSearchPath);
   if (windows && !/\.(?:exe|com)$/i.test(path)) throw new Error("Expected a native executable");
 
   const env = new Map<string, string | undefined>([
@@ -76,7 +76,7 @@ export async function prepareStdio(
     ...(windows ? windowsDefaults.map((name) => [name, ""] as const) : []),
   ]);
   // Native Windows runtimes such as Node need SystemRoot during startup.
-  if (windows) env.set("SYSTEMROOT", process.env.SYSTEMROOT ?? "");
+  if (windows) env.set("SYSTEMROOT", host.windowsSystemRoot ?? "");
   for (const [name, value] of Object.entries(declaration.env)) {
     const key = windows ? name.toUpperCase() : name;
     if (!name || /[=\0]/.test(name) || key === "PLUGIN_ROOT" || key === "PLUGIN_DATA")

@@ -115,7 +115,7 @@ const connect = Effect.fnUntraced(function* (
         prepareStdio(
           installation,
           transport as Extract<typeof transport, { type: "stdio" }>,
-          options.executableSearchPath,
+          options,
         ),
       catch: invalidConfiguration,
     }));

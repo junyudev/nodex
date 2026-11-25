@@ -37,6 +37,7 @@ it.live(
         if (plugin.status !== "loaded") throw new Error("Fixture could not be loaded");
         const broker = yield* makePluginMcpBroker({
           executableSearchPath: [dirname(process.execPath)],
+          windowsSystemRoot: process.env.SYSTEMROOT,
           resolveHeaders: () => Effect.succeed({}),
         });
         const pluginEntry: CatalogPlugin = {
