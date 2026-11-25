@@ -12,6 +12,7 @@ import {
 import { isPriority, PRIORITY_VALUES } from "../../../shared/priority";
 import type { Estimate } from "../../../shared/types";
 import type { DatabasePropertyOption } from "../../../shared/database-kernel";
+import type { NodexPopoverOpenChangeDetails } from "@/components/ui/popover";
 import {
   PropertyOptionPicker,
   PropertyOptionToken,
@@ -184,7 +185,7 @@ export function SemanticSelectPropertyEditor({
   readonly emptyOptionLabel?: string;
   readonly allowClear?: boolean;
   readonly onRequestOptions?: () => void;
-  readonly onOpenChange?: (open: boolean) => void;
+  readonly onOpenChange?: (open: boolean, details?: NodexPopoverOpenChangeDetails) => void;
   readonly onCommit?: () => void;
   readonly hasMore?: boolean;
   readonly loadingMore?: boolean;

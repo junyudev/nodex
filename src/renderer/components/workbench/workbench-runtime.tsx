@@ -411,7 +411,13 @@ import {
   type PanelNewTabActionKind,
 } from "@/lib/workbench-panel-actions";
 import { requestPageTitleFocus } from "@/lib/page-title-focus-intent";
+import { queryKeys } from "@/lib/query-keys";
 import { createPageFor } from "@/lib/workspace-page-create";
+import {
+  loadLinkedPageStatusOptions,
+  updateLinkedPageStatus,
+  type LinkedPageStatusPort,
+} from "@/lib/linked-page-status-runtime";
 import { useLibraryCreateCommands } from "../library/library-new-menu";
 import type { PageChatCommands } from "@/lib/use-page-linked-chats";
 import type { PanelDestination } from "./panel-destination-picker-model";
@@ -2499,6 +2505,38 @@ export function WorkbenchRuntime({
     [presentLibraryTarget],
   );
   const { createPage: createSpacePage } = useLibraryCreateCommands();
+  const sessionPageCreateInFlightRef = useRef(new Set<string>());
+  const linkedPageStatus = useMemo<LinkedPageStatusPort>(
+    () => ({
+      loadOptions: (pageId) => loadLinkedPageStatusOptions(pageId),
+      updateStatus: async (pageId, statusOptionId) => {
+        const result = await updateLinkedPageStatus({ pageId, statusOptionId });
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.library.pageDetail(pageId),
+          exact: true,
+        });
+        if (result.status === "updated") return;
+        if (result.status === "conflict") {
+          throw new Error(
+            getIntl().formatMessage({
+              id: "workbench.workbenchRuntime.updatePageStatusConflict",
+              defaultMessage: "Page status changed elsewhere. Try again.",
+            }),
+          );
+        }
+        if (result.status === "not_found") {
+          throw new Error(
+            getIntl().formatMessage({
+              id: "workbench.workbenchRuntime.updatePageStatusNotFound",
+              defaultMessage: "Page is no longer available",
+            }),
+          );
+        }
+        throw new Error(result.error);
+      },
+    }),
+    [queryClient],
+  );
   /**
    * Creates an Untitled Page where the owner's work lives and opens it in the owner's panel
    * group, title first: a Project's Pages join its primary Database, a projectless chat's and
@@ -6217,6 +6255,23 @@ export function WorkbenchRuntime({
         page: { pageId: page.pageId, titleSnapshot: page.title },
       });
     },
+    onCreateSessionPage: (session) => {
+      if (sessionPageCreateInFlightRef.current.has(session.id)) return;
+      sessionPageCreateInFlightRef.current.add(session.id);
+      closePendingWorktreeRoute();
+      setAutomationsPath(null);
+      void runWithCleanup(
+        async () => {
+          await openNewPage({ kind: "session", sessionId: session.id }, { panelId: "right" });
+        },
+        {
+          cleanup: () => {
+            sessionPageCreateInFlightRef.current.delete(session.id);
+          },
+        },
+      );
+    },
+    linkedPageStatus,
     onSessionTitleDoubleClick: handleSessionTitleDoubleClick,
     onPendingWorktreeTitleDoubleClick: handlePendingWorktreeTitleDoubleClick,
     onArchiveSidebarThread: archiveSidebarThreadItem,

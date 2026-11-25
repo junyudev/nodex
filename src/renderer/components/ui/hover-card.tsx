@@ -83,6 +83,8 @@ export interface NodexHoverCardProps {
   hoverCardContent: ReactNode;
   ariaLabel: string;
   disabled?: boolean;
+  /** Keeps an already-open hover card from dismissing while an interactive nested popup owns focus/pointer. */
+  keepOpen?: boolean;
   dismissOnReferencePress?: boolean;
   open?: boolean;
   defaultOpen?: boolean;
@@ -101,6 +103,7 @@ export function NodexHoverCard({
   hoverCardContent,
   ariaLabel,
   disabled = false,
+  keepOpen = false,
   dismissOnReferencePress = false,
   open,
   defaultOpen = false,
@@ -200,33 +203,34 @@ export function NodexHoverCard({
     whileElementsMounted: autoUpdate,
   });
   const { delay: groupDelay } = useDelayGroup(context);
+  const interactionsEnabled = !disabled && !keepOpen;
   const hover = useHover(context, {
     delay: localDelay ?? groupDelay,
-    enabled: !disabled,
+    enabled: interactionsEnabled,
     // Activation cancels pending hover; require a fresh entry before showing it again.
     move: !dismissOnReferencePress,
     handleClose: safePolygon({
       buffer: NODEX_HOVER_CARD_SAFE_POLYGON_BUFFER,
     }),
   });
-  const focus = useFocus(context, { enabled: !disabled });
+  const focus = useFocus(context, { enabled: interactionsEnabled });
   const dismiss = useDismiss(context, {
-    enabled: !disabled,
+    enabled: interactionsEnabled,
     referencePress: dismissOnReferencePress,
   });
   const role = useRole(context, {
     enabled: !disabled,
     role: "dialog",
   });
-  const contextMenuDismiss = disabled
-    ? undefined
-    : {
+  const contextMenuDismiss = interactionsEnabled
+    ? {
         reference: {
           onContextMenu(event: ReactMouseEvent<HTMLElement>) {
             handleOpenChange(false, event.nativeEvent);
           },
         },
-      };
+      }
+    : undefined;
   const { getFloatingProps, getReferenceProps } = useInteractions([
     hover,
     focus,

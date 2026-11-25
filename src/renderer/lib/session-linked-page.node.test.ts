@@ -224,4 +224,32 @@ describe("Session Linked Page store", () => {
     await settle();
     f.registry.dispose();
   });
+
+  test("notifies subscribers when a Session with no linked Page resolves and across resets", async () => {
+    const f = fixture();
+    f.read.mockResolvedValueOnce(result(["session:empty"], null, 1));
+    const listener = vi.fn();
+    const release = f.store.subscribeSession("session:empty", listener);
+    expect(f.store.isResolved?.("session:empty")).toBe(false);
+
+    await vi.waitFor(() => expect(f.store.isResolved?.("session:empty")).toBe(true));
+    expect(f.store.read("session:empty")).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    f.read.mockResolvedValueOnce(result(["session:empty"], null, 2));
+    f.projection({
+      version: 2,
+      kind: "reset",
+      scope,
+      stream: { storeEpoch: "epoch:one", commitSeq: 2 },
+      reason: "reconnect",
+    });
+    expect(f.store.isResolved?.("session:empty")).toBe(false);
+    await vi.waitFor(() => expect(f.store.isResolved?.("session:empty")).toBe(true));
+    expect(listener).toHaveBeenCalledTimes(3);
+
+    release();
+    await settle();
+    f.registry.dispose();
+  });
 });

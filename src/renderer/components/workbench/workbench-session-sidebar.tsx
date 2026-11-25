@@ -117,6 +117,7 @@ import type {
   ProjectUpdateInput,
 } from "@/lib/types";
 import type { SessionLinkedPage } from "@/lib/session-linked-page";
+import type { LinkedPageStatusPort } from "@/lib/linked-page-status-runtime";
 import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
 import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
 import { cn } from "@/lib/utils";
@@ -863,6 +864,8 @@ function SidebarThreadOrganizerSections({
   onPreviewSidebarThread,
   onOpenSessionContextMenu,
   onOpenSessionLinkedPage,
+  onCreateSessionPage,
+  linkedPageStatus,
   onSessionTitleDoubleClick,
   onPendingWorktreeTitleDoubleClick,
   onArchiveSidebarThread,
@@ -928,6 +931,10 @@ function SidebarThreadOrganizerSections({
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
   /** Takes the person to a chat with its earliest-linked live Page beside it. */
   onOpenSessionLinkedPage?: (session: ProjectSession, page: SessionLinkedPage) => void;
+  /** Creates a new Page linked to this chat and opens it in the chat's right panel. */
+  onCreateSessionPage?: (session: ProjectSession) => void;
+  /** Loads Status options and commits Status updates for a linked Page from its hover card. */
+  linkedPageStatus?: LinkedPageStatusPort;
   onSessionTitleDoubleClick?: (
     session: ProjectSession,
     event: ReactMouseEvent<HTMLElement>,
@@ -1505,11 +1512,12 @@ function SidebarThreadOrganizerSections({
       if (!item) return null;
       const session = resolveSessionForItem(item);
       const sessionId = item.sessionId ?? session?.id ?? null;
+      const projectId = session?.projectId ?? item.projectId ?? null;
       // Only the chat's owner or a Space Owner renames or archives a chat every Member shares.
       const manageable = session?.canManage ?? true;
       const hoverCardProjectLabel =
         options.hoverCardProjectLabel ??
-        (item.projectId ? (projectLabelById.get(item.projectId) ?? null) : null);
+        (projectId ? (projectLabelById.get(projectId) ?? null) : null);
       const turn = readerTurn(session);
 
       return (
@@ -1581,11 +1589,18 @@ function SidebarThreadOrganizerSections({
               ? () => onToggleSessionPinned(session)
               : onToggleSidebarThreadPinned
           }
+          onOpenProject={projectId ? () => onSelectProject(projectId) : undefined}
           onOpenLinkedPage={
             session && onOpenSessionLinkedPage
               ? (page) => onOpenSessionLinkedPage(session, page)
               : undefined
           }
+          onCreateLinkedPage={
+            session && !session.archived && onCreateSessionPage
+              ? () => onCreateSessionPage(session)
+              : undefined
+          }
+          linkedPageStatus={linkedPageStatus}
         />
       );
     },
@@ -1600,7 +1615,10 @@ function SidebarThreadOrganizerSections({
       settleShortcutLabel,
       onOpenSessionContextMenu,
       onOpenSessionLinkedPage,
+      onCreateSessionPage,
+      linkedPageStatus,
       onArchiveSidebarThread,
+      onSelectProject,
       onSelectSession,
       onSelectSidebarThread,
       onPreviewSidebarThread,
@@ -2350,6 +2368,10 @@ export interface ProjectSessionSidebarProps extends Omit<
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
   /** Takes the person to a chat with its earliest-linked live Page beside it. */
   onOpenSessionLinkedPage?: (session: ProjectSession, page: SessionLinkedPage) => void;
+  /** Creates a new Page linked to this chat and opens it in the chat's right panel. */
+  onCreateSessionPage?: (session: ProjectSession) => void;
+  /** Loads Status options and commits Status updates for a linked Page from its hover card. */
+  linkedPageStatus?: LinkedPageStatusPort;
   onSessionTitleDoubleClick?: (
     session: ProjectSession,
     event: ReactMouseEvent<HTMLElement>,
@@ -2433,6 +2455,8 @@ export function ProjectSessionSidebar({
   onPreviewSidebarThread,
   onOpenSessionContextMenu,
   onOpenSessionLinkedPage,
+  onCreateSessionPage,
+  linkedPageStatus,
   onSessionTitleDoubleClick,
   onPendingWorktreeTitleDoubleClick,
   onArchiveSidebarThread,
@@ -2783,6 +2807,8 @@ export function ProjectSessionSidebar({
                 onPreviewSidebarThread={onPreviewSidebarThread}
                 onOpenSessionContextMenu={onOpenSessionContextMenu}
                 onOpenSessionLinkedPage={onOpenSessionLinkedPage}
+                onCreateSessionPage={onCreateSessionPage}
+                linkedPageStatus={linkedPageStatus}
                 onSessionTitleDoubleClick={onSessionTitleDoubleClick}
                 onPendingWorktreeTitleDoubleClick={onPendingWorktreeTitleDoubleClick}
                 onArchiveSidebarThread={onArchiveSidebarThread}

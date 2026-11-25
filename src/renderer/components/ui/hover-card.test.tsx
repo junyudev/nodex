@@ -424,4 +424,49 @@ describe("NodexHoverCard", () => {
     expect(view.getByRole("dialog", { name: "Project details" })).not.toBeNull();
     expect(view.getByRole("tooltip")).not.toBeNull();
   });
+
+  test("keeps the hover card open across leave, Escape, and outside press while keepOpen is true", async () => {
+    function LockedHarness() {
+      const [locked, setLocked] = useState(true);
+      return (
+        <NodexHoverCardProvider>
+          <NodexHoverCard
+            ariaLabel="Project details"
+            defaultOpen
+            keepOpen={locked}
+            hoverCardContent={
+              <button type="button" onClick={() => setLocked(false)}>
+                Unlock
+              </button>
+            }
+          >
+            <button type="button">Project row</button>
+          </NodexHoverCard>
+          <button type="button">Outside target</button>
+        </NodexHoverCardProvider>
+      );
+    }
+
+    const view = render(<LockedHarness />);
+    const reference = view.getByRole("button", { name: "Project row" });
+    const outside = view.getByRole("button", { name: "Outside target" });
+
+    fireEvent.mouseLeave(reference, { clientX: 0, clientY: 0 });
+    await advanceTimers(200);
+    expect(view.getByRole("dialog", { name: "Project details" })).not.toBeNull();
+
+    fireEvent.pointerDown(outside);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await advanceTimers(100);
+    expect(view.getByRole("dialog", { name: "Project details" })).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Unlock" }));
+      await Promise.resolve();
+    });
+
+    fireEvent.mouseLeave(reference, { clientX: 0, clientY: 0 });
+    await advanceTimers(100);
+    expect(view.queryByRole("dialog", { name: "Project details" })).toBeNull();
+  });
 });

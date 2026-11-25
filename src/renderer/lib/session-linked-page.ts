@@ -19,6 +19,7 @@ export type { SessionLinkedPage } from "../../shared/types";
 
 export interface SessionLinkedPageStore {
   readonly read: (sessionId: string) => SessionLinkedPage | null;
+  readonly isResolved?: (sessionId: string) => boolean;
   readonly subscribeSession: (sessionId: string, listener: () => void) => () => void;
 }
 
@@ -76,8 +77,9 @@ export function createSessionLinkedPageStore(
       entry.generation += 1;
       pending.add(sessionId);
       if (!clear) continue;
+      const wasResolved = entry.cursor !== null;
       entry.cursor = null;
-      if (entry.page === null) continue;
+      if (!wasResolved && entry.page === null) continue;
       entry.page = null;
       notify(entry);
     }
@@ -117,8 +119,9 @@ export function createSessionLinkedPageStore(
           entry.requiredCursor = cause.stream;
           if (cause.kind === "checkpoint" && projectionCursorCovers(entry.cursor, cause.stream))
             continue;
+          const wasResolved = entry.cursor !== null;
           entry.cursor = null;
-          if (entry.page === null) continue;
+          if (!wasResolved && entry.page === null) continue;
           entry.page = null;
           notify(entry);
         }
@@ -139,9 +142,10 @@ export function createSessionLinkedPageStore(
           pending.add(sessionId);
           continue;
         }
+        const wasResolved = entry.cursor !== null;
         entry.cursor = observed;
         const next = pages.get(sessionId) ?? null;
-        if (samePage(entry.page, next)) continue;
+        if (wasResolved && samePage(entry.page, next)) continue;
         entry.page = next;
         notify(entry);
       }
@@ -171,6 +175,7 @@ export function createSessionLinkedPageStore(
 
   return {
     read: (sessionId) => entries.get(sessionId)?.page ?? null,
+    isResolved: (sessionId) => entries.get(sessionId)?.cursor != null,
     subscribeSession: (sessionId, listener) => {
       const entry = entries.get(sessionId) ?? {
         page: null,
@@ -231,4 +236,18 @@ export function useSessionLinkedPage(
     [sessionId, store],
   );
   return useSyncExternalStore(subscribe, () => (sessionId ? store.read(sessionId) : null));
+}
+
+/** True once the Session's linked-Page query has resolved at least once (or for synchronous test stores). */
+export function useSessionLinkedPageResolved(
+  sessionId: string | null,
+  store: SessionLinkedPageStore = sessionLinkedPageStore,
+): boolean {
+  const subscribe = useCallback(
+    (listener: () => void) => (sessionId ? store.subscribeSession(sessionId, listener) : () => {}),
+    [sessionId, store],
+  );
+  return useSyncExternalStore(subscribe, () =>
+    sessionId ? (store.isResolved ? store.isResolved(sessionId) : true) : false,
+  );
 }

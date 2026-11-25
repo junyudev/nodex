@@ -36,6 +36,7 @@ import {
   ClockIcon,
   CloseIcon,
   EditIcon,
+  NewPageIcon,
   PageIcon,
   PinOffIcon,
   ProjectFolderIcon,
@@ -49,8 +50,11 @@ import {
   UndoIcon,
   WorktreeStatusIcon,
 } from "@/components/shared/icons";
+import { SemanticSelectPropertyEditor } from "@/components/database/semantic-property-editors";
+import type { DataSourcePropertyOptionRegistryState } from "@/components/database/data-source-property-editor-binding";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { NodexHoverCard } from "@/components/ui/hover-card";
+import type { NodexPopoverOpenChangeDetails } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -97,9 +101,12 @@ import {
 } from "@/lib/session-execution";
 import {
   useSessionLinkedPage,
+  useSessionLinkedPageResolved,
   type SessionLinkedPage,
   type SessionLinkedPageStore,
 } from "@/lib/session-linked-page";
+import type { LinkedPageStatusPort } from "@/lib/linked-page-status-runtime";
+import type { DatabasePropertyOption } from "../../../shared/database-kernel";
 import { StatusIcon } from "@/lib/status-presentation";
 import { SnoozeMenu } from "@/components/shared/snooze-menu";
 import type { PageTurnPhrase } from "@/lib/page-turn-phrase";
@@ -1696,14 +1703,199 @@ function CodexSidebarThreadHoverCardSnooze({ snoozedUntil }: { snoozedUntil: str
   );
 }
 
+function CodexSidebarThreadHoverCardLinkedPageStatus({
+  page,
+  status,
+  statusPort,
+  onOpenChange,
+}: {
+  page: SessionLinkedPage;
+  status: NonNullable<SessionLinkedPage["status"]>;
+  statusPort: LinkedPageStatusPort;
+  onOpenChange: (open: boolean, details?: NodexPopoverOpenChangeDetails) => void;
+}) {
+  const intl = useIntl();
+  const pageTitle =
+    page.title ||
+    intl.formatMessage({ id: "workbench.codexSidebar.untitled", defaultMessage: "Untitled" });
+  const fallbackOption: DatabasePropertyOption = { id: status.optionId, name: status.label };
+  const [loadedForPageId, setLoadedForPageId] = useState(page.pageId);
+  const [options, setOptions] = useState<readonly DatabasePropertyOption[]>([fallbackOption]);
+  const [registryState, setRegistryState] = useState<DataSourcePropertyOptionRegistryState>("idle");
+  const [saving, setSaving] = useState(false);
+  const requestSeqRef = useRef(0);
+
+  if (loadedForPageId !== page.pageId) {
+    setLoadedForPageId(page.pageId);
+    setOptions([fallbackOption]);
+    setRegistryState("idle");
+    setSaving(false);
+  }
+
+  const requestOptions = () => {
+    if (registryState === "loading" || registryState === "ready") return;
+    const seq = requestSeqRef.current + 1;
+    requestSeqRef.current = seq;
+    setRegistryState("loading");
+    void runWithCleanup(
+      async () => {
+        const loaded = await statusPort.loadOptions(page.pageId);
+        if (requestSeqRef.current !== seq) return;
+        setOptions(loaded.length > 0 ? loaded : [fallbackOption]);
+        setRegistryState("ready");
+      },
+      {
+        onError: () => {
+          if (requestSeqRef.current !== seq) return;
+          setRegistryState("error");
+        },
+      },
+    );
+  };
+
+  const handleStatusChange = (nextOptionId: string | null) => {
+    if (!nextOptionId || nextOptionId === status.optionId || saving) return;
+    setSaving(true);
+    void runWithCleanup(
+      async () => {
+        await statusPort.updateStatus(page.pageId, nextOptionId);
+      },
+      {
+        onError: (error) => {
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "workbench.codexSidebar.updatePageStatusFailed",
+                  defaultMessage: "Could not update Page status",
+                }),
+          );
+        },
+        cleanup: () => {
+          setSaving(false);
+        },
+      },
+    );
+  };
+
+  return (
+    <SemanticSelectPropertyEditor
+      kind="status"
+      label={intl.formatMessage({
+        id: "workbench.codexSidebar.linkedPageStatus",
+        defaultMessage: "Status",
+      })}
+      options={options}
+      selectedId={status.optionId}
+      disabled={false}
+      registryState={registryState}
+      presentation="list"
+      allowClear={false}
+      searchPlaceholder={intl.formatMessage({
+        id: "workbench.codexSidebar.searchStatuses",
+        defaultMessage: "Change status…",
+      })}
+      searchLeading={null}
+      contentClassName="w-[min(220px,calc(100vw-16px))]"
+      onRequestOptions={requestOptions}
+      onOpenChange={onOpenChange}
+      onChange={handleStatusChange}
+      triggerButton={
+        <button
+          type="button"
+          aria-busy={saving || undefined}
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.codexSidebar.changeLinkedPageStatus",
+              defaultMessage: "Change status for {title}",
+            },
+            { title: pageTitle },
+          )}
+          className="flex h-5 w-6 shrink-0 cursor-interaction items-center justify-center rounded-md text-token-description-foreground hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background focus-visible:outline-none aria-expanded:bg-token-list-hover-background"
+          data-app-action-sidebar-thread-hover-card-linked-page-status={page.pageId}
+          onPointerDown={stopCodexSidebarRowActionPropagation}
+          onMouseDown={stopCodexSidebarRowActionPropagation}
+          onKeyDown={stopCodexSidebarRowActionPropagation}
+          onClick={stopCodexSidebarRowActionPropagation}
+        >
+          <StatusIcon statusId={status.optionId} />
+        </button>
+      }
+    />
+  );
+}
+
 function CodexSidebarThreadHoverCardLinkedPage({
   page,
   onOpen,
+  statusPort,
+  onStatusPickerOpenChange,
 }: {
   page: SessionLinkedPage;
   onOpen?: (page: SessionLinkedPage) => void;
+  statusPort?: LinkedPageStatusPort;
+  onStatusPickerOpenChange?: (open: boolean, details?: NodexPopoverOpenChangeDetails) => void;
 }) {
   const intl = useIntl();
+  const titleText =
+    page.title ||
+    intl.formatMessage({ id: "workbench.codexSidebar.untitled", defaultMessage: "Untitled" });
+  const body = (
+    <>
+      {page.pageKey ? (
+        <span className="shrink-0 text-token-description-foreground">{page.pageKey}</span>
+      ) : null}
+      <span className="min-w-0 flex-1 truncate-fade text-token-foreground">{titleText}</span>
+      {page.status ? (
+        <span className="shrink-0 text-token-description-foreground">{page.status.label}</span>
+      ) : null}
+    </>
+  );
+
+  if (page.status && statusPort && onStatusPickerOpenChange) {
+    const bodyClassName = "flex h-5 min-w-0 flex-1 items-center gap-1.5 rounded-md pl-0.5 pr-1";
+    return (
+      <div
+        className="-mx-1 flex h-5 min-w-0 items-center text-sm leading-5"
+        data-app-action-sidebar-thread-hover-card-linked-page-row={page.pageId}
+      >
+        <CodexSidebarThreadHoverCardLinkedPageStatus
+          page={page}
+          status={page.status}
+          statusPort={statusPort}
+          onOpenChange={onStatusPickerOpenChange}
+        />
+        {onOpen ? (
+          <button
+            type="button"
+            className={cn(
+              bodyClassName,
+              "cursor-interaction text-left hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background focus-visible:outline-none",
+            )}
+            data-app-action-sidebar-thread-hover-card-linked-page={page.pageId}
+            onPointerDown={stopCodexSidebarRowActionPropagation}
+            onMouseDown={stopCodexSidebarRowActionPropagation}
+            onKeyDown={stopCodexSidebarRowActionPropagation}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpen(page);
+            }}
+          >
+            {body}
+          </button>
+        ) : (
+          <div
+            className={bodyClassName}
+            data-app-action-sidebar-thread-hover-card-linked-page={page.pageId}
+          >
+            {body}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const content = (
     <>
       <span className="flex h-5 w-4 shrink-0 items-center justify-center text-token-description-foreground">
@@ -1713,16 +1905,7 @@ function CodexSidebarThreadHoverCardLinkedPage({
           <PageIcon className="icon-xs" />
         )}
       </span>
-      {page.pageKey ? (
-        <span className="shrink-0 text-token-description-foreground">{page.pageKey}</span>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate-fade text-token-foreground">
-        {page.title ||
-          intl.formatMessage({ id: "workbench.codexSidebar.untitled", defaultMessage: "Untitled" })}
-      </span>
-      {page.status ? (
-        <span className="shrink-0 text-token-description-foreground">{page.status.label}</span>
-      ) : null}
+      {body}
     </>
   );
   const className = "-mx-1 flex h-5 min-w-0 items-center gap-1.5 rounded-md px-1 text-sm leading-5";
@@ -1764,10 +1947,16 @@ function CodexSidebarThreadHoverCard({
   readback,
   draftExcerpt,
   linkedPage,
+  linkedPageResolved,
+  linkedPageStatus,
   projectLabel,
   branchName,
   onRenameFromTitleClick,
+  onOpenProject,
   onOpenLinkedPage,
+  onCreateLinkedPage,
+  onStatusPickerOpenChange,
+  onDismiss,
 }: {
   item: CodexSidebarThreadItem;
   /** The chat waits on its person; hovering hides the row's own status glyph. */
@@ -1777,12 +1966,19 @@ function CodexSidebarThreadHoverCard({
   /** The first line of the chat's unsent prompt. */
   draftExcerpt: string | null;
   linkedPage: SessionLinkedPage | null;
+  linkedPageResolved: boolean;
+  linkedPageStatus?: LinkedPageStatusPort;
   projectLabel?: string | null;
   branchName?: string | null;
   onRenameFromTitleClick?: (item: CodexSidebarThreadItem, event: MouseEvent<HTMLElement>) => void;
+  onOpenProject?: () => void;
   onOpenLinkedPage?: (page: SessionLinkedPage) => void;
+  onCreateLinkedPage?: () => void;
+  onStatusPickerOpenChange?: (open: boolean) => void;
+  onDismiss?: () => void;
 }) {
   const intl = useIntl();
+  const cardRef = useRef<HTMLDivElement>(null);
   const resolvedProjectLabel = resolveSidebarThreadHoverCardProjectLabel(intl, item, projectLabel);
   const resolvedBranchName = normalizeSidebarHoverCardText(branchName);
   const worktreeLabel = isCodexSidebarWorktreeLocation(item.runLocation)
@@ -1796,8 +1992,23 @@ function CodexSidebarThreadHoverCard({
       ? item.recencyAt
       : null;
 
+  const handleStatusPickerOpenChange = (
+    nextOpen: boolean,
+    details?: NodexPopoverOpenChangeDetails,
+  ) => {
+    onStatusPickerOpenChange?.(nextOpen);
+    if (
+      !nextOpen &&
+      details?.reason === "outside" &&
+      !(details.event.target instanceof Node && cardRef.current?.contains(details.event.target))
+    ) {
+      onDismiss?.();
+    }
+  };
+
   return (
     <div
+      ref={cardRef}
       className="flex w-fit max-w-[min(20rem,calc(100vw-16px))] min-w-56 flex-col gap-1 px-row-x py-1.5 text-token-foreground"
       data-app-action-sidebar-thread-hover-card=""
     >
@@ -1863,10 +2074,38 @@ function CodexSidebarThreadHoverCard({
       {item.snoozedUntil ? (
         <CodexSidebarThreadHoverCardSnooze snoozedUntil={item.snoozedUntil} />
       ) : null}
-      <CodexSidebarThreadHoverCardMetadataRow
-        icon={<ProjectFolderIcon className="icon-xs" />}
-        label={resolvedProjectLabel}
-      />
+      {resolvedProjectLabel && onOpenProject ? (
+        <button
+          type="button"
+          className="-mx-1 flex h-5 min-w-0 cursor-interaction items-center gap-1.5 rounded-md px-1 text-left text-sm leading-5 hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background focus-visible:outline-none"
+          data-app-action-sidebar-thread-hover-card-metadata=""
+          data-app-action-sidebar-thread-hover-card-project=""
+          aria-label={intl.formatMessage(
+            { id: "workbench.codexSidebar.openProject", defaultMessage: "Open {project}" },
+            { project: resolvedProjectLabel },
+          )}
+          onPointerDown={stopCodexSidebarRowActionPropagation}
+          onMouseDown={stopCodexSidebarRowActionPropagation}
+          onKeyDown={stopCodexSidebarRowActionPropagation}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onOpenProject();
+          }}
+        >
+          <span className="flex h-5 w-4 shrink-0 items-center justify-center text-token-description-foreground">
+            <ProjectFolderIcon className="icon-xs" />
+          </span>
+          <span className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap leading-5 text-token-foreground">
+            {resolvedProjectLabel}
+          </span>
+        </button>
+      ) : (
+        <CodexSidebarThreadHoverCardMetadataRow
+          icon={<ProjectFolderIcon className="icon-xs" />}
+          label={resolvedProjectLabel}
+        />
+      )}
       <CodexSidebarThreadHoverCardMetadataRow
         icon={<RemoteStatusIcon className="icon-xs" aria-hidden="true" />}
         label={remoteHostLabel}
@@ -1884,7 +2123,38 @@ function CodexSidebarThreadHoverCard({
         label={worktreeLabel}
       />
       {linkedPage ? (
-        <CodexSidebarThreadHoverCardLinkedPage page={linkedPage} onOpen={onOpenLinkedPage} />
+        <CodexSidebarThreadHoverCardLinkedPage
+          page={linkedPage}
+          onOpen={onOpenLinkedPage}
+          statusPort={linkedPageStatus}
+          onStatusPickerOpenChange={handleStatusPickerOpenChange}
+        />
+      ) : linkedPageResolved && onCreateLinkedPage ? (
+        <div className="mt-0.5 border-t-[0.5px] border-token-border pt-1">
+          <button
+            type="button"
+            className="-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 cursor-interaction items-center gap-1.5 rounded-md px-1 text-left text-sm leading-5 text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:bg-token-list-hover-background focus-visible:text-token-foreground focus-visible:outline-none"
+            data-app-action-sidebar-thread-hover-card-new-page=""
+            onPointerDown={stopCodexSidebarRowActionPropagation}
+            onMouseDown={stopCodexSidebarRowActionPropagation}
+            onKeyDown={stopCodexSidebarRowActionPropagation}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onCreateLinkedPage();
+            }}
+          >
+            <span className="flex h-5 w-4 shrink-0 items-center justify-center">
+              <NewPageIcon className="icon-xs" />
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              {intl.formatMessage({
+                id: "workbench.codexSidebar.newPage",
+                defaultMessage: "New page",
+              })}
+            </span>
+          </button>
+        </div>
       ) : null}
     </div>
   );
@@ -2030,7 +2300,10 @@ type CodexSidebarThreadRowProps = {
   onWake?: (item: CodexSidebarThreadItem) => void | Promise<void>;
   snoozeShortcutLabel?: string;
   settleShortcutLabel?: string;
+  onOpenProject?: () => void;
   onOpenLinkedPage?: (page: SessionLinkedPage) => void;
+  onCreateLinkedPage?: () => void;
+  linkedPageStatus?: LinkedPageStatusPort;
 };
 
 function settleActionLabel(intl: IntlShape, settled: boolean): string {
@@ -2140,7 +2413,10 @@ function CodexSidebarThreadRowView({
   turnLead,
   onAccept,
   linkedPageStore,
+  linkedPageStatus,
+  onOpenProject,
   onOpenLinkedPage,
+  onCreateLinkedPage,
 }: CodexSidebarThreadRowProps & {
   live: SidebarThreadRowLiveView;
   /** The chat's latest reply, read by rows that preview; native Threads keep their own. */
@@ -2149,6 +2425,7 @@ function CodexSidebarThreadRowView({
   const intl = useIntl();
   const item = live.item;
   const linkedPage = useSessionLinkedPage(item.sessionId, linkedPageStore);
+  const linkedPageResolved = useSessionLinkedPageResolved(item.sessionId, linkedPageStore);
   const canOpenContextMenu = !item.disabled && Boolean(onOpenContextMenu);
   const previewText = preview
     ? resolveSidebarChatPreview({
@@ -2229,8 +2506,12 @@ function CodexSidebarThreadRowView({
     actionsOpen && "hidden",
   );
   const [internalHoverCardOpen, setInternalHoverCardOpen] = useState(false);
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [lazyBranchName, setLazyBranchName] = useState<string | null>(null);
   const resolvedHoverCardOpen = hoverCardOpen ?? internalHoverCardOpen;
+  if (!resolvedHoverCardOpen && statusPickerOpen) {
+    setStatusPickerOpen(false);
+  }
   const normalizedHoverCardCwd = item.cwd?.trim() ?? "";
   const resolvedHoverCardBranchName = hoverCardBranchName ?? lazyBranchName;
 
@@ -2319,16 +2600,21 @@ function CodexSidebarThreadRowView({
       onFocus={() => {
         if (!item.disabled) onPreview?.();
       }}
-      onClick={onSelect}
+      onClick={(event) => {
+        if (!isEventWithinCurrentTarget(event)) return;
+        onSelect();
+      }}
       onContextMenu={(event) => {
         if (!canOpenContextMenu || !isEventWithinCurrentTarget(event)) return;
         event.preventDefault();
         onOpenContextMenu?.(item, event);
       }}
       onDoubleClick={(event) => {
+        if (!isEventWithinCurrentTarget(event)) return;
         onRenameFromTitleDoubleClick?.(item, event);
       }}
       onKeyDown={(event) => {
+        if (!isEventWithinCurrentTarget(event)) return;
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         onSelect();
@@ -2612,9 +2898,19 @@ function CodexSidebarThreadRowView({
             readback={live.readback}
             draftExcerpt={draftExcerpt}
             linkedPage={linkedPage}
+            linkedPageResolved={linkedPageResolved}
+            linkedPageStatus={linkedPageStatus}
             projectLabel={hoverCardProjectLabel}
             branchName={resolvedHoverCardBranchName}
             onRenameFromTitleClick={onRenameFromTitleDoubleClick}
+            onOpenProject={
+              onOpenProject
+                ? () => {
+                    handleHoverCardOpenChange(false);
+                    onOpenProject();
+                  }
+                : undefined
+            }
             onOpenLinkedPage={
               onOpenLinkedPage
                 ? (page) => {
@@ -2623,11 +2919,22 @@ function CodexSidebarThreadRowView({
                   }
                 : undefined
             }
+            onCreateLinkedPage={
+              onCreateLinkedPage
+                ? () => {
+                    handleHoverCardOpenChange(false);
+                    onCreateLinkedPage();
+                  }
+                : undefined
+            }
+            onStatusPickerOpenChange={setStatusPickerOpen}
+            onDismiss={() => handleHoverCardOpenChange(false)}
           />
         }
         // A row's open menu owns the moment; its details wait until the menu closes.
         disabled={item.disabled || actionsOpen}
-        open={hoverCardOpen}
+        keepOpen={statusPickerOpen}
+        open={resolvedHoverCardOpen}
         onOpenChange={handleHoverCardOpenChange}
       >
         {row}

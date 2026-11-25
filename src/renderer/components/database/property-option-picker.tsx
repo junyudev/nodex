@@ -13,7 +13,12 @@ import {
   type RefObject,
 } from "react";
 import { CheckmarkIcon, CloseIcon, PlusIcon, SearchIcon } from "@/components/shared/icons";
-import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
+import {
+  NodexPopover,
+  NodexPopoverContent,
+  NodexPopoverTrigger,
+  type NodexPopoverOpenChangeDetails,
+} from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NODEX_RAISED_CONTROL_CHROME_CLASS_NAME } from "@/components/ui/control-chrome";
 import {
@@ -69,7 +74,7 @@ export interface PropertyOptionPickerProps {
   readonly allowClear?: boolean;
   readonly emptyOptionLabel?: string;
   readonly onOpen?: () => void;
-  readonly onOpenChange?: (open: boolean) => void;
+  readonly onOpenChange?: (open: boolean, details?: NodexPopoverOpenChangeDetails) => void;
   readonly onCommit?: () => void;
   readonly onLoadMore?: () => void;
   readonly onSelectedIdsChange: (selectedIds: readonly string[]) => void;
@@ -228,7 +233,7 @@ function PropertyOptionPickerFrame({
   readonly triggerTooltipContent?: ReactNode;
   readonly contentClassName?: string;
   readonly contentInitialFocus: RefObject<HTMLInputElement | null>;
-  readonly onOpenChange: (open: boolean) => void;
+  readonly onOpenChange: (open: boolean, details?: NodexPopoverOpenChangeDetails) => void;
   readonly children: ReactNode;
 }) {
   if (host === "embedded") return children;
@@ -328,7 +333,7 @@ export function PropertyOptionPicker({
     allowCreate &&
     onCreateOption !== undefined &&
     canCreateDataSourcePropertyOption(options, query);
-  const changeOpen = (next: boolean) => {
+  const changeOpen = (next: boolean, details?: NodexPopoverOpenChangeDetails) => {
     if (host === "embedded") {
       setOpen(true);
       return;
@@ -341,15 +346,15 @@ export function PropertyOptionPicker({
     }
     setClosedByDisable(false);
     setOpen(next);
-    onOpenChange?.(next);
+    onOpenChange?.(next, details);
   };
-  const changeHostOpen = (next: boolean) => {
+  const changeHostOpen = (next: boolean, details?: NodexPopoverOpenChangeDetails) => {
     if (next && triggerDisabled) return;
     if (next && !open) {
       optionLoadRequestedRef.current = true;
       onOpen?.();
     }
-    changeOpen(next);
+    changeOpen(next, details);
   };
 
   const [previousOpen, setPreviousOpen] = useState(open);
