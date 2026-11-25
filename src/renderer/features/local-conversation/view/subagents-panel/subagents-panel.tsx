@@ -681,8 +681,8 @@ export function SubagentsPanelOverviewContent({
                     onClick={() => void openAgentsTab()}
                   >
                     {intl.formatMessage({
-                      id: "conversation.subagentsPanel.allAgents",
-                      defaultMessage: "All agents",
+                      id: "conversation.subagentsPanel.aerialView",
+                      defaultMessage: "Aerial view",
                     })}
                   </button>
                 ) : null}

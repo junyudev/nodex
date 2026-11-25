@@ -60,7 +60,7 @@ function agentsCatalog(
               panelSurfacesById: Object.fromEntries(
                 surfaces.map((tab) => [
                   tab.id,
-                  { titleSnapshot: "Agents", stateKey: 0, state: null, ...tab },
+                  { titleSnapshot: "Aerial view", stateKey: 0, state: null, ...tab },
                 ]),
               ),
             },

@@ -791,13 +791,13 @@ export function buildCommandPaletteCommands(
             "Panels",
             {
               id: "lib.commandPaletteCommands.agents.title",
-              defaultMessage: "Open Agents tab",
+              defaultMessage: "Open aerial view",
             },
             {
               id: "lib.commandPaletteCommands.agents.description",
-              defaultMessage: "See live Agent work and subagents",
+              defaultMessage: "Every chat at work, with its subagents",
             },
-            ["agents", "subagents", "delegation", "panel", "tab"],
+            ["aerial", "overview", "agents", "subagents", "delegation", "panel", "tab"],
             890,
           ),
         ]

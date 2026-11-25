@@ -3,11 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
-import {
-  ActivitySpinnerIcon,
-  DelegationMapIcon,
-  ProjectFolderIcon,
-} from "@/components/shared/icons";
+import { ActivitySpinnerIcon, AerialViewIcon, ProjectFolderIcon } from "@/components/shared/icons";
 import {
   NodexDropdownButtonTrigger,
   NodexDropdownItem,
@@ -115,7 +111,7 @@ export function AgentsSurface({
               <p role="status" className="px-1 text-sm text-token-text-tertiary">
                 <FormattedMessage
                   id="agents.agentsSurface.loading"
-                  defaultMessage="Loading Agents…"
+                  defaultMessage="Loading chats…"
                 />
               </p>
             )
@@ -254,7 +250,7 @@ function AgentsSection({
 function AgentsEmptyState() {
   return (
     <div className="flex flex-col items-center gap-2 px-6 pt-24 text-center">
-      <DelegationMapIcon className="icon-md text-token-text-tertiary" />
+      <AerialViewIcon className="icon-md text-token-text-tertiary" />
       <p className="text-sm font-medium text-token-foreground">
         <FormattedMessage
           id="agents.agentsSurface.emptyTitle"
@@ -362,7 +358,7 @@ function AgentsScopePicker({
           size="sm"
           aria-label={intl.formatMessage({
             id: "agents.agentsScopePicker.label",
-            defaultMessage: "Show Agents in",
+            defaultMessage: "Show chats in",
           })}
           leadingVisual={
             selected ? (
@@ -408,7 +404,7 @@ function AgentsScopePicker({
 }
 
 /**
- * The Agents tab's glyph. Like a chat's own tab, it says how work in scope stands: a question
+ * Aerial view's tab glyph. Like a chat's own tab, it says how work in scope stands: a question
  * bubble while a chat waits on its person, a spinner while any works, the map's glyph otherwise.
  */
 export function AgentsTabIcon({
@@ -436,7 +432,7 @@ export function AgentsTabIcon({
     );
   return (
     <span data-agents-tab-status={pulse} className={cn("flex", className)}>
-      <DelegationMapIcon className="icon-xs" />
+      <AerialViewIcon className="icon-xs" />
     </span>
   );
 }

@@ -129,7 +129,7 @@ function renderSurface(snapshot: AgentsMapSnapshot) {
   return { view, onOpenChat, onOpenThread, onScopeChange };
 }
 
-describe("the Agents tab", () => {
+describe("Aerial view", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
     source.reads = [];

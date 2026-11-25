@@ -2,7 +2,7 @@ import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import {
   CanvasIcon,
-  DelegationMapIcon,
+  AerialViewIcon,
   BoardIcon,
   PageIcon,
   SearchIcon,
@@ -15,7 +15,7 @@ import {
   TOOLBAR_BUTTON_BASE_CLASS,
   TOOLBAR_BUTTON_GHOST_CLASS,
 } from "@/lib/workbench-toolbar-control-styles";
-import { AGENTS_TAB_TITLE } from "@/lib/workbench-panel-actions";
+import { AERIAL_VIEW_TITLE } from "@/lib/workbench-panel-actions";
 import { cn } from "@/lib/utils";
 import {
   boundSpaceContentQuery,
@@ -281,8 +281,8 @@ export function PagesTabPicker({
                 onOpenAgents();
               }}
             >
-              <DelegationMapIcon />
-              {intl.formatMessage(AGENTS_TAB_TITLE)}
+              <AerialViewIcon />
+              {intl.formatMessage(AERIAL_VIEW_TITLE)}
             </button>
           ) : null}
           <button

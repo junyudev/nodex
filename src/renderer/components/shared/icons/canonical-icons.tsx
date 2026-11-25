@@ -310,6 +310,15 @@ const DELEGATION_MAP_PATHS = [
   "M14.25 15a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0",
 ];
 
+// A lead with one subagent beside it and one stepped in beneath it on a rail that turns, the way
+// Aerial view draws every chat's work tree. Every node is open, so the glyph stays light.
+const AERIAL_VIEW_PATHS = lineGlyphPaths(
+  "M2.75 4.75a2 2 0 1 0 4 0 2 2 0 1 0-4 0",
+  "M13.25 4.75a2 2 0 1 0 4 0 2 2 0 1 0-4 0",
+  "M13.25 15.25a2 2 0 1 0 4 0 2 2 0 1 0-4 0",
+  "M6.75 4.75h6.5M4.75 6.75v5.5a3 3 0 0 0 3 3h5.5",
+);
+
 // Five points on round joins, so the star reads softly at the house line weight.
 const STAR =
   "M10 3.55 11.79 8.18 16.75 8.46 12.9 11.59 14.17 16.39 10 13.7 5.83 16.39 7.1 11.59 3.25 8.46 8.21 8.18z";
@@ -365,6 +374,11 @@ export function DispatchIcon(props: CanonicalIconProps) {
 /** A work tree drawn as a map: who leads, and who the work was delegated to. */
 export function DelegationMapIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={DELEGATION_MAP_PATHS} />;
+}
+
+/** Every chat's work seen from above: leads and the subagents their work went to. */
+export function AerialViewIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={AERIAL_VIEW_PATHS} />;
 }
 
 export function SunIcon(props: CanonicalIconProps) {
