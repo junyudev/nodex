@@ -13,6 +13,7 @@ import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketpl
 import {
   browserPluginRequestPortFromPromise,
   makeBrowserPluginReconciler,
+  materializeHostDesktopToolPlugins,
   type BrowserPluginReconcilerOptions,
 } from "./browser-plugin-reconciler";
 import fs from "node:fs";
@@ -21,7 +22,8 @@ import path from "node:path";
 
 function makeTestBrowserPluginReconciler(
   options: Omit<BrowserPluginReconcilerOptions, "client" | "codexHome"> & {
-    readonly browserCacheMissing?: boolean;
+    readonly staleCache?: RevisedPluginName;
+    readonly shouldPublishInstalledSkill?: () => boolean;
     readonly client: {
       readonly request: (method: string, params?: unknown) => Promise<unknown>;
     };
@@ -29,31 +31,36 @@ function makeTestBrowserPluginReconciler(
 ) {
   const codexHome = path.join(options.runtimeStateHome, "fixture-codex");
   const marketplaceName = nodexDesktopToolMarketplaceName(options.runtimeStateHome);
-  const skill =
+  const browserSkill =
     options.browserRuntime.status === "available"
       ? path.relative(
           options.browserRuntime.bundle.browserPluginRoot,
           options.browserRuntime.bundle.paths.browserPluginDocs,
         )
       : "docs/SKILL.md";
-  const cachePath = path.join(
-    codexHome,
-    "plugins/cache",
-    marketplaceName,
-    "browser",
-    MATERIALIZED_BROWSER_VERSION,
-    skill,
-  );
-  const source = path.join(
-    options.runtimeStateHome,
-    ".tmp",
-    "bundled-marketplaces",
-    marketplaceName,
-    "plugins/browser",
-    skill,
-  );
-  const publishBrowserSkill = () => {
+  const skills = {
+    browser: browserSkill,
+    "computer-use": "skills/computer-use/SKILL.md",
+  };
+  const cachedSkill = (pluginName: RevisedPluginName, version: string) =>
+    path.join(codexHome, "plugins/cache", marketplaceName, pluginName, version, skills[pluginName]);
+  if (options.staleCache) {
+    const stalePath = cachedSkill(options.staleCache, "1.0.0-test");
+    fs.mkdirSync(path.dirname(stalePath), { recursive: true });
+    fs.writeFileSync(stalePath, "Vendor skill before Nodex guidance\n");
+  }
+  const publishSkill = (pluginName: RevisedPluginName) => {
+    const source = path.join(
+      options.runtimeStateHome,
+      ".tmp",
+      "bundled-marketplaces",
+      marketplaceName,
+      "plugins",
+      pluginName,
+      skills[pluginName],
+    );
     if (!fs.existsSync(source)) return;
+    const cachePath = cachedSkill(pluginName, MATERIALIZED_VERSIONS[pluginName]);
     fs.mkdirSync(path.dirname(cachePath), { recursive: true });
     fs.copyFileSync(source, cachePath);
   };
@@ -65,13 +72,15 @@ function makeTestBrowserPluginReconciler(
     },
     client: browserPluginRequestPortFromPromise({
       request: async (method, params) => {
-        if (method === "plugin/list" && !options.browserCacheMissing) publishBrowserSkill();
+        if (method === "plugin/list") {
+          for (const pluginName of ["browser", "computer-use"] as const) {
+            if (pluginName !== options.staleCache) publishSkill(pluginName);
+          }
+        }
         const result = await options.client.request(method, params);
-        if (
-          method === "plugin/install" &&
-          (params as { pluginName?: string }).pluginName === "browser"
-        ) {
-          publishBrowserSkill();
+        if (method === "plugin/install" && (options.shouldPublishInstalledSkill?.() ?? true)) {
+          const { pluginName } = params as { pluginName: string };
+          if (pluginName === "browser" || pluginName === "computer-use") publishSkill(pluginName);
         }
         return result;
       },
@@ -112,6 +121,12 @@ async function makeRuntime() {
 }
 
 const MATERIALIZED_BROWSER_VERSION = "1.0.0-test+nodex.6";
+const MATERIALIZED_COMPUTER_USE_VERSION = "1.0.0-test+nodex.1";
+const MATERIALIZED_VERSIONS = {
+  browser: MATERIALIZED_BROWSER_VERSION,
+  "computer-use": MATERIALIZED_COMPUTER_USE_VERSION,
+};
+type RevisedPluginName = keyof typeof MATERIALIZED_VERSIONS;
 
 function plugin(input: {
   enabled: boolean;
@@ -394,11 +409,12 @@ describe("BrowserPluginReconciler", () => {
     }),
   );
 
-  it.effect(
-    "refreshes a stale installed skill even when the marketplace reports the new version",
-    () =>
+  it.effect.each(["browser", "computer-use"] as const)(
+    "refreshes a stale %s skill even when the marketplace reports the new version",
+    (staleCache) =>
       Effect.gen(function* () {
         const fixture = yield* Effect.promise(() => makeRuntime());
+        let shouldPublishInstalledSkill = false;
         const request = vi.fn(async (method: string) => {
           if (method === "plugin/list") {
             return {
@@ -416,6 +432,17 @@ describe("BrowserPluginReconciler", () => {
                       installed: true,
                       version: MATERIALIZED_BROWSER_VERSION,
                     }),
+                    ...(staleCache === "computer-use"
+                      ? [
+                          plugin({
+                            marketplaceName: fixture.marketplaceName,
+                            enabled: false,
+                            installed: true,
+                            name: "computer-use",
+                            version: MATERIALIZED_COMPUTER_USE_VERSION,
+                          }),
+                        ]
+                      : []),
                   ],
                 },
               ],
@@ -438,17 +465,41 @@ describe("BrowserPluginReconciler", () => {
         try {
           const reconciler = yield* makeTestBrowserPluginReconciler({
             browserRuntime: fixture.browserRuntime,
-            browserCacheMissing: true,
+            computerUseAvailable: () => staleCache === "computer-use",
+            staleCache,
+            shouldPublishInstalledSkill: () => shouldPublishInstalledSkill,
             client: { request },
             runtimeStateHome: fixture.runtimeStateHome,
           });
-          expect(yield* reconciler.ensureInstalled).toMatchObject({ status: "ready" });
-          expect(request.mock.calls.map(([method]) => method)).toEqual([
-            "plugin/list",
-            "plugin/install",
-            "config/batchWrite",
-            "skills/list",
-            "plugin/list",
+          const first = yield* reconciler.ensureInstalled;
+          if (staleCache === "computer-use") {
+            expect(first).toMatchObject({ enabled: true, status: "ready" });
+            expect(yield* reconciler.result).toEqual(first);
+          }
+          const staleResult =
+            staleCache === "computer-use" && first.status === "ready" ? first.computerUse : first;
+          expect(staleResult).toMatchObject({
+            reason: "reconciliation-failed",
+            status: "unavailable",
+          });
+
+          shouldPublishInstalledSkill = true;
+          const result = yield* reconciler.ensureInstalled;
+          if (result.status !== "ready") throw new Error(result.message);
+          const revised = staleCache === "computer-use" ? result.computerUse : result;
+          expect(revised).toMatchObject({
+            installedVersion: MATERIALIZED_VERSIONS[staleCache],
+            status: "ready",
+          });
+          expect(request.mock.calls.filter(([method]) => method === "plugin/install")).toEqual([
+            [
+              "plugin/install",
+              { marketplacePath: fixture.marketplacePath, pluginName: staleCache },
+            ],
+            [
+              "plugin/install",
+              { marketplacePath: fixture.marketplacePath, pluginName: staleCache },
+            ],
           ]);
         } finally {
           fs.rmSync(fixture.root, { force: true, recursive: true });
@@ -482,7 +533,7 @@ describe("BrowserPluginReconciler", () => {
                     enabled: false,
                     installed: installed.has("computer-use"),
                     name: "computer-use",
-                    version: "1.0.0-test",
+                    version: MATERIALIZED_COMPUTER_USE_VERSION,
                   }),
                 ],
               },
@@ -516,7 +567,7 @@ describe("BrowserPluginReconciler", () => {
         expect(yield* reconciler.ensureInstalled).toMatchObject({
           computerUse: {
             enabled: true,
-            installedVersion: "1.0.0-test",
+            installedVersion: MATERIALIZED_COMPUTER_USE_VERSION,
             pluginRoot: path.join(fixture.marketplaceRoot, "plugins", "computer-use"),
             status: "ready",
           },
@@ -528,6 +579,33 @@ describe("BrowserPluginReconciler", () => {
             .filter(([method]) => method === "plugin/install")
             .map(([, params]) => (params as { pluginName: string }).pluginName),
         ).toEqual(["browser", "computer-use"]);
+      } finally {
+        fs.rmSync(fixture.root, { force: true, recursive: true });
+      }
+    }),
+  );
+
+  it.effect("gives host agents the revised Computer Use skill directly", () =>
+    Effect.gen(function* () {
+      const fixture = yield* Effect.promise(() => makeRuntime());
+      try {
+        const result = yield* materializeHostDesktopToolPlugins({
+          availableBackends: () => [],
+          browserRuntime: fixture.browserRuntime,
+          computerUseAvailable: true,
+          runtimeStateHome: fixture.runtimeStateHome,
+        });
+
+        if (result.status !== "ready" || result.computerUse.status !== "ready") {
+          throw new Error("Expected the host Computer Use plugin");
+        }
+        expect(result.computerUse.installedVersion).toBe(MATERIALIZED_COMPUTER_USE_VERSION);
+        expect(
+          fs.readFileSync(
+            path.join(result.computerUse.pluginRoot, "skills", "computer-use", "SKILL.md"),
+            "utf8",
+          ),
+        ).toContain("## Web pages and safe actions in Nodex");
       } finally {
         fs.rmSync(fixture.root, { force: true, recursive: true });
       }

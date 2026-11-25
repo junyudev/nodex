@@ -19,11 +19,16 @@ type MarketplaceManifest = {
   [key: string]: unknown;
 };
 
+export type MaterializedDesktopToolPlugin = {
+  rootPath: string;
+  version: string;
+  revisedSkillPath?: string;
+};
+
 export type MaterializedDesktopToolMarketplace = {
-  browserPluginRoot: string;
-  browserPluginVersion: string;
-  chromePluginRoot: string | null;
-  computerUsePluginRoot: string | null;
+  browser: MaterializedDesktopToolPlugin;
+  chrome: MaterializedDesktopToolPlugin | null;
+  computerUse: MaterializedDesktopToolPlugin | null;
   materializationKey: string;
   marketplaceName: string;
   rootPath: string;
@@ -113,24 +118,51 @@ async function writeClaudePluginManifest(pluginRoot: string): Promise<void> {
   await writeJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"), manifest);
 }
 
-function materializedBrowserVersion(vendorVersion: string): string {
-  // Codex installs by version. A revised local skill needs a fresh cache entry.
+type PluginSkill = {
+  relativePath: string;
+  revision?: { number: number; rewrite: (source: string) => string };
+};
+
+type PluginMaterialization = {
+  name: string;
+  plugin: MaterializedDesktopToolPlugin;
+  sourceRoot: string;
+  skill?: PluginSkill;
+};
+
+function planPlugin(
+  rootPath: string,
+  name: string,
+  sourceRoot: string | null,
+  vendorVersion: string,
+  skill?: PluginSkill,
+): PluginMaterialization {
+  if (!sourceRoot) throw new Error(`Verified ${name} plugin path is unavailable`);
+  const revision = skill?.revision;
+  // Codex installs by version. Revise each plugin independently to refresh its cache entry.
   const separator = vendorVersion.includes("+") ? "." : "+";
-  return `${vendorVersion}${separator}nodex.${MATERIALIZATION_SCHEMA_VERSION}`;
+  return {
+    name,
+    sourceRoot,
+    skill,
+    plugin: {
+      rootPath: path.join(rootPath, "plugins", name),
+      version: revision ? `${vendorVersion}${separator}nodex.${revision.number}` : vendorVersion,
+      ...(skill && revision ? { revisedSkillPath: skill.relativePath } : {}),
+    },
+  };
 }
 
 function materializationKey(
   bundle: VerifiedBrowserRuntimeBundle,
-  includeComputerUse: boolean,
+  plugins: Pick<MaterializedDesktopToolMarketplace, "browser" | "chrome" | "computerUse">,
+  chromeClosure: readonly MaterializedChromeArtifact[],
 ): string {
-  const computerUse = bundle.manifest.capabilities.computerUse;
-  const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
   return JSON.stringify({
-    browserPluginVersion: materializedBrowserVersion(bundle.manifest.browserPlugin.version),
-    chromePluginClosure: chromePluginClosure(bundle),
-    chromePluginVersion: chrome.status === "available" ? chrome.plugin.version : null,
-    computerUsePluginVersion:
-      includeComputerUse && computerUse.status === "available" ? computerUse.plugin.version : null,
+    browserPluginVersion: plugins.browser.version,
+    chromePluginClosure: chromeClosure,
+    chromePluginVersion: plugins.chrome?.version ?? null,
+    computerUsePluginVersion: plugins.computerUse?.version ?? null,
     desktopBuild: bundle.manifest.desktopBuild,
     desktopBuildNumber: bundle.manifest.desktopBuildNumber,
     schemaVersion: MATERIALIZATION_SCHEMA_VERSION,
@@ -190,30 +222,22 @@ async function isCurrentMaterialization(
   rootPath: string,
   key: string,
   chromeClosure: readonly MaterializedChromeArtifact[],
-  includeComputerUse: boolean,
+  plans: readonly PluginMaterialization[],
 ): Promise<boolean> {
   try {
     const storedKey = await fs.readFile(path.join(rootPath, MATERIALIZATION_KEY_FILENAME), "utf8");
     if (storedKey.trim() !== key) return false;
     await fs.access(path.join(rootPath, ".agents", "plugins", "marketplace.json"));
-    await fs.access(path.join(rootPath, "plugins", "browser", ".codex-plugin", "plugin.json"));
     if (chromeClosure.length > 0 && !(await isCurrentChromeClosure(rootPath, chromeClosure))) {
       return false;
     }
-    const pluginNames = [
-      "browser",
-      ...(chromeClosure.length > 0 ? ["chrome"] : []),
-      ...(includeComputerUse ? ["computer-use"] : []),
-    ];
-    for (const name of pluginNames) {
-      const pluginRoot = path.join(rootPath, "plugins", name);
-      const actual = await readJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"));
-      if (JSON.stringify(actual) !== JSON.stringify(await claudePluginManifest(pluginRoot))) {
-        return false;
-      }
+    for (const { plugin, skill } of plans) {
+      const expected = await claudePluginManifest(plugin.rootPath);
+      if (expected.version !== plugin.version) return false;
+      const actual = await readJson(path.join(plugin.rootPath, ".claude-plugin", "plugin.json"));
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) return false;
+      if (skill) await fs.access(path.join(plugin.rootPath, skill.relativePath));
     }
-    if (!includeComputerUse) return true;
-    await fs.access(path.join(rootPath, "plugins", "computer-use", COMPUTER_USE_SKILL_TARGET));
     return true;
   } catch {
     return false;
@@ -303,60 +327,56 @@ If setup or selection fails, read \`await agent.documentation.get("bootstrap-tro
   return platform === "win32" ? windowsBrowserSkillBootstrap(materialized) : materialized;
 }
 
-async function materializeFresh(
-  options: MaterializeDesktopToolMarketplaceOptions,
-  targetPath: string,
-  key: string,
-): Promise<MaterializedDesktopToolMarketplace> {
-  const { bundle } = options;
-  const computerUse = bundle.manifest.capabilities.computerUse;
-  const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
-  const includeComputerUse = options.includeComputerUse && computerUse.status === "available";
-  const includeChrome = chrome.status === "available";
-  const stagingPath = `${targetPath}.staging-${randomUUID()}`;
-  const browserPluginTarget = path.join(stagingPath, "plugins", "browser");
-  const browserPluginVersion = materializedBrowserVersion(bundle.manifest.browserPlugin.version);
-  const chromePluginTarget = includeChrome ? path.join(stagingPath, "plugins", "chrome") : null;
-  const computerUsePluginTarget = includeComputerUse
-    ? path.join(stagingPath, "plugins", "computer-use")
-    : null;
+function nodexComputerUseSkill(source: string): string {
+  const guidance = `## Web pages and safe actions in Nodex
 
-  await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  try {
-    await fs.mkdir(path.dirname(browserPluginTarget), { recursive: true });
-    await fs.cp(bundle.browserPluginRoot, browserPluginTarget, {
-      recursive: true,
-    });
-    const browserManifestPath = path.join(browserPluginTarget, ".codex-plugin", "plugin.json");
-    const browserManifest = parseRecord(await readJson(browserManifestPath), "Browser plugin");
-    await writeJson(browserManifestPath, { ...browserManifest, version: browserPluginVersion });
-    const relativeDocs = path.relative(bundle.browserPluginRoot, bundle.paths.browserPluginDocs);
-    const skillPath = path.join(browserPluginTarget, relativeDocs);
+Use the Browser skill, not Computer Use, for work inside a web page in the in-app Browser or in Chrome, Edge, Brave, Opera, Vivaldi, Dia or Arc. The Browser skill reads and operates the page itself, so text cannot land in the wrong field and its element references stay tied to the page.
+
+- If the browser the task needs isn't connected to Nodex, tell the user how to connect it (turn on the ChatGPT extension in that browser) rather than operating its pages through Computer Use. Use Computer Use on a web page only when the user asks for it, or for the browser's own windows, menus and dialogs.
+- To open a URL in a particular browser, run \`open -a "<App name>" "<url>"\` in a terminal instead of typing into its address bar.
+
+Element indexes, focus and screenshots can change between reading an app and acting on it:
+
+- Read the app state again after a keyboard shortcut, a focus change, an opened menu or popup, or an error saying the user changed the app. Never reuse earlier element indexes.
+- Before acting on an \`element_index\`, check that the element in the latest state still has the role and name you expect. If it doesn't, read the state again instead of acting.
+- Before \`type_text\`, or \`press_key\` with printable keys, confirm in the latest state that the intended field has focus. Prefer \`set_value\` when the field is settable. If you can't confirm focus, stop rather than type.
+- Never enter passwords, tokens or other secrets with Computer Use.
+- A screenshot can lag behind the app, especially while the app is in the background. When the screenshot and the accessibility text disagree, treat the screenshot as possibly stale and say so before showing it to the user as evidence.
+`;
+  const policy = /^# Computer Use Confirmations Policy\r?$/mu.exec(source);
+  if (!policy) return `${source.trimEnd()}\n\n${guidance}`;
+  return `${source.slice(0, policy.index)}${guidance}\n${source.slice(policy.index)}`;
+}
+
+async function materializePlugin(
+  { name, sourceRoot, plugin, skill }: PluginMaterialization,
+  stagingPath: string,
+): Promise<void> {
+  const target = path.join(stagingPath, "plugins", name);
+  await fs.cp(sourceRoot, target, { recursive: true });
+  if (skill?.revision) {
+    const manifestPath = path.join(target, ".codex-plugin", "plugin.json");
+    const manifest = parseRecord(await readJson(manifestPath), "Bundled plugin manifest");
+    await writeJson(manifestPath, { ...manifest, version: plugin.version });
+    const skillPath = path.join(target, skill.relativePath);
     const source = await fs.readFile(skillPath, "utf8");
-    await fs.writeFile(
-      skillPath,
-      nodexBrowserSkill(source, bundle.manifest.targetPlatform),
-      "utf8",
-    );
-    if (chromePluginTarget) {
-      if (!bundle.paths.chromePluginRoot) {
-        throw new Error("Verified Chrome plugin path is unavailable");
-      }
-      await fs.cp(bundle.paths.chromePluginRoot, chromePluginTarget, {
-        recursive: true,
-      });
-    }
-    if (computerUsePluginTarget) {
-      if (!bundle.paths.computerUsePluginRoot) {
-        throw new Error("Verified Computer Use plugin path is unavailable");
-      }
-      await fs.cp(bundle.paths.computerUsePluginRoot, computerUsePluginTarget, {
-        recursive: true,
-      });
-    }
+    await fs.writeFile(skillPath, skill.revision.rewrite(source), "utf8");
+  }
+  await writeClaudePluginManifest(target);
+}
 
-    for (const pluginRoot of [browserPluginTarget, chromePluginTarget, computerUsePluginTarget]) {
-      if (pluginRoot) await writeClaudePluginManifest(pluginRoot);
+async function materializeFresh(
+  bundle: VerifiedBrowserRuntimeBundle,
+  marketplace: MaterializedDesktopToolMarketplace,
+  plans: readonly PluginMaterialization[],
+): Promise<void> {
+  const { rootPath, marketplaceName, materializationKey: key } = marketplace;
+  const stagingPath = `${rootPath}.staging-${randomUUID()}`;
+  await fs.mkdir(path.dirname(rootPath), { recursive: true });
+  try {
+    await fs.mkdir(path.join(stagingPath, "plugins"), { recursive: true });
+    for (const plan of plans) {
+      await materializePlugin(plan, stagingPath);
     }
 
     const sourceManifestPath = path.join(
@@ -366,11 +386,7 @@ async function materializeFresh(
       "marketplace.json",
     );
     const marketplaceManifest = parseMarketplaceManifest(await readJson(sourceManifestPath));
-    const selectedPluginNames = new Set([
-      "browser",
-      ...(includeChrome ? ["chrome"] : []),
-      ...(includeComputerUse ? ["computer-use"] : []),
-    ]);
+    const selectedPluginNames = new Set(plans.map(({ name }) => name));
     const plugins = marketplaceManifest.plugins.filter((plugin) =>
       selectedPluginNames.has(plugin.name),
     );
@@ -382,58 +398,76 @@ async function materializeFresh(
     });
     await writeJson(path.join(stagingPath, ".agents", "plugins", "marketplace.json"), {
       ...marketplaceManifest,
-      name: nodexDesktopToolMarketplaceName(options.runtimeStateHome),
+      name: marketplaceName,
       plugins,
     });
     await fs.writeFile(path.join(stagingPath, MATERIALIZATION_KEY_FILENAME), `${key}\n`, "utf8");
-    await replaceDirectoryAtomically(stagingPath, targetPath);
+    await replaceDirectoryAtomically(stagingPath, rootPath);
   } catch (error) {
     await fs.rm(stagingPath, { force: true, recursive: true });
     throw error;
   }
-
-  return {
-    browserPluginRoot: path.join(targetPath, "plugins", "browser"),
-    browserPluginVersion,
-    chromePluginRoot: includeChrome ? path.join(targetPath, "plugins", "chrome") : null,
-    computerUsePluginRoot: includeComputerUse
-      ? path.join(targetPath, "plugins", "computer-use")
-      : null,
-    materializationKey: key,
-    marketplaceName: nodexDesktopToolMarketplaceName(options.runtimeStateHome),
-    rootPath: targetPath,
-  };
 }
 
 export async function materializeBundledDesktopToolMarketplace(
   options: MaterializeDesktopToolMarketplaceOptions,
 ): Promise<MaterializedDesktopToolMarketplace> {
-  const targetPath = path.join(
+  const { bundle } = options;
+  const marketplaceName = nodexDesktopToolMarketplaceName(options.runtimeStateHome);
+  const rootPath = path.join(
     path.resolve(options.runtimeStateHome),
     ".tmp",
     "bundled-marketplaces",
-    nodexDesktopToolMarketplaceName(options.runtimeStateHome),
+    marketplaceName,
   );
-  const includeComputerUse =
-    options.includeComputerUse &&
-    options.bundle.manifest.capabilities.computerUse.status === "available";
-  const chromeClosure = chromePluginClosure(options.bundle);
-  const key = materializationKey(options.bundle, includeComputerUse);
-  if (await isCurrentMaterialization(targetPath, key, chromeClosure, includeComputerUse)) {
-    return {
-      browserPluginRoot: path.join(targetPath, "plugins", "browser"),
-      browserPluginVersion: materializedBrowserVersion(
-        options.bundle.manifest.browserPlugin.version,
-      ),
-      chromePluginRoot:
-        chromeClosure.length > 0 ? path.join(targetPath, "plugins", "chrome") : null,
-      computerUsePluginRoot: includeComputerUse
-        ? path.join(targetPath, "plugins", "computer-use")
-        : null,
-      materializationKey: key,
-      marketplaceName: nodexDesktopToolMarketplaceName(options.runtimeStateHome),
-      rootPath: targetPath,
-    };
+  const platform = bundle.manifest.targetPlatform;
+  const browser = planPlugin(
+    rootPath,
+    "browser",
+    bundle.browserPluginRoot,
+    bundle.manifest.browserPlugin.version,
+    {
+      relativePath: path.relative(bundle.browserPluginRoot, bundle.paths.browserPluginDocs),
+      revision: { number: 6, rewrite: (source) => nodexBrowserSkill(source, platform) },
+    },
+  );
+  const chromeCapability = bundle.manifest.capabilities.browserUse.backends.chrome;
+  const chrome =
+    chromeCapability.status === "available"
+      ? planPlugin(
+          rootPath,
+          "chrome",
+          bundle.paths.chromePluginRoot,
+          chromeCapability.plugin.version,
+        )
+      : null;
+  const computerUseCapability = bundle.manifest.capabilities.computerUse;
+  const computerUse =
+    options.includeComputerUse && computerUseCapability.status === "available"
+      ? planPlugin(
+          rootPath,
+          "computer-use",
+          bundle.paths.computerUsePluginRoot,
+          computerUseCapability.plugin.version,
+          {
+            relativePath: COMPUTER_USE_SKILL_TARGET,
+            ...(platform === "darwin"
+              ? { revision: { number: 1, rewrite: nodexComputerUseSkill } }
+              : {}),
+          },
+        )
+      : null;
+  const plugins = {
+    browser: browser.plugin,
+    chrome: chrome?.plugin ?? null,
+    computerUse: computerUse?.plugin ?? null,
+  };
+  const plans = [browser, chrome, computerUse].filter((plan) => plan !== null);
+  const chromeClosure = chromePluginClosure(bundle);
+  const key = materializationKey(bundle, plugins, chromeClosure);
+  const marketplace = { ...plugins, materializationKey: key, marketplaceName, rootPath };
+  if (!(await isCurrentMaterialization(rootPath, key, chromeClosure, plans))) {
+    await materializeFresh(bundle, marketplace, plans);
   }
-  return await materializeFresh(options, targetPath, key);
+  return marketplace;
 }

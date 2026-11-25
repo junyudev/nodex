@@ -71,7 +71,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     expect(isForeignDesktopToolPlugin("browser@external-tools", runtimeStateHome)).toBe(false);
   });
 
-  test("atomically materializes desktop tools while preserving the verified Computer Use plugin", async () => {
+  test("inserts Computer Use guidance between the vendor screenshot and confirmation sections", async () => {
     const fixture = await makeRuntime();
     const sourceSkill = path.join(
       fixture.bundle.paths.computerUsePluginRoot!,
@@ -101,18 +101,27 @@ describe("materializeBundledDesktopToolMarketplace", () => {
         nodexDesktopToolMarketplaceName(fixture.runtimeStateHome),
       ),
     );
+    const skill = fs.readFileSync(
+      path.join(result.computerUse!.rootPath, "skills", "computer-use", "SKILL.md"),
+      "utf8",
+    );
+    const [vendorBefore, vendorPolicy] = originalSkill.split("# Computer Use Confirmations Policy");
+    const guidanceHeading = "## Web pages and safe actions in Nodex";
+    expect(skill).toMatch(
+      /## Web pages and safe actions in Nodex\n\nUse the Browser skill, not Computer Use/u,
+    );
+    expect(skill).toContain("Never enter passwords, tokens or other secrets with Computer Use.");
+    expect(skill.startsWith(`${vendorBefore}${guidanceHeading}`)).toBe(true);
+    expect(skill.endsWith(`# Computer Use Confirmations Policy${vendorPolicy}`)).toBe(true);
+    expect(result.computerUse?.version).toBe("1.0.0-test+nodex.1");
     expect(
-      fs.readFileSync(
-        path.join(result.computerUsePluginRoot!, "skills", "computer-use", "SKILL.md"),
-        "utf8",
+      JSON.parse(
+        fs.readFileSync(
+          path.join(result.computerUse!.rootPath, ".codex-plugin", "plugin.json"),
+          "utf8",
+        ),
       ),
-    ).toBe(originalSkill);
-    expect(
-      fs.readFileSync(
-        path.join(result.computerUsePluginRoot!, ".codex-plugin", "plugin.json"),
-        "utf8",
-      ),
-    ).toBe(originalManifest);
+    ).toEqual({ ...JSON.parse(originalManifest), version: result.computerUse?.version });
     const marketplace = JSON.parse(
       fs.readFileSync(path.join(result.rootPath, ".agents", "plugins", "marketplace.json"), "utf8"),
     ) as { name: string; plugins: Array<{ name: string; source: unknown }> };
@@ -128,27 +137,24 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     });
     expect(
       JSON.parse(
-        fs.readFileSync(
-          path.join(result.chromePluginRoot!, ".codex-plugin", "plugin.json"),
-          "utf8",
-        ),
+        fs.readFileSync(path.join(result.chrome!.rootPath, ".codex-plugin", "plugin.json"), "utf8"),
       ),
     ).toMatchObject({ name: "chrome", version: "1.0.0-test" });
     expect(
-      fs.readFileSync(path.join(result.chromePluginRoot!, "scripts", "extension-ids.json"), "utf8"),
+      fs.readFileSync(path.join(result.chrome!.rootPath, "scripts", "extension-ids.json"), "utf8"),
     ).toContain("fixture:marketplace/plugins/chrome/scripts/extension-ids.json");
-    expect(fs.existsSync(path.join(result.chromePluginRoot!, "client.js"))).toBe(false);
-    expect(fs.existsSync(path.join(result.browserPluginRoot, "client.js"))).toBe(true);
-    expect(relativeFiles(result.chromePluginRoot!)).toEqual(
+    expect(fs.existsSync(path.join(result.chrome!.rootPath, "client.js"))).toBe(false);
+    expect(fs.existsSync(path.join(result.browser.rootPath, "client.js"))).toBe(true);
+    expect(relativeFiles(result.chrome!.rootPath)).toEqual(
       [
         path.join(".claude-plugin", "plugin.json"),
         ...relativeFiles(fixture.bundle.paths.chromePluginRoot!),
       ].sort(),
     );
     for (const pluginRoot of [
-      result.browserPluginRoot,
-      result.chromePluginRoot!,
-      result.computerUsePluginRoot!,
+      result.browser.rootPath,
+      result.chrome!.rootPath,
+      result.computerUse!.rootPath,
     ]) {
       const vendor = JSON.parse(
         fs.readFileSync(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"),
@@ -170,6 +176,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
         expect.objectContaining({ relativePath: "scripts/installManifest.mjs" }),
       ]),
       chromePluginVersion: "1.0.0-test",
+      computerUsePluginVersion: "1.0.0-test+nodex.1",
       schemaVersion: 6,
     });
     expect(fs.readFileSync(sourceSkill, "utf8")).toBe(originalSkill);
@@ -185,16 +192,16 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     });
     const skill = fs.readFileSync(
       path.join(
-        result.browserPluginRoot,
+        result.browser.rootPath,
         path.relative(fixture.bundle.browserPluginRoot, fixture.bundle.paths.browserPluginDocs),
       ),
       "utf8",
     );
-    expect(result.browserPluginVersion).toBe("1.0.0-test+nodex.6");
+    expect(result.browser.version).toBe("1.0.0-test+nodex.6");
     const manifest = JSON.parse(
-      fs.readFileSync(path.join(result.browserPluginRoot, ".codex-plugin", "plugin.json"), "utf8"),
+      fs.readFileSync(path.join(result.browser.rootPath, ".codex-plugin", "plugin.json"), "utf8"),
     );
-    expect(manifest.version).toBe(result.browserPluginVersion);
+    expect(manifest.version).toBe(result.browser.version);
     expect(skill).toMatch(/Chrome, Edge, Brave, Opera, Vivaldi, Dia, and Arc/u);
     expect(skill).toMatch(/nodex_browser_connections/u);
     expect(skill).toContain("## Using the Browser");
@@ -211,7 +218,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
       includeComputerUse: true,
       runtimeStateHome: fixture.runtimeStateHome,
     });
-    const marker = path.join(first.browserPluginRoot, "reuse-marker");
+    const marker = path.join(first.browser.rootPath, "reuse-marker");
     fs.writeFileSync(marker, "preserved");
 
     const second = await materializeBundledDesktopToolMarketplace({
@@ -239,7 +246,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
       );
       const expectedManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
       fs.rmSync(manifestPath);
-      const marker = path.join(first.browserPluginRoot, "stale-marker");
+      const marker = path.join(first.browser.rootPath, "stale-marker");
       fs.writeFileSync(marker, "stale");
       await materializeBundledDesktopToolMarketplace(options);
       expect(JSON.parse(fs.readFileSync(manifestPath, "utf8"))).toEqual(expectedManifest);
@@ -247,7 +254,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     },
   );
 
-  test("rebuilds a materialization from before Nodex Browser selection", async () => {
+  test("rebuilds a materialization from before Nodex Computer Use guidance", async () => {
     const fixture = await makeRuntime();
     const options = { ...fixture, includeComputerUse: true };
     const first = await materializeBundledDesktopToolMarketplace(options);
@@ -255,10 +262,10 @@ describe("materializeBundledDesktopToolMarketplace", () => {
       path.join(first.rootPath, ".materialization-key"),
       JSON.stringify({
         ...JSON.parse(first.materializationKey),
-        schemaVersion: 5,
+        computerUsePluginVersion: "1.0.0-test",
       }),
     );
-    const marker = path.join(first.browserPluginRoot, "stale-marker");
+    const marker = path.join(first.browser.rootPath, "stale-marker");
     fs.writeFileSync(marker, "stale");
     const second = await materializeBundledDesktopToolMarketplace(options);
     expect(fs.existsSync(marker)).toBe(false);
@@ -272,8 +279,8 @@ describe("materializeBundledDesktopToolMarketplace", () => {
       includeComputerUse: false,
       runtimeStateHome: fixture.runtimeStateHome,
     });
-    const installManifest = path.join(first.chromePluginRoot!, "scripts", "installManifest.mjs");
-    const marker = path.join(first.browserPluginRoot, "stale-materialization-marker");
+    const installManifest = path.join(first.chrome!.rootPath, "scripts", "installManifest.mjs");
+    const marker = path.join(first.browser.rootPath, "stale-materialization-marker");
     fs.writeFileSync(marker, "remove on rebuild");
     fs.writeFileSync(installManifest, "tampered");
 
@@ -310,7 +317,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
       runtimeStateHome: fixture.runtimeStateHome,
     });
 
-    expect(result.computerUsePluginRoot).toBeNull();
+    expect(result.computerUse).toBeNull();
     expect(fs.existsSync(path.join(result.rootPath, "plugins", "computer-use"))).toBe(false);
     expect(
       JSON.parse(
@@ -320,6 +327,6 @@ describe("materializeBundledDesktopToolMarketplace", () => {
         ),
       ).plugins.map((plugin: { name: string }) => plugin.name),
     ).toEqual(["browser", "chrome"]);
-    expect(result.chromePluginRoot).toBe(path.join(result.rootPath, "plugins", "chrome"));
+    expect(result.chrome?.rootPath).toBe(path.join(result.rootPath, "plugins", "chrome"));
   });
 });

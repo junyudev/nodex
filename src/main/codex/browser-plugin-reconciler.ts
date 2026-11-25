@@ -14,7 +14,7 @@ import { resolveAvailableBrowserUseBackends } from "./browser-use-backends";
 import {
   materializeBundledDesktopToolMarketplace,
   nodexDesktopToolMarketplaceName,
-  type MaterializedDesktopToolMarketplace,
+  type MaterializedDesktopToolPlugin,
 } from "./bundled-desktop-tool-marketplace";
 
 type BrowserPluginRequestMethod =
@@ -242,10 +242,9 @@ function reconcilePlugin(
   input: {
     current: MarketplacePlugin | null;
     desired: boolean;
+    materialized: MaterializedDesktopToolPlugin | null;
     marketplacePath: string;
     pluginName: DesktopToolPluginName;
-    version: string | null;
-    refreshInstall?: boolean;
   },
 ): Effect.Effect<boolean, BrowserPluginReconcileError> {
   if (!input.desired) {
@@ -254,7 +253,8 @@ function reconcilePlugin(
       .request("plugin/uninstall", { pluginId: input.current.id })
       .pipe(Effect.as(true));
   }
-  if (!input.version) {
+  const { current, materialized, pluginName } = input;
+  if (!materialized) {
     return Effect.fail(
       reconcileError(
         "resolve-plugin-version",
@@ -262,9 +262,7 @@ function reconcilePlugin(
       ),
     );
   }
-  if (!input.refreshInstall && isPluginReady(input.current, input.version))
-    return Effect.succeed(false);
-  if (!input.current) {
+  if (!current) {
     return Effect.fail(
       reconcileError(
         "resolve-plugin",
@@ -273,11 +271,13 @@ function reconcilePlugin(
     );
   }
   return Effect.gen(function* () {
-    if (
-      input.refreshInstall ||
-      !input.current?.installed ||
-      (input.current.localVersion ?? input.current.version) !== input.version
-    ) {
+    const installedVersion = current.localVersion ?? current.version;
+    const refreshInstall =
+      !current.installed ||
+      installedVersion !== materialized.version ||
+      !(yield* revisedSkillIsInstalled(environment, pluginName, materialized));
+    if (!refreshInstall && !current.enabled) return false;
+    if (refreshInstall) {
       yield* environment.client.request("plugin/install", {
         marketplacePath: input.marketplacePath,
         pluginName: input.pluginName,
@@ -301,28 +301,39 @@ function reconcilePlugin(
   });
 }
 
-function browserSkillIsInstalled(
-  codexHome: string,
-  materialized: MaterializedDesktopToolMarketplace,
-  relativeSkillPath: string,
+function revisedSkillIsInstalled(
+  environment: ReconcileEnvironment,
+  pluginName: DesktopToolPluginName,
+  { rootPath, version, revisedSkillPath }: MaterializedDesktopToolPlugin,
 ): Effect.Effect<boolean> {
+  if (!revisedSkillPath) return Effect.succeed(true);
   const installed = path.join(
-    codexHome,
+    environment.codexHome,
     "plugins",
     "cache",
-    materialized.marketplaceName,
-    "browser",
-    materialized.browserPluginVersion,
-    relativeSkillPath,
+    environment.marketplaceName,
+    pluginName,
+    version,
+    revisedSkillPath,
   );
   // Plugin/list describes the marketplace version even when the installed cache is older.
   return Effect.tryPromise(async () => {
     const [expected, actual] = await Promise.all([
-      fs.promises.readFile(path.join(materialized.browserPluginRoot, relativeSkillPath)),
+      fs.promises.readFile(path.join(rootPath, revisedSkillPath)),
       fs.promises.readFile(installed),
     ]);
     return expected.equals(actual);
   }).pipe(Effect.orElseSucceed(() => false));
+}
+
+function isReconciledPluginReady(
+  environment: ReconcileEnvironment,
+  pluginName: DesktopToolPluginName,
+  current: MarketplacePlugin | null,
+  materialized: MaterializedDesktopToolPlugin | null,
+): Effect.Effect<boolean> {
+  if (!materialized || !isPluginReady(current, materialized.version)) return Effect.succeed(false);
+  return revisedSkillIsInstalled(environment, pluginName, materialized);
 }
 
 function removeInstalledPlugins(
@@ -358,13 +369,12 @@ function removeInstalledPlugins(
 }
 
 function resolveChromeResult(input: {
-  capabilityAvailable: boolean;
   desired: boolean;
-  materialized: MaterializedDesktopToolMarketplace;
-  plugin: MarketplacePlugin | null;
-  version: string | null;
+  materialized: MaterializedDesktopToolPlugin | null;
+  ready: boolean;
 }): ChromePluginReconcileResult {
-  if (!input.capabilityAvailable || !input.materialized.chromePluginRoot || !input.version) {
+  const { materialized } = input;
+  if (!materialized) {
     return {
       message: "Chrome runtime capability is unavailable",
       reason: "capability-unavailable",
@@ -378,7 +388,7 @@ function resolveChromeResult(input: {
       status: "unavailable",
     };
   }
-  if (!isPluginReady(input.plugin, input.version)) {
+  if (!input.ready) {
     return {
       message: "Chrome plugin reconciliation did not produce the verified Thread-scoped version",
       reason: "reconciliation-failed",
@@ -387,26 +397,26 @@ function resolveChromeResult(input: {
   }
   return {
     enabled: true,
-    installedVersion: input.version,
-    pluginRoot: input.materialized.chromePluginRoot,
+    installedVersion: materialized.version,
+    pluginRoot: materialized.rootPath,
     status: "ready",
   };
 }
 
 function resolveComputerUseResult(input: {
   desired: boolean;
-  materialized: MaterializedDesktopToolMarketplace;
-  plugin: MarketplacePlugin | null;
-  version: string | null;
+  materialized: MaterializedDesktopToolPlugin | null;
+  ready: boolean;
 }): ComputerUsePluginReconcileResult {
-  if (!input.desired || !input.materialized.computerUsePluginRoot || !input.version) {
+  const { materialized } = input;
+  if (!input.desired || !materialized) {
     return {
       message: "Computer Use runtime capability is unavailable",
       reason: "capability-unavailable",
       status: "unavailable",
     };
   }
-  if (!isPluginReady(input.plugin, input.version)) {
+  if (!input.ready) {
     return {
       message:
         "Computer Use plugin reconciliation did not produce the verified Thread-scoped version",
@@ -416,8 +426,8 @@ function resolveComputerUseResult(input: {
   }
   return {
     enabled: true,
-    installedVersion: input.version,
-    pluginRoot: input.materialized.computerUsePluginRoot,
+    installedVersion: materialized.version,
+    pluginRoot: materialized.rootPath,
     status: "ready",
   };
 }
@@ -454,20 +464,19 @@ export const materializeHostDesktopToolPlugins = Effect.fn("DesktopTools.materia
         }),
       catch: (cause) => reconcileError("materialize-host-marketplace", cause),
     });
-    const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
-    const computerUse = bundle.manifest.capabilities.computerUse;
+    const { browser, chrome, computerUse } = materialized;
     return {
       status: "ready",
       marketplaceRoot: materialized.rootPath,
       enabled: desired.browserAvailable,
-      installedVersion: desired.browserAvailable ? materialized.browserPluginVersion : null,
+      installedVersion: desired.browserAvailable ? browser.version : null,
       chrome:
-        desired.chromeAvailable && chrome.status === "available" && materialized.chromePluginRoot
+        desired.chromeAvailable && chrome
           ? {
               status: "ready",
               enabled: true,
-              installedVersion: chrome.plugin.version,
-              pluginRoot: materialized.chromePluginRoot,
+              installedVersion: chrome.version,
+              pluginRoot: chrome.rootPath,
             }
           : {
               status: "unavailable",
@@ -475,14 +484,12 @@ export const materializeHostDesktopToolPlugins = Effect.fn("DesktopTools.materia
               message: "Chrome is unavailable.",
             },
       computerUse:
-        desired.computerUseAvailable &&
-        computerUse.status === "available" &&
-        materialized.computerUsePluginRoot
+        desired.computerUseAvailable && computerUse
           ? {
               status: "ready",
               enabled: true,
-              installedVersion: computerUse.plugin.version,
-              pluginRoot: materialized.computerUsePluginRoot,
+              installedVersion: computerUse.version,
+              pluginRoot: computerUse.rootPath,
             }
           : {
               status: "unavailable",
@@ -546,48 +553,22 @@ function reconcile(
       );
     }
 
-    const relativeSkillPath = path.relative(
-      bundle.browserPluginRoot,
-      bundle.paths.browserPluginDocs,
-    );
-    const browserSkillCurrent = browserSkillIsInstalled(
-      environment.codexHome,
-      materialized,
-      relativeSkillPath,
-    );
-    const refreshBrowserInstall = desiredState.browserAvailable && !(yield* browserSkillCurrent);
-
+    const tools = [
+      ["browser", materialized.browser, desiredState.browserAvailable],
+      ["chrome", materialized.chrome, desiredState.chromeAvailable],
+      ["computer-use", materialized.computerUse, desiredState.computerUseAvailable],
+    ] as const;
     let changed = false;
-    changed =
-      (yield* reconcilePlugin(environment, {
-        current: findPlugin(marketplace, "browser"),
-        desired: desiredState.browserAvailable,
-        marketplacePath: marketplace.marketplacePath,
-        pluginName: "browser",
-        version: materialized.browserPluginVersion,
-        refreshInstall: refreshBrowserInstall,
-      })) || changed;
-    const chromeCapability = bundle.manifest.capabilities.browserUse.backends.chrome;
-    changed =
-      (yield* reconcilePlugin(environment, {
-        current: findPlugin(marketplace, "chrome"),
-        desired: desiredState.chromeAvailable,
-        marketplacePath: marketplace.marketplacePath,
-        pluginName: "chrome",
-        version: chromeCapability.status === "available" ? chromeCapability.plugin.version : null,
-      })) || changed;
-    const computerUseCapability = bundle.manifest.capabilities.computerUse;
-    changed =
-      (yield* reconcilePlugin(environment, {
-        current: findPlugin(marketplace, "computer-use"),
-        desired: desiredState.computerUseAvailable,
-        marketplacePath: marketplace.marketplacePath,
-        pluginName: "computer-use",
-        version:
-          computerUseCapability.status === "available"
-            ? computerUseCapability.plugin.version
-            : null,
-      })) || changed;
+    for (const [pluginName, plugin, desired] of tools) {
+      changed =
+        (yield* reconcilePlugin(environment, {
+          current: findPlugin(marketplace, pluginName),
+          desired,
+          materialized: plugin,
+          marketplacePath: marketplace.marketplacePath,
+          pluginName,
+        })) || changed;
+    }
     if (changed) {
       yield* environment.client.request("skills/list", { forceReload: true });
       marketplace = yield* readBundledMarketplace(environment);
@@ -598,8 +579,7 @@ function reconcile(
 
     const browserPlugin = findPlugin(marketplace, "browser");
     const browserReady = desiredState.browserAvailable
-      ? isPluginReady(browserPlugin, materialized.browserPluginVersion) &&
-        (!refreshBrowserInstall || (yield* browserSkillCurrent))
+      ? yield* isReconciledPluginReady(environment, "browser", browserPlugin, materialized.browser)
       : !browserPlugin?.installed && !browserPlugin?.enabled;
     if (!browserReady) {
       return reconciliationFailure(
@@ -608,11 +588,14 @@ function reconcile(
     }
 
     const chrome = resolveChromeResult({
-      capabilityAvailable: chromeCapability.status === "available",
       desired: desiredState.chromeAvailable,
-      materialized,
-      plugin: findPlugin(marketplace, "chrome"),
-      version: chromeCapability.status === "available" ? chromeCapability.plugin.version : null,
+      materialized: materialized.chrome,
+      ready: yield* isReconciledPluginReady(
+        environment,
+        "chrome",
+        findPlugin(marketplace, "chrome"),
+        materialized.chrome,
+      ),
     });
     if (desiredState.chromeAvailable && chrome.status === "unavailable") {
       return reconciliationFailure(chrome.message);
@@ -620,10 +603,13 @@ function reconcile(
 
     const computerUse = resolveComputerUseResult({
       desired: desiredState.computerUseAvailable,
-      materialized,
-      plugin: findPlugin(marketplace, "computer-use"),
-      version:
-        computerUseCapability.status === "available" ? computerUseCapability.plugin.version : null,
+      materialized: materialized.computerUse,
+      ready: yield* isReconciledPluginReady(
+        environment,
+        "computer-use",
+        findPlugin(marketplace, "computer-use"),
+        materialized.computerUse,
+      ),
     });
     if (
       !desiredState.browserAvailable &&
@@ -637,7 +623,7 @@ function reconcile(
       chrome,
       computerUse,
       enabled: desiredState.browserAvailable,
-      installedVersion: desiredState.browserAvailable ? materialized.browserPluginVersion : null,
+      installedVersion: desiredState.browserAvailable ? materialized.browser.version : null,
       marketplaceRoot: materialized.rootPath,
       status: "ready" as const,
     };
@@ -668,7 +654,12 @@ export const makeBrowserPluginReconciler = (
         const runtime = options.browserRuntime;
         const desiredState = resolveDesiredState(runtime, availableBackends, computerUseAvailable);
         const current = yield* Ref.get(cached);
-        if (current?.runtime === runtime && current.key === desiredState.key) return current.value;
+        const computerUse = current?.value.status === "ready" ? current.value.computerUse : null;
+        const retryComputerUse =
+          computerUse?.status === "unavailable" && computerUse.reason === "reconciliation-failed";
+        if (current?.runtime === runtime && current.key === desiredState.key && !retryComputerUse) {
+          return current.value;
+        }
         const result = yield* reconcile({ ...environment, browserRuntime: runtime }, desiredState);
         yield* Ref.set(
           cached,
