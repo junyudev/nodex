@@ -119,6 +119,7 @@ export const makeAcpRegistryConnectionState = Effect.fn("makeAcpRegistryConnecti
       "kind",
       "status",
       "category",
+      "role",
     ]);
     const redact = (value: unknown): unknown =>
       JSON.parse(

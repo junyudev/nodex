@@ -102,7 +102,7 @@ describe("ACP connection state", () => {
     }).pipe(Effect.provide(NodeServices.layer)),
   );
   it.effect(
-    "masks metadata without corrupting system timestamps or retaining authorization URLs",
+    "masks metadata and authorization URLs in saved discovery while preserving structural fields",
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
@@ -111,8 +111,11 @@ describe("ACP connection state", () => {
           cacheDir,
           instanceId: ProviderInstanceId.make("acp-2026"),
           settings,
-          environment: [{ name: "TOKEN", value: "2026", sensitive: true }],
-          processEnvironment: { TOKEN: "2026" },
+          environment: [
+            { name: "TOKEN", value: "2026", sensitive: true },
+            { name: "OTHER_TOKEN", value: "reason", sensitive: true },
+          ],
+          processEnvironment: { TOKEN: "2026", OTHER_TOKEN: "reason" },
         };
         const state = yield* makeAcpRegistryConnectionState(input);
         const snapshot: ServerProvider = {
@@ -136,15 +139,35 @@ describe("ACP connection state", () => {
             checkedAt: "2026-10-24T00:00:00.000Z",
             supportsModelSelection: true,
           },
-          models: [{ slug: "model", name: "Model 2026", isCustom: false, capabilities: null }],
+          models: [
+            {
+              slug: "model",
+              name: "Model 2026",
+              isCustom: false,
+              capabilities: {
+                optionDescriptors: [
+                  {
+                    id: "profile",
+                    label: "Profile",
+                    type: "select",
+                    role: "reasoning",
+                    options: [{ id: "low", label: "Low" }],
+                  },
+                ],
+              },
+            },
+          ],
           slashCommands: [],
           skills: [],
         };
         yield* state.setDiscovery(snapshot);
-        const saved = yield* state.getDiscovery;
+        const restarted = yield* makeAcpRegistryConnectionState(input);
+        const saved = yield* restarted.getDiscovery;
         assert.equal(saved?.instanceId, input.instanceId);
         assert.equal(saved?.discovery?.checkedAt, snapshot.discovery?.checkedAt);
         assert.equal(saved?.models[0]?.name, "Model [redacted]");
+        const descriptor = saved?.models[0]?.capabilities?.optionDescriptors?.[0];
+        assert.equal(descriptor?.type === "select" ? descriptor.role : undefined, "reasoning");
         assert.isUndefined(saved?.auth.action);
         assert.equal(state.redactSnapshot(snapshot).auth.action?.url, snapshot.auth.action?.url);
         for (const name of yield* fs.readDirectory(cacheDir)) {

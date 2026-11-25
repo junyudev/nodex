@@ -175,6 +175,7 @@ const DEFAULT_OPENCODE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabi
       id: "variant",
       label: "Reasoning",
       type: "select",
+      role: "reasoning",
       options: [
         { id: "low", label: "Low" },
         { id: "medium", label: "Medium", isDefault: true },
@@ -238,6 +239,7 @@ function openCodeCapabilitiesForModel(input: {
               id: "variant",
               label: "Reasoning",
               type: "select" as const,
+              role: "reasoning" as const,
               options: variantOptions,
               ...(defaultVariant ? { currentValue: defaultVariant } : {}),
             },
@@ -533,6 +535,7 @@ function openCode2ModelCapabilities(model: OpenCode2Model): ModelCapabilities {
               id: "variant",
               label: "Reasoning",
               type: "select",
+              role: "reasoning",
               options: variants.map((id) => ({
                 id,
                 label: titleCaseSlug(id),

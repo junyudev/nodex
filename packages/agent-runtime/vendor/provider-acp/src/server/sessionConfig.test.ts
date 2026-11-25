@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { ACP_SESSION_MODE_OPTION_ID, acpProviderOptionDescriptors } from "./sessionConfig.ts";
 
 describe("acpProviderOptionDescriptors", () => {
-  it("maps non-model select options and excludes model and collaboration categories", () => {
+  it("marks the first thought-level select as reasoning and excludes model and collaboration categories", () => {
     const descriptors = acpProviderOptionDescriptors({
       configOptions: [
         {
@@ -26,8 +26,8 @@ describe("acpProviderOptionDescriptors", () => {
           ],
         },
         {
-          id: "reasoning_effort",
-          name: "Reasoning effort",
+          id: "inference_profile",
+          name: "Inference profile",
           category: "thought_level",
           type: "select",
           currentValue: "medium",
@@ -36,31 +36,48 @@ describe("acpProviderOptionDescriptors", () => {
             { value: "medium", name: "Medium", description: "Balanced" },
           ],
         },
+        {
+          id: "secondary_profile",
+          name: "Secondary profile",
+          category: "thought_level",
+          type: "select",
+          currentValue: "low",
+          options: [{ value: "low", name: "Low" }],
+        },
       ],
       modeState: undefined,
     });
 
     expect(descriptors).toEqual([
       {
-        id: "reasoning_effort",
-        label: "Reasoning effort",
+        id: "inference_profile",
+        label: "Inference profile",
         type: "select",
+        role: "reasoning",
         options: [
           { id: "low", label: "Low" },
           { id: "medium", label: "Medium", description: "Balanced" },
         ],
         currentValue: "medium",
       },
+      {
+        id: "secondary_profile",
+        label: "Secondary profile",
+        type: "select",
+        options: [{ id: "low", label: "Low" }],
+        currentValue: "low",
+      },
     ]);
   });
 
-  it("maps boolean session options", () => {
+  it("maps boolean session options without a role", () => {
     const descriptors = acpProviderOptionDescriptors({
       configOptions: [
         {
           id: "fast_mode",
           name: "Fast mode",
           description: "Use lower-latency inference.",
+          category: "thought_level",
           type: "boolean",
           currentValue: true,
         },
@@ -85,6 +102,7 @@ describe("acpProviderOptionDescriptors", () => {
         {
           id: "sandbox",
           name: "Sandbox",
+          category: "mode",
           type: "select",
           currentValue: "workspace",
           options: [

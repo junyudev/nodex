@@ -126,13 +126,16 @@ export function acpProviderOptionDescriptors(input: {
       continue;
     }
     if (option.category === "mode") hasModeCategory = true;
-    if (option.category === "thought_level") {
+    const isThoughtLevel = option.category === "thought_level";
+    const isPrimaryReasoning = isThoughtLevel && mirroredModeChoiceSets.length === 0;
+    if (isThoughtLevel) {
       mirroredModeChoiceSets.push(new Set(choices.map((choice) => choice.id)));
     }
     const currentValue = optionChoiceId(option.currentValue);
     descriptors.push({
       ...base,
       type: "select",
+      ...(isPrimaryReasoning ? { role: "reasoning" } : {}),
       options: choices,
       ...(currentValue !== undefined && choices.some((choice) => choice.id === currentValue)
         ? { currentValue }
