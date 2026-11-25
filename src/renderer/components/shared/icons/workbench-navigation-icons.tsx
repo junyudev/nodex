@@ -108,7 +108,12 @@ export function WorkbenchAutomationsIcon({
   );
 }
 
-/** Three rising bars, one solid when Insights is the current destination. */
+const INSIGHTS_SPARKLINE_PATH = "M5.4 12.6L8.35 9.65L10.75 11.45L14.6 7.1";
+
+const INSIGHTS_FILLED_PATH =
+  "M6.15 2.09H13.85A4.06 4.06 0 0 1 17.91 6.15V13.85A4.06 4.06 0 0 1 13.85 17.91H6.15A4.06 4.06 0 0 1 2.09 13.85V6.15A4.06 4.06 0 0 1 6.15 2.09ZM4.82 12.02L7.77 9.07A0.82 0.82 0 0 1 8.84 8.99L10.64 10.34L13.99 6.56A0.82 0.82 0 0 1 15.21 7.64L11.36 11.99A0.82 0.82 0 0 1 10.26 12.11L8.43 10.73L5.98 13.18A0.82 0.82 0 0 1 4.82 12.02Z";
+
+/** A framed rising sparkline; fills solid with the trend line cut out when Insights is active. */
 export function WorkbenchInsightsIcon({
   className,
   filled = false,
@@ -126,23 +131,28 @@ export function WorkbenchInsightsIcon({
       className={cn("size-5 shrink-0", className)}
       {...props}
     >
-      {[
-        { x: 3, y: 10.5, height: 6.5 },
-        { x: 8.25, y: 6.5, height: 10.5 },
-        { x: 13.5, y: 3, height: 14 },
-      ].map(({ x, y, height }) => (
-        <rect
-          key={x}
-          x={x}
-          y={y}
-          width="3.5"
-          height={height}
-          rx="1"
-          fill={filled ? "currentColor" : "none"}
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-      ))}
+      {filled ? (
+        <path d={INSIGHTS_FILLED_PATH} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
+      ) : (
+        <>
+          <rect
+            x="2.75"
+            y="2.75"
+            width="14.5"
+            height="14.5"
+            rx="3.4"
+            stroke="currentColor"
+            strokeWidth="1.33"
+          />
+          <path
+            d={INSIGHTS_SPARKLINE_PATH}
+            stroke="currentColor"
+            strokeWidth="1.33"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      )}
     </svg>
   );
 }

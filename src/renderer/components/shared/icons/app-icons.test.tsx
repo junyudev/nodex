@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { render } from "@/test/dom";
-import { WorkbenchAutomationsIcon } from "./workbench-navigation-icons";
+import { WorkbenchAutomationsIcon, WorkbenchInsightsIcon } from "./workbench-navigation-icons";
 import {
   AskAiIcon,
   AutomationMoreIcon,
@@ -262,6 +262,20 @@ describe("shared action icon geometry", () => {
     expect(activePath?.getAttribute("fill")).toBe("currentColor");
     expect(activePath?.getAttribute("stroke")).toBeNull();
     expect(activePath?.getAttribute("d")).not.toBe(restingPath?.getAttribute("d"));
+  });
+
+  test("renders the framed sparkline outline and evenodd filled insights states", () => {
+    const resting = render(<WorkbenchInsightsIcon />).container.querySelector("svg");
+    const active = render(<WorkbenchInsightsIcon filled />).container.querySelector("svg");
+
+    expect(resting?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(active?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(resting?.querySelector("rect")?.getAttribute("stroke")).toBe("currentColor");
+    expect(resting?.querySelector("path")?.getAttribute("stroke")).toBe("currentColor");
+    expect(active?.querySelector("rect")).toBeNull();
+    expect(active?.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
+    expect(active?.querySelector("path")?.getAttribute("fill-rule")).toBe("evenodd");
+    expect(active?.querySelector("[stroke]")).toBeNull();
   });
 });
 

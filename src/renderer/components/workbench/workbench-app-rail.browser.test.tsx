@@ -87,6 +87,7 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   expect(plugins.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
   expect(plugins.querySelector("path")?.getAttribute("stroke")).toBeNull();
 
+  expect(insights.querySelector("rect")?.getAttribute("stroke")).toBe("currentColor");
   await act(async () => {
     await userEvent.tab();
     await userEvent.keyboard("{Enter}");
@@ -95,6 +96,8 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   expect(onInsights).toHaveBeenCalledOnce();
   expect(current()).toEqual(["Insights"]);
   expect(plugins.querySelector("path")?.getAttribute("stroke")).toBe("currentColor");
+  expect(insights.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
+  expect(insights.querySelector("[stroke]")).toBeNull();
 
   await act(async () => {
     await userEvent.tab({ shift: true });
