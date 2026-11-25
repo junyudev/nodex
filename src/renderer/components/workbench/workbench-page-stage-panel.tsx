@@ -2,7 +2,7 @@ import { useIntl } from "@/lib/i18n";
 import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
 import { useWorkbenchPageSearchReveal } from "@/lib/workbench-surface-reveal";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
-import { useMemo, useState, type MutableRefObject, type ReactNode, type RefObject } from "react";
+import { useMemo, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
 import { PageStageLoadingFrame } from "@/components/board/page-stage/frame";
@@ -22,7 +22,7 @@ import { pageStageSemanticValues, type PageStageSemanticValues } from "@/lib/pag
 import { requestPageBlockFocus } from "@/lib/page-block-focus-intents";
 import { fetchPageDetail, usePageDetail } from "@/lib/page-detail-store";
 import { usePublishCanonicalPageTitle } from "@/lib/page-title-projection-context";
-import { consumePageTitleFocus } from "@/lib/page-title-focus-intent";
+import { useConsumePageTitleFocus } from "@/lib/page-title-focus-intent";
 import { projectContentRoute } from "../../../shared/content-routing-context";
 import type {
   CodexPromptInput,
@@ -205,8 +205,6 @@ export function PageStageSessionTab({
     sceneOwner ?? { kind: "session", sessionId },
     tab.id,
   );
-  // A Page created a moment ago opens ready to be named; reopening one never moves focus.
-  const [focusTitle] = useState(() => consumePageTitleFocus(tab.config.pageId));
   const linkedChats = usePageLinkedChats(tab.config.pageId, { enabled: project !== null });
   const editorSessionKey = makeEditorSurfaceKey(sessionId, tab.id);
 
@@ -241,6 +239,8 @@ export function PageStageSessionTab({
       : undefined,
   );
   const page = stageProjection.page;
+  // A Page created a moment ago opens ready to be named; reopening one never moves focus.
+  const focusTitle = useConsumePageTitleFocus(tab.config.pageId, Boolean(page));
   const pageLoadError = !page
     ? (stageProjection.error ??
       (detailSnapshot.error === "Page not found" ? null : detailSnapshot.error))

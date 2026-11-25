@@ -412,7 +412,11 @@ import {
 } from "@/lib/workbench-panel-actions";
 import { requestPageTitleFocus } from "@/lib/page-title-focus-intent";
 import { queryKeys } from "@/lib/query-keys";
-import { createPageFor } from "@/lib/workspace-page-create";
+import {
+  createPageFor,
+  DEFAULT_NEW_PAGE_TITLE,
+  resolveNewPageTitleForSession,
+} from "@/lib/workspace-page-create";
 import {
   loadLinkedPageStatusOptions,
   updateLinkedPageStatus,
@@ -2417,6 +2421,7 @@ export function WorkbenchRuntime({
         readonly targetLeafId?: string;
         readonly targetPanelId?: PanelId;
         readonly mode?: PresentWorkbenchPanelSurfaceInput["mode"];
+        readonly navigation?: PresentWorkbenchPanelSurfaceInput["navigation"];
         readonly isCurrent?: () => boolean;
       } = {},
     ): Promise<boolean> => {
@@ -2476,7 +2481,7 @@ export function WorkbenchRuntime({
               ...(options.placement ? { placement: options.placement } : {}),
             },
             mode: options.mode ?? "durable",
-            navigation: "select-owner",
+            navigation: options.navigation ?? "select-owner",
             ...(options.isCurrent ? { isCurrent: options.isCurrent } : {}),
           });
           return presented.status === "presented";
@@ -2538,9 +2543,10 @@ export function WorkbenchRuntime({
     [queryClient],
   );
   /**
-   * Creates an Untitled Page where the owner's work lives and opens it in the owner's panel
-   * group, title first: a Project's Pages join its primary Database, a projectless chat's and
-   * Space's join Space, and a chat's Page is linked to it.
+   * Creates a Page where the owner's work lives and opens it in the owner's panel group: a
+   * Project's Pages join its primary Database, a projectless chat's and Space's join Space, and a
+   * chat's Page is linked to it and defaults to the chat's title (falling back to Untitled for
+   * unnamed drafts). Foreground opens focus the title once; background pre-opens leave focus alone.
    */
   const openNewPage = useCallback(
     async (
@@ -2548,9 +2554,23 @@ export function WorkbenchRuntime({
       placement: {
         readonly panelId: PanelId;
         readonly leafId?: string;
+        readonly navigation?: PresentWorkbenchPanelSurfaceInput["navigation"];
+        readonly session?: {
+          readonly displayTitle?: string | null;
+          readonly noThreadFallbackTitle?: string | null;
+        };
         readonly isCurrent?: () => boolean;
       },
     ): Promise<boolean> => {
+      const title =
+        owner.kind === "session"
+          ? resolveNewPageTitleForSession(
+              placement.session ??
+                (activeSession?.id === owner.sessionId ? activeSession : null) ??
+                sessionCatalog.findById(owner.sessionId)?.domain ??
+                getCachedProjectSessionDetail(queryClient, owner.sessionId),
+            )
+          : DEFAULT_NEW_PAGE_TITLE;
       let created: { readonly pageId: string; readonly projectId: string | null };
       if (owner.kind === "project" || owner.kind === "session") {
         const pageOwner =
@@ -2560,6 +2580,7 @@ export function WorkbenchRuntime({
         try {
           created = await createPageFor({
             for: pageOwner,
+            title,
           });
         } catch (error) {
           toast.danger(
@@ -2580,7 +2601,16 @@ export function WorkbenchRuntime({
       }
       // The Page stays where it was created when the user moved on in the meantime.
       if (placement.isCurrent?.() === false) return false;
-      requestPageTitleFocus(created.pageId);
+      const navigation = placement.navigation ?? "select-owner";
+      const currentLocation = workbenchWindow.owner.read().windowState.location;
+      const presentsInCurrentScene =
+        navigation !== "background" ||
+        (owner.kind === "session" &&
+          currentLocation.kind === "session" &&
+          currentLocation.sessionId === owner.sessionId);
+      if (presentsInCurrentScene) {
+        requestPageTitleFocus(created.pageId);
+      }
       return await presentLibraryTarget(
         { kind: "page", pageId: created.pageId },
         {
@@ -2588,14 +2618,22 @@ export function WorkbenchRuntime({
           pageRoutingContext: created.projectId
             ? projectContentRoute(created.projectId)
             : libraryContentRoute,
-          titleSnapshot: "Untitled",
+          titleSnapshot: title,
           targetPanelId: placement.panelId,
+          navigation,
           ...(placement.leafId ? { targetLeafId: placement.leafId } : {}),
           ...(placement.isCurrent ? { isCurrent: placement.isCurrent } : {}),
         },
       );
     },
-    [createSpacePage, presentLibraryTarget],
+    [
+      activeSession,
+      createSpacePage,
+      presentLibraryTarget,
+      queryClient,
+      sessionCatalog,
+      workbenchWindow.owner,
+    ],
   );
   /** The palette's New page: the Scene the user is in decides where the Page lives. */
   const newPageOwner: WorkbenchSceneOwner | null =
@@ -6258,11 +6296,12 @@ export function WorkbenchRuntime({
     onCreateSessionPage: (session) => {
       if (sessionPageCreateInFlightRef.current.has(session.id)) return;
       sessionPageCreateInFlightRef.current.add(session.id);
-      closePendingWorktreeRoute();
-      setAutomationsPath(null);
       void runWithCleanup(
         async () => {
-          await openNewPage({ kind: "session", sessionId: session.id }, { panelId: "right" });
+          await openNewPage(
+            { kind: "session", sessionId: session.id },
+            { panelId: "right", navigation: "background", session },
+          );
         },
         {
           cleanup: () => {

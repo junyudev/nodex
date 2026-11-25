@@ -65,6 +65,7 @@ export interface PropertyOptionPickerProps {
   readonly hasMore?: boolean;
   readonly presentation?: "compact" | "page" | "chip" | "list" | "board";
   readonly triggerButton?: ReactElement;
+  readonly triggerTooltipContent?: ReactNode;
   readonly triggerPrefix?: ReactNode;
   readonly triggerIconOnly?: boolean;
   readonly searchPlaceholder?: string;
@@ -276,6 +277,7 @@ export function PropertyOptionPicker({
   hasMore = false,
   presentation = "compact",
   triggerButton,
+  triggerTooltipContent,
   triggerPrefix,
   triggerIconOnly = false,
   searchPlaceholder: searchPlaceholderProp,
@@ -562,7 +564,11 @@ export function PropertyOptionPicker({
       open={open}
       disabled={triggerDisabled}
       trigger={triggerButton ?? defaultTrigger}
-      triggerTooltipContent={presentation === "board" ? closedTriggerLabel : undefined}
+      triggerTooltipContent={
+        open
+          ? undefined
+          : (triggerTooltipContent ?? (presentation === "board" ? closedTriggerLabel : undefined))
+      }
       contentClassName={contentClassName}
       contentInitialFocus={inputRef}
       onOpenChange={changeHostOpen}

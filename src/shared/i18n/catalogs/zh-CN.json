@@ -9190,7 +9190,7 @@
   "workbench.codexSidebar.acceptWorkTooltip": "接受这项工作并收尾对话",
   "workbench.codexSidebar.archiveChat": "归档聊天",
   "workbench.codexSidebar.archiveChats": "归档聊天",
-  "workbench.codexSidebar.changeLinkedPageStatus": "更改 {title} 的状态",
+  "workbench.codexSidebar.changeLinkedPageStatus": "更改 {title} 的状态：{status}",
   "workbench.codexSidebar.chatDetails": "{title} 的聊天详情",
   "workbench.codexSidebar.chatTitle": "聊天标题",
   "workbench.codexSidebar.collapseProject": "折叠项目",

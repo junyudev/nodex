@@ -793,6 +793,7 @@ describe("codex sidebar linked Page status", () => {
 
   async function renderLinkedRow(input: {
     item?: Partial<CodexSidebarThreadItem>;
+    active?: boolean;
     page?: SessionLinkedPage | null;
     resolved?: boolean;
     hoverCardOpen?: boolean;
@@ -814,7 +815,7 @@ describe("codex sidebar linked Page status", () => {
                 input.page === undefined ? doingPage : input.page,
                 input.resolved ?? true,
               )}
-              active={false}
+              active={input.active ?? false}
               hoverCardOpen={input.hoverCardOpen}
               onHoverCardOpenChange={input.onHoverCardOpenChange}
               onSelect={input.onSelect ?? (() => {})}
@@ -893,6 +894,7 @@ describe("codex sidebar linked Page status", () => {
     )!;
     expect(textContent(linkedPage)).toContain("LAB-13");
     expect(textContent(linkedPage)).toContain(doingPage.title);
+    expect(textContent(linkedPage)).not.toContain("Doing");
     await act(async () => {
       fireEvent.click(linkedPage);
       await Promise.resolve();
@@ -926,12 +928,13 @@ describe("codex sidebar linked Page status", () => {
 
     let created = 0;
     let selected = 0;
-    const openChanges: boolean[] = [];
-    await renderLinkedRow({
+    const inactiveOpenChanges: boolean[] = [];
+    const inactiveView = await renderLinkedRow({
+      active: false,
       page: null,
       resolved: true,
       hoverCardOpen: true,
-      onHoverCardOpenChange: (open) => openChanges.push(open),
+      onHoverCardOpenChange: (open) => inactiveOpenChanges.push(open),
       onSelect: () => {
         selected += 1;
       },
@@ -939,19 +942,42 @@ describe("codex sidebar linked Page status", () => {
         created += 1;
       },
     });
-    const hoverCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
-    const button = hoverCard.querySelector<HTMLButtonElement>(
+    const inactiveHoverCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const inactiveButton = inactiveHoverCard.querySelector<HTMLButtonElement>(
       "button[data-app-action-sidebar-thread-hover-card-new-page]",
     )!;
-    expect(textContent(button).trim()).toBe("New page");
+    expect(textContent(inactiveButton).trim()).toBe("New page");
 
     await act(async () => {
-      fireEvent.click(button);
+      fireEvent.click(inactiveButton);
       await Promise.resolve();
     });
     expect(created).toBe(1);
     expect(selected).toBe(0);
-    expect(openChanges).toContain(false);
+    expect(inactiveOpenChanges).toEqual([]);
+    inactiveView.unmount();
+
+    const activeOpenChanges: boolean[] = [];
+    await renderLinkedRow({
+      active: true,
+      page: null,
+      resolved: true,
+      hoverCardOpen: true,
+      onHoverCardOpenChange: (open) => activeOpenChanges.push(open),
+      onCreateLinkedPage: () => {
+        created += 1;
+      },
+    });
+    const activeHoverCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const activeButton = activeHoverCard.querySelector<HTMLButtonElement>(
+      "button[data-app-action-sidebar-thread-hover-card-new-page]",
+    )!;
+    await act(async () => {
+      fireEvent.click(activeButton);
+      await Promise.resolve();
+    });
+    expect(created).toBe(2);
+    expect(activeOpenChanges).toContain(false);
   });
 
   test("opens the chat's Project from the hover card without selecting the row", async () => {
@@ -1010,7 +1036,10 @@ describe("codex sidebar linked Page status", () => {
     const statusButton = hoverCard.querySelector<HTMLButtonElement>(
       `button[data-app-action-sidebar-thread-hover-card-linked-page-status="${doingPage.pageId}"]`,
     )!;
-    expect(statusButton.getAttribute("aria-label")).toBe(`Change status for ${doingPage.title}`);
+    expect(statusButton.getAttribute("aria-label")).toBe(
+      `Change status for ${doingPage.title}: Doing`,
+    );
+    expect(statusButton.getAttribute("data-status-option-id")).toBe("doing");
 
     await act(async () => {
       fireEvent.click(statusButton);
@@ -1036,35 +1065,79 @@ describe("codex sidebar linked Page status", () => {
     expect(openedPage).toBe(0);
   });
 
-  test("closes an uncontrolled hover card after clicking New page or Project", async () => {
+  test("keeps an inactive uncontrolled hover card open after New page, and closes on active New page or Project", async () => {
     vi.useFakeTimers();
     try {
       let created = 0;
-      const view = await renderLinkedRow({
+      let openedProject = 0;
+      const inactiveView = await renderLinkedRow({
+        active: false,
+        page: null,
+        resolved: true,
+        onOpenProject: () => {
+          openedProject += 1;
+        },
+        onCreateLinkedPage: () => {
+          created += 1;
+        },
+      });
+      const inactiveRow = inactiveView.container.querySelector<HTMLElement>(
+        "[data-app-action-sidebar-thread-row]",
+      )!;
+      fireEvent.mouseEnter(inactiveRow, { clientX: 50, clientY: 15 });
+      await act(async () => {
+        vi.advanceTimersByTime(700);
+        await Promise.resolve();
+      });
+      const inactiveCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(inactiveCard).not.toBeNull();
+      const inactiveNewPageButton = inactiveCard.querySelector<HTMLButtonElement>(
+        "button[data-app-action-sidebar-thread-hover-card-new-page]",
+      )!;
+      await act(async () => {
+        fireEvent.click(inactiveNewPageButton);
+        await Promise.resolve();
+      });
+      expect(created).toBe(1);
+      expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+
+      const projectButton = inactiveCard.querySelector<HTMLButtonElement>(
+        "button[data-app-action-sidebar-thread-hover-card-project]",
+      )!;
+      await act(async () => {
+        fireEvent.click(projectButton);
+        await Promise.resolve();
+      });
+      expect(openedProject).toBe(1);
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      inactiveView.unmount();
+
+      const activeView = await renderLinkedRow({
+        active: true,
         page: null,
         resolved: true,
         onCreateLinkedPage: () => {
           created += 1;
         },
       });
-      const row = view.container.querySelector<HTMLElement>(
+      const activeRow = activeView.container.querySelector<HTMLElement>(
         "[data-app-action-sidebar-thread-row]",
       )!;
-      fireEvent.mouseEnter(row, { clientX: 50, clientY: 15 });
+      fireEvent.mouseEnter(activeRow, { clientX: 50, clientY: 15 });
       await act(async () => {
         vi.advanceTimersByTime(700);
         await Promise.resolve();
       });
-      const hoverCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
-      expect(hoverCard).not.toBeNull();
-      const newPageButton = hoverCard.querySelector<HTMLButtonElement>(
+      const activeCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(activeCard).not.toBeNull();
+      const activeNewPageButton = activeCard.querySelector<HTMLButtonElement>(
         "button[data-app-action-sidebar-thread-hover-card-new-page]",
       )!;
       await act(async () => {
-        fireEvent.click(newPageButton);
+        fireEvent.click(activeNewPageButton);
         await Promise.resolve();
       });
-      expect(created).toBe(1);
+      expect(created).toBe(2);
       expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     } finally {
       vi.useRealTimers();

@@ -175,7 +175,7 @@ test("creates a chat's New page where the chat works and links it to the chat", 
         .getByRole("button", { name: "New page", exact: true })
         .click();
       const title = scene.getByRole("textbox", { name: "Page title", exact: true });
-      await expect(title).toHaveText("Untitled");
+      await expect(title).toHaveText("Update implementation notes");
       await expect(title).toBeFocused();
       await page.keyboard.type("Login notes");
       await expect(title).toHaveText("Login notes");
@@ -204,6 +204,7 @@ test("creates a chat's New page where the chat works and links it to the chat", 
           .getByRole("button", { name: "New page", exact: true })
           .click();
         const spaceTitle = projectless.getByRole("textbox", { name: "Page title", exact: true });
+        await expect(spaceTitle).toHaveText("Untitled");
         await expect(spaceTitle).toBeFocused();
         await page.keyboard.type("Loose ends");
         await expect(spaceTitle).toHaveText("Loose ends");

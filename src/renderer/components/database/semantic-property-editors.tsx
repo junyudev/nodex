@@ -146,6 +146,7 @@ export function SemanticSelectPropertyEditor({
   triggerAriaLabel,
   triggerPrefix,
   triggerButton,
+  triggerTooltipContent,
   options,
   selectedId,
   disabled,
@@ -172,6 +173,7 @@ export function SemanticSelectPropertyEditor({
   readonly triggerAriaLabel?: string;
   readonly triggerPrefix?: ReactNode;
   readonly triggerButton?: ReactElement;
+  readonly triggerTooltipContent?: ReactNode;
   readonly options: readonly DatabasePropertyOption[];
   readonly selectedId: string | null;
   readonly disabled: boolean;
@@ -251,6 +253,7 @@ export function SemanticSelectPropertyEditor({
       triggerPrefix={closedTriggerPrefix}
       triggerIconOnly={boardPriority}
       triggerButton={triggerButton}
+      triggerTooltipContent={triggerTooltipContent}
       searchPlaceholder={searchPlaceholder}
       searchLeading={searchLeading}
       contentClassName={contentClassName}

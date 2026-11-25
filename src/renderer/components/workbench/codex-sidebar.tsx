@@ -1800,6 +1800,7 @@ function CodexSidebarThreadHoverCardLinkedPageStatus({
       onRequestOptions={requestOptions}
       onOpenChange={onOpenChange}
       onChange={handleStatusChange}
+      triggerTooltipContent={status.label}
       triggerButton={
         <button
           type="button"
@@ -1807,12 +1808,13 @@ function CodexSidebarThreadHoverCardLinkedPageStatus({
           aria-label={intl.formatMessage(
             {
               id: "workbench.codexSidebar.changeLinkedPageStatus",
-              defaultMessage: "Change status for {title}",
+              defaultMessage: "Change status for {title}: {status}",
             },
-            { title: pageTitle },
+            { title: pageTitle, status: status.label },
           )}
           className="flex h-5 w-6 shrink-0 cursor-interaction items-center justify-center rounded-md text-token-description-foreground hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background focus-visible:outline-none aria-expanded:bg-token-list-hover-background"
           data-app-action-sidebar-thread-hover-card-linked-page-status={page.pageId}
+          data-status-option-id={status.optionId}
           onPointerDown={stopCodexSidebarRowActionPropagation}
           onMouseDown={stopCodexSidebarRowActionPropagation}
           onKeyDown={stopCodexSidebarRowActionPropagation}
@@ -1846,9 +1848,6 @@ function CodexSidebarThreadHoverCardLinkedPage({
         <span className="shrink-0 text-token-description-foreground">{page.pageKey}</span>
       ) : null}
       <span className="min-w-0 flex-1 truncate-fade text-token-foreground">{titleText}</span>
-      {page.status ? (
-        <span className="shrink-0 text-token-description-foreground">{page.status.label}</span>
-      ) : null}
     </>
   );
 
@@ -1898,13 +1897,20 @@ function CodexSidebarThreadHoverCardLinkedPage({
 
   const content = (
     <>
-      <span className="flex h-5 w-4 shrink-0 items-center justify-center text-token-description-foreground">
-        {page.status ? (
-          <StatusIcon statusId={page.status.optionId} />
-        ) : (
+      {page.status ? (
+        <NodexTooltip tooltipContent={page.status.label} side="top">
+          <span
+            className="flex h-5 w-4 shrink-0 items-center justify-center text-token-description-foreground"
+            aria-label={page.status.label}
+          >
+            <StatusIcon statusId={page.status.optionId} />
+          </span>
+        </NodexTooltip>
+      ) : (
+        <span className="flex h-5 w-4 shrink-0 items-center justify-center text-token-description-foreground">
           <PageIcon className="icon-xs" />
-        )}
-      </span>
+        </span>
+      )}
       {body}
     </>
   );
@@ -2922,7 +2928,7 @@ function CodexSidebarThreadRowView({
             onCreateLinkedPage={
               onCreateLinkedPage
                 ? () => {
-                    handleHoverCardOpenChange(false);
+                    if (active) handleHoverCardOpenChange(false);
                     onCreateLinkedPage();
                   }
                 : undefined

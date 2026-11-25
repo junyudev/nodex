@@ -3,8 +3,8 @@ import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
 import { useWorkbenchPageSearchReveal } from "@/lib/workbench-surface-reveal";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
-import { useMemo, useState } from "react";
-import { consumePageTitleFocus } from "@/lib/page-title-focus-intent";
+import { useMemo } from "react";
+import { useConsumePageTitleFocus } from "@/lib/page-title-focus-intent";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
@@ -109,8 +109,6 @@ export function WorkbenchLibraryPageSurface({
   });
   const queryClient = useQueryClient();
   const linkedChats = usePageLinkedChats(pageId, { enabled: pageChats !== undefined });
-  // A Page created a moment ago opens ready to be named; reopening one never moves focus.
-  const [focusTitle] = useState(() => consumePageTitleFocus(pageId));
   const detailQueryKey = useMemo(() => queryKeys.library.pageDetail(pageId), [pageId]);
   const documentQueryKey = useMemo(() => queryKeys.library.pageDocument(pageId), [pageId]);
   const detail = useQuery({
@@ -130,6 +128,8 @@ export function WorkbenchLibraryPageSurface({
     if (!detail.data) return null;
     return projectPageDetailToStageModel(detail.data);
   }, [detail.data]);
+  // A Page created a moment ago opens ready to be named; reopening one never moves focus.
+  const focusTitle = useConsumePageTitleFocus(pageId, Boolean(stagePage && document.data));
 
   const authority = detail.data;
   const getCursor = () => {

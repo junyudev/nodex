@@ -22,13 +22,15 @@ const openThreadHoverCard = async (page: Page, title: string) => {
   // Sidebar layout can still shift after seeding, cancelling the delayed hover.
   // Reacquire the row and keep a real pointer inside it until its card opens.
   await expect(async () => {
+    await page.mouse.move(1000, 900);
     await row.hover();
     const bounds = await row.boundingBox();
     if (!bounds) throw new Error(`Chat row "${title}" has no visible bounds`);
     await page.mouse.move(bounds.x + bounds.width / 2 + 4, bounds.y + bounds.height / 2, {
       steps: 3,
     });
-    await expect(row).toHaveAttribute("data-hover-card-state", "open");
+    // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Bound each retry attempt inside toPass() so a cancelled hover timer retries cleanly.
+    await expect(row).toHaveAttribute("data-hover-card-state", "open", { timeout: 2_000 });
     await expect(hoverCard).toBeVisible({ timeout: 2_000 });
   }).toPass();
   return hoverCard;
@@ -136,17 +138,27 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
         `button[data-app-action-sidebar-thread-hover-card-linked-page="${doingPage.pageId}"]`,
       );
       await expect(linkedPage).toContainText(doingPage.title);
+      await expect(linkedPage).not.toContainText("In Progress");
 
       // Change the linked Page's Status directly from the hover card's leading Status glyph.
       const hoverStatusButton = hoverCard.locator(
         `button[data-app-action-sidebar-thread-hover-card-linked-page-status="${doingPage.pageId}"]`,
+      );
+      await expect(hoverStatusButton).toHaveAttribute(
+        "aria-label",
+        `Change status for ${doingPage.title}: In Progress`,
       );
       await hoverStatusButton.click();
       await page.getByRole("option", { name: "In Review", exact: true }).click();
       await expect(
         doingRow.locator("[data-app-action-sidebar-thread-page-status]"),
       ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "review");
-      await expect(linkedPage).toContainText("In Review");
+      await expect(hoverStatusButton).toHaveAttribute("data-status-option-id", "review");
+      await expect(hoverStatusButton).toHaveAttribute(
+        "aria-label",
+        `Change status for ${doingPage.title}: In Review`,
+      );
+      await expect(linkedPage).not.toContainText("In Review");
 
       // Jump to the chat's Project Scene by clicking the Project row inside the hover card.
       const hoverProjectButton = hoverCard.locator(
@@ -222,8 +234,9 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
         ),
       ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "done");
 
-      // An unlinked chat offers "New page" at the bottom of its hover card, creating, linking,
-      // and opening the new Page in that chat's right panel with its title ready to edit.
+      // An unlinked non-active chat offers "New page" at the bottom of its hover card, creating
+      // and linking a Page titled after the chat and pre-opening it in that chat's right panel
+      // without leaving the active chat, keeping the hover card open as it updates live.
       const unlinkedChat = observed.chats.unlinked;
       const unlinkedRow = threadRow(page, unlinkedChat.title);
       const unlinkedCard = await openThreadHoverCard(page, unlinkedChat.title);
@@ -233,17 +246,57 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
       await expect(newPageButton).toBeVisible();
       await expect(newPageButton).toHaveText("New page");
       await newPageButton.click();
-      await expect(unlinkedCard).toBeHidden();
 
-      const createdPageStage = page.locator('[data-page-stage-surface="true"]:visible');
-      await expect(createdPageStage).toBeVisible();
+      await expect(unlinkedCard).toBeVisible();
+      await expect(newPageButton).toHaveCount(0);
+      const createdUnlinkedRow = unlinkedCard.locator(
+        "button[data-app-action-sidebar-thread-hover-card-linked-page]",
+      );
+      await expect(createdUnlinkedRow).toContainText(unlinkedChat.title);
+      await expect(createdUnlinkedRow).not.toContainText("Triage");
       await expect(
-        createdPageStage.getByRole("textbox", { name: "Page title", exact: true }),
-      ).toHaveText("Untitled");
+        unlinkedCard.locator(
+          "button[data-app-action-sidebar-thread-hover-card-linked-page-status]",
+        ),
+      ).toHaveAttribute("data-status-option-id", "triage");
       await expect(
         unlinkedRow.locator("[data-app-action-sidebar-thread-page-status]"),
       ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "triage");
+      await expect(doingRow).toHaveAttribute("data-app-action-sidebar-thread-active", "true");
+      await expect(unlinkedRow).toHaveAttribute("data-app-action-sidebar-thread-active", "false");
+
+      // Hovering the active, now-unlinked chat and clicking "New page" dismisses its hover card
+      // and opens the new Page titled after that chat right beside it with the title focused.
+      await page.mouse.move(1000, 900);
+      await expect(unlinkedCard).toBeHidden();
+      const activeDoingCard = await openThreadHoverCard(page, doingChat.title);
+      const activeNewPageButton = activeDoingCard.locator(
+        "button[data-app-action-sidebar-thread-hover-card-new-page]",
+      );
+      await expect(activeNewPageButton).toBeVisible();
+      await activeNewPageButton.click();
+      await expect(activeDoingCard).toBeHidden();
+
+      const activeCreatedStage = page.locator('[data-page-stage-surface="true"]:visible');
+      await expect(activeCreatedStage).toBeVisible();
+      const activeCreatedTitle = activeCreatedStage.getByRole("textbox", {
+        name: "Page title",
+        exact: true,
+      });
+      await expect(activeCreatedTitle).toHaveText(doingChat.title);
+      await expect(activeCreatedTitle).toBeFocused();
+      await expect(
+        doingRow.locator("[data-app-action-sidebar-thread-page-status]"),
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "triage");
+
+      // Switching to the non-active chat reveals the Page pre-opened in its right panel.
+      await unlinkedRow.click();
       await expect(unlinkedRow).toHaveAttribute("data-app-action-sidebar-thread-active", "true");
+      const preopenedPageStage = page.locator('[data-page-stage-surface="true"]:visible');
+      await expect(preopenedPageStage).toBeVisible();
+      await expect(
+        preopenedPageStage.getByRole("textbox", { name: "Page title", exact: true }),
+      ).toHaveText(unlinkedChat.title);
     },
   );
 });
