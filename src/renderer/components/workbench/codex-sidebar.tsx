@@ -100,7 +100,6 @@ import {
 } from "@/lib/session-linked-page";
 import { StatusIcon } from "@/lib/status-presentation";
 import { SnoozeMenu } from "@/components/shared/snooze-menu";
-import { cameThroughPortal } from "@/lib/portal-events";
 import type { PageTurnPhrase } from "@/lib/page-turn-phrase";
 import { PAGE_TURN_TONE_CLASS_NAME } from "./page-turn-chip";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
@@ -2292,7 +2291,7 @@ function CodexSidebarThreadRowView({
       }}
       onClick={onSelect}
       onContextMenu={(event) => {
-        if (!canOpenContextMenu || cameThroughPortal(event)) return;
+        if (!canOpenContextMenu || !isEventWithinCurrentTarget(event)) return;
         event.preventDefault();
         onOpenContextMenu?.(item, event);
       }}
