@@ -611,11 +611,11 @@ Assembly checks the Stable native and mobile hashes against that same verified
 Nightly, including the private TestFlight payload.
 
 The resolve job checks the headline and renders the release notes once: the
-headline, then the source's change files by kind. The three feed finalizers and
+headline, then the source's change files by kind. The two feed finalizers and
 the Bundle's `release-notes.md` use those exact bytes. A Nightly built before
 any change file landed has nothing to release and is turned away.
 
-The protected finalizers sign the three Stable feeds, using previous Stable
+The protected finalizers sign the two Stable feeds, using previous Stable
 archives for compatible macOS deltas. The assembler uses the retained native
 and mobile builds. The publisher reuses or creates the annotated tag and
 publishes the immutable release as GitHub Latest. It verifies the public assets
