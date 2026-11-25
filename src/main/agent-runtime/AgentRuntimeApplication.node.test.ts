@@ -1594,21 +1594,38 @@ const openReads: ReadonlyArray<{
 ];
 
 const openReadTarget = { sessionId: launch.sessionId };
-it.effect("surfaces the Profile writer conflict when reading Agent providers", () =>
+const profileBusy =
+  "Another Nodex is already running Agents for this Profile (pid 42, started 2026-10-15T09:00:00.000Z). Quit it and try again.";
+it.effect.each([
+  {
+    name: "a Profile writer conflict",
+    error: new AgentRuntimeSupervisorError({
+      operation: "start",
+      profileBusyMessage: profileBusy,
+    }),
+    message: profileBusy,
+  },
+  {
+    name: "a failed start",
+    error: new AgentRuntimeSupervisorError({ operation: "start" }),
+    message: /^Agent execution could not start\./u,
+  },
+  {
+    name: "paused restarts",
+    error: new AgentRuntimeSupervisorError({ operation: "recovery-exhausted" }),
+    message: /^Agent execution stopped unexpectedly several times/u,
+  },
+])("says why Agent execution is unavailable after $name", ({ error, message }) =>
   Effect.gen(function* () {
-    const message =
-      "Another Nodex is already running Agents for this Profile (pid 42, started 2026-10-15T09:00:00.000Z). Quit it and try again.";
-    const { owner } = setup({
-      connect: Effect.fail(
-        new AgentRuntimeSupervisorError({
-          operation: "start",
-          profileBusyMessage: message,
-        }),
-      ),
-    });
+    const { owner } = setup({ connect: Effect.fail(error) });
     const runtime = yield* owner;
-    const error = yield* runtime.catalog({ refresh: true }).pipe(Effect.flip);
-    assert.equal(error.message, message);
+    for (const failure of [
+      yield* runtime.catalog({ refresh: true }).pipe(Effect.flip),
+      yield* runtime.read(openReadTarget).pipe(Effect.flip),
+    ]) {
+      if (typeof message === "string") assert.equal(failure.message, message);
+      else assert.match(failure.message, message);
+    }
   }),
 );
 
