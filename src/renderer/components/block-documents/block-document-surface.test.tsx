@@ -234,35 +234,34 @@ describe("BlockDocumentSurface", () => {
     );
     const view = render(renderSurface(true));
 
-    await waitFor(() => {
-      expect(view.getByText("Synced title").textContent).toBe("Synced title");
-    });
+    await view.findByText("Synced title");
     const runtime = runtimeRef.current;
-    expect(runtime).not.toBeNull();
+    if (!runtime) throw new Error("Expected a live Block Document runtime");
     expect(adapter.subscriptions).toBe(1);
-    expect(
-      (
-        runtime?.awareness.getLocalState()?.nodex as {
-          clientSessionId?: string;
-        }
-      ).clientSessionId,
-    ).toBe(runtime?.clientSessionId);
+
+    const activeAwareness = {
+      nodex: { clientSessionId: runtime.clientSessionId },
+      user: { name: "Ada" },
+    };
+    // The title can commit before the presence effect runs.
+    await waitFor(() => {
+      expect(runtime.awareness.getLocalState()).toMatchObject(activeAwareness);
+    });
 
     view.rerender(renderSurface(false));
     await waitFor(() => {
-      expect(runtime?.awareness.getLocalState()).toBe(null);
+      expect(runtime.awareness.getLocalState()).toBe(null);
     });
     expect(adapter.unsubscriptions).toBe(0);
-    expect(runtime?.getStatus().ready).toBe(true);
+    expect(runtime.getStatus().ready).toBe(true);
 
     view.rerender(renderSurface(true));
     await waitFor(() => {
-      expect(runtime?.awareness.getLocalState() === null).toBe(false);
+      expect(runtime.awareness.getLocalState()).toMatchObject(activeAwareness);
     });
-    expect((runtime?.awareness.getLocalState()?.user as { name?: string }).name).toBe("Ada");
 
     await act(async () => {
-      await runtime?.persist();
+      await runtime.persist();
       view.unmount();
       await Promise.resolve();
     });
