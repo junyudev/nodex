@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { expect, test, vi } from "vite-plus/test";
 
 test("middle-click counts download links, but only primary activation counts the copy button", async () => {

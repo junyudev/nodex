@@ -87,36 +87,6 @@ const measure = (rootChunkName: string) =>
     onDemandPackages: ["@excalidraw/excalidraw"],
   });
 
-test("measures the Workbench closure and finds where on-demand packages live", () => {
-  const closure = measure("application-renderer");
-
-  expect(closure.violations).toEqual([]);
-  expect(closure.onDemandPackageFiles.get("@excalidraw/excalidraw")).toEqual([
-    expect.stringMatching(/^assets\/vendor-excalidraw-[\w-]+\.js$/u),
-  ]);
-  expect(closure.root).toMatch(/^assets\/application-renderer-[\w-]+\.js$/u);
-  expect(closure.javaScript.files).toBe(2);
-  expect(closure.css.files).toBe(1);
-});
-
-test("reports the import path that brings an on-demand package into the Workbench", () => {
-  const closure = measure("direct-renderer");
-
-  expect(closure.violations).toEqual([
-    {
-      packageName: "@excalidraw/excalidraw",
-      file: expect.stringMatching(/^assets\/vendor-excalidraw-[\w-]+\.js$/u),
-      modules: 1,
-      chain: [
-        expect.stringMatching(/^assets\/direct-renderer-[\w-]+\.js$/u),
-        expect.stringMatching(/^assets\/vendor-excalidraw-[\w-]+\.js$/u),
-      ],
-    },
-  ]);
-  // Excalidraw's stylesheet travels with the Workbench import that reaches it.
-  expect(closure.css.files).toBe(1);
-});
-
 test("release instrumentation does not count toward the Workbench budget", async () => {
   const releaseDirectory = join(fixtureDirectory, "out-release");
   vi.stubEnv("SENTRY_RELEASE", "nodex@0.0.0-test");

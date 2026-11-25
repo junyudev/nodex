@@ -19,16 +19,16 @@ const scenarios = [
 type Scenario = (typeof scenarios)[number];
 
 export const rendererCohort = [
-  "src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx",
-  "src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx",
+  "src/renderer/components/workbench/workbench-shell.created-thread-targets.test.tsx",
   "src/renderer/components/workbench/review-diff-panel.test.tsx",
-  "src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx",
-  "src/renderer/components/workbench/workbench-shell.automations-conversation.test.tsx",
-  "src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx",
+  "src/renderer/components/workbench/command-palette.test.tsx",
+  "src/renderer/components/workbench/database-view-surface.test.tsx",
+  "src/renderer/components/workbench/database-view-rules-bar.test.tsx",
   "src/renderer/components/board/canvas-view.test.tsx",
   "src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx",
+  "src/renderer/features/local-conversation/local-conversation-store.test.tsx",
   "src/renderer/components/board/editor/copy-image-button.test.tsx",
-  "src/renderer/components/ui/tooltip.test.tsx",
+  "src/renderer/features/inbox/inbox-triage.test.tsx",
 ] as const;
 
 export interface BenchmarkOptions {

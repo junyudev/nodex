@@ -1,7 +1,14 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createAppToolsMcpServer, type AppToolsHost } from "./server";
+import {
+  APP_TOOLS_CALL_TIMEOUT_MS,
+  APP_TOOLS_PIPE_REPLY_GRACE_MS,
+  APP_TOOLS_PROVIDER_TIMEOUT_MS,
+  appToolsHostCallTimeoutMs,
+  appToolsManifest,
+} from "./manifest";
 
 const withClient = async (host: AppToolsHost, use: (client: Client) => Promise<void>) => {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -85,4 +92,32 @@ describe("Nodex MCP transport", () => {
       },
     );
   });
+});
+
+it("derives wait call deadlines while preserving ordinary tool lifetimes", () => {
+  const targets = [{ sessionId: "one" }];
+  expect(appToolsHostCallTimeoutMs("wait_sessions", { targets })).toBe(660_000);
+  expect(appToolsHostCallTimeoutMs("wait_sessions", { targets, timeoutMs: 3_600_000 })).toBe(
+    3_660_000,
+  );
+  expect(appToolsHostCallTimeoutMs("read_session", { timeoutMs: 3_600_000 })).toBe(
+    APP_TOOLS_CALL_TIMEOUT_MS,
+  );
+  expect(
+    appToolsHostCallTimeoutMs("wait_sessions", { targets: [...targets, { sessionId: "two" }] }),
+  ).toBe(APP_TOOLS_CALL_TIMEOUT_MS);
+  expect(appToolsHostCallTimeoutMs("wait_sessions", {})).toBe(APP_TOOLS_CALL_TIMEOUT_MS);
+});
+
+it("leaves reply time at every transport boundary beyond the maximum semantic wait", () => {
+  const host = appToolsHostCallTimeoutMs("wait_sessions", {
+    targets: [{ sessionId: "one" }],
+    timeoutMs: 3_600_000,
+  });
+  const pipeClient = host + APP_TOOLS_PIPE_REPLY_GRACE_MS;
+  expect(pipeClient).toBeGreaterThan(host);
+  expect(APP_TOOLS_PROVIDER_TIMEOUT_MS).toBeGreaterThan(pipeClient);
+  expect(appToolsManifest.mcpServers.nodex_app.tool_timeout_sec * 1000).toBeGreaterThanOrEqual(
+    APP_TOOLS_PROVIDER_TIMEOUT_MS,
+  );
 });

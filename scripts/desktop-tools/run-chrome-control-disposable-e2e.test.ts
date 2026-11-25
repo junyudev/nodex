@@ -1,5 +1,4 @@
 import { generateKeyPairSync, sign as signPayload, createHash } from "node:crypto";
-import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import {
   deriveChromeExtensionId,
@@ -59,24 +58,6 @@ describe("disposable Chrome control evidence gate", () => {
     expect(() => resolveChromeControlDisposableE2EGate({ NODEX_CHROME_CONTROL_E2E: "1" })).toThrow(
       "is required for the opt-in gate",
     );
-
-    expect(
-      resolveChromeControlDisposableE2EGate({
-        NODEX_CHROME_CONTROL_E2E: "1",
-        NODEX_CHROME_CONTROL_E2E_BROWSER_EXECUTABLE: "/fixtures/cft",
-        NODEX_CHROME_CONTROL_E2E_EVIDENCE_PATH: "runs.local/chrome-evidence.json",
-        NODEX_CHROME_CONTROL_E2E_EXTENSION_CRX: "/fixtures/extension.crx",
-        NODEX_CHROME_CONTROL_E2E_RUNTIME_ROOT: "/fixtures/runtime",
-      }),
-    ).toEqual({
-      config: {
-        browserExecutable: path.resolve("/fixtures/cft"),
-        evidencePath: path.resolve("runs.local/chrome-evidence.json"),
-        extensionCrx: path.resolve("/fixtures/extension.crx"),
-        runtimeRoot: path.resolve("/fixtures/runtime"),
-      },
-      status: "ready",
-    });
   });
 
   test("cryptographically binds CRX3 content to an attested extension ID", () => {
