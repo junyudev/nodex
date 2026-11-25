@@ -581,18 +581,78 @@ fn milestones_preserve_newer_person_edits_and_skip_draft_context_and_ineffective
     );
 }
 #[test]
+fn individual_ci_triggers_are_recorded_and_only_settled_ci_delivers() {
+    let w = setup();
+    board(&w);
+    card(&w, PAGE, "chat", true);
+    let pr = own_pr(&w);
+    let mut running = event(&w, "check", "running", SourceActorClass::Ci);
+    running.metadata = json!({"state":"in_progress", "name":"app tests"});
+    batch(&w, "ci-running", pr, vec![running]);
+    assert!(deliver_list(&w).is_empty());
+
+    let mut failed = event(&w, "check", "failed", SourceActorClass::Ci);
+    failed.metadata = json!({"state":"failure", "name":"app tests"});
+    let mut status = event(&w, "status", "status", SourceActorClass::Ci);
+    status.metadata = json!({"state":"success", "name":"deploy"});
+    batch(
+        &w,
+        "ci-individual-results",
+        current_thread(&w),
+        vec![failed, status],
+    );
+    assert!(deliver_list(&w).is_empty());
+
+    let mut finished = event(&w, "ci_finished", "settled", SourceActorClass::Ci);
+    finished.text = Some("1 failed — app tests; 1 passed".into());
+    finished.metadata = json!({"head_sha":"aaaaaaaa", "state":"failure"});
+    batch(&w, "ci-settled", current_thread(&w), vec![finished.clone()]);
+    batch(
+        &w,
+        "ci-reobserved",
+        current_thread(&w),
+        vec![finished.clone()],
+    );
+
+    let deliveries = deliver_list(&w);
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0].state, "pending");
+    assert_eq!(deliveries[0].trigger.event, finished);
+
+    let SourceReadValue::Triggers { triggers } = query(
+        &w,
+        SourceRead::Triggers {
+            thread_url: current_thread(&w).url,
+            before_id: None,
+            limit: 100,
+        },
+    ) else {
+        panic!()
+    };
+    assert_eq!(triggers.len(), 4);
+    assert_eq!(
+        triggers.iter().filter(|t| t.event.kind == "check").count(),
+        2
+    );
+    assert_eq!(
+        triggers.iter().filter(|t| t.event.kind == "status").count(),
+        1
+    );
+}
+
+#[test]
 fn closed_work_suppresses_bots_and_ci_but_delivers_people_and_missing_chats_are_unresolved() {
     for terminal in ["done", "canceled"] {
         let w = setup();
         board(&w);
         card(&w, PAGE, "chat", true);
-        context_follow(&w, "chat", "follow");
+        own_pr(&w);
         batch(
             &w,
             "open-events",
             current_thread(&w),
             vec![
-                event(&w, "check", "open-ci", SourceActorClass::Ci),
+                event(&w, "ci_finished", "open-ci", SourceActorClass::Ci),
                 event(&w, "comment", "open-bot", SourceActorClass::Bot),
             ],
         );
@@ -611,7 +671,7 @@ fn closed_work_suppresses_bots_and_ci_but_delivers_people_and_missing_chats_are_
             vec![
                 event(&w, "comment", "human", SourceActorClass::Person),
                 event(&w, "comment", "bot", SourceActorClass::Bot),
-                event(&w, "check", "ci", SourceActorClass::Ci),
+                event(&w, "ci_finished", "ci", SourceActorClass::Ci),
             ],
         );
         let d = deliver_list(&w);

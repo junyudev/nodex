@@ -29,6 +29,16 @@ export const formatGitHubUpdates = (updates: readonly Delivery[]) =>
           : "");
       const text = Array.from(rawText.replace(/\s+/g, " ").trim()).slice(0, 1000).join("");
       const target = `${thread.kind === "pull_request" ? "PR" : "issue"} #${thread.number}`;
+      if (
+        event.kind === "ci_finished" &&
+        event.metadata &&
+        typeof event.metadata === "object" &&
+        "head_sha" in event.metadata &&
+        typeof event.metadata.head_sha === "string"
+      ) {
+        const passed = "state" in event.metadata && event.metadata.state === "success";
+        return `GitHub update · CI ${passed ? "passed" : "finished"} on ${target} (${event.metadata.head_sha.slice(0, 7)}): ${text}`;
+      }
       return `GitHub update · ${event.kind.replaceAll("_", " ")} by ${event.actor_login} on ${target}: ${text} ${event.url}`;
     })
     .join("\n");
