@@ -179,6 +179,7 @@ export function ConversationRecoverySurface({
             defaultMessage: "Request failed",
           }));
   const progress = recovery ? recoveryProgressLabel(recovery, now, intl) : null;
+  const progressLabel = progress ? ` · ${progress}` : "";
   const details = recoveryDiagnosticText(entry);
   // The status row already says the state, cause and attempt; copying keeps all of them.
   const summary = recoveryDiagnosticSummary(entry) || details;
@@ -218,6 +219,8 @@ export function ConversationRecoverySurface({
             disclosure={
               details
                 ? {
+                    // The live status nested in the button does not supply its name in Chromium.
+                    ariaLabel: `${label}${progressLabel}`,
                     expanded: presence.expanded,
                     onToggle: () =>
                       setPresence((current) => ({ ...current, expanded: !current.expanded })),
@@ -227,7 +230,7 @@ export function ConversationRecoverySurface({
           >
             <span>
               <span role={isLatestTurn ? "status" : undefined}>{label}</span>
-              {progress ? ` · ${progress}` : null}
+              {progressLabel}
             </span>
           </ThreadActivityHeader>
           {action && actionCallback ? (
