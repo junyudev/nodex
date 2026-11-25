@@ -467,6 +467,7 @@ pub(super) fn apply(
                 source_id,
                 config_revision,
                 thread,
+                role,
             } => {
                 let source = require_current(connection, library, source_id, *config_revision)?;
                 let partition = format!("repo:{}", thread.repository_id);
@@ -477,14 +478,8 @@ pub(super) fn apply(
                     provenance.ok_or_else(|| invalid("Managed-chat authority required"))?,
                 )?;
                 upsert_thread(connection, library, &source, &partition, thread)?;
-                super::thread_follows::add_follow(
-                    connection,
-                    library,
-                    &page,
-                    thread,
-                    "context",
-                    "managed_chat_verified_url",
-                    &at,
+                super::thread_follows::follow_managed_thread(
+                    connection, library, &page, thread, *role, &at,
                 )?;
                 effects.page_ids.push(page);
                 super::automation_assessment::flush_followed(

@@ -3363,7 +3363,7 @@ pub enum PageWorkspaceLifecycle {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct PagePullRequest {
     pub page_id: String,
-    pub workspace_id: String,
+    pub workspace_id: Option<String>,
     pub repository: String,
     pub number: i64,
     pub url: String,

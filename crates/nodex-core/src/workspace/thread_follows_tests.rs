@@ -86,11 +86,15 @@ pub(super) fn context_follow(w: &TestWorkspace, session: &str, op: &str) {
         op,
         agent(
             session,
-            command(SourceCommand::FollowThread {
-                source_id: "github".into(),
-                config_revision: 1,
-                thread: current_thread(w),
-            }),
+            command(
+                serde_json::from_value(json!({
+                    "kind": "follow_thread",
+                    "source_id": "github",
+                    "config_revision": 1,
+                    "thread": current_thread(w),
+                }))
+                .unwrap(),
+            ),
         ),
     );
 }
@@ -203,18 +207,22 @@ fn claim_workspace(w: &TestWorkspace) {
         },
     );
 }
-fn own_pr(w: &TestWorkspace) -> ExternalThread {
-    claim_workspace(w);
+fn pull_request(branch: &str) -> ExternalThread {
     let mut t = thread();
     t.kind = ExternalThreadKind::PullRequest;
     t.url = "https://github.com/alice/repo/pull/1".into();
     t.head = Some(SourcePullRequestHead {
         repository_id: "10".into(),
         repository: "alice/repo".into(),
-        branch: "nodex-1-work".into(),
+        branch: branch.into(),
         sha: "a".repeat(40),
     });
-    batch(w, "observe-pr", t, vec![]);
+    t
+}
+
+fn own_pr(w: &TestWorkspace) -> ExternalThread {
+    claim_workspace(w);
+    batch(w, "observe-pr", pull_request("nodex-1-work"), vec![]);
     current_thread(w)
 }
 #[test]
@@ -254,13 +262,139 @@ fn context_follows_fan_out_once_with_frozen_chat_identity() {
                     command(SourceCommand::FollowThread {
                         source_id: "github".into(),
                         config_revision: 1,
-                        thread: current_thread(&w)
+                        thread: current_thread(&w),
+                        role: ManagedThreadFollowRole::Context,
                     })
                 )
             )
             .is_err()
     );
 }
+#[test]
+fn managed_own_pr_replaces_the_previous_follow_and_routes_milestones_without_a_workspace() {
+    let w = setup();
+    board(&w);
+    card(&w, PAGE, "chat", true);
+
+    let pr = pull_request("codex/work");
+    let previous = ExternalThread {
+        id: "github:github.com:10:2".into(),
+        number: 2,
+        url: "https://github.com/alice/repo/pull/2".into(),
+        state: "merged".into(),
+        ..pr.clone()
+    };
+    let declare = |operation, thread: ExternalThread| {
+        apply(
+            &w.module,
+            operation,
+            agent(
+                "chat",
+                command(SourceCommand::FollowThread {
+                    source_id: "github".into(),
+                    config_revision: 1,
+                    thread,
+                    role: ManagedThreadFollowRole::OwnPr,
+                }),
+            ),
+        );
+    };
+    let snapshot = || {
+        let ProjectWorkspaceReadValue::PageWorkspace {
+            workspace: None,
+            pull_request: Some(pr),
+            ..
+        } = read(
+            &w.module,
+            ProjectWorkspaceRead::PageWorkspace {
+                page_id: PAGE.into(),
+            },
+        )
+        else {
+            panic!("Expected a PR snapshot for the Page without a Workspace");
+        };
+        assert_eq!(pr.workspace_id, None);
+        pr
+    };
+    declare("follow-previous", previous);
+    assert_eq!(snapshot().state, "MERGED");
+    assert_eq!(stage(&w), "doing");
+    assert!(deliver_list(&w).is_empty());
+
+    declare("follow-own", pr.clone());
+    assert_eq!(snapshot().url, pr.url);
+    assert_eq!(snapshot().state, "OPEN");
+    assert_eq!(
+        follow_list(&w, PAGE)
+            .into_iter()
+            .map(|f| (f.thread.number, f.role))
+            .collect::<Vec<_>>(),
+        [(1, ThreadFollowRole::OwnPr), (2, ThreadFollowRole::Context)]
+    );
+    assert_eq!(stage(&w), "doing");
+
+    let pr_event = |kind, actor| SourceTriggerInput {
+        url: pr.url.clone(),
+        ..event(&w, kind, kind, actor)
+    };
+    batch(
+        &w,
+        "opening-and-ci",
+        current_thread(&w),
+        vec![
+            pr_event("opened", SourceActorClass::Person),
+            pr_event("check", SourceActorClass::Ci),
+        ],
+    );
+    assert_eq!(stage(&w), "review");
+    let mut merged = current_thread(&w);
+    merged.state = "merged".into();
+    batch(
+        &w,
+        "merge",
+        merged,
+        vec![pr_event("merged", SourceActorClass::Person)],
+    );
+    assert_eq!(stage(&w), "done");
+    assert_eq!(snapshot().state, "MERGED");
+    let deliveries = deliver_list(&w);
+    assert_eq!(deliveries.len(), 3);
+    assert!(deliveries.iter().all(|d| d.page_id == PAGE
+        && d.session_id.as_deref() == Some("chat")
+        && d.state == "pending"));
+}
+
+#[test]
+fn managed_own_pr_rejects_a_verified_issue() {
+    let w = setup();
+    board(&w);
+    card(&w, PAGE, "chat", true);
+    let error = w
+        .module
+        .apply(
+            &context(),
+            request(
+                "follow-issue-as-pr",
+                agent(
+                    "chat",
+                    command(SourceCommand::FollowThread {
+                        source_id: "github".into(),
+                        config_revision: 1,
+                        thread: thread(),
+                        role: ManagedThreadFollowRole::OwnPr,
+                    }),
+                ),
+            ),
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        nodex_core_contracts::CoreErrorCode::InvalidInput
+    );
+    assert!(error.message.contains("requires a pull request URL"));
+    assert!(follow_list(&w, PAGE).is_empty());
+}
+
 #[test]
 fn own_pr_requires_exact_head_repository_and_branch_and_verified_links_follow() {
     let w = setup();
@@ -414,12 +548,18 @@ fn milestones_preserve_newer_person_edits_and_skip_draft_context_and_ineffective
     let w = setup();
     board(&w);
     card(&w, PAGE, "chat", true);
+    let pr = pull_request("codex/context");
+    batch(&w, "observe-context-pr", pr.clone(), vec![]);
     context_follow(&w, "chat", "context");
+    assert_eq!(follow_list(&w, PAGE)[0].role, ThreadFollowRole::Context);
     batch(
         &w,
         "context-merge",
         current_thread(&w),
-        vec![event(&w, "merged", "merge:1", SourceActorClass::Person)],
+        vec![SourceTriggerInput {
+            url: pr.url,
+            ..event(&w, "merged", "merge:1", SourceActorClass::Person)
+        }],
     );
     assert_eq!(stage(&w), "doing");
     let w = setup();

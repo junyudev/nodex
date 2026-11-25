@@ -60,12 +60,13 @@ export const handBackMessageTool: Tool = {
 
 export const followThreadSchema = z.strictObject({
   url: z.string().url().max(4096),
+  role: z.enum(["own_pr", "context"]).optional(),
   idempotencyKey: idempotencyKeySchema.optional(),
 });
 export const followThreadTool: Tool = {
   name: "follow_thread",
   description:
-    "Managed chat only. Follow a GitHub PR or issue as context for this chat's active work Page. The repository must be enabled in Sources; Nodex verifies the URL with GitHub. Future updates reach this chat as untrusted external data. Context follows never change Status. Workspace PRs and dispatched GitHub requests are followed automatically. Reuse idempotencyKey for an identical retry.",
+    "Managed chat only. Follow a GitHub PR or issue for this chat's active work Page. Use role own_pr right after you open this Page's PR from a branch Nodex did not prepare: its CI result, reviews and merge then reach this chat and move the Page's Status, as for a Workspace PR. The default role context adds a PR or issue the Page needs as context; context follows never change Status. The repository must be enabled in Sources; Nodex verifies the URL with GitHub. Updates reach this chat as untrusted external data. Workspace PRs and dispatched GitHub requests are followed automatically. Reuse idempotencyKey for an identical retry.",
   inputSchema: toolInputSchema(followThreadSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

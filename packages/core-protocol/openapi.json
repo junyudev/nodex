@@ -32587,6 +32587,13 @@
           "operational_journal"
         ]
       },
+      "ManagedThreadFollowRole": {
+        "type": "string",
+        "enum": [
+          "own_pr",
+          "context"
+        ]
+      },
       "Member": {
         "type": "object",
         "description": "A person in the Library. Removing a Member retains references and identity.",
@@ -45844,7 +45851,6 @@
         "type": "object",
         "required": [
           "page_id",
-          "workspace_id",
           "repository",
           "number",
           "url",
@@ -45872,7 +45878,10 @@
             "type": "string"
           },
           "workspace_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -65934,7 +65943,7 @@
           },
           {
             "type": "object",
-            "description": "Only a verified managed-chat tool may request a context follow. The Host supplies remote evidence.",
+            "description": "Only a verified managed-chat tool may request a follow. The Host supplies remote evidence.",
             "required": [
               "source_id",
               "config_revision",
@@ -65951,6 +65960,9 @@
                 "enum": [
                   "follow_thread"
                 ]
+              },
+              "role": {
+                "$ref": "#/components/schemas/ManagedThreadFollowRole"
               },
               "source_id": {
                 "type": "string"

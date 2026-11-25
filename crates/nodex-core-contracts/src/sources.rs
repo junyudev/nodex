@@ -234,6 +234,20 @@ pub enum ThreadFollowRole {
     Context,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedThreadFollowRole {
+    OwnPr,
+    #[default]
+    Context,
+}
+
+impl ManagedThreadFollowRole {
+    fn is_context(&self) -> bool {
+        *self == Self::Context
+    }
+}
+
 /// Presentation and delivery reference; polling observations remain on the Source's thread read.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ExternalThreadReference {
@@ -407,11 +421,13 @@ pub enum SourceCommand {
     RetryProblem {
         problem_id: String,
     },
-    /// Only a verified managed-chat tool may request a context follow. The Host supplies remote evidence.
+    /// Only a verified managed-chat tool may request a follow. The Host supplies remote evidence.
     FollowThread {
         source_id: String,
         config_revision: i64,
         thread: ExternalThread,
+        #[serde(default, skip_serializing_if = "ManagedThreadFollowRole::is_context")]
+        role: ManagedThreadFollowRole,
     },
     PrepareThreadDeliveryBatch {
         message_id: String,

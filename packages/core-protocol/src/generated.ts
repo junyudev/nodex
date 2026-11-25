@@ -7922,6 +7922,8 @@ export interface components {
         };
         /** @enum {string} */
         readonly MaintenanceTask: "integrity_check" | "foreign_key_check" | "document_revision_finalize" | "document_compaction" | "history_retention" | "block_retention" | "operational_journal";
+        /** @enum {string} */
+        readonly ManagedThreadFollowRole: "own_pr" | "context";
         /** @description A person in the Library. Removing a Member retains references and identity. */
         readonly Member: {
             readonly display_name: string;
@@ -10962,7 +10964,7 @@ export interface components {
             readonly repository: string;
             readonly state: string;
             readonly url: string;
-            readonly workspace_id: string;
+            readonly workspace_id?: string | null;
         };
         readonly PageRecurrenceConfig: {
             readonly byWeekdays?: readonly number[];
@@ -15493,6 +15495,7 @@ export interface components {
             readonly config_revision: number;
             /** @enum {string} */
             readonly kind: "follow_thread";
+            readonly role?: components["schemas"]["ManagedThreadFollowRole"];
             readonly source_id: string;
             readonly thread: components["schemas"]["ExternalThread"];
         } | {
