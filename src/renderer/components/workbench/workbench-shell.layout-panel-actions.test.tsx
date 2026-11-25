@@ -1744,7 +1744,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     try {
       await act(async () => {
         fireEvent.pointerDown(separator, { button: 0, pointerId: 7, clientX: 700 });
-        fireEvent.pointerMove(window, { pointerId: 7, clientX: 750 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 7, clientX: 750 });
         await Promise.resolve();
       });
 
@@ -1822,7 +1822,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       try {
         await act(async () => {
           fireEvent.pointerDown(separator, { button: 0, pointerId: 9, clientX: 700 });
-          fireEvent.pointerMove(window, { pointerId: 9, clientX: 750 });
+          fireEvent.pointerMove(window, { buttons: 1, pointerId: 9, clientX: 750 });
           await Promise.resolve();
         });
 
@@ -1864,7 +1864,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     try {
       await act(async () => {
         fireEvent.pointerDown(separator, { button: 0, pointerId: 1, clientX: 1_200 });
-        fireEvent.pointerMove(window, { pointerId: 1, clientX: 400 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 1, clientX: 400 });
         await Promise.resolve();
       });
 
@@ -1904,7 +1904,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     const separator = screen.getByRole("separator", { name: "Resize right panel" });
     await act(async () => {
       fireEvent.pointerDown(separator, { button: 0, pointerId: 1, clientX: 700 });
-      fireEvent.pointerMove(window, { pointerId: 1, clientX: 1_020 });
+      fireEvent.pointerMove(window, { buttons: 1, pointerId: 1, clientX: 1_020 });
       await Promise.resolve();
     });
     await releasePointerDrag();
@@ -1946,7 +1946,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     try {
       await act(async () => {
         fireEvent.pointerDown(separator, { button: 0, pointerId: 1, clientX: 1_400 });
-        fireEvent.pointerMove(window, { pointerId: 1, clientX: 1_500 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 1, clientX: 1_500 });
         await Promise.resolve();
       });
 
@@ -1984,7 +1984,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     try {
       await act(async () => {
         fireEvent.pointerDown(separator, { button: 0, pointerId: 1, clientY: 700 });
-        fireEvent.pointerMove(window, { pointerId: 1, clientY: 740 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 1, clientY: 740 });
         await Promise.resolve();
       });
 
@@ -2026,7 +2026,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     const separator = screen.getByRole("separator", { name: "Resize bottom panel" });
     await act(async () => {
       fireEvent.pointerDown(separator, { button: 0, pointerId: 1, clientY: 700 });
-      fireEvent.pointerMove(window, { pointerId: 1, clientY: 900 });
+      fireEvent.pointerMove(window, { buttons: 1, pointerId: 1, clientY: 900 });
       await Promise.resolve();
     });
     await releasePointerDrag();

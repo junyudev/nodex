@@ -47,6 +47,7 @@ import {
 } from "@/lib/right-panel-composer-overlay-reserve";
 import { APP_SHELL_RIGHT_PANEL_COMPOSER_OVERLAY_LAYER_CLASS } from "@/lib/app-shell-layers";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
+import { usePointerDrag } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { RightPanelComposerPresentationProvider } from "@/features/local-conversation/view/right-panel-composer-presentation";
@@ -548,6 +549,7 @@ export function FloatingComposer({
   const [dragging, setDragging] = useState(false);
   const [bubbleHovered, setBubbleHovered] = useState(false);
   const [resizing, setResizing] = useState(false);
+  const startPointerDrag = usePointerDrag();
   const [menuOpen, setMenuOpen] = useState(false);
   const [paneDropSide, setPaneDropSide] = useState<"left" | "right" | null>(null);
   const [dockApproach, setDockApproach] = useState<DockApproach>(NO_DOCK_APPROACH);
@@ -852,12 +854,7 @@ export function FloatingComposer({
   }, [dragging, target]);
 
   const startResize = (edges: ResizeEdges, event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !geometry) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const view = event.currentTarget.ownerDocument.defaultView;
-    if (!view) return;
-    const pointerId = event.pointerId;
+    if (!geometry) return;
     const startPointer = { x: event.clientX / zoom, y: event.clientY / zoom };
     const startWidth = frameWidth;
     const startHeight = expandedHeight;
@@ -867,57 +864,56 @@ export function FloatingComposer({
       compactFrameHeight,
     );
     let size: { width?: number; height?: number } = {};
+    const started = startPointerDrag(event, {
+      onMove: (moveEvent) => {
+        const next: { width?: number; height?: number } = {};
+        if (edges.horizontal) {
+          const delta = moveEvent.clientX / zoom - startPointer.x;
+          next.width = clampFloatingComposerFrameWidth(
+            startWidth + (edges.horizontal === "left" ? -delta : delta),
+            paneWidth,
+          );
+          offsetX.set(
+            resolveFloatingComposerResizeOffset({
+              dock,
+              edge: edges.horizontal,
+              startWidth,
+              startOffset,
+              width: next.width,
+              pane,
+              height: startHeight,
+            }),
+          );
+        }
+        if (edges.vertical) {
+          const delta = moveEvent.clientY / zoom - startPointer.y;
+          next.height = Math.min(
+            Math.max(
+              startHeight + (edges.vertical === "top" ? -delta : delta),
+              heightBounds.minimum,
+            ),
+            heightBounds.maximum,
+          );
+        }
+        size = next;
+        setLiveSize(next);
+      },
+      onEnd: (end) => {
+        setResizing(false);
+        setLiveSize(null);
+        if (end === "dispose") return;
+        const patch: { width?: number; height?: number } = {};
+        if (size.width !== undefined && size.width !== startWidth) {
+          patch.width = size.width - 2 * FLOATING_COMPOSER_SURFACE_INSET_PX;
+        }
+        if (size.height !== undefined && size.height !== startHeight) patch.height = size.height;
+        if (patch.width !== undefined || patch.height !== undefined) updatePreference(patch);
+        frameSettle.springHome();
+      },
+    });
+    if (!started) return;
+    event.stopPropagation();
     setResizing(true);
-
-    const onMove = (moveEvent: PointerEvent) => {
-      if (moveEvent.pointerId !== pointerId) return;
-      const next: { width?: number; height?: number } = {};
-      if (edges.horizontal) {
-        const delta = moveEvent.clientX / zoom - startPointer.x;
-        next.width = clampFloatingComposerFrameWidth(
-          startWidth + (edges.horizontal === "left" ? -delta : delta),
-          paneWidth,
-        );
-        offsetX.set(
-          resolveFloatingComposerResizeOffset({
-            dock,
-            edge: edges.horizontal,
-            startWidth,
-            startOffset,
-            width: next.width,
-            pane,
-            height: startHeight,
-          }),
-        );
-      }
-      if (edges.vertical) {
-        const delta = moveEvent.clientY / zoom - startPointer.y;
-        next.height = Math.min(
-          Math.max(startHeight + (edges.vertical === "top" ? -delta : delta), heightBounds.minimum),
-          heightBounds.maximum,
-        );
-      }
-      size = next;
-      setLiveSize(next);
-    };
-    const onEnd = (endEvent: PointerEvent) => {
-      if (endEvent.pointerId !== pointerId) return;
-      view.removeEventListener("pointermove", onMove, true);
-      view.removeEventListener("pointerup", onEnd, true);
-      view.removeEventListener("pointercancel", onEnd, true);
-      setResizing(false);
-      const patch: { width?: number; height?: number } = {};
-      if (size.width !== undefined && size.width !== startWidth) {
-        patch.width = size.width - 2 * FLOATING_COMPOSER_SURFACE_INSET_PX;
-      }
-      if (size.height !== undefined && size.height !== startHeight) patch.height = size.height;
-      if (patch.width !== undefined || patch.height !== undefined) updatePreference(patch);
-      setLiveSize(null);
-      frameSettle.springHome();
-    };
-    view.addEventListener("pointermove", onMove, true);
-    view.addEventListener("pointerup", onEnd, true);
-    view.addEventListener("pointercancel", onEnd, true);
   };
 
   const handleFocusCapture = (event: ReactFocusEvent<HTMLElement>) => {

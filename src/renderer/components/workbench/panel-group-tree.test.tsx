@@ -130,7 +130,7 @@ describe("PanelGroupTree", () => {
 
     await act(async () => {
       fireEvent.pointerDown(sash, { clientX: 50, clientY: 50, pointerId: 1 });
-      fireEvent.pointerMove(window, { clientX: 75, clientY: 50, pointerId: 1 });
+      fireEvent.pointerMove(window, { buttons: 1, clientX: 75, clientY: 50, pointerId: 1 });
       fireEvent.pointerUp(window, { clientX: 75, clientY: 50, pointerId: 1 });
       await Promise.resolve();
     });

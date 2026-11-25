@@ -30,7 +30,7 @@ describe("WorkbenchSidebarFrame", () => {
         await act(async () => {
           input.focus();
           fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 600 });
-          fireEvent.pointerMove(window, { pointerId: 1, clientX: 720 });
+          fireEvent.pointerMove(window, { buttons: 1, pointerId: 1, clientX: 720 });
           await Promise.resolve();
         });
 
@@ -77,7 +77,7 @@ describe("WorkbenchSidebarFrame", () => {
 
     await act(async () => {
       fireEvent.pointerDown(handle, { button: 0, pointerId: 2, clientX: 420 });
-      fireEvent.pointerMove(window, { pointerId: 2, clientX: 500 });
+      fireEvent.pointerMove(window, { buttons: 1, pointerId: 2, clientX: 500 });
       fireEvent.pointerUp(window, { pointerId: 2, clientX: 500 });
       fireEvent.click(handle, { detail: 2 });
       await Promise.resolve();
@@ -122,7 +122,7 @@ describe("WorkbenchSidebarFrame", () => {
     try {
       await act(async () => {
         fireEvent.pointerDown(handle, { button: 0, pointerId: 4, clientX: 352 });
-        fireEvent.pointerMove(window, { pointerId: 5, clientX: 0 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 5, clientX: 0 });
         fireEvent.pointerUp(window, { pointerId: 5, clientX: 0 });
         await Promise.resolve();
       });
@@ -130,9 +130,9 @@ describe("WorkbenchSidebarFrame", () => {
       expect(onResizeActiveChange).toHaveBeenLastCalledWith(true);
 
       await act(async () => {
-        fireEvent.pointerMove(window, { pointerId: 4, clientX: 412 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 4, clientX: 412 });
         fireEvent.pointerCancel(window, { pointerId: 4, clientX: 0 });
-        fireEvent.pointerMove(window, { pointerId: 4, clientX: 500 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 4, clientX: 500 });
         await Promise.resolve();
       });
 
@@ -170,14 +170,14 @@ describe("WorkbenchSidebarFrame", () => {
     try {
       await act(async () => {
         fireEvent.pointerDown(handle, { button: 0, pointerId: 3, clientX: 300 });
-        fireEvent.pointerMove(window, { pointerId: 3, clientX: 360 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 3, clientX: 360 });
         await Promise.resolve();
       });
       expect(onResizeWidth).toHaveBeenCalledExactlyOnceWith(360, "live", "floating");
 
       await act(async () => {
         view.unmount();
-        fireEvent.pointerMove(window, { pointerId: 3, clientX: 400 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 3, clientX: 400 });
         fireEvent.pointerUp(window, { pointerId: 3, clientX: 400 });
         await Promise.resolve();
       });

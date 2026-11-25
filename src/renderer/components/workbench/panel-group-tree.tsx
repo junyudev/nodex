@@ -33,6 +33,7 @@ import type {
   WorkbenchPanelSplitBranch,
   WorkbenchPanelSplitLeaf,
 } from "@/lib/types";
+import { usePointerDrag } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 import {
   buildPanelGroupBodyDropData,
@@ -635,18 +636,14 @@ function PanelGroupSash({
   onCommitRatio: (ratio: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const startPointerDrag = usePointerDrag();
   const isHorizontal = branch.direction === "horizontal";
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
     event.stopPropagation();
     const parent = containerRef.current?.parentElement;
     if (!parent) return;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    const resizeHandle = event.currentTarget;
-    const pointerId = event.pointerId;
     const rect = parent.getBoundingClientRect();
-
     const readRatio = (clientX: number, clientY: number) => {
       const raw = isHorizontal
         ? (clientX - rect.left) / Math.max(1, rect.width)
@@ -654,33 +651,17 @@ function PanelGroupSash({
       return Math.min(0.85, Math.max(0.15, raw));
     };
 
-    const handleMove = (moveEvent: PointerEvent) => {
-      moveEvent.preventDefault();
-      onDragRatio(readRatio(moveEvent.clientX, moveEvent.clientY));
-    };
-    const handleUp = (upEvent: PointerEvent) => {
-      upEvent.preventDefault();
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-      window.removeEventListener("pointercancel", handleCancel);
-      if (resizeHandle.hasPointerCapture?.(pointerId)) {
-        resizeHandle.releasePointerCapture(pointerId);
-      }
-      onCommitRatio(readRatio(upEvent.clientX, upEvent.clientY));
-    };
-    const handleCancel = () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-      window.removeEventListener("pointercancel", handleCancel);
-      if (resizeHandle.hasPointerCapture?.(pointerId)) {
-        resizeHandle.releasePointerCapture(pointerId);
-      }
-      onDragRatio(null);
-    };
-
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleUp, { once: true });
-    window.addEventListener("pointercancel", handleCancel, { once: true });
+    let latestRatio: number | null = null;
+    startPointerDrag(event, {
+      onMove: (moveEvent) => {
+        latestRatio = readRatio(moveEvent.clientX, moveEvent.clientY);
+        onDragRatio(latestRatio);
+      },
+      onEnd: (end) => {
+        if (end === "release" && latestRatio !== null) onCommitRatio(latestRatio);
+        else onDragRatio(null);
+      },
+    });
   };
 
   return (

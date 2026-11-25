@@ -1,5 +1,6 @@
 import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
+import { usePointerDrag } from "./pointer-drag";
 import {
   useLayoutEffect,
   useCallback,
@@ -174,15 +175,34 @@ export function useWorkbenchChromeCommands({
     [navigateBack, navigateForward],
   );
 
+  const startPointerDrag = usePointerDrag();
+  const persistResizedPanel = useCallback(
+    (panelId: "right" | "bottom", size: WorkbenchPanelState["size"], restore: () => void) => {
+      void runWithCleanup(
+        async () => {
+          await updateActivePanel(panelId, { size });
+        },
+        {
+          onError: (error) => {
+            restore();
+            toast.danger(
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "lib.useWorkbenchChromeCommands.toast.resizeFailed",
+                    defaultMessage: "Unable to resize panel",
+                  }),
+            );
+          },
+        },
+      );
+    },
+    [updateActivePanel],
+  );
+
   const resizeRightPanel = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      const root = workbenchRootRef.current;
-      const windowZoom = readCodexWindowZoom(root);
-      const resizeHandle = event.currentTarget;
-      const pointerId = event.pointerId;
+      const windowZoom = readCodexWindowZoom(workbenchRootRef.current);
       const sizingWidth = shellMainContentWidth.get();
       const startX = event.clientX / windowZoom;
       const startWidth = regularRightPanelWidth.get();
@@ -197,82 +217,36 @@ export function useWorkbenchChromeCommands({
 
       let latestWidth = startWidth;
       let closedByResize = false;
-      rightPanelRequestedWidth.set(startWidth);
-      const onPointerMove = (moveEvent: PointerEvent) => {
-        moveEvent.preventDefault();
-        if (closedByResize) return;
-        const pointerX = moveEvent.clientX / windowZoom;
-        const rawWidth =
-          rightPanelSide === "left"
-            ? startWidth + pointerX - startX
-            : startWidth + startX - pointerX;
-        if (rawWidth < RIGHT_PANEL_MIN_WIDTH) {
-          closedByResize = true;
-          latestWidth = RIGHT_PANEL_MIN_WIDTH;
-          restoreRequestedWidth();
-          void hideActiveRightPanel();
-          return;
-        }
-
-        const nextWidth = clampRegularRightPanelWidth(rawWidth, sizingWidth);
-        latestWidth = nextWidth;
-        rightPanelRequestedWidth.set(nextWidth);
-      };
-
-      const cleanupPointerResize = () => {
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("pointercancel", onPointerCancel);
-        if (resizeHandle.hasPointerCapture?.(pointerId)) {
-          resizeHandle.releasePointerCapture(pointerId);
-        }
-      };
-
-      const onPointerUp = (upEvent: PointerEvent) => {
-        upEvent.preventDefault();
-        cleanupPointerResize();
-        void (async () => {
-          await runWithCleanup(
-            async () => {
-              if (!activePanelOwner || closedByResize) {
-                restoreRequestedWidth();
-                return;
-              }
-              await updateActivePanel("right", {
-                size: {
-                  ...activePanelOwner.panels.right.size,
-                  widthPx: latestWidth,
-                },
-              });
-            },
-            {
-              onError: (error) => {
-                restoreRequestedWidth();
-                toast.danger(
-                  error instanceof Error
-                    ? error.message
-                    : getIntl().formatMessage({
-                        id: "lib.useWorkbenchChromeCommands.toast.resizeFailed",
-                        defaultMessage: "Unable to resize panel",
-                      }),
-                );
-              },
-            },
+      const started = startPointerDrag(event, {
+        onMove: (moveEvent) => {
+          if (closedByResize) return;
+          const pointerX = moveEvent.clientX / windowZoom;
+          const rawWidth =
+            rightPanelSide === "left"
+              ? startWidth + pointerX - startX
+              : startWidth + startX - pointerX;
+          if (rawWidth < RIGHT_PANEL_MIN_WIDTH) {
+            closedByResize = true;
+            restoreRequestedWidth();
+            void hideActiveRightPanel();
+            return;
+          }
+          latestWidth = clampRegularRightPanelWidth(rawWidth, sizingWidth);
+          rightPanelRequestedWidth.set(latestWidth);
+        },
+        onEnd: (end) => {
+          if (end !== "release" || closedByResize || !activePanelOwner) {
+            restoreRequestedWidth();
+            return;
+          }
+          persistResizedPanel(
+            "right",
+            { ...activePanelOwner.panels.right.size, widthPx: latestWidth },
+            restoreRequestedWidth,
           );
-        })();
-      };
-      const onPointerCancel = () => {
-        cleanupPointerResize();
-        restoreRequestedWidth();
-      };
-
-      document.body.style.userSelect = "none";
-      document.body.style.cursor = "col-resize";
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", onPointerUp);
-      window.addEventListener("pointercancel", onPointerCancel);
+        },
+      });
+      if (started) rightPanelRequestedWidth.set(startWidth);
     },
     [
       activePanelOwner,
@@ -280,21 +254,16 @@ export function useWorkbenchChromeCommands({
       rightPanelRequestedWidth,
       rightPanelSide,
       hideActiveRightPanel,
+      persistResizedPanel,
       shellMainContentWidth,
-      updateActivePanel,
+      startPointerDrag,
       workbenchRootRef,
     ],
   );
 
   const resizeBottomPanel = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      const root = workbenchRootRef.current;
-      const windowZoom = readCodexWindowZoom(root);
-      const resizeHandle = event.currentTarget;
-      const pointerId = event.pointerId;
+      const windowZoom = readCodexWindowZoom(workbenchRootRef.current);
       const startY = event.clientY / windowZoom;
       const sizingHeight = shellBodyHeight.get();
       const startHeight = bottomPanelHeight.get();
@@ -306,90 +275,44 @@ export function useWorkbenchChromeCommands({
           ),
         );
       };
+
       let latestHeight = startHeight;
       let closedByResize = false;
-      bottomPanelRequestedHeight.set(startHeight);
-
-      const onPointerMove = (moveEvent: PointerEvent) => {
-        moveEvent.preventDefault();
-        if (closedByResize) return;
-        const pointerY = moveEvent.clientY / windowZoom;
-        const rawHeight = startHeight + startY - pointerY;
-        if (rawHeight < BOTTOM_PANEL_MIN_HEIGHT) {
-          closedByResize = true;
-          latestHeight = BOTTOM_PANEL_MIN_HEIGHT;
-          restoreRequestedHeight();
-          void setActivePanelCollapsed("bottom", true);
-          return;
-        }
-
-        const nextHeight = clampBottomPanelHeight(rawHeight, sizingHeight);
-        latestHeight = nextHeight;
-        bottomPanelRequestedHeight.set(nextHeight);
-      };
-
-      const cleanupPointerResize = () => {
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("pointercancel", onPointerCancel);
-        if (resizeHandle.hasPointerCapture?.(pointerId)) {
-          resizeHandle.releasePointerCapture(pointerId);
-        }
-      };
-
-      const onPointerUp = (upEvent: PointerEvent) => {
-        upEvent.preventDefault();
-        cleanupPointerResize();
-        void (async () => {
-          await runWithCleanup(
-            async () => {
-              if (!activePanelOwner || closedByResize) {
-                restoreRequestedHeight();
-                return;
-              }
-              await updateActivePanel("bottom", {
-                size: {
-                  ...activePanelOwner.panels.bottom.size,
-                  heightPx: latestHeight,
-                },
-              });
-            },
-            {
-              onError: (error) => {
-                restoreRequestedHeight();
-                toast.danger(
-                  error instanceof Error
-                    ? error.message
-                    : getIntl().formatMessage({
-                        id: "lib.useWorkbenchChromeCommands.toast.resizeFailed",
-                        defaultMessage: "Unable to resize panel",
-                      }),
-                );
-              },
-            },
+      const started = startPointerDrag(event, {
+        onMove: (moveEvent) => {
+          if (closedByResize) return;
+          const rawHeight = startHeight + startY - moveEvent.clientY / windowZoom;
+          if (rawHeight < BOTTOM_PANEL_MIN_HEIGHT) {
+            closedByResize = true;
+            restoreRequestedHeight();
+            void setActivePanelCollapsed("bottom", true);
+            return;
+          }
+          latestHeight = clampBottomPanelHeight(rawHeight, sizingHeight);
+          bottomPanelRequestedHeight.set(latestHeight);
+        },
+        onEnd: (end) => {
+          if (end !== "release" || closedByResize || !activePanelOwner) {
+            restoreRequestedHeight();
+            return;
+          }
+          persistResizedPanel(
+            "bottom",
+            { ...activePanelOwner.panels.bottom.size, heightPx: latestHeight },
+            restoreRequestedHeight,
           );
-        })();
-      };
-      const onPointerCancel = () => {
-        cleanupPointerResize();
-        restoreRequestedHeight();
-      };
-
-      document.body.style.userSelect = "none";
-      document.body.style.cursor = "row-resize";
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", onPointerUp);
-      window.addEventListener("pointercancel", onPointerCancel);
+        },
+      });
+      if (started) bottomPanelRequestedHeight.set(startHeight);
     },
     [
       activePanelOwner,
       bottomPanelHeight,
       bottomPanelRequestedHeight,
+      persistResizedPanel,
       setActivePanelCollapsed,
       shellBodyHeight,
-      updateActivePanel,
+      startPointerDrag,
       workbenchRootRef,
     ],
   );

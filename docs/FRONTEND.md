@@ -298,6 +298,13 @@ measured vertical caption clearance. See [Windows host behavior](product-specs/w
 - Model drag and drop with one semantic target policy and one owning controller
   per gesture family. Nested providers or parallel native/synthetic paths must
   not split registration and dispatch authority.
+- A gesture that follows a pressed pointer across the window (resize handles,
+  sashes, splitters) starts through `usePointerDrag` in
+  `src/renderer/lib/pointer-drag.ts`, never hand-written `pointerup` listeners.
+  Browser pages and other embedded guests take pointer input in their own
+  process, so a release over them never reaches the renderer; the shared drag
+  keeps guests out of hit testing while it lasts and ends on the first event
+  that no longer holds the button.
 - Portalled interactive surfaces keep their normal body portal unless a real
   local clipping or ownership boundary requires otherwise. Fix pointer/focus
   ownership at the responsible DOM layer; do not mask it with arbitrary z-index

@@ -171,6 +171,7 @@ import type {
 import type { ReviewConversationProjection } from "@/features/review/model/review-conversation-projection";
 import { getSourceContentDigest } from "@/lib/source-content-version";
 import { recordReviewRuntimeEvent } from "@/features/review/testing/review-runtime-probe";
+import { usePointerDrag } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
 import { readExactWorkspaceTextFile } from "@/lib/read-exact-workspace-text-file";
@@ -2611,6 +2612,7 @@ export function ReviewDiffPanel({
   const reviewConversation = conversationProjection;
   const reviewContentRootRef = useRef<HTMLDivElement | null>(null);
   const reviewSplitRootRef = useRef<HTMLDivElement | null>(null);
+  const startPointerDrag = usePointerDrag();
   const [preferences, setPreferences] = useScopedAtom(reviewDiffPreferencesAtom);
   const [routeState, setRouteState] = useScopedAtom(reviewRouteStateAtom);
   const initializeRouteState = useSetScopedAtom(initializeReviewRouteStateAtom);
@@ -4022,15 +4024,8 @@ export function ReviewDiffPanel({
         defaultMessage: "Show files",
       });
   const handleFileTreeResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-
-    const ownerDocument = event.currentTarget.ownerDocument;
-    const ownerWindow = ownerDocument.defaultView;
     const splitRoot = reviewSplitRootRef.current;
-    if (!ownerWindow || !splitRoot) return;
-
+    if (!splitRoot) return;
     const startX = event.clientX;
     const startWidth = fileTreeWidth;
     const maxWidth = Math.max(
@@ -4039,32 +4034,11 @@ export function ReviewDiffPanel({
     );
     const clampWidth = (width: number) =>
       Math.min(maxWidth, Math.max(REVIEW_FILE_TREE_MIN_WIDTH_PX, Math.round(width)));
-
-    const previousCursor = ownerDocument.body.style.cursor;
-    const previousUserSelect = ownerDocument.body.style.userSelect;
-    ownerDocument.body.style.cursor = "col-resize";
-    ownerDocument.body.style.userSelect = "none";
-
-    const cleanup = () => {
-      ownerWindow.removeEventListener("pointermove", handlePointerMove);
-      ownerWindow.removeEventListener("pointerup", handlePointerUp);
-      ownerWindow.removeEventListener("pointercancel", handlePointerCancel);
-      ownerDocument.body.style.cursor = previousCursor;
-      ownerDocument.body.style.userSelect = previousUserSelect;
-    };
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      setFileTreeWidth(clampWidth(startWidth - (moveEvent.clientX - startX)));
-    };
-    const handlePointerUp = () => {
-      cleanup();
-    };
-    const handlePointerCancel = () => {
-      cleanup();
-    };
-
-    ownerWindow.addEventListener("pointermove", handlePointerMove);
-    ownerWindow.addEventListener("pointerup", handlePointerUp);
-    ownerWindow.addEventListener("pointercancel", handlePointerCancel);
+    startPointerDrag(event, {
+      onMove: (moveEvent) => {
+        setFileTreeWidth(clampWidth(startWidth - (moveEvent.clientX - startX)));
+      },
+    });
   };
 
   if (!reviewCwd) {
