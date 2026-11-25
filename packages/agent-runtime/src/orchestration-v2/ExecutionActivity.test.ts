@@ -11,6 +11,7 @@ import {
   type OrchestrationV2PendingBackgroundTask,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2Subagent,
+  type OrchestrationV2TurnItem,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -38,6 +39,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import {
   explainExecutedSql,
   fullHistoryScans,
+  HISTORICAL_RUN_COUNT,
   historyWideReads,
   seedUndecodableHistory,
 } from "./testkit/HistoryPressure.ts";
@@ -267,7 +269,49 @@ const fixture = Effect.gen(function* () {
         updatedAt: now,
       },
     });
-  return { thread, run, task, request, roster, secret, now, apply, advanceThread };
+  const toolItem = (
+    threadId: ThreadId,
+    owner: OrchestrationV2Run | null,
+    type: "command_execution" | "dynamic_tool" | "subagent" = "command_execution",
+    status: OrchestrationV2TurnItem["status"] = "running",
+  ) => {
+    const tool = {
+      command_execution: { type: "command_execution", input: "vp run test" },
+      dynamic_tool: { type: "dynamic_tool", toolName: "task_wait", input: {} },
+      subagent: {
+        type: "subagent",
+        subagentId: NodeId.make(`task:${threadId}`),
+        origin: "provider_native",
+        driver,
+        providerInstanceId,
+        childThreadId: null,
+        prompt: "Check the build.",
+        result: null,
+      },
+    } as const;
+    return apply({
+      type: "turn-item.updated",
+      threadId,
+      payload: {
+        id: TurnItemId.make(`${type}:${owner?.id ?? threadId}`),
+        threadId,
+        runId: owner?.id ?? null,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 2,
+        status,
+        title: null,
+        startedAt: now,
+        completedAt: status === "completed" ? now : null,
+        updatedAt: now,
+        ...tool[type],
+      } satisfies OrchestrationV2TurnItem,
+    });
+  };
+  return { thread, run, task, request, roster, secret, toolItem, now, apply, advanceThread };
 });
 
 const activity = (rootThreadIds?: ReadonlyArray<string>) =>
@@ -288,7 +332,7 @@ const activity = (rootThreadIds?: ReadonlyArray<string>) =>
 
 it.effect("reports running, waiting and background roots and rolls descendants up", () =>
   Effect.gen(function* () {
-    const { thread, run, task, request, roster, now, advanceThread } = yield* fixture;
+    const { thread, run, task, request, roster, now, advanceThread, toolItem } = yield* fixture;
     const running = yield* thread("root:running");
     const runningRun = yield* run(running, "running");
     // A blocking wait leaves the root Run live while its delegated Thread produces output.
@@ -340,8 +384,35 @@ it.effect("reports running, waiting and background roots and rolls descendants u
 
     const read = readRootActivity({ rootThreadIds: [running] });
     assert.equal((yield* read).items[0]?.updatedAt, DateTime.formatIso(now));
+    yield* toolItem(worker, workerRun);
+    assert.isFalse((yield* read).items[0]?.awaitingCommands);
+    yield* toolItem(running, runningRun, "dynamic_tool", "waiting");
+    assert.isTrue((yield* read).items[0]?.awaitingCommands);
     const progressAt = yield* advanceThread(worker, workerRun);
     assert.equal((yield* read).items[0]?.updatedAt, progressAt);
+    yield* toolItem(running, runningRun, "dynamic_tool", "completed");
+    assert.isFalse((yield* read).items[0]?.awaitingCommands);
+    yield* toolItem(running, runningRun, "subagent", "pending");
+    assert.isTrue((yield* read).items[0]?.awaitingCommands);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("only counts in-flight commands that belong to a live Run", () =>
+  Effect.gen(function* () {
+    const { thread, run, toolItem } = yield* fixture;
+    const root = yield* thread("root:foreground-command");
+    const retired = yield* run(root, "completed");
+    yield* toolItem(root, retired);
+    const current = yield* run(root, "running", { ordinal: 2 });
+    const read = readRootActivity({ rootThreadIds: [root] });
+    assert.isFalse((yield* read).items[0]?.awaitingCommands);
+    yield* toolItem(root, current, "command_execution", "pending");
+    assert.isTrue((yield* read).items[0]?.awaitingCommands);
+    yield* run(root, "waiting", { ordinal: current.ordinal });
+    yield* toolItem(root, current, "command_execution", "waiting");
+    assert.isTrue((yield* read).items[0]?.awaitingCommands);
+    yield* toolItem(root, current, "command_execution", "completed");
+    assert.isFalse((yield* read).items[0]?.awaitingCommands);
   }).pipe(Effect.provide(layer)),
 );
 
@@ -375,6 +446,7 @@ it.effect(
       ]);
       const result = yield* readRootActivity({ rootThreadIds: [root] });
       assert.equal(result.items[0]?.status, "running");
+      assert.isFalse(result.items[0]?.awaitingCommands);
       assert.deepEqual(result.items[0]?.backgroundTasks, [
         {
           threadId: root,
@@ -430,7 +502,13 @@ it.effect("bounds each root to its oldest 25 tasks with a stable native-id tie b
     yield* roster(root, tasks.slice(15).reverse());
     yield* roster(child, tasks.slice(0, 15).reverse());
     const other = yield* thread("root:other");
-    yield* roster(other, 2);
+    yield* roster(other, [
+      ...Array.from({ length: 26 }, (_, index) => ({
+        taskId: `agent:${index}`,
+        kind: "subagent" as const,
+      })),
+      ...tasks.slice(0, 2),
+    ]);
     const page = yield* readRootActivity({});
     const point = yield* readRootActivity({ rootThreadIds: [root] });
     const listed = page.items.find((item) => item.rootThreadId === root)!.backgroundTasks;
@@ -439,7 +517,9 @@ it.effect("bounds each root to its oldest 25 tasks with a stable native-id tie b
       tasks.slice(0, 25).map((task) => task.taskId),
     );
     assert.deepEqual(point.items[0]?.backgroundTasks, listed);
-    assert.equal(page.items.find((item) => item.rootThreadId === other)?.backgroundTasks.length, 2);
+    const otherActivity = page.items.find((item) => item.rootThreadId === other);
+    assert.equal(otherActivity?.backgroundTasks.length, 2);
+    assert.isTrue(otherActivity?.awaitingCommands);
   }).pipe(Effect.provide(layer)),
 );
 
@@ -769,7 +849,7 @@ it.effect("keeps a finished parent in the background until its delegated result 
 
 it.effect("includes progress from a provider-native subagent with no Runtime Run", () =>
   Effect.gen(function* () {
-    const { thread, run, task, now, advanceThread } = yield* fixture;
+    const { thread, run, task, now, advanceThread, roster, toolItem } = yield* fixture;
     const parent = yield* thread("root:native");
     const parentRun = yield* run(parent, "running");
     const child = yield* thread("child:native", parent, {
@@ -777,11 +857,19 @@ it.effect("includes progress from a provider-native subagent with no Runtime Run
       creationSource: "provider",
     });
     yield* task(parentRun, "task:native", { childThreadId: child, origin: "provider_native" });
+    yield* toolItem(parent, parentRun, "subagent");
+    yield* toolItem(child, null);
+    yield* roster(parent, [{ taskId: "native-agent", kind: "subagent" }]);
 
     const read = readRootActivity({ rootThreadIds: [parent] });
     assert.equal((yield* read).items[0]?.updatedAt, DateTime.formatIso(now));
+    assert.isFalse((yield* read).items[0]?.awaitingCommands);
     const progressAt = yield* advanceThread(child);
     assert.equal((yield* read).items[0]?.updatedAt, progressAt);
+    yield* roster(child, [{ taskId: "monitor", kind: "monitor" }]);
+    assert.isTrue((yield* read).items[0]?.awaitingCommands);
+    yield* roster(child, [{ taskId: "background", kind: "background_task" }]);
+    assert.isTrue((yield* read).items[0]?.awaitingCommands);
   }).pipe(Effect.provide(layer)),
 );
 
@@ -805,14 +893,18 @@ it.effect("pages non-idle roots by cursor", () =>
 
 it.effect("reads activity from live-state indexes only at 10,000 historical Runs", () =>
   Effect.gen(function* () {
-    const { thread, run, roster, request, secret, now } = yield* fixture;
-    const settled = yield* thread("root:history");
-    yield* seedUndecodableHistory({ threadId: settled, at: DateTime.formatIso(now) });
+    const { thread, run, roster, request, secret, now, toolItem } = yield* fixture;
+    const sql = yield* SqlClient.SqlClient;
     const live = yield* thread("root:live");
-    yield* run(live, "running", { ordinal: 1 });
+    yield* seedUndecodableHistory({ threadId: live, at: DateTime.formatIso(now) });
+    // Orphaned in-flight items on this same Thread must stay outside the live Run's index range.
+    yield* sql`UPDATE orchestration_v2_projection_turn_items
+      SET type = 'command_execution', status = 'running' WHERE thread_id = ${live}`;
+    const owner = yield* run(live, "running", { ordinal: HISTORICAL_RUN_COUNT + 1 });
+    yield* toolItem(live, owner);
     yield* roster(live, 1);
     yield* request(live, "request:pressure", "pending");
-    yield* secret(live, yield* run(live, "running"));
+    yield* secret(live, owner);
     const side = yield* thread("side:pressure", undefined, {
       sideChat: { sourceThreadId: live, sourceRunId: null, nativeFork: false },
     });
@@ -830,6 +922,17 @@ it.effect("reads activity from live-state indexes only at 10,000 historical Runs
     );
     assert.equal(page.result.items[0]?.backgroundTasks[0]?.taskId, "background-0");
     for (const read of [page, point]) {
+      assert.lengthOf(
+        read.plans.flatMap(({ plan }) =>
+          plan.filter(({ detail }) =>
+            /^SEARCH tool_item USING (?:COVERING )?INDEX orchestration_v2_execution_live_items_idx \(thread_id=\? AND run_id=\?\)$/.test(
+              detail,
+            ),
+          ),
+        ),
+        2,
+        "both tool lookups seek by Thread and Run in the live-item index",
+      );
       assert.isTrue(
         read.plans.some(({ plan }) =>
           plan.some(({ detail }) =>
@@ -916,6 +1019,7 @@ it.effect("lists a settled Codex terminal as Session background activity using i
     ]);
     const result = yield* readRootActivity({ rootThreadIds: [root] });
     assert.equal(result.items[0]?.status, "background");
+    assert.isTrue(result.items[0]?.awaitingCommands);
     assert.deepEqual(result.items[0]?.backgroundTasks, [
       {
         threadId: root,
@@ -934,13 +1038,14 @@ it.effect("lists a settled Codex terminal as Session background activity using i
 
 it.effect("rolls approval flags and action prompts through delegated tasks and side chats", () =>
   Effect.gen(function* () {
-    const { thread, run, request, apply, now } = yield* fixture;
+    const { thread, run, request, apply, now, roster } = yield* fixture;
     const root = yield* thread("root:approval-notifications");
     const child = yield* thread("child:approval-notifications", root);
-    yield* run(child, "running");
+    yield* run(child, "waiting");
     const side = yield* thread("side:approval-notifications", undefined, {
       sideChat: { sourceThreadId: root, sourceRunId: null, nativeFork: false },
     });
+    yield* roster(side, 1);
     for (const [owner, id, prompt] of [
       [child, "approval:child", "git push origin main"],
       [side, "approval:side", "Write /outside/config.json"],
@@ -974,6 +1079,9 @@ it.effect("rolls approval flags and action prompts through delegated tasks and s
     const read = () =>
       readRootActivity({ rootThreadIds: [root] }).pipe(Effect.map((page) => page.items[0]));
     const combined = yield* read();
+    assert.isFalse(combined?.awaitingCommands);
+    const sideActivity = yield* readRootActivity({ rootThreadIds: [side] });
+    assert.isTrue(sideActivity.items[0]?.awaitingCommands);
     assert.deepEqual(combined?.activeFlags, ["waitingOnApproval"]);
     assert.equal(combined?.pendingRequestCount, 2);
     assert.equal(combined?.approvalPrompt, "git push origin main");

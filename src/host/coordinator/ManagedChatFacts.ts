@@ -111,13 +111,15 @@ export const make = Effect.gen(function* () {
               : managedChatTerminal(execution.status),
           pendingRequests,
           ...(run?.failureMessage ? { failureReason: run.failureMessage } : {}),
-          progressFingerprint: managedChatFingerprint([
-            binding,
-            execution.runId,
-            execution.revision,
-            metadata.itemCount,
-            activity?.updatedAt,
-          ]),
+          progressFingerprint: activity?.awaitingCommands
+            ? null
+            : managedChatFingerprint([
+                binding,
+                execution.runId,
+                execution.revision,
+                metadata.itemCount,
+                activity?.updatedAt,
+              ]),
         };
       } else {
         if (!native) return unavailableManagedChatFacts;

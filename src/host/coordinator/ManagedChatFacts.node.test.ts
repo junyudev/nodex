@@ -13,7 +13,11 @@ import { CodexGateway } from "../../main/codex-runtime/CodexGateway";
 import { live as nativeManagedChatFacts } from "../../main/codex-application/NativeManagedChatFacts";
 import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { make } from "./ManagedChatFacts";
-import { diffManagedChatObservation as diff } from "./managed-chat-observation";
+import {
+  diffManagedChatObservation as diff,
+  MANAGED_CHAT_STALL_MS as STALL,
+  type ManagedChatObservation,
+} from "./managed-chat-observation";
 
 const runtimeSession = {
   id: "chat",
@@ -172,6 +176,55 @@ it.effect.each(["running", "background"] as const)(
         ["turn_ended"],
       );
     }),
+);
+it.effect("never stalls while the chat only waits on commands, then restarts the stall clock", () =>
+  Effect.gen(function* () {
+    let awaitingCommands = true;
+    const source = yield* owner(
+      {
+        workspace: {
+          read: () => Effect.succeed({ value: { kind: "session", session: runtimeSession } }),
+        },
+      },
+      {
+        observeSessionMetadata: () =>
+          Effect.sync(() => ({
+            metadata: { itemCount: 4, providerInstanceId: "claude", model: "opus", effort: null },
+            execution: { runId: "root", status: "completed", revision: "end" },
+            details: {
+              recentRuns: [{ runId: "root", startedAt: "2026-11-03T00:00:00Z" }],
+              pendingRequests: [],
+            },
+            activity: { status: "background", hasWork: true, awaitingCommands, updatedAt: "t" },
+          })),
+      },
+    );
+    const observe = (previous: ManagedChatObservation | null, now: number) =>
+      source.read("chat").pipe(
+        Effect.map((facts) =>
+          diff({ sessionId: "chat", facts, previous, now, latestReportAt: null }),
+        ),
+      );
+    let step = yield* observe(null, 0);
+    assert.equal(step.observed.state, "working");
+    // A background command can run quietly for far longer than the stall grace.
+    for (const now of [STALL, STALL * 3]) {
+      step = yield* observe(step.observed, now);
+      assert.isFalse(step.observed.stalled);
+      assert.deepEqual(step.events, []);
+    }
+    // Once the command ends, quiet time counts again from that moment.
+    awaitingCommands = false;
+    step = yield* observe(step.observed, STALL * 3 + 1);
+    assert.equal(step.observed.progressSince, STALL * 3 + 1);
+    step = yield* observe(step.observed, STALL * 4);
+    assert.isFalse(step.observed.stalled);
+    step = yield* observe(step.observed, STALL * 4 + 1);
+    assert.deepEqual(
+      step.events.map((event) => event.kind),
+      ["stalled"],
+    );
+  }),
 );
 it.effect("records an unavailable owner on missing metadata and bounded owner timeouts", () =>
   Effect.gen(function* () {

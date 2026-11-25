@@ -24,6 +24,7 @@ const root = (
   rootThreadId,
   status,
   hasWork: status !== "waiting",
+  awaitingCommands: false,
   activeRunId: status === "background" ? null : `run:${rootThreadId}`,
   pendingRequestCount: status === "waiting" ? 1 : 0,
   backgroundTasks: [],

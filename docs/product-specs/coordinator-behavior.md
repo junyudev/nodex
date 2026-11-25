@@ -107,13 +107,17 @@ Nodex hears about a managed chat when it:
 - asks a question or waits for an approval, including a question that remains answerable after its turn ends;
 - ends a turn without reporting and with nothing waiting on the person;
 - fails;
-- seems stalled: still working on the same turn with no progress for twenty minutes and nothing
-  waiting on the person.
+- seems stalled: an Agent in its work owes the next step but has shown no progress for twenty
+  minutes, with nothing waiting on the person.
 
 A managed chat stays working while its root or any delegated task, native subagent,
 workflow or continuation is running or queued. Nodex observes the tree before it
-records an ended turn or failure and uses tree progress to decide when work has stalled:
-a root waiting on delegated work that is still making progress has not stalled.
+records an ended turn or failure and uses tree progress to decide when work has stalled.
+A root waiting on delegated work that is still making progress has not stalled. Nor has a chat
+whose Agents are only waiting on commands, whether a command runs inside a turn or in the
+background, as a background command or Monitor that will wake the chat: Nodex cannot see a
+command's progress. The stall clock restarts when that wait ends. A running command never hides
+an Agent that owes the next step outside a tool call.
 Live delegated approvals and questions
 handed to the person count alongside root requests. Questions still owned by a delegating
 Agent stay out of person attention. Page Turns and Inbox share this rollup.

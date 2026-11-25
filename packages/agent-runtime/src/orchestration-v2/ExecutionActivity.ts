@@ -17,6 +17,7 @@ import {
   ATTENTION_KINDS,
   ATTENTION_KIND_SQL_LIST,
   LIVE_RUN_PREDICATE,
+  WORKING_RUN_PREDICATE,
   PENDING_ATTENTION_REQUEST_PREDICATE,
   REQUEST_ATTENTION_KIND_SQL,
   SECRET_CARD_ATTENTION_FACT_FROM_SQL,
@@ -52,6 +53,11 @@ export interface RootActivity {
   readonly status: "running" | "waiting" | "background";
   /** Work can continue elsewhere in a tree that also has pending attention. */
   readonly hasWork: boolean;
+  /**
+   * A command or Monitor is running, and no live Run owes the next step outside a tool call.
+   * Nodex cannot see a command's progress, so quiet time should not count toward an Agent stall.
+   */
+  readonly awaitingCommands: boolean;
   readonly activeRunId: string | null;
   readonly readback?: AgentRunReadback | null;
   readonly pendingRequestCount: number;
@@ -142,6 +148,12 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
       const snapshotSequence = sequence[0]?.sequence ?? 0;
       if (roots?.length === 0)
         return { snapshotSequence, items: [], nextCursor: null } satisfies RootActivityPage;
+      // Seek by both keys so stale in-flight items from earlier Runs never enter the lookup.
+      const inFlightToolsForRun = sql`FROM orchestration_v2_projection_turn_items AS tool_item
+        INDEXED BY orchestration_v2_execution_live_items_idx
+        WHERE tool_item.thread_id = live_run.thread_id AND tool_item.run_id = live_run.run_id
+          AND tool_item.type IN ('command_execution', 'dynamic_tool', 'subagent')
+          AND tool_item.status IN ('pending','running','waiting')`;
       const rows = yield* sql<{
         readonly root_thread_id: string;
         readonly active_runs: number;
@@ -151,30 +163,36 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         readonly has_input: number;
         readonly approval_prompt: string | null;
         readonly active_tasks: number;
+        readonly awaiting_commands: number;
         readonly resumes: number;
         readonly progress_at: string | null;
         readonly background_tasks_json: string;
       }>`
-        WITH RECURSIVE facts(thread_id, kind, at, amount, background_task, request_id) AS MATERIALIZED (
-          SELECT thread_id, 'run', requested_at, 1, NULL, NULL FROM orchestration_v2_projection_runs
+        WITH RECURSIVE facts(thread_id, kind, at, amount, background_task, request_id, has_command, acting_run) AS MATERIALIZED (
+          SELECT thread_id, 'run', requested_at, 1, NULL, NULL,
+            EXISTS (SELECT 1 ${inFlightToolsForRun} AND tool_item.type = 'command_execution'),
+            CASE WHEN ${sql.literal(WORKING_RUN_PREDICATE)}
+              THEN NOT EXISTS (SELECT 1 ${inFlightToolsForRun}) ELSE 0 END
+          FROM orchestration_v2_projection_runs AS live_run
           WHERE ${sql.literal(LIVE_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id, ${sql.literal(REQUEST_ATTENTION_KIND_SQL)}, created_at, 1, NULL, runtime_request_id
+          SELECT thread_id, ${sql.literal(REQUEST_ATTENTION_KIND_SQL)}, created_at, 1, NULL, runtime_request_id, 0, 0
           FROM orchestration_v2_projection_runtime_requests
           WHERE ${sql.literal(PENDING_ATTENTION_REQUEST_PREDICATE)}
           UNION ALL
-          SELECT secret.thread_id, ${sql.literal(`'${ATTENTION_KINDS.input}'`)}, secret.updated_at, 1, NULL, secret.turn_item_id
+          SELECT secret.thread_id, ${sql.literal(`'${ATTENTION_KINDS.input}'`)}, secret.updated_at, 1, NULL, secret.turn_item_id, 0, 0
           ${sql.literal(SECRET_CARD_ATTENTION_FACT_FROM_SQL)}
           UNION ALL
           SELECT subagent.thread_id, 'task',
-            MAX(subagent.updated_at, COALESCE(child.updated_at, subagent.updated_at)), 1, NULL, NULL
+            MAX(subagent.updated_at, COALESCE(child.updated_at, subagent.updated_at)), 1, NULL, NULL, 0, 0
           FROM orchestration_v2_projection_subagents AS subagent
           -- A provider-native task can write to its child Thread without creating a Runtime Run.
           LEFT JOIN orchestration_v2_projection_threads AS child
             ON child.thread_id = subagent.child_thread_id AND child.deleted_at IS NULL
           WHERE ${sql.literal(LIVE_SUBAGENT_TASK_PREDICATE)}
           UNION ALL
-          SELECT provider.thread_id, 'task', provider.updated_at, 1, task.value, NULL
+          SELECT provider.thread_id, 'task', provider.updated_at, 1, task.value, NULL,
+            task.value IS NOT NULL AND json_extract(task.value, '$.kind') IS NOT 'subagent', 0
           FROM orchestration_v2_projection_provider_threads AS provider
           CROSS JOIN json_each(
             CASE WHEN json_valid(provider.payload_json) THEN provider.payload_json ELSE '{}' END,
@@ -182,15 +200,16 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           ) AS task
           WHERE provider.thread_id IS NOT NULL AND (${sql.literal(LIVE_PROVIDER_THREAD_PREDICATE)})
           UNION ALL
-          SELECT thread_id, 'wake', NULL, 1, NULL, NULL FROM orchestration_v2_projection_runs
+          SELECT thread_id, 'wake', NULL, 1, NULL, NULL, 0, 0 FROM orchestration_v2_projection_runs
           WHERE ${sql.literal(OPEN_DELIVERY_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id, 'wake', updated_at, 1, NULL, NULL
+          SELECT thread_id, 'wake', updated_at, 1, NULL, NULL, 0, 0
           FROM orchestration_v2_projection_subagents AS subagent
           WHERE ${sql.literal(WAKING_LIVE_TASK_PREDICATE)}
         ), rooted AS MATERIALIZED (
           SELECT json_extract(thread.payload_json, '$.lineage.rootThreadId') AS root_thread_id,
             facts.thread_id, facts.kind, facts.at, facts.amount, facts.background_task, facts.request_id,
+            facts.has_command, facts.acting_run,
             MAX(thread.updated_at, COALESCE(facts.at, thread.updated_at)) AS progress_at,
             json_extract(thread.payload_json, '$.title') AS thread_title
           FROM facts
@@ -213,10 +232,12 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             ON owner.thread_id = attention.root_thread_id
           WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
         ), activity_facts AS MATERIALIZED (
-          SELECT root_thread_id, thread_id, kind, progress_at, amount, NULL AS request_at FROM rooted
+          SELECT root_thread_id, thread_id, kind, progress_at, amount, NULL AS request_at,
+            has_command, acting_run FROM rooted
           WHERE kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
           UNION ALL
-          SELECT root_thread_id, thread_id, kind, progress_at, amount, at AS request_at FROM attention
+          SELECT root_thread_id, thread_id, kind, progress_at, amount, at AS request_at,
+            0, 0 FROM attention
         ), activity AS MATERIALIZED (
         SELECT root_thread_id,
           SUM(kind = 'run') AS active_runs,
@@ -225,6 +246,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           MAX(kind = ${ATTENTION_KINDS.approval}) AS has_approval,
           MAX(kind IN (${ATTENTION_KINDS.input}, ${ATTENTION_KINDS.question})) AS has_input,
           SUM(CASE WHEN kind = 'task' THEN amount ELSE 0 END) AS active_tasks,
+          MAX(has_command) = 1 AND MAX(acting_run) = 0 AS awaiting_commands,
           MAX(kind = 'wake' AND thread_id = root_thread_id) AS resumes,
           MAX(progress_at) AS progress_at
         FROM activity_facts
@@ -249,7 +271,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
               ORDER BY json_extract(background_task, '$.startedAt'), rooted.at DESC, background_task) AS duplicate_position
           FROM rooted
           INNER JOIN activity ON activity.root_thread_id = rooted.root_thread_id
-          WHERE background_task IS NOT NULL AND json_extract(background_task, '$.kind') IS NOT 'subagent'
+          WHERE background_task IS NOT NULL AND has_command
         ), ranked_tasks AS MATERIALIZED (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY root_thread_id
             ORDER BY started_at, task_id, thread_id) AS position
@@ -340,6 +362,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           status:
             row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
           hasWork: row.active_runs > 0 || row.active_tasks > 0 || row.resumes > 0,
+          awaitingCommands: row.awaiting_commands === 1,
           activeRunId: head.active_run_id,
           readback:
             head.active_run_id === null ? null : (readbackOf.get(head.active_run_id) ?? null),

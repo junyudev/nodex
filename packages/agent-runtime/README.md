@@ -42,6 +42,7 @@ its explicit person-admission fact across queues and restart continuations; stee
 The write-once projection survives Runtime restarts and activity reads never scan transcripts.
 Each root's `updatedAt` is its live tree's latest progress, so a parent waiting on delegated work
 stays current while that work moves.
+`awaitingCommands` marks a live tree with a command or Monitor running and no Run acting outside a tool call.
 `execution.observe` emits Run status and Thread deletion metadata plus compact root-activity changes,
 including the committed item that first records a Readback (coalesced within 50 ms); filtered observers use
 type-specific SQL queries and live channels before retaining events. Every subscription returns

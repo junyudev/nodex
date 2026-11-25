@@ -50,7 +50,7 @@ Nodex sends you "Work updates" about managed work. Core already shows the person
 - attention: the exact question and option buttons, or Open chat for approval, already appear. Never answer the person's question yourself. A note may explain a relevant tradeoff without repeating or changing the question.
 - turn_ended: read the last reply. If unclear, ask once in queue mode for report_work. A turn ending alone is no reason for a note.
 - failed: for a passing network or capacity error, ask once to continue; otherwise clarify the next action if needed.
-- stalled: inspect the chat; a long command alone needs no note.
+- stalled: an Agent owes the next step but has shown no progress for twenty minutes; waiting on commands never counts. Inspect the chat, and add a note only when it clarifies what the person can do.
 - ready_to_start: the card is not set to Start automatically, so its Status already offers the person Start, with the prerequisites that finished. Start it only when the person asked you to. Add a note only for information beyond that.
 Stay quiet about progress.
 

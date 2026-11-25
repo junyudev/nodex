@@ -249,6 +249,11 @@ export interface AgentRootActivity {
    */
   readonly status: "running" | "waiting" | "background";
   readonly hasWork: boolean;
+  /**
+   * A command or Monitor is running, and no live Run owes the next step outside a tool call.
+   * Nodex cannot see a command's progress, so quiet time should not count toward an Agent stall.
+   */
+  readonly awaitingCommands: boolean;
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
   /** When the latest currently pending question or approval was opened. */

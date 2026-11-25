@@ -60,6 +60,10 @@ export interface ManagedChatFacts {
   readonly earlierRunStart?: ManagedChatObservation["earlierRunStart"];
   readonly terminalStatus: ManagedChatObservation["terminalStatus"];
   readonly pendingRequests: readonly ManagedChatRequest[];
+  /**
+   * Null while progress cannot be observed, such as while the chat only waits on commands. That
+   * time never counts toward a stall; the stall clock restarts once progress is observable again.
+   */
   readonly progressFingerprint: string | null;
   readonly lastReplyExcerpt?: string;
   readonly interruptRequested?: boolean;
