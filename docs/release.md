@@ -212,7 +212,7 @@ environment secrets are resolved only by direct jobs.
 | `mobile-distribution`       | Sign the Android APK and the App Store iOS build                                 |
 | `testflight`                | Upload the certified iOS build and submit it to the public TestFlight beta       |
 | `sparkle-feed-finalization` | Sign macOS and Windows appcasts and enclosures after every native build passes   |
-| `release-publish`           | Job-scoped repository `contents: write` only                                     |
+| `release-publish`           | Job-scoped repository `contents: write` and the release tag credential           |
 | `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                               |
 | `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                                 |
 | `landing-production`        | Deploy `NodexApp/NodexApp.github.io`                                             |
@@ -228,6 +228,13 @@ Configure these repository Action secrets:
 | `NODEX_SKILLS_GITHUB_TOKEN`                                         | Fine-grained Contents read/write on `NodexApp/skills` only                                                                                  |
 | `HOMEBREW_TAP_GITHUB_TOKEN`                                         | Fine-grained Contents read/write on `junyudev/homebrew-tap` only                                                                            |
 | `NODEXAPP_GITHUB_IO_TOKEN`                                          | Fine-grained Contents read/write on `NodexApp/NodexApp.github.io` only                                                                      |
+
+Configure `NODEX_RELEASE_TAG_TOKEN` as an environment secret on
+`release-publish`: a fine-grained token with Contents and Workflows read/write
+on `junyudev/nodex` only. A release source usually trails `main`, and GitHub
+refuses the workflow token any tag whose workflow files differ from `main`'s.
+Nightly and Release create the tag in a direct `release-publish` job with this
+credential; publication then reuses the tag with the workflow token.
 
 Configure `SPARKLE_ED25519_PRIVATE_KEY` as an environment secret on
 `sparkle-feed-finalization`, not as a repository-wide secret and not as a
