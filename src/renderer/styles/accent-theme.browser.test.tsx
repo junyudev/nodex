@@ -243,12 +243,9 @@ test.each(paintCases)(
     expect(getComputedStyle(surfaces.getByTestId("accent-chart")).backgroundColor).toBe(
       color(styles["--app-color-accent-blue"]!),
     );
-    const selectedCell = surfaces.getByTestId("selected-cell");
-    expect(getComputedStyle(selectedCell).backgroundColor).toBe(
+    // Selected cells share one selection tint over their own colors, without per-cell outlines.
+    expect(getComputedStyle(surfaces.getByTestId("selected-cell"), "::after").backgroundColor).toBe(
       color(styles["--color-background-text-selection"]!),
-    );
-    expect(getComputedStyle(selectedCell, "::after").borderTopColor).toBe(
-      color(styles["--app-color-border-focus"]!),
     );
     expect(
       getComputedStyle(surfaces.getByTestId("selected-block"), "::after").backgroundColor,

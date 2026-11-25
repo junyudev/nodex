@@ -16,6 +16,7 @@ import { databaseSettingsConfigurationScenario } from "./scenarios/database-sett
 import { pageRelocationScenario } from "./scenarios/page-relocation";
 import { nfmCodeBlockActionsScenario } from "./scenarios/nfm-code-block-actions";
 import { nfmEquationAndMermaidScenario } from "./scenarios/nfm-equation-and-mermaid";
+import { nfmTablesScenario } from "./scenarios/nfm-tables";
 import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-activity";
 import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sections";
 import { sidebarAttentionScenario } from "./scenarios/sidebar-attention";
@@ -50,6 +51,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [pageRelatedChatActivityScenario.id, pageRelatedChatActivityScenario],
   [nfmCodeBlockActionsScenario.id, nfmCodeBlockActionsScenario],
   [nfmEquationAndMermaidScenario.id, nfmEquationAndMermaidScenario],
+  [nfmTablesScenario.id, nfmTablesScenario],
   [sidebarCustomSectionsScenario.id, sidebarCustomSectionsScenario],
   [sidebarAttentionScenario.id, sidebarAttentionScenario],
   [sidebarChatStatusScenario.id, sidebarChatStatusScenario],

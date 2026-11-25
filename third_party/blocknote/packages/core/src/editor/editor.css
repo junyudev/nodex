@@ -146,10 +146,11 @@
   width: 100%;
 }
 
-/* table related: */
+/* table related: auto columns size from their content; prosemirror-tables writes the
+   total width of a table whose every column has a stored width inline, so it must win. */
 .bn-editor [data-content-type="table"] table {
-  width: auto !important;
-  word-break: break-word;
+  width: auto;
+  overflow-wrap: anywhere;
 }
 .bn-editor [data-content-type="table"] th,
 .bn-editor [data-content-type="table"] td {
@@ -167,16 +168,6 @@
   min-height: 1.5rem;
 }
 
-/* tiptap uses colwidth instead of data-colwidth, se we need to adjust this style from prosemirror-tables */
-.ProseMirror td,
-.ProseMirror th {
-  min-width: auto !important;
-}
-.ProseMirror td:not([colwidth]):not(.column-resize-dragging),
-.ProseMirror th:not([colwidth]):not(.column-resize-dragging) {
-  /* if there's no explicit width set and the column is not being resized, set a default width */
-  min-width: var(--default-cell-min-width) !important;
-}
 
 .prosemirror-dropcursor-block {
   transition-property: top, bottom;

@@ -1,6 +1,6 @@
 import { useIntl } from "@/lib/i18n";
 import { SkillMentionChip } from "./editor/skill-mention-chip";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type CSSProperties, type ReactNode } from "react";
 import { CornerDownRight, Link2 } from "@/components/shared/icons/generic-icons";
 import { ImageIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
 import {
@@ -30,6 +30,8 @@ import {
 import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import { formatDateMentionPlainText } from "../../../shared/rich-text/date-mention";
 import { cn } from "@/lib/utils";
+import { classifyNfmTable } from "@/lib/nfm-table-layout";
+import { NfmReadonlyTable } from "@/components/shared/nfm-readonly-table";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { DateMentionInlineVisual } from "./date-mention-inline-visual";
 import { ThreadMentionInlineVisual } from "./thread-mention-inline-visual";
@@ -404,13 +406,7 @@ function BlockComponent({
       return <MathSourcePreview source={blockText(block)} displayMode />;
 
     case "table":
-      return (
-        <NfmTableBlock
-          table={block}
-          projectWorkspacePath={projectWorkspacePath}
-          className={colorClass}
-        />
-      );
+      return <NfmTableBlock table={block} projectWorkspacePath={projectWorkspacePath} />;
 
     case "callout":
       return (
@@ -662,59 +658,64 @@ function NumberedListItemContent({
   );
 }
 
+function tableCellPlainText(content: readonly MarkdownInline[] | string | undefined): string {
+  if (typeof content === "string") return content;
+  return content?.map((item) => item.text ?? tableCellPlainText(item.content)).join("") ?? "";
+}
+
+function tableColor(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "default" ? value : undefined;
+}
+
 function NfmTableBlock({
   table,
   projectWorkspacePath,
-  className,
 }: {
   table: MarkdownBlock;
   projectWorkspacePath?: string | null;
-  className?: string;
 }) {
   const content = table.content as {
     headerRows?: number;
     headerCols?: number;
     columnWidths?: (number | null)[];
-    rows: { cells: { props?: Record<string, unknown>; content?: unknown }[] }[];
+    rows: {
+      cells: { props?: Record<string, unknown>; content?: readonly MarkdownInline[] | string }[];
+    }[];
   };
+  const { layout, columns, cellFits } = classifyNfmTable(
+    content.rows.map((row) => row.cells.map((cell) => tableCellPlainText(cell.content))),
+    content.columnWidths,
+  );
   return (
-    <div className={cn("my-3 max-w-full overflow-x-auto", className)}>
-      <table className="border-collapse text-sm leading-5">
-        <tbody>
-          {content.rows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {row.cells.map((cell, columnIndex) => {
-                const Tag =
-                  rowIndex < (content.headerRows ?? 0) || columnIndex < (content.headerCols ?? 0)
-                    ? "th"
-                    : "td";
-                return (
-                  <Tag
-                    key={columnIndex}
-                    className={cn(
-                      "border border-token-border px-2 py-1.5 text-left align-top",
-                      cell.props?.backgroundColor
-                        ? nfmColorClass(`${cell.props.backgroundColor}_bg` as RichTextColor)
-                        : undefined,
-                    )}
-                    style={{
-                      width: content.columnWidths?.[columnIndex] ?? undefined,
-                      textAlign: cell.props?.textAlignment as
-                        | "left"
-                        | "center"
-                        | "right"
-                        | undefined,
-                    }}
-                  >
-                    <InlineList items={cell.content} projectWorkspacePath={projectWorkspacePath} />
-                  </Tag>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <NfmReadonlyTable
+      layout={layout}
+      columns={columns}
+      data-text-color={tableColor(table.props?.textColor)}
+    >
+      <tbody>
+        {content.rows.map((row, rowIndex) => (
+          <tr key={rowIndex}>
+            {row.cells.map((cell, columnIndex) => {
+              const Tag =
+                rowIndex < (content.headerRows ?? 0) || columnIndex < (content.headerCols ?? 0)
+                  ? "th"
+                  : "td";
+              return (
+                <Tag
+                  key={columnIndex}
+                  data-nfm-cell-fit={cellFits[rowIndex][columnIndex]}
+                  data-background-color={tableColor(cell.props?.backgroundColor)}
+                  data-text-color={tableColor(cell.props?.textColor)}
+                  style={{ textAlign: cell.props?.textAlignment as CSSProperties["textAlign"] }}
+                >
+                  <InlineList items={cell.content} projectWorkspacePath={projectWorkspacePath} />
+                </Tag>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </NfmReadonlyTable>
   );
 }
 

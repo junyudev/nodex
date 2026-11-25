@@ -1,5 +1,6 @@
 import { FormattedMessage } from "@/lib/i18n";
-import { Children, isValidElement, type ReactNode } from "react";
+import { Children, createContext, isValidElement, useContext, type ReactNode } from "react";
+import type { Element } from "hast";
 import { type Components, type MermaidErrorComponentProps } from "streamdown";
 import {
   InlineMarkdownCode,
@@ -14,6 +15,8 @@ import {
   resolveOrderedListPadding,
 } from "./ordered-list-groups";
 import { cn } from "./utils";
+import { classifyNfmTable, type NfmTableCellFit } from "./nfm-table-layout";
+import { NfmReadonlyTable } from "@/components/shared/nfm-readonly-table";
 
 function createHeadingComponent(
   tagName: "h1" | "h2" | "h3" | "h4" | "h5" | "h6",
@@ -42,6 +45,76 @@ function createHeadingComponent(
 function groupOrderedListChildren(children: ReactNode, start = 1): OrderedListGroup<ReactNode>[] {
   const items = Children.toArray(children).filter((child) => isValidElement(child));
   return groupOrderedListItems(items, (_child, index) => start + index);
+}
+
+const TableCellFitsContext = createContext<ReadonlyMap<Element, NfmTableCellFit> | null>(null);
+
+function tableElements(node: Element | undefined, tags: readonly string[]): Element[] {
+  return (node?.children ?? []).filter(
+    (child): child is Element => child.type === "element" && tags.includes(child.tagName),
+  );
+}
+
+function tableCellPlainText(node: Element): string {
+  if (node.tagName === "br") return "\n";
+  return node.children
+    .map((child) =>
+      child.type === "text"
+        ? child.value
+        : child.type === "element"
+          ? tableCellPlainText(child)
+          : "",
+    )
+    .join("");
+}
+
+function projectStreamdownTable(node: Element | undefined) {
+  const rows = tableElements(node, ["thead", "tbody", "tr"])
+    .flatMap((section) => (section.tagName === "tr" ? [section] : tableElements(section, ["tr"])))
+    .map((row) => tableElements(row, ["th", "td"]));
+  const { layout, columns, cellFits } = classifyNfmTable(
+    rows.map((row) => row.map(tableCellPlainText)),
+  );
+  const fitsByNode = new Map<Element, NfmTableCellFit>();
+  rows.forEach((row, rowIndex) => {
+    row.forEach((cell, columnIndex) => {
+      const fit = cellFits[rowIndex][columnIndex];
+      if (fit) fitsByNode.set(cell, fit);
+    });
+  });
+
+  return { layout, columns, fitsByNode };
+}
+
+const StreamdownTable: Exclude<Components["table"], string | undefined> = ({
+  children,
+  node,
+  ...props
+}) => {
+  const { layout, columns, fitsByNode } = projectStreamdownTable(node);
+
+  return (
+    <TableCellFitsContext.Provider value={fitsByNode}>
+      <NfmReadonlyTable {...props} layout={layout} columns={columns}>
+        {children}
+      </NfmReadonlyTable>
+    </TableCellFitsContext.Provider>
+  );
+};
+
+function createTableCellComponent(Tag: "th" | "td"): Exclude<Components["td"], string | undefined> {
+  return function StreamdownTableCell({ node, children, ...props }) {
+    const fits = useContext(TableCellFitsContext);
+    return (
+      <Tag
+        {...props}
+        className={undefined}
+        {...(node ? { "data-nfm-cell-fit": fits?.get(node) } : {})}
+      >
+        {children}
+      </Tag>
+    );
+  };
 }
 
 export const streamdownComponents: Components = {
@@ -174,60 +247,12 @@ export const streamdownComponents: Components = {
 
     return <hr {...props} className={cn("my-4 border-t border-gray-300", className)} />;
   },
-  table: ({ children, className, node, ...props }) => {
-    void node;
-
-    return (
-      <table {...props} className={cn("my-3 w-full border-collapse", className)}>
-        {children}
-      </table>
-    );
-  },
-  thead: ({ children, className, node, ...props }) => {
-    void node;
-
-    return (
-      <thead {...props} className={cn("bg-token-foreground/5", className)}>
-        {children}
-      </thead>
-    );
-  },
-  tbody: ({ children, className, node, ...props }) => {
-    void node;
-
-    return (
-      <tbody {...props} className={className}>
-        {children}
-      </tbody>
-    );
-  },
-  tr: ({ children, className, node, ...props }) => {
-    void node;
-
-    return (
-      <tr {...props} className={cn("border-b border-token-border", className)}>
-        {children}
-      </tr>
-    );
-  },
-  th: ({ children, className, node, ...props }) => {
-    void node;
-
-    return (
-      <th {...props} className={cn("p-1 text-left font-semibold text-token-foreground", className)}>
-        {children}
-      </th>
-    );
-  },
-  td: ({ children, className, node, ...props }) => {
-    void node;
-
-    return (
-      <td {...props} className={cn("p-1", className)}>
-        {children}
-      </td>
-    );
-  },
+  table: StreamdownTable,
+  thead: "thead",
+  tbody: "tbody",
+  tr: "tr",
+  th: createTableCellComponent("th"),
+  td: createTableCellComponent("td"),
   details: ({ children, className, node, ...props }) => {
     void node;
 

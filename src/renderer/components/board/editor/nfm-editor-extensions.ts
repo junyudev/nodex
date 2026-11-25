@@ -31,6 +31,7 @@ import { nfmClipboardPastePendingExtension } from "./nfm-clipboard-paste-pending
 import { pasteNfmBlocks } from "./nfm-paste-blocks";
 import { nfmPasteTargetExtension } from "./nfm-paste-target";
 import { mentionChipKeyboardNavigationExtension } from "./mention-chip-keyboard-navigation";
+import { nfmTableLayoutExtension } from "./nfm-table-layout-extension";
 import { nfmTaskShorthandPreviewExtension } from "./nfm-task-shorthand-preview-extension";
 import {
   attachNodexClipboardWriteClaim,
@@ -591,6 +592,7 @@ export function createNfmEditorExtensions(options: NfmEditorExtensionOptions = {
   return [
     nfmSyntaxHighlighter,
     nfmSearchExtension(),
+    nfmTableLayoutExtension,
     ...(options.file
       ? []
       : [

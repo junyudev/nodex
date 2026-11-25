@@ -208,41 +208,57 @@ describe("markdown side menu model", () => {
     expect(moveTo?.enabled).toBe(false);
   });
 
-  test("adds table actions for a single table", () => {
-    const sections = buildNfmSideMenuSections({
-      currentBlockId: "divider-1",
-      currentBlockType: "table",
-      selectionTitle: "Table",
-      selectedTopLevelBlockCount: 1,
-      isEditable: true,
-      canUseColor: false,
-      canSendBlocks: false,
-      isTableBlock: true,
-      canUseTableHeaders: true,
-    });
-    const rows = flattenNfmSideMenuRows(sections);
+  const singleTable = {
+    currentBlockId: "table-1",
+    currentBlockType: "table",
+    selectionTitle: "Table",
+    selectedTopLevelBlockCount: 1,
+    isEditable: true,
+    canUseColor: false,
+    canSendBlocks: false,
+    isTableBlock: true,
+    canUseTableHeaders: true,
+  };
 
-    expect(rows.length).toBe(7);
-    expect(rows[5]?.row.key).toBe("table-header-row");
-    expect(rows[6]?.row.key).toBe("table-header-column");
+  test.each([
+    { isEditable: true, hasPinnedTableColumns: false, fitWidth: true, fitContent: false },
+    { isEditable: true, hasPinnedTableColumns: true, fitWidth: true, fitContent: true },
+    { isEditable: false, hasPinnedTableColumns: true, fitWidth: false, fitContent: false },
+  ])("offers table actions in order for %j", (options) => {
+    const table = buildNfmSideMenuSections({ ...singleTable, ...options }).find(
+      (section) => section.key === "table",
+    );
+
+    expect(table?.rows.map(({ key, enabled }) => [key, enabled])).toEqual([
+      ["table-header-row", options.isEditable],
+      ["table-header-column", options.isEditable],
+      ["table-fit-page-width", options.fitWidth],
+      ["table-fit-content", options.fitContent],
+    ]);
   });
 
-  test("hides Nodex and table special rows for multi-block selections", () => {
-    const sections = buildNfmSideMenuSections({
-      currentBlockId: "divider-1",
-      currentBlockType: "divider",
-      selectionTitle: "2 blocks",
-      selectedTopLevelBlockCount: 2,
-      isEditable: true,
-      canUseColor: false,
-      canSendBlocks: false,
-      isTableBlock: true,
-      canUseTableHeaders: true,
-    });
-    const rows = flattenNfmSideMenuRows(sections);
+  test("offers width actions independently of header support", () => {
+    const table = buildNfmSideMenuSections({ ...singleTable, canUseTableHeaders: false }).find(
+      (section) => section.key === "table",
+    );
 
-    expect(rows.some(({ row }) => row.key === "table-header-row")).toBe(false);
-    expect(rows.some(({ row }) => row.key === "table-header-column")).toBe(false);
+    expect(table?.rows.map(({ key }) => key)).toEqual([
+      "table-fit-page-width",
+      "table-fit-content",
+    ]);
+  });
+
+  test("hides table actions for non-table and multi-block selections", () => {
+    expect(
+      buildNfmSideMenuSections({ ...singleTable, isTableBlock: false }).some(
+        (section) => section.key === "table",
+      ),
+    ).toBe(false);
+    expect(
+      buildNfmSideMenuSections({ ...singleTable, selectedTopLevelBlockCount: 2 }).some(
+        (section) => section.key === "table",
+      ),
+    ).toBe(false);
   });
 
   test("resolves section titles from top-level selected block descriptors", () => {

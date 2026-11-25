@@ -1,5 +1,5 @@
 import { useIntl, defineMessages, getIntl } from "@/lib/i18n";
-import { blockHasType, editorHasBlockWithType } from "@blocknote/core";
+import { blockHasType, editorHasBlockWithType, getNodeById } from "@blocknote/core";
 import { FormattingToolbarExtension, SideMenuExtension } from "@blocknote/core/extensions";
 import {
   useBlockNoteEditor,
@@ -47,10 +47,12 @@ import {
   NfmSideMenuPageInIcon,
   NfmSideMenuTableHeaderIcon,
   NfmSideMenuTurnIntoIcon,
+  NfmTableBlockIcon,
   PlusIcon,
   EnableWordWrapIcon,
 } from "@/components/shared/icons";
 import { MessageCirclePlusIcon, WandSparkles } from "@/components/shared/icons/generic-icons";
+import { PageFullWidthIcon } from "@/components/shared/icons/page-stage-toolbar-icons";
 import { NodexPopover, NodexPopoverAnchor } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
 import { claimEditorSelectionSurface } from "@/lib/editor-selection-presentation";
@@ -61,6 +63,7 @@ import { formatCode } from "@/lib/editor-model/code-formatters";
 import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 import { cn } from "@/lib/utils";
 import { hasTypedOwnerBlock } from "@/lib/typed-owner-blocks";
+import { fitNfmTableColumnsToWidth, isPinnedNfmTableWidth } from "@/lib/nfm-table-layout";
 import { NFM_TURN_INTO_DEFINITIONS } from "@/lib/nfm-turn-into-targets";
 import type { LibraryStructuralTurnIntoTarget } from "../../../../shared/library-module";
 import {
@@ -122,6 +125,7 @@ import {
   type SideMenuSelectionIntent,
 } from "./nfm-side-menu-selection";
 import { createSideMenuFreezeController } from "./side-menu-freeze-controller";
+import type { NfmTableContent } from "./nfm-table-operations";
 import { useNfmRetainedSelectionPresentation } from "./nfm-retained-selection-presentation";
 
 interface SideMenuBlock {
@@ -158,6 +162,7 @@ interface SideMenuEditorRuntime extends SideMenuSelectionEditor {
     dom?: HTMLElement;
     editable?: boolean;
     focus?: () => void;
+    nodeDOM?: (pos: number) => Node | null;
   };
   schema: {
     blockSpecs: Record<string, { implementation: { meta?: { fileBlockAccept?: boolean } } }>;
@@ -518,6 +523,38 @@ function toSideMenuTargetBlockDescriptor(block: SideMenuBlock): NfmSideMenuTarge
   };
 }
 
+function getTableContent(block: SideMenuBlock | null | undefined): NfmTableContent | undefined {
+  if (block?.type !== "table" || typeof block.content !== "object" || !block.content) return;
+  if (!("type" in block.content) || block.content.type !== "tableContent") return;
+  return block.content as NfmTableContent;
+}
+
+function measureTablePageWidth(
+  editor: SideMenuEditorRuntime,
+  blockId: string,
+  columnCount: number,
+): number[] | undefined {
+  const view = editor.prosemirrorView;
+  if (!view?.nodeDOM) return;
+  const blockPosition = getNodeById(blockId, view.state.doc);
+  if (!blockPosition) return;
+
+  const tableBlock = view.nodeDOM(blockPosition.posBeforeNode + 1);
+  if (!(tableBlock instanceof HTMLElement)) return;
+  if (!tableBlock.matches('.bn-block-content[data-content-type="table"]')) return;
+
+  const table = tableBlock.querySelector("table");
+  const cells = table?.rows[0]?.cells;
+  // The table Block hugs its table; its Block container spans the text column.
+  const textColumnWidth = tableBlock.parentElement?.clientWidth ?? 0;
+  if (!table || !cells || cells.length !== columnCount || textColumnWidth <= 0) return;
+
+  const widths = Array.from(cells, (cell) => cell.getBoundingClientRect().width);
+  // Columns share what the table's own frame leaves of the text column.
+  const frame = table.getBoundingClientRect().width - widths.reduce((sum, width) => sum + width, 0);
+  return fitNfmTableColumnsToWidth(widths, textColumnWidth - frame);
+}
+
 function getEditorEditable(editor: SideMenuEditorRuntime) {
   if (editor.isEditable === false) return false;
   if (editor.prosemirrorView?.editable === false) return false;
@@ -605,6 +642,8 @@ function getActionIcon(key: NfmSideMenuActionKey) {
   if (key === "add-to-composer") return <MessageCirclePlusIcon className="size-4" />;
   if (key === "move-to") return <MoveToIcon />;
   if (key === "delete") return <NfmSideMenuDeleteIcon />;
+  if (key === "table-fit-page-width") return <PageFullWidthIcon />;
+  if (key === "table-fit-content") return <NfmTableBlockIcon />;
   return <NfmSideMenuTableHeaderIcon />;
 }
 
@@ -1535,6 +1574,18 @@ function NfmSideMenuPopup({
     [intl, topLevelSelectedBlocks],
   );
   const isEditable = getEditorEditable(editor);
+  const hasPinnedTableColumns = useEditorState({
+    editor: editor as never,
+    on: "change",
+    selector: () => {
+      if (!currentBlockId || selectedTopLevelBlock?.type !== "table") return false;
+      return (
+        getTableContent(editor.getBlock?.(currentBlockId))?.columnWidths.some(
+          isPinnedNfmTableWidth,
+        ) ?? false
+      );
+    },
+  });
   const baseSections = useMemo(
     () =>
       buildNfmSideMenuSections(
@@ -1553,6 +1604,7 @@ function NfmSideMenuPopup({
           addToComposerShortcut,
           isTableBlock: selectedTopLevelBlock?.type === "table",
           canUseTableHeaders: editor.settings?.tables?.headers === true,
+          hasPinnedTableColumns,
           codeBlock: isSingleCodeBlock
             ? {
                 wrapped: codeWrapped,
@@ -1573,6 +1625,7 @@ function NfmSideMenuPopup({
       codeLanguageId,
       codeWrapped,
       hasValidDiagram,
+      hasPinnedTableColumns,
       editor.settings?.tables?.headers,
       isEditable,
       isSingleCodeBlock,
@@ -1858,21 +1911,36 @@ function NfmSideMenuPopup({
         return;
       }
 
-      if (key === "table-header-row" || key === "table-header-column") {
-        if (block.type !== "table") return;
-        const tableContent =
-          typeof block.content === "object" && block.content !== null
-            ? (block.content as { headerRows?: number; headerCols?: number })
-            : {};
-        editor.updateBlock?.(block, {
-          content: {
-            ...tableContent,
-            ...(key === "table-header-row"
-              ? { headerRows: tableContent.headerRows ? undefined : 1 }
-              : { headerCols: tableContent.headerCols ? undefined : 1 }),
-          },
-        });
+      const table = editor.getBlock?.(currentBlockId);
+      const tableContent = getTableContent(table);
+      if (!tableContent) return;
+
+      const updateTable = (patch: Partial<NfmTableContent>) => {
+        editor.updateBlock?.(currentBlockId, { content: { ...tableContent, ...patch } });
         close("action");
+      };
+
+      if (key === "table-header-row") {
+        updateTable({ headerRows: tableContent.headerRows ? undefined : 1 });
+        return;
+      }
+      if (key === "table-header-column") {
+        updateTable({ headerCols: tableContent.headerCols ? undefined : 1 });
+        return;
+      }
+      if (key === "table-fit-content") {
+        if (!tableContent.columnWidths.some(isPinnedNfmTableWidth)) return;
+        updateTable({ columnWidths: tableContent.columnWidths.map(() => undefined) });
+        return;
+      }
+      if (key === "table-fit-page-width") {
+        const columnWidths = measureTablePageWidth(
+          editor,
+          currentBlockId,
+          tableContent.columnWidths.length,
+        );
+        if (!columnWidths) return;
+        updateTable({ columnWidths });
       }
     },
     [

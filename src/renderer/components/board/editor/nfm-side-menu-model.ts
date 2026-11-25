@@ -17,7 +17,9 @@ export type NfmSideMenuActionKey =
   | "move-to"
   | "delete"
   | "table-header-row"
-  | "table-header-column";
+  | "table-header-column"
+  | "table-fit-page-width"
+  | "table-fit-content";
 
 export type NfmSideMenuSubmenuKey =
   | "language"
@@ -69,6 +71,7 @@ export interface NfmSideMenuModelInput {
   addToComposerShortcut?: string;
   isTableBlock: boolean;
   canUseTableHeaders: boolean;
+  hasPinnedTableColumns?: boolean;
   codeBlock?: {
     wrapped: boolean;
     canFormat: boolean;
@@ -382,38 +385,7 @@ export function buildNfmSideMenuSections(
     ];
   });
 
-  const tableRows: NfmSideMenuAction[] =
-    input.currentBlockId &&
-    input.isTableBlock &&
-    input.canUseTableHeaders &&
-    input.selectedTopLevelBlockCount === 1
-      ? [
-          {
-            key: "table-header-row",
-            ...localizeAction(
-              intl,
-              { id: "editor.nfmSideMenuModel.headerRow", defaultMessage: "Header row" },
-              ["table"],
-            ),
-            kind: "action",
-            section: "table",
-            visualGroup: "table",
-            enabled: input.isEditable,
-          },
-          {
-            key: "table-header-column",
-            ...localizeAction(
-              intl,
-              { id: "editor.nfmSideMenuModel.headerColumn", defaultMessage: "Header column" },
-              ["table"],
-            ),
-            kind: "action",
-            section: "table",
-            visualGroup: "table",
-            enabled: input.isEditable,
-          },
-        ]
-      : [];
+  const tableRows = buildTableRows(input, intl);
 
   const sections: NfmSideMenuSection[] = [
     { key: "selection", label: input.selectionTitle, rows: [...codeRows, ...referenceRows] },
@@ -425,6 +397,59 @@ export function buildNfmSideMenuSections(
   ];
 
   return sections.filter((section) => section.rows.length > 0);
+}
+
+function buildTableRows(input: NfmSideMenuModelInput, intl: IntlShape): NfmSideMenuAction[] {
+  if (!input.currentBlockId || !input.isTableBlock || input.selectedTopLevelBlockCount !== 1) {
+    return [];
+  }
+
+  const row = (
+    key: NfmSideMenuActionKey,
+    label: MessageDescriptor,
+    enabled = input.isEditable,
+    keywords: string[] = ["table"],
+  ): NfmSideMenuAction => ({
+    key,
+    ...localizeAction(intl, label, keywords),
+    kind: "action",
+    section: "table",
+    visualGroup: "table",
+    enabled,
+  });
+
+  return [
+    ...(input.canUseTableHeaders
+      ? [
+          row("table-header-row", {
+            id: "editor.nfmSideMenuModel.headerRow",
+            defaultMessage: "Header row",
+          }),
+          row("table-header-column", {
+            id: "editor.nfmSideMenuModel.headerColumn",
+            defaultMessage: "Header column",
+          }),
+        ]
+      : []),
+    row(
+      "table-fit-page-width",
+      {
+        id: "editor.nfmSideMenuModel.fitPageWidth",
+        defaultMessage: "Fit to page width",
+      },
+      input.isEditable,
+      ["table", "column", "width"],
+    ),
+    row(
+      "table-fit-content",
+      {
+        id: "editor.nfmSideMenuModel.fitColumnsToContent",
+        defaultMessage: "Fit columns to content",
+      },
+      input.isEditable && input.hasPinnedTableColumns === true,
+      ["table", "column", "width"],
+    ),
+  ];
 }
 
 function normalizeQueryPart(value: string) {
