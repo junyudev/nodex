@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS, STANDARD_TEST_TIMEOUT_MS } from "../../../config/test-timeouts";
 import type { ChatPatchOp } from "@nodex/mobile-protocol";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -219,7 +220,7 @@ it.live(
             until: (seen) => seen.includes("Started before the phone opened"),
             schedule: Schedule.spaced("50 millis"),
           }),
-          Effect.timeout("45 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
 
         const row = {
@@ -301,7 +302,7 @@ it.live(
           ),
         ).pipe(
           Effect.repeat({ until: (seen) => seen, schedule: Schedule.spaced("50 millis") }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
 
         // What the Run does after the phone opened reaches it without another open, including a
@@ -324,7 +325,7 @@ it.live(
             until: (seen) => seen.includes("tick $i"),
             schedule: Schedule.spaced("50 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         yield* command(message("after", "Said after the phone opened"));
         yield* Effect.sync(() => JSON.stringify(pushed)).pipe(
@@ -332,7 +333,7 @@ it.live(
             until: (seen) => seen.includes("Said after the phone opened"),
             schedule: Schedule.spaced("50 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         yield* command({ type: "complete" });
       }),

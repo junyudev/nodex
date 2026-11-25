@@ -27,7 +27,7 @@
   },
   "packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts": {
     "nodex(no-polling-loop-in-tests)": 12,
-    "nodex(no-real-time-wait-in-tests)": 5
+    "nodex(no-real-time-wait-in-tests)": 4
   },
   "packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1

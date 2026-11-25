@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -20,7 +21,7 @@ const connectAcpInstance = Effect.fnUntraced(function* (home: string, instanceId
       until: (value) => value.phase !== "running",
       schedule: Schedule.spaced("20 millis"),
     }),
-    Effect.timeout("10 seconds"),
+    Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
   );
   expect(connected.phase).toBe("succeeded");
 });
@@ -83,7 +84,7 @@ it.live.each(["v1", "v2"])(
             until: (value) => value.includes("prompt-held:"),
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         const partial = yield* call("thread.snapshot", { threadId: "thread" });
         expect(partial.projection.runs[0]?.status).toBe("running");
@@ -104,7 +105,7 @@ it.live.each(["v1", "v2"])(
               ),
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         const run = live.projection.runs.find((run) => run.userMessageId === "message")!;
         expect(run).toMatchObject({ status: "running", completedAt: null });
@@ -155,7 +156,7 @@ it.live.each(["v1", "v2"])(
             until: (value) => value?.status === "interrupted",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(stopped?.status).toBe("interrupted");
       }).pipe(
@@ -256,7 +257,7 @@ it.live.skipIf(process.platform === "win32")(
             until: (value) => value?.status === "completed" || value?.status === "failed",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(outcome?.status).toBe("completed");
         const snapshot = yield* call("thread.snapshot", { threadId: "thread" });
@@ -333,7 +334,7 @@ it.live.skipIf(process.platform === "win32")(
             until: ({ phase }) => phase === "succeeded" || phase === "failed",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(auth).toMatchObject({ phase: "succeeded" });
         const readCatalog = () =>
@@ -351,7 +352,7 @@ it.live.skipIf(process.platform === "win32")(
             until: (value) => value.includes('"method":"session/prompt"'),
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         const before = yield* call("thread.snapshot", { threadId: "thread" });
         expect(before.projection.runs[0]?.status).toBe("running");
@@ -364,7 +365,7 @@ it.live.skipIf(process.platform === "win32")(
             until: (value) => value.projection.runs.every(({ status }) => status !== "running"),
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(stopped.projection.messages.some(({ text }) => text === "Wait for sign-out")).toBe(
           true,

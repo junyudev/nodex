@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -55,7 +56,7 @@ it.live(
         ) =>
           snapshot().pipe(
             Effect.repeat({ until: predicate, schedule: Schedule.spaced("20 millis") }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
             Effect.catch(
               Effect.fnUntraced(function* () {
                 const value = yield* snapshot();
@@ -105,7 +106,7 @@ it.live(
             until: (value) => value.phase !== "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(connection.phase).toBe("succeeded");
         yield* dispatch({
@@ -142,7 +143,7 @@ it.live(
             until: (rows) => rows.length === 1,
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         yield* dispatch(message("second", true));
         expect((yield* call("thread.queue", { threadId: "queue-thread" })).entries).toHaveLength(1);
@@ -202,7 +203,7 @@ it.live(
               until: (value) => value?.status === "completed",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
           expect(outcome?.status).toBe("completed");
         }
@@ -220,7 +221,7 @@ it.live(
               providers.find((entry) => entry.instanceId === instanceId)?.enabled === false,
             schedule: Schedule.spaced("50 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(final.find((entry) => entry.instanceId === instanceId)?.enabled).toBe(false);
       }).pipe(

@@ -24,6 +24,10 @@ const cases: readonly RuleCase[] = [
     invalid: `
       import { expect as check } from "@playwright/test";
       import { waitFor as wait } from "@testing-library/react";
+      import { Effect as Fx } from "effect";
+      import * as All from "effect";
+      import * as Effect from "effect/Effect";
+      import { timeout as limit } from "effect/Effect";
       await wait(ready, { timeout: 100 });
       await waitForElementToBeRemoved(node, { timeout: 100 });
       await screen.findByRole("button", {}, { timeout: 100 });
@@ -42,8 +46,24 @@ const cases: readonly RuleCase[] = [
       test.setTimeout(100);
       test.describe.configure({ timeout: 100 });
       vi.setConfig({ hookTimeout: 100 });
+      const pending = Effect.never;
+      Fx.timeout(pending, "2 seconds");
+      pending.pipe(Fx.timeout(2000));
+      Effect.timeoutOption(pending, 50);
+      pending.pipe(Effect.timeoutOption("50 millis"));
+      Effect.timeoutOrElse(pending, { duration: "1 second", orElse: fallback });
+      pending.pipe(Effect.timeoutOrElse({ "duration": 100, orElse: fallback }));
+      limit(pending, -1);
+      pending.pipe(limit(1_000_000n));
+      All.Effect["timeout"](pending, [0, 1_000_000]);
+      Fx.timeout(pending, { seconds: 2 });
+      Fx.timeout(pending, \`2 seconds\`);
     `,
     valid: `
+      import { Effect, Stream } from "effect";
+      import { timeout as limit } from "effect/Effect";
+      import { timeout as otherTimeout } from "./other-module";
+      import { ASYNC_WAIT_TIMEOUT_MS } from "./test-timeouts";
       await waitFor(ready, { interval: 100 });
       await screen.findByText("name", { selector: "button" });
       await vi.waitFor(ready);
@@ -58,8 +78,26 @@ const cases: readonly RuleCase[] = [
       helper.test("unrelated", ready, 100);
       // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Exercise the timeout error.
       await vi.waitFor(neverReady, 100);
+      const pending = Effect.never;
+      Effect.timeout(pending, ASYNC_WAIT_TIMEOUT_MS);
+      pending.pipe(limit(ASYNC_WAIT_TIMEOUT_MS));
+      pending.pipe(Effect.timeoutOrElse({ duration: ASYNC_WAIT_TIMEOUT_MS, orElse: fallback }));
+      // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Verify that no event arrives.
+      pending.pipe(Effect.timeoutOption("50 millis"));
+      Stream.timeout(stream, "1 second");
+      otherTimeout(pending, 100);
+      abortSignal.timeout(100);
+      function shadowed(Effect, limit) {
+        Effect.timeout(100);
+        limit(100);
+      }
     `,
-    count: 17,
+    count: 28,
+    extraValid: {
+      "src/production.ts": 'import { Effect } from "effect"; Effect.timeout(Effect.never, 100);',
+      "packages/agent-runtime/vendor/fixture.test.ts":
+        'import * as Effect from "effect/Effect"; Effect.timeout(Effect.never, 100);',
+    },
   },
   {
     rule: "no-real-time-wait-in-tests",

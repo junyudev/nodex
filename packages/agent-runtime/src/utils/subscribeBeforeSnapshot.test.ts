@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -41,7 +42,7 @@ describe("subscribeBeforeSnapshot", () => {
         yield* Fiber.join(publishFiber);
         const firstChange = yield* subscription.changes.pipe(
           Stream.runHead,
-          Effect.timeout("1 second"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
 
         expect(subscription.latest).toBe(1);
@@ -73,7 +74,7 @@ describe("subscribeBeforeSnapshot", () => {
         const subscription = yield* Fiber.join(subscriptionFiber);
         const firstChange = yield* subscription.changes.pipe(
           Stream.runHead,
-          Effect.timeout("1 second"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
 
         expect(subscription.latest).toBe(2);

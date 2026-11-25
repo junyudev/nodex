@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import { CodexSettings, ClaudeSettings, ProviderInstanceId } from "@nodex/runtime-contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -272,7 +273,7 @@ fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify
             .exists(proofPath)
             .pipe(
               Effect.repeat({ until: (exists) => exists, schedule: Schedule.spaced("20 millis") }),
-              Effect.timeout("5 seconds"),
+              Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
             );
           yield* Fiber.interrupt(running);
           const proof = decodeImageProof(yield* fs.readFileString(proofPath));

@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../config/test-timeouts.ts";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -193,7 +194,7 @@ it.layer(NodeServices.layer)("effect-codex-app-server client", (it) => {
           },
         });
       }).pipe(
-        Effect.timeout("5 seconds"),
+        Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         Effect.provide(context),
         Effect.ensuring(Scope.close(scope, Exit.void)),
       );

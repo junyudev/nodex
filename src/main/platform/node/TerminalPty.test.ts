@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../../config/test-timeouts";
 import { EventEmitter } from "node:events";
 import { Socket } from "node:net";
 import { Worker } from "node:worker_threads";
@@ -65,7 +66,7 @@ it.live("releases a Windows PTY that exits before publishing its PID", () =>
     const terminal = yield* TerminalPty;
     const error = yield* terminal
       .spawn({ command: "powershell.exe", args: [], cwd: ".", env: {}, cols: 80, rows: 24 })
-      .pipe(Effect.scoped, Effect.timeout("2 seconds"), Effect.flip);
+      .pipe(Effect.scoped, Effect.timeout(ASYNC_WAIT_TIMEOUT_MS), Effect.flip);
     expect(error).toMatchObject({ _tag: "TerminalPtyError", operation: "spawn" });
     expect(kill).toHaveBeenCalledOnce();
     expect(stopData).toHaveBeenCalledOnce();

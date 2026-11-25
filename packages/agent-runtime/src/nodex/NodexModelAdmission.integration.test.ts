@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -135,7 +136,7 @@ it.live("account retirement cancels active and queued work without dispatching t
           until: (value) => value.phase !== "running",
           schedule: Schedule.spaced("20 millis"),
         }),
-        Effect.timeout("10 seconds"),
+        Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         Effect.catchTag("TimeoutError", () => Effect.fail(new Error("Connection timed out"))),
       );
       expect(connected.phase).toBe("succeeded");
@@ -175,7 +176,7 @@ it.live("account retirement cancels active and queued work without dispatching t
           until: (text) => text.includes('"prompt":true'),
           schedule: Schedule.spaced("20 millis"),
         }),
-        Effect.timeout("10 seconds"),
+        Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         Effect.catchTag("TimeoutError", () => Effect.fail(new Error("First prompt timed out"))),
       );
       yield* send("queued", true);
@@ -188,7 +189,7 @@ it.live("account retirement cancels active and queued work without dispatching t
               value !== null && ["cancelled", "interrupted", "failed"].includes(value.status),
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           Effect.catchTag("TimeoutError", () =>
             call("thread.snapshot", { threadId: "thread" }).pipe(
               Effect.flatMap((snapshot) =>

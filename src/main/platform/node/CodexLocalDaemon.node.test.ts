@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../../config/test-timeouts";
 import {
   HostShellEnvironment,
   inheritedHostShellEnvironment,
@@ -133,7 +134,7 @@ it.live.skipIf(process.platform === "win32")(
         endpointScope,
       );
       const endpoint = Context.get(context, CodexEndpoint);
-      const first = yield* endpoint.session.pipe(Effect.timeout("5 seconds"));
+      const first = yield* endpoint.session.pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
       expect(first.transportKind).toBe("websocket");
       expect(yield* first.client.raw.request("test/native", {})).toEqual({
         connected: true,
@@ -143,7 +144,7 @@ it.live.skipIf(process.platform === "win32")(
       const pending = yield* first.client.raw
         .request("test/pending", {})
         .pipe(Effect.exit, Effect.forkScoped);
-      yield* Deferred.await(pendingObserved).pipe(Effect.timeout("5 seconds"));
+      yield* Deferred.await(pendingObserved).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
       yield* Effect.sync(() => {
         for (const peer of peers.clients) peer.terminate();
       });
@@ -151,7 +152,7 @@ it.live.skipIf(process.platform === "win32")(
       yield* SubscriptionRef.changes(endpoint.state).pipe(
         Stream.filter((state) => state.kind === "ready" && state.generation > first.generation),
         Stream.runHead,
-        Effect.timeout("5 seconds"),
+        Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
       );
       const second = yield* endpoint.session;
       expect(second.generation).toBe(first.generation + 1);

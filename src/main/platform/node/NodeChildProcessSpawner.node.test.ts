@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../../config/test-timeouts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "./NodeServices";
 import nodeChildProcess, { execFileSync } from "node:child_process";
@@ -48,7 +49,7 @@ for (const release of ["scope", "kill", "pipeline"] as const) {
             Stream.decodeText(),
             Stream.splitLines,
             Stream.runHead,
-            Effect.timeout("5 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
           const pids = Option.getOrThrow(ready).split(" ").map(Number);
           assert.strictEqual(pids[0], Number(handle.pid));
@@ -170,7 +171,7 @@ it.live.skipIf(process.platform === "win32")(
           Stream.decodeText(),
           Stream.splitLines,
           Stream.runHead,
-          Effect.timeout("5 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         const [leaderPid, descendantPid] = Option.getOrThrow(ready).split(" ").map(Number);
         if (leaderPid === undefined || descendantPid === undefined) {

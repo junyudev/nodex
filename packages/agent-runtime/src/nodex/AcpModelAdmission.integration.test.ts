@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS, STANDARD_TEST_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import { ACP_EMPTY_OPTION_VALUE } from "@nodex/provider-acp/server/sessionConfig";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
@@ -52,7 +53,7 @@ it.live.each(["none", "config"] as const)(
             until: (value) => value.phase !== "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(connected.phase).toBe("succeeded");
         const available = (yield* call("providers.read", {})).find(
@@ -97,7 +98,7 @@ it.live.each(["none", "config"] as const)(
             until: (value) => value?.status === "failed",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         expect(outcome?.status).toBe("failed");
         const wire = yield* methods();
@@ -130,7 +131,7 @@ it.live.each(["none", "config"] as const)(
               until: (value) => value?.status === "completed",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           ))?.status,
         ).toBe("completed");
         expect((yield* methods()).filter((method) => method === "session/prompt")).toHaveLength(1);
@@ -163,7 +164,7 @@ it.live.each(["none", "config"] as const)(
             until: (value) => value?.status === "failed" || value?.status === "completed",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(refused?.status).toBe("failed");
         const refusedSnapshot = yield* call("thread.snapshot", { threadId: "thread" });

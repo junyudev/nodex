@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../config/test-timeouts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -370,7 +371,7 @@ it.effect("does not hold the causal state lock while native image decode is pend
 
     yield* runtime
       .observeCodexOccurrence(occurrence(computerNotification("item/started", "thread-2")))
-      .pipe(Effect.timeout("1 second"));
+      .pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
     assert.deepEqual((yield* runtime.snapshot).activeTaskIds, ["thread-1", "thread-2"]);
 
     yield* Deferred.succeed(releaseNative, false);

@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as Cause from "effect/Cause";
 import * as PubSub from "effect/PubSub";
 import {
@@ -1178,6 +1179,6 @@ it.live("cancels a yielded background host call when its exact captured Run is s
         getEnvironmentId: Effect.succeed(EnvironmentId.make(actor.runtimeId)),
       }),
     ),
-    Effect.timeout("3 seconds"),
+    Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
   ),
 );

@@ -1,6 +1,7 @@
 // The harness asserts raw JSON-RPC wire strings, mirroring the bridge's
 // schema-free passthrough.
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+import { STANDARD_TEST_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
@@ -407,7 +408,7 @@ it.live.each(["stdin EOF", "SIGKILL"])("closes the Desktop HTTP socket on %s", (
     expect(yield* Effect.promise(() => exited)).toEqual(
       exit === "stdin EOF" ? [0, null] : [null, "SIGKILL"],
     );
-  }).pipe(Effect.scoped, Effect.timeout("20 seconds")),
+  }).pipe(Effect.scoped, Effect.timeout(STANDARD_TEST_TIMEOUT_MS)),
 );
 
 it.live.each(["default", "nodex_app", "node_repl"] as const)(
@@ -450,5 +451,5 @@ it.live.each(["default", "nodex_app", "node_repl"] as const)(
       });
       expect(yield* Effect.promise(() => fixture.callStarted)).toEqual(desktopCall);
       expect(fixture.methods).toEqual(["initialize", "notifications/initialized", "tools/call"]);
-    }).pipe(Effect.scoped, Effect.timeout("20 seconds")),
+    }).pipe(Effect.scoped, Effect.timeout(STANDARD_TEST_TIMEOUT_MS)),
 );

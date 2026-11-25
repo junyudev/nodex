@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../testUtils/testTimeouts.ts";
 import { vi } from "vite-plus/test";
 import { historyResponseItems } from "@nodex/provider-core/server/handoffBudget";
 import { assert, describe, it } from "@effect/vitest";
@@ -4951,7 +4952,7 @@ describe("context recovery in the same native conversation", () => {
                   event.payload.status === status,
               ),
               Stream.runHead,
-              Effect.timeout("5 seconds"),
+              Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
             );
           yield* orchestrator.dispatch({
             type: "thread.create",

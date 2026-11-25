@@ -300,9 +300,12 @@ it.effect("makes a client whose cursor predates pruning reload instead of skippi
     // Replay finishes and the stream stays open on live events, or it fails on the gap.
     const replay = (afterSequence: number, id: ThreadId = threadId) =>
       Effect.gen(function* () {
-        const fiber = yield* sink
-          .stream({ threadId: id, afterSequence })
-          .pipe(Stream.runDrain, Effect.timeoutOption("1 second"), Effect.forkChild);
+        const fiber = yield* sink.stream({ threadId: id, afterSequence }).pipe(
+          Stream.runDrain,
+          // oxlint-disable-next-line nodex/no-explicit-test-timeout -- TestClock bounds the replay and proves the live stream stays open.
+          Effect.timeoutOption("1 second"),
+          Effect.forkChild,
+        );
         yield* TestClock.adjust("1 second");
         return yield* Fiber.join(fiber).pipe(Effect.exit);
       });

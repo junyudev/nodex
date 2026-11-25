@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../config/test-timeouts";
 import { fileURLToPath } from "node:url";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -302,7 +303,7 @@ it.live("releases failed generation authority before acquiring its replacement",
       f.generations[0]!.terminated,
       new AgentRuntimeProcessError({ reason: "closed", message: "fixture exit" }),
     );
-    yield* Deferred.await(f.generations[0]!.released).pipe(Effect.timeout("5 seconds"));
+    yield* Deferred.await(f.generations[0]!.released).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
     const second = yield* supervisor.get();
     assert.notStrictEqual(first, second);
     assert.strictEqual(second.identity.runtimeId, first.identity.runtimeId);

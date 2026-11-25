@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeEvents from "node:events";
 import * as NodeNet from "node:net";
 
@@ -234,7 +235,9 @@ it.live("fails if a Windows child exits before the readiness subscription", () =
     });
     spawn.mockReturnValueOnce(nativeProcess);
     const adapter = yield* PtyAdapter.PtyAdapter;
-    const error = yield* adapter.spawn(spawnInput).pipe(Effect.timeout("2 seconds"), Effect.flip);
+    const error = yield* adapter
+      .spawn(spawnInput)
+      .pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS), Effect.flip);
     assert.instanceOf(error, PtyAdapter.PtySpawnError);
     assert.equal(nativeProcess._agent.kill.mock.calls.length, 1);
     assert.equal(socket.listenerCount("ready_datapipe"), 0);

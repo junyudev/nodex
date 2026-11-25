@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { assert, it } from "@effect/vitest";
 import {
@@ -3131,7 +3132,9 @@ it.live("keeps claiming new work after repeated idle periods", () =>
           },
         ]);
         yield* outbox.notifyAvailable();
-        const observed = yield* Deferred.await(completion).pipe(Effect.timeoutOption("2 seconds"));
+        const observed = yield* Deferred.await(completion).pipe(
+          Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
+        );
         assert.isTrue(Option.isSome(observed), `worker stopped before idle wave ${wave}`);
       }
     }).pipe(Effect.provide(layerWorker), Effect.scoped);

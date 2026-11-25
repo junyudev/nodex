@@ -3,6 +3,7 @@
  * driven through the real adapter and `@opencode/client` against a replayed
  * HTTP server. Frames reuse the shapes recorded against 2.0.18.
  */
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../testUtils/testTimeouts.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
@@ -5001,7 +5002,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       yield* runtime.startTurn(withLineage(thread));
       yield* Effect.gen(function* () {
         while (offers.length === 0) yield* Effect.yieldNow;
-      }).pipe(Effect.timeout("2 seconds"), Effect.orDie);
+      }).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS), Effect.orDie);
       yield* runtime.startTurn(continuationTurn(thread, offers[0]!));
       yield* Deferred.await(bothEnded);
       const [first, second] = turns;
@@ -5703,7 +5704,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       // The launching turn ends; then the held follow-up is offered and taken.
       yield* Effect.gen(function* () {
         while (offers.length === 0) yield* Effect.yieldNow;
-      }).pipe(Effect.timeout("2 seconds"), Effect.orDie);
+      }).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS), Effect.orDie);
       const followUp = continuationTurn(thread, offers[0]!);
       yield* runtime.startTurn(followUp);
       const followUpTurnId = (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({

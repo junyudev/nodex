@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { TextGenerationError } from "@nodex/runtime-contracts";
@@ -202,7 +203,7 @@ it.live("retiring managed access interrupts an in-flight SDK utility request", (
       .pipe(Effect.forkChild);
     yield* Effect.sync(() => opened).pipe(
       Effect.repeat({ until: Boolean, schedule: Schedule.spaced("10 millis") }),
-      Effect.timeout("5 seconds"),
+      Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
     );
     yield* runtime.handle({
       id: "retire",

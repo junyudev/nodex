@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../config/test-timeouts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -126,7 +127,9 @@ it.live(
         });
         entries = [{ ...pluginEntry, scope: { kind: "projects", projectIds: ["other"] } }];
         yield* PubSub.publish(changes, undefined);
-        expect(yield* Deferred.await(revoked).pipe(Effect.timeout("3 seconds"))).toMatchObject({
+        expect(
+          yield* Deferred.await(revoked).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS)),
+        ).toMatchObject({
           kind: "revoked",
           viewId: threadView.viewId,
         });
@@ -176,7 +179,9 @@ it.live(
 
         yield* request("resources/subscribe", { uri });
         yield* Effect.promise(() => writeFile(file.path, "Light clouds"));
-        expect(yield* Deferred.await(changed).pipe(Effect.timeout("3 seconds"))).toMatchObject({
+        expect(
+          yield* Deferred.await(changed).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS)),
+        ).toMatchObject({
           kind: "resource-updated",
           viewId: launch.viewId,
           uri,

@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../testUtils/testTimeouts.ts";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
@@ -267,7 +268,7 @@ it.live("ends its messages when closed while the CLI is idle", () =>
       // A stopped Turn settles when this stream ends, not after a close timeout.
       const ended = yield* session.messages.pipe(
         Stream.runCollect,
-        Effect.timeoutOption("1 second"),
+        Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
       );
       assert.isTrue(ended._tag === "Some");
     }).pipe(

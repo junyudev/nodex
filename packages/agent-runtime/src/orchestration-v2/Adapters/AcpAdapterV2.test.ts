@@ -101,7 +101,7 @@ import {
   isClaudeProvisionalSubagentTool,
 } from "../../../vendor/provider-acp-registry/src/server/claudeAcp.ts";
 import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../../nodex/SideChat.ts";
-import { ASYNC_WAIT_TIMEOUT_MS } from "../../testUtils/testTimeouts.ts";
+import { ASYNC_WAIT_TIMEOUT_MS, STANDARD_TEST_TIMEOUT_MS } from "../../testUtils/testTimeouts.ts";
 
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
@@ -1061,7 +1061,7 @@ describe("AcpAdapterV2", () => {
         );
         assert.isTrue(Exit.isFailure(rejected));
         assert.notInclude(yield* pollProtocolMethods(protocolEvents), "session/prompt");
-      }).pipe(Effect.timeout("20 seconds"), Effect.provide(layerTest), Effect.scoped),
+      }).pipe(Effect.timeout(STANDARD_TEST_TIMEOUT_MS), Effect.provide(layerTest), Effect.scoped),
   );
 
   // A v2 select option must offer a value, so only v1 can advertise an empty model catalog.
@@ -1166,7 +1166,7 @@ describe("AcpAdapterV2", () => {
           );
           assert.notInclude(yield* pollProtocolMethods(protocolEvents), "session/prompt");
         }
-      }).pipe(Effect.timeout("20 seconds"), Effect.provide(layerTest), Effect.scoped),
+      }).pipe(Effect.timeout(STANDARD_TEST_TIMEOUT_MS), Effect.provide(layerTest), Effect.scoped),
   );
 
   it.live.each(["failed", "recovered", "completed", "cancelled"] as const)(
@@ -1387,7 +1387,7 @@ describe("AcpAdapterV2", () => {
               (event) => event.direction === "outgoing" && rawProtocolMethod(event) === method,
             ),
             Stream.runHead,
-            Effect.timeout("5 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           ),
         );
         const baseNames = desktop ? ["nodex_app", "node_repl"] : ["nodex_app"];
@@ -3306,7 +3306,7 @@ describe("AcpAdapterV2", () => {
         assert.notInclude(methods, "session/new");
         assert.notInclude(methods, "session/cancel");
         assert.equal(methods.filter((method) => method === "session/prompt").length, 1);
-      }).pipe(Effect.timeout("10 seconds"), Effect.provide(layerTest), Effect.scoped),
+      }).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS), Effect.provide(layerTest), Effect.scoped),
   );
 
   it.live("reaps detached native work when the provider exits before explicit teardown", () =>
@@ -8710,7 +8710,9 @@ describe("AcpAdapterV2", () => {
         let subagentTurnItemId: string | null = null;
         let authoritativeTextSeen = false;
         for (let attempt = 0; attempt < 64; attempt += 1) {
-          const maybeEvent = yield* Queue.take(events).pipe(Effect.timeoutOption("50 millis"));
+          const maybeEvent = yield* Queue.take(events).pipe(
+            Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
+          );
           if (Option.isNone(maybeEvent)) break;
           const event = maybeEvent.value;
           if (event.type === "turn_item.updated" && event.turnItem.type === "subagent") {
@@ -8779,7 +8781,9 @@ describe("AcpAdapterV2", () => {
         let subagentStopProviderThreadId: string | null | undefined;
         let subagentUpdatedResult: string | null | undefined;
         for (let attempt = 0; attempt < 64; attempt += 1) {
-          const maybeEvent = yield* Queue.take(events).pipe(Effect.timeoutOption("50 millis"));
+          const maybeEvent = yield* Queue.take(events).pipe(
+            Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
+          );
           if (Option.isNone(maybeEvent)) break;
           const event = maybeEvent.value;
           if (
@@ -9053,20 +9057,20 @@ describe("AcpAdapterV2", () => {
         assert.fail(`Direct Stop must contain the orphan runtime: ${Cause.pretty(stopExit.cause)}`);
       }
 
-      let completedAfterStop = 0;
-      for (let attempt = 0; attempt < 64; attempt += 1) {
-        const maybeEvent = yield* Queue.take(events).pipe(Effect.timeoutOption("50 millis"));
-        if (Option.isNone(maybeEvent)) break;
-        const event = maybeEvent.value;
-        if (
-          event.type === "turn_item.updated" &&
-          event.turnItem.type === "subagent" &&
-          event.turnItem.status === "completed"
-        ) {
-          completedAfterStop += 1;
-        }
-      }
-      assert.equal(completedAfterStop, 1);
+      const nextCompletion = Queue.take(events).pipe(
+        Effect.repeat({
+          until: (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "subagent" &&
+            event.turnItem.status === "completed",
+        }),
+      );
+      yield* nextCompletion.pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
+      const duplicate = yield* nextCompletion.pipe(
+        // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Observe briefly for a duplicate after the expected completion.
+        Effect.timeoutOption("50 millis"),
+      );
+      assert.isTrue(Option.isNone(duplicate));
       assert.isFalse(yield* hasPendingBackgroundWork);
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
@@ -11782,7 +11786,7 @@ describe("AcpAdapterV2", () => {
       const terminal = events.at(-1);
       assert.equal(terminal?.type === "turn.terminal" ? terminal.status : undefined, "completed");
       assert.include(yield* pollProtocolMethods(protocolEvents), "session/prompt");
-    }).pipe(Effect.timeout("20 seconds"), Effect.provide(layerTest), Effect.scoped),
+    }).pipe(Effect.timeout(STANDARD_TEST_TIMEOUT_MS), Effect.provide(layerTest), Effect.scoped),
   );
 
   it.effect("empty-drain continuation turn waits the quiet window so late frames can attach", () =>
@@ -13246,14 +13250,16 @@ describe("AcpAdapterV2", () => {
         })
         .pipe(Effect.forkScoped);
       const interruptCompleted = yield* Fiber.join(interruptFiber).pipe(
-        Effect.timeoutOption("3 seconds"),
+        Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
       );
       assert.isTrue(Option.isSome(interruptCompleted), "hung ACP cancel must not block teardown");
       assert.isFalse(cancelCalled, "hard process-group teardown must skip ACP cancel");
-      yield* Effect.sleep("250 millis");
-      assert.isFalse(processExists(commandLauncherPid!));
-      assert.isFalse(processExists(commandRootPid!));
-      assert.isFalse(processExists(commandSleepPid!));
+      assert.isTrue(
+        Option.isSome(
+          yield* waitForProcessesToExit([commandLauncherPid!, commandRootPid!, commandSleepPid!]),
+        ),
+        "direct Stop must reap the launcher, Bash, and sleep processes",
+      );
 
       let terminalStatus: string | null = null;
       let openToolTerminalStatus: string | null = null;
@@ -14669,7 +14675,7 @@ describe("ACP Desktop Tool permissions", () => {
               },
               { method: "session/request_permission", requestId: toolCall.toolCallId },
             )
-            .pipe(Effect.timeout("2 seconds"));
+            .pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
           assert.deepEqual(response.outcome, { outcome: "selected", optionId: "native-once-id" });
           yield* h.acknowledge(toolCall.toolCallId);
         }
@@ -14722,7 +14728,7 @@ describe("ACP Desktop Tool permissions", () => {
             { method: "session/request_permission", requestId: "ordinary-approval" },
           )
           .pipe(Effect.forkScoped);
-        const request = yield* Queue.take(h.requests).pipe(Effect.timeout("2 seconds"));
+        const request = yield* Queue.take(h.requests).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
         const response = yield* h.runtime
           .respondToRuntimeRequest({
             requestId: request.id,

@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS, STANDARD_TEST_TIMEOUT_MS } from "../../../config/test-timeouts";
 import { mkdir, writeFile } from "node:fs/promises";
 import type { AgentHostRequest } from "@nodex/agent-runtime/contracts";
 import type { components } from "@nodex/core-protocol";
@@ -272,7 +273,7 @@ it.live(
             until: (execution) => execution.status === "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         const second = yield* f.start("Beta", "codex-beta");
         yield* f.runtime.request("thread.execution", { threadId: second.threadId }).pipe(
@@ -280,7 +281,7 @@ it.live(
             until: (execution) => execution.status === "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         const third = yield* f.start("Gamma", "codex-gamma");
         const fourth = yield* f.start("Delta", "codex-delta");
@@ -327,7 +328,7 @@ it.live(
             until: (e) => e.status === "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         // The fixture holds the first turn of each provider until interrupted.
         const second = yield* f.start("Pause Beta", "codex-beta");
@@ -336,7 +337,7 @@ it.live(
             until: (e) => e.status === "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         yield* f.runtime.request("thread.send", {
           threadId: first.threadId,
@@ -366,7 +367,7 @@ it.live(
             until: (result) => !result.requested,
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         expect(
           yield* f.readRows("SELECT * FROM orchestration_v2_projection_provider_session_bindings"),
@@ -396,7 +397,7 @@ it.live(
                 until: (result) => result.recentRuns.every((run) => run.status === "completed"),
                 schedule: Schedule.spaced("20 millis"),
               }),
-              Effect.timeout("20 seconds"),
+              Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
             );
           expect(detail.recentRuns).toHaveLength(chat === first ? 2 : 1);
         }
@@ -454,7 +455,7 @@ it.live(
               until: (rows) => rows.length > 0,
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
         expect(pauses.map((row) => row.root_thread_id)).toEqual([chat.threadId]);
         yield* f.runtime.request("thread.execution", { threadId: chat.threadId }).pipe(
@@ -462,7 +463,7 @@ it.live(
             until: (e) => e.status === "queued",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(
           (yield* f.runtime.request("thread.read-details", {
@@ -482,14 +483,14 @@ it.live(
             until: (result) => !result.requested,
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         yield* f.runtime.request("thread.execution", { threadId: chat.threadId }).pipe(
           Effect.repeat({
             until: (e) => e.status === "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         yield* f
           .readRows(
@@ -500,7 +501,7 @@ it.live(
               until: (rows) => rows[0]?.count === 1,
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
         yield* f.application.reconcileExecutionHolds;
         expect(
@@ -540,7 +541,7 @@ it.live(
                 result.recentRuns[0]?.status === "completed" && result.pendingRequests.length > 0,
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("30 seconds"),
+            Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
           );
         const question = details.pendingRequests[0]!;
         const reply =
@@ -562,7 +563,7 @@ it.live(
                 result.recentRuns[0]?.status === "running",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
         const runId = next.recentRuns[0]!.runId;
         const proof = yield* f.runtime
@@ -572,7 +573,7 @@ it.live(
               until: (value) => value?.nativeTurnId !== null && value?.nativeTurnId !== undefined,
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
         const handshake = scenario.client.handshake;
         const authority = {
@@ -723,7 +724,7 @@ it.live(
               until: (proof) => !!proof?.nativeTurnId,
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
         const firstProof = yield* proofFor(chat.runId);
         const followed = yield* host({
@@ -740,7 +741,7 @@ it.live(
             until: (e) => e.status === "completed",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("15 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         yield* apply({
           kind: "source",
@@ -873,7 +874,7 @@ it.live(
               until: (r) => r.recentRuns.length === 2 && r.recentRuns[0]?.status === "running",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("15 seconds"),
+            Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
           );
         const runId = details.recentRuns[0]!.runId;
         const message = yield* f.runtime.request("thread.run-message", {

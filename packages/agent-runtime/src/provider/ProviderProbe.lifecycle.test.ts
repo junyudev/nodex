@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import { execFileSync } from "node:child_process";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -67,7 +68,7 @@ for (const kind of ["claude", "codex", "opencode"] as const) {
         const running = yield* probe.pipe(Effect.asVoid, Effect.scoped, Effect.forkChild);
         const pid = yield* fs
           .readFileString(pidPath)
-          .pipe(Effect.retry(Schedule.spaced("20 millis")), Effect.timeout("5 seconds"));
+          .pipe(Effect.retry(Schedule.spaced("20 millis")), Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
         const group = (id: string) =>
           execFileSync("/bin/ps", ["-o", "pgid=", "-p", id], { encoding: "utf8" }).trim();
         assert.strictEqual(group(pid), group(String(process.pid)));

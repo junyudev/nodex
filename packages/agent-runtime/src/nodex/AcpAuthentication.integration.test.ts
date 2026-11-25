@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -56,7 +57,7 @@ it.live(
             until: (text) => text.includes('"auth/login"'),
             schedule: Schedule.spaced("10 millis"),
           }),
-          Effect.timeout("5 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         const live = yield* call("providers.auth.read", target);
         expect(live.revision).toBeGreaterThanOrEqual(started.revision);

@@ -1,4 +1,5 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off -- Node stream fixtures. */
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../config/test-timeouts";
 import { it } from "@effect/vitest";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
@@ -317,7 +318,7 @@ it.live(
               client.write(
                 encodeBrowserUseNativePipeFrame(JSON.stringify({ jsonrpc: "2.0", ...body })),
               );
-            const read = Queue.take(messages).pipe(Effect.timeout("5 seconds"));
+            const read = Queue.take(messages).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
             const observe = (turnId: string, phase: "started" | "ended") =>
               windows.observeTurn({
                 nativeThreadId: "thread",
@@ -378,7 +379,7 @@ it.live(
             expect(yield* read).toMatchObject({ id: 7, result: "list_apps" });
             expect(helpers).toBe(3);
             request(8, "hold", "three");
-            yield* Queue.take(held).pipe(Effect.timeout("5 seconds"));
+            yield* Queue.take(held).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
             yield* observe("three", "ended");
             expect(yield* read).toMatchObject({
               id: 8,

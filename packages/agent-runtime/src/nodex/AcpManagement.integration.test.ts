@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -57,13 +58,15 @@ it.live(
           revision: expect.any(Number),
           cancellable: true,
         });
-        yield* Effect.promise(() => downloadStarted.promise).pipe(Effect.timeout("5 seconds"));
+        yield* Effect.promise(() => downloadStarted.promise).pipe(
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
+        );
         const uninstall = runtime.handle({
           id: "uninstall",
           method: "acp.registry.uninstall",
           input: { agentId: "fixture" },
         });
-        const busy = yield* uninstall.pipe(Effect.flip, Effect.timeout("1 second"));
+        const busy = yield* uninstall.pipe(Effect.flip, Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
         expect(acpFailure(busy).reason).toBe("busy");
         releaseDownload.resolve();
         const completed = yield* runtime
@@ -73,7 +76,7 @@ it.live(
               until: (result) => (result as { phase: string }).phase !== "running",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("5 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
         expect(completed).toMatchObject({
           phase: "succeeded",
@@ -211,7 +214,7 @@ it.live(
             until: (value) => value.phase !== "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(settled.phase).toBe("succeeded");
         const authDetails = yield* call("providers.auth.read", { instanceId, ownerId: "window" });
@@ -314,7 +317,7 @@ it.live(
             until: (state) => state.phase === "succeeded" || state.phase === "failed",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("5 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(signedIn.phase).toBe("succeeded");
         const verificationMethods = yield* methods();
@@ -500,7 +503,7 @@ it.live.each([true, false])(
               2,
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("5 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(
           (yield* call("providers.auth.read", { instanceId: "first", ownerId: "window-one" }))

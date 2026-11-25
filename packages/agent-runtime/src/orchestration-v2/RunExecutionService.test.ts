@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import { assert, it, vi } from "@effect/vitest";
 import {
   CheckpointScopeId,
@@ -1551,7 +1552,7 @@ it.effect("ingests new member threads of an owned child after the root turn term
     }).pipe(Effect.provide(layerTest));
 
     const observed = yield* Deferred.await(childMessageIngested).pipe(
-      Effect.timeoutOption("2 seconds"),
+      Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
     );
     assert.isTrue(Option.isSome(observed), "child message was not ingested after root terminal");
     assert.deepEqual(yield* Ref.get(order), ["root-finalized", "member-thread", "child-message"]);
@@ -2087,7 +2088,9 @@ it.effect(
         });
       }).pipe(Effect.provide(layerTest));
 
-      const closed = yield* Deferred.await(ingestionDone).pipe(Effect.timeoutOption("2 seconds"));
+      const closed = yield* Deferred.await(ingestionDone).pipe(
+        Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
+      );
       assert.isTrue(Option.isSome(closed), "event subscription did not release");
       assert.deepEqual(yield* Ref.get(observed), ["terminal", "root-finalized", "roster-cleared"]);
       assert.isTrue((yield* Ref.get(scopedProbeArgs)).includes(ids.providerThreadId));
@@ -2298,7 +2301,9 @@ it.effect("drops late root provider-thread writes from a superseded attempt", ()
       });
     }).pipe(Effect.provide(layerTest));
 
-    const closed = yield* Deferred.await(ingestionDone).pipe(Effect.timeoutOption("2 seconds"));
+    const closed = yield* Deferred.await(ingestionDone).pipe(
+      Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
+    );
     assert.isTrue(
       Option.isSome(closed),
       "subscription must release after ownership-loss reject even when probe stays true",
@@ -2476,7 +2481,9 @@ it.effect(
         });
       }).pipe(Effect.provide(layerTest));
 
-      const closed = yield* Deferred.await(ingestionDone).pipe(Effect.timeoutOption("2 seconds"));
+      const closed = yield* Deferred.await(ingestionDone).pipe(
+        Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
+      );
       assert.isTrue(
         Option.isSome(closed),
         "subscription must release after background item completes past ownership loss",
@@ -2641,7 +2648,9 @@ it.effect(
         });
       }).pipe(Effect.provide(layerTest));
 
-      const closed = yield* Deferred.await(ingestionDone).pipe(Effect.timeoutOption("2 seconds"));
+      const closed = yield* Deferred.await(ingestionDone).pipe(
+        Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
+      );
       assert.isTrue(Option.isSome(closed), "event subscription did not release");
       // Critical: release while session-wide hasPendingBackgroundWork stays true
       // and the scoped probe reports false for this root's provider thread.
@@ -3825,7 +3834,9 @@ function runBackgroundItemScenario(
       });
     }).pipe(Effect.provide(layerTest));
 
-    const closed = yield* Deferred.await(ingestionDone).pipe(Effect.timeoutOption("2 seconds"));
+    const closed = yield* Deferred.await(ingestionDone).pipe(
+      Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS),
+    );
     assert.isTrue(Option.isSome(closed), "event ingestion fiber did not finish");
     return yield* Ref.get(observed);
   });

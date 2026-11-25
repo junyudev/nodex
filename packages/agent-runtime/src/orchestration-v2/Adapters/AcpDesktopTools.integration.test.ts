@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import { STANDARD_TEST_TIMEOUT_MS } from "../../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as HostProcess from "@nodex/runtime-shared/HostProcess";
@@ -108,7 +109,7 @@ it.live.each(["complete", "cancel"] as const)(
             until: (value) => value.phase !== "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("30 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         expect(connected.phase).toBe("succeeded");
         yield* call("command.dispatch", {
@@ -142,7 +143,9 @@ it.live.each(["complete", "cancel"] as const)(
           },
         });
         expect(
-          yield* Effect.promise(() => fixture.callStarted).pipe(Effect.timeout("30 seconds")),
+          yield* Effect.promise(() => fixture.callStarted).pipe(
+            Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
+          ),
         ).toEqual(desktopToolCall);
         expect(fixture.methods.slice(0, 4)).toEqual([
           "initialize",
@@ -163,7 +166,9 @@ it.live.each(["complete", "cancel"] as const)(
               holdQueue: true,
             },
           });
-          yield* Effect.promise(() => fixture.callClosed).pipe(Effect.timeout("15 seconds"));
+          yield* Effect.promise(() => fixture.callClosed).pipe(
+            Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
+          );
         }
         const expectedStatus = outcome === "cancel" ? "interrupted" : "completed";
         const result = yield* call("run.outcome", { threadId, messageId }).pipe(
@@ -171,7 +176,7 @@ it.live.each(["complete", "cancel"] as const)(
             until: (value) => value?.status === expectedStatus || value?.status === "failed",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("30 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         expect(result?.status).toBe(expectedStatus);
         const observations: unknown = JSON.parse(yield* fs.readFileString(observationPath));

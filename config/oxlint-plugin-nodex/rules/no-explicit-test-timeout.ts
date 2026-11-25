@@ -6,6 +6,7 @@ const ASYNC_QUERY =
   /^find(?:All)?By(?:Role|Text|LabelText|PlaceholderText|Title|AltText|DisplayValue|TestId)$/u;
 const DOM_WAIT = new Set(["waitFor", "waitForElementToBeRemoved"]);
 const VI_WAIT = new Set(["waitFor", "waitUntil"]);
+const EFFECT_TIMEOUT = new Set(["timeout", "timeoutOption", "timeoutOrElse"]);
 
 // Use the option position of retrying Playwright matchers. Generic matchers
 // such as toEqual can legitimately assert on an object containing a timeout.
@@ -27,6 +28,43 @@ function numericArgument(context: Context, argument: unknown): boolean {
   return value?.type === "Literal" && typeof value.value === "number";
 }
 
+function isEffectModule(context: Context, receiver: ESTree.Node): boolean {
+  if (receiver.type === "MemberExpression" && memberName(receiver) === "Effect") {
+    const root = importedBinding(context, unwrapExpression(receiver.object) ?? receiver.object);
+    return root?.source === "effect" && root.name === "*";
+  }
+  const imported = importedBinding(context, receiver);
+  return (
+    (imported?.source === "effect" && imported.name === "Effect") ||
+    (imported?.source === "effect/Effect" && imported.name === "*")
+  );
+}
+
+function durationNumber(argument: unknown): boolean {
+  const expression = unwrapExpression(argument);
+  const literal =
+    expression?.type === "UnaryExpression" && ["-", "+"].includes(expression.operator)
+      ? unwrapExpression(expression.argument)
+      : expression;
+  return (
+    literal?.type === "Literal" &&
+    (typeof literal.value === "number" || typeof literal.value === "bigint")
+  );
+}
+
+function literalDuration(argument: unknown): boolean {
+  const expression = unwrapExpression(argument);
+  if (expression?.type === "Literal" && typeof expression.value === "string") return true;
+  if (expression?.type === "TemplateLiteral") return expression.expressions.length === 0;
+  if (expression?.type === "ArrayExpression")
+    return expression.elements.length === 2 && expression.elements.every(durationNumber);
+  if (expression?.type === "ObjectExpression")
+    return expression.properties.every(
+      (property) => property.type === "Property" && durationNumber(property.value),
+    );
+  return durationNumber(expression);
+}
+
 function waitTimeout(context: Context, call: ESTree.CallExpression, playwright: boolean): boolean {
   const callee = unwrapExpression(call.callee);
   if (!callee) return false;
@@ -39,6 +77,16 @@ function waitTimeout(context: Context, call: ESTree.CallExpression, playwright: 
         ? (imported?.name ?? callee.name)
         : null;
   if (!name) return false;
+  if (EFFECT_TIMEOUT.has(name)) {
+    const receiver = callee.type === "MemberExpression" && unwrapExpression(callee.object);
+    if (receiver ? !isEffectModule(context, receiver) : imported?.source !== "effect/Effect")
+      return false;
+    // The dual overload puts the duration (or options) after the input Effect.
+    const argument = call.arguments.length === 1 ? first : second;
+    return literalDuration(
+      name === "timeoutOrElse" ? option(argument, "duration")?.value : argument,
+    );
+  }
   if (ASYNC_QUERY.test(name)) {
     return Boolean(
       option(third, "timeout") ||

@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -80,7 +81,7 @@ it.live("prunes settled outbox receipts after recovery in the production composi
             until: (ids) => !ids.includes("old-succeeded"),
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
       }).pipe(Effect.provide(Application.layer(configuration, () => Effect.void))),
     );
@@ -166,7 +167,7 @@ it.live("deletes a shared attachment only after its last live Session is deleted
               ),
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("10 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         )) as { readonly runId: string };
         expect(outcome).toMatchObject({ userMessageId: "message:source" });
         expect(
@@ -216,7 +217,7 @@ it.live("deletes a shared attachment only after its last live Session is deleted
               until: (status) => status === "succeeded",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
 
         expect(yield* fs.exists(file)).toBe(true);

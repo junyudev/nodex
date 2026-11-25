@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -59,7 +60,7 @@ it.live(
             until: (operation) => operation.phase !== "running",
             schedule: Schedule.spaced("20 millis"),
           }),
-          Effect.timeout("5 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
         expect(connected.phase).toBe("succeeded");
         yield* fs.writeFileString(log, "");

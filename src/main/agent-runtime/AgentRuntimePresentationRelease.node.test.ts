@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../config/test-timeouts";
 import { assert, it } from "@effect/vitest";
 import type {
   AgentRuntimeMethod,
@@ -212,7 +213,7 @@ it.live(
         ],
       ]);
       yield* PubSub.shutdown(f.events);
-      yield* Deferred.await(f.settled).pipe(Effect.timeout("2 seconds"));
+      yield* Deferred.await(f.settled).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
       assert.deepEqual(f.finished.at(-1), ["lease", "runtime", "generation"]);
     }).pipe(Effect.scoped),
 );

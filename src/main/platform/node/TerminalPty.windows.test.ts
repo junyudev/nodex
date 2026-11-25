@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS, STANDARD_TEST_TIMEOUT_MS } from "../../../../config/test-timeouts";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -43,10 +44,10 @@ it.live.runIf(process.platform === "win32")(
         ),
         Stream.filter((data) => data.includes("NODEX_PTY_READY")),
         Stream.runHead,
-        Effect.timeout("15 seconds"),
+        Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
       );
       yield* handle.write("exit 0\r");
-      const exited = yield* handle.exit.pipe(Effect.timeout("10 seconds"));
+      const exited = yield* handle.exit.pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
       expect(exited.exitCode).toBe(0);
     }).pipe(
       Effect.scoped,
@@ -114,7 +115,7 @@ it.live.runIf(process.platform === "win32" && gitBash !== undefined)(
         ),
         Stream.filter((data) => data.includes("NODEX_FINISHED")),
         Stream.runHead,
-        Effect.timeout("20 seconds"),
+        Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
       );
       expect(Option.isSome(output)).toBe(true);
       const data = Option.getOrThrow(output)
@@ -124,7 +125,7 @@ it.live.runIf(process.platform === "win32" && gitBash !== undefined)(
       expect(data).toContain("NODEX_CWD:requested-cwd");
       expect(data).toMatch(/NODEX_CLI:.*\/runtime\/agent-cli\/bin\/nodex\n/);
       yield* handle.write("exit 0\r");
-      expect((yield* handle.exit.pipe(Effect.timeout("10 seconds"))).exitCode).toBe(0);
+      expect((yield* handle.exit.pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS))).exitCode).toBe(0);
     }).pipe(
       Effect.scoped,
       Effect.provide(live.pipe(Layer.provide(testLayer({ platform: "win32" })))),

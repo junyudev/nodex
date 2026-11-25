@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "./testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
@@ -355,7 +356,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
             filePath: target,
             contents: '{"responseStreamingMode":"paragraph","projectSettingsFolded":true}',
           });
-          const change = yield* changes.pipe(Stream.runHead, Effect.timeout("2 seconds"));
+          const change = yield* changes.pipe(Stream.runHead, Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
           assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "paragraph");
         }).pipe(
           Effect.provide(
@@ -432,7 +433,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         yield* Deferred.succeed(allowWatch, undefined);
         const change = yield* changes.pipe(
           Stream.runHead,
-          Effect.timeout("2 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           TestClock.withLive,
         );
         assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "turn");
@@ -509,7 +510,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         yield* TestClock.adjust("100 millis");
         const change = yield* changes.pipe(
           Stream.runHead,
-          Effect.timeout("2 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           TestClock.withLive,
         );
         assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "paragraph");
@@ -777,7 +778,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           addProjectBaseDirectory: "~/next",
         });
 
-        const firstChange = yield* changes.pipe(Stream.runHead, Effect.timeout("1 second"));
+        const firstChange = yield* changes.pipe(
+          Stream.runHead,
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
+        );
         assert.equal(Option.getOrUndefined(firstChange)?.addProjectBaseDirectory, "~/next");
       }),
     ).pipe(Effect.provide(layerServerSettings())),

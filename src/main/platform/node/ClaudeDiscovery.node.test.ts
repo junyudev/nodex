@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../../config/test-timeouts";
 import {
   mkdtemp,
   mkdir,
@@ -46,7 +47,7 @@ it.live.skipIf(process.platform === "win32")(
       const pid = Number(
         yield* Effect.tryPromise(() => readFile(pidPath, "utf8")).pipe(
           Effect.retry(Schedule.spaced("20 millis")),
-          Effect.timeout("5 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         ),
       );
       yield* Effect.addFinalizer(() =>

@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS, STANDARD_TEST_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -66,7 +67,7 @@ it.live.each([
               until: (value) => value.phase !== "running",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("10 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
           expect(connected.phase).toBe("succeeded");
           yield* fs.writeFileString(log, "");
@@ -126,7 +127,7 @@ it.live.each([
               until: (value) => value?.status === "completed" || value?.status === "failed",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("15 seconds"),
+            Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
           );
           expect(outcome?.status).toBe("completed");
           const loaded = yield* call("thread.snapshot", { threadId });
@@ -195,7 +196,7 @@ it.live.each([
               until: (value) => value?.status === "completed" || value?.status === "failed",
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("15 seconds"),
+            Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
           );
           expect(outcome?.status).toBe("completed");
           const continued = yield* call("thread.snapshot", { threadId });

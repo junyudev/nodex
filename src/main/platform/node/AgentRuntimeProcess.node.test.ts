@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS, STANDARD_TEST_TIMEOUT_MS } from "../../../../config/test-timeouts";
 import * as TestClock from "effect/testing/TestClock";
 import {
   AGENT_RUNTIME_BUSY_LAG_MS,
@@ -258,19 +259,19 @@ setInterval(() => {}, 1000);
             timeoutMs: 60_000,
           })
           .pipe(Effect.forkChild);
-        yield* Deferred.await(started).pipe(Effect.timeout("30 seconds"));
+        yield* Deferred.await(started).pipe(Effect.timeout(STANDARD_TEST_TIMEOUT_MS));
         if (provider === "codex") {
           process.kill(runtimePid, "SIGSTOP");
           yield* connection.liveness.pipe(
             Stream.filter((value) => value === "unresponsive"),
             Stream.runHead,
-            Effect.timeout("5 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
           process.kill(runtimePid, "SIGCONT");
           yield* connection.liveness.pipe(
             Stream.filter((value) => value === "ready"),
             Stream.runHead,
-            Effect.timeout("5 seconds"),
+            Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
           );
           // The model child is still held, so only the production watchdog's reports can recover.
           assert.isUndefined(generating.pollUnsafe());
@@ -298,7 +299,7 @@ setInterval(() => {}, 1000);
         yield* Fiber.interrupt(generating);
         yield* childExited.pipe(
           Effect.repeat({ until: Boolean, schedule: Schedule.spaced("20 millis") }),
-          Effect.timeout("30 seconds"),
+          Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
         reaped = true;
         assert.strictEqual(
@@ -337,11 +338,11 @@ it.live("withdraws only the cancelled host wait and rejects stale-generation can
     yield* connection.request("project.read", { projectId: `host-cancel-wrong:${first.hostId}` });
     assert.deepEqual(released, { a: false, b: false });
     yield* connection.request("project.read", { projectId: `host-cancel:${first.hostId}` });
-    yield* Deferred.await(stopped.a).pipe(Effect.timeout("2 seconds"));
+    yield* Deferred.await(stopped.a).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
     assert.deepEqual(released, { a: true, b: false });
     assert.equal((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
     yield* connection.request("project.read", { projectId: `host-cancel:${second.hostId}` });
-    yield* Deferred.await(stopped.b).pipe(Effect.timeout("2 seconds"));
+    yield* Deferred.await(stopped.b).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
@@ -390,7 +391,7 @@ it.live("a slow event consumer cannot starve control replies and sees the delive
       "fixture-runtime",
     );
     yield* Deferred.succeed(release, undefined);
-    yield* Deferred.await(drained).pipe(Effect.timeout("5 seconds"));
+    yield* Deferred.await(drained).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
     assert.strictEqual(deliveries.length, 257);
     assert.isAbove(deliveries[1]! - deliveries[0]!, 1);
     assert.strictEqual(deliveries.at(-1), 1_024);
@@ -445,7 +446,7 @@ it.live(
       const delivered = yield* metadata.pipe(
         Stream.take(2),
         Stream.runCollect,
-        Effect.timeout("2 seconds"),
+        Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
       );
       assert.deepEqual(
         delivered.map((entry) => entry.delivery),
@@ -469,7 +470,7 @@ it.live("shutdown remains admitted with every normal request slot occupied", () 
           .request("project.read", { projectId: `blocked:${index}` })
           .pipe(Effect.forkScoped({ startImmediately: true })),
     );
-    yield* Stream.runHead(notifications).pipe(Effect.timeout("2 seconds"));
+    yield* Stream.runHead(notifications).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
     const waiting = yield* connection
       .request("runtime.identity", {})
       .pipe(Effect.flip, Effect.forkScoped({ startImmediately: true }));
@@ -493,11 +494,11 @@ it.live("an observer's release is admitted with every normal request slot occupi
           .request("project.read", { projectId: `blocked:${index}` })
           .pipe(Effect.forkScoped({ startImmediately: true })),
     );
-    yield* Stream.runHead(notifications).pipe(Effect.timeout("2 seconds"));
+    yield* Stream.runHead(notifications).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
     assert.deepEqual(
       yield* connection
         .request("events.unobserve", { subscriptionId: "observer" })
-        .pipe(Effect.timeout("2 seconds")),
+        .pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS)),
       { unsubscribed: true },
     );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
@@ -510,7 +511,9 @@ it.live("releases an observer abandoned before its reply", () =>
     const observing = yield* connection
       .request("events.observe", { threadId: "held-observe" })
       .pipe(Effect.forkChild({ startImmediately: true }));
-    const delivered = yield* Stream.runHead(notifications).pipe(Effect.timeout("2 seconds"));
+    const delivered = yield* Stream.runHead(notifications).pipe(
+      Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
+    );
     const notification = Option.getOrThrow(delivered).notification;
     assert.equal(notification.type, "event");
     const subscriptionId = notification.type === "event" ? notification.subscriptionId : "";
@@ -631,7 +634,7 @@ it.live(
       const retired = yield* lifecycle.pipe(
         Stream.take(1),
         Stream.runCollect,
-        Effect.timeout("2 seconds"),
+        Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
       );
       assert.deepEqual(retired[0]?.notification, {
         type: "execution.native-session.closed",
@@ -719,7 +722,7 @@ it.live("root activity notifications travel on the execution metadata channel", 
     const delivered = yield* execution.pipe(
       Stream.take(1),
       Stream.runCollect,
-      Effect.timeout("2 seconds"),
+      Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
     );
     assert.deepEqual(delivered[0]?.notification, {
       type: "activity",
@@ -870,7 +873,7 @@ const reach = (
   connection.liveness.pipe(
     Stream.filter((value) => value === state),
     Stream.runHead,
-    Effect.timeout("3 seconds"),
+    Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
   );
 
 it.live.skipIf(process.platform === "win32")(
@@ -1079,7 +1082,7 @@ for (const mode of ["shutdown", "unexpected exit", "shutdown overlapping crash c
           if (overlapping) {
             // The exit watcher is draining the still-live group. Scope close
             // must join it even though its recorded leader has already gone.
-            yield* Deferred.await(orphaned).pipe(Effect.timeout("5 seconds"));
+            yield* Deferred.await(orphaned).pipe(Effect.timeout(ASYNC_WAIT_TIMEOUT_MS));
             yield* Scope.close(scope, Exit.void);
           } else yield* connection.terminated;
         } else yield* Scope.close(scope, Exit.void);

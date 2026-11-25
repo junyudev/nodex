@@ -1,3 +1,4 @@
+import { ASYNC_WAIT_TIMEOUT_MS } from "../testUtils/testTimeouts.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "@nodex/provider-core/server/driver";
@@ -214,7 +215,7 @@ it.live("switching off a running credit utility waits for its native process cle
         .exists(`${home}/started`)
         .pipe(
           Effect.repeat({ until: (started) => started, schedule: Schedule.spaced("10 millis") }),
-          Effect.timeout("5 seconds"),
+          Effect.timeout(ASYNC_WAIT_TIMEOUT_MS),
         );
       yield* owner.replace({
         policy: setModelOn(
