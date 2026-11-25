@@ -57,7 +57,8 @@ and open problems, and `sources triggers --thread <url>` for recent observations
 Page older Triggers with `--before` and limit a window with `--limit` (1–100).
 These commands are read-only. `page show <page>` lists its followed threads and
 unresolved GitHub deliveries. Managed chats use `follow_thread` for verified
-context and `hand_back_message` when the current inbound update belongs elsewhere.
+context or, with `role: own_pr`, for the PR they open, and `hand_back_message`
+when the current inbound update belongs elsewhere.
 The local Owner configures Sources in Settings; change Source configuration only
 when the person asks. Open Problems offer Reconnect, Retry
 or Open card in the Inbox; Activity records routing, milestones, delivery, replies

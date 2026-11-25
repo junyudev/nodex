@@ -174,7 +174,7 @@ Release notes are a required deliverable only for **release-note-worthy** user-v
 2. Land the change one of three ways:
    - **Ship** (default): rebase onto `origin/main` and push to `main`. Never force-push `main`; it can erase commits other Agents just pushed.
    - **Show**: open a pull request and merge it right away when the change deserves a record for later review.
-   - **Ask**: for risky changes (migrations, release and installer paths, protocol changes, broad refactors), open a pull request and end the turn; Nodex returns the CI result. Merge with `gh pr merge --rebase` once the `required` check passes, or push fixes.
+   - **Ask**: for risky changes (migrations, release and installer paths, protocol changes, broad refactors), open a pull request and get its CI result. In a chat Nodex manages, call `follow_thread { url, role: "own_pr" }` with the PR, then end the turn; Nodex returns the result once every check finishes. Without that tool, Nodex cannot return it: wait yourself with `gh pr checks <number> --watch --fail-fast`, as a background task if its completion wakes you. Merge with `gh pr merge --rebase` once the `required` check passes, or push fixes.
 
    When a broad local check such as `check:changed` has waited about 15 minutes in the machine queue, land through a pull request as for **Ask**, even a change you would Ship: CI runs the broad checks, only the focused tests stay local, and the merge waits for `required` unless the task says not to merge yet.
 
