@@ -63,6 +63,8 @@ export const makeWithCapture = (
             "Enable this repository in Sources before following its thread.",
           );
         let thread = yield* github.verifyThread(source, parsed.data.url);
+        if (parsed.data.role === "own_pr" && thread.kind !== "pull_request")
+          return toolFailure("invalid_input", "The own_pr role requires a pull request URL.");
         after = null;
         while (true) {
           const snapshot: import("../core-client/types").ProjectWorkspaceReadSnapshot =
@@ -118,6 +120,7 @@ export const makeWithCapture = (
                     source_id: source.id,
                     config_revision: source.revision,
                     thread,
+                    role: parsed.data.role,
                   },
                 },
               },

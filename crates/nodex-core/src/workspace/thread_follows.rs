@@ -3,8 +3,10 @@ use super::mutation::WorkspaceMutationEffects;
 use crate::database::{WorkflowStatusStep, follow_workflow_status, status_person_revision};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use nodex_core_contracts::{
-    BoundModuleContext, agent::AgentTurnProvenance, sources::*,
-    workspace::ProjectWorkspaceSessionExecutionRef,
+    BoundModuleContext,
+    agent::AgentTurnProvenance,
+    sources::*,
+    workspace::{PagePullRequest, ProjectWorkspaceSessionExecutionRef},
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::de::DeserializeOwned;
@@ -71,6 +73,80 @@ pub(super) fn add_follow(
     c.execute("INSERT INTO page_thread_follows(page_id,external_thread_id,role,provenance,created_at,status_fence) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(page_id,external_thread_id) DO UPDATE SET role=excluded.role,provenance=excluded.provenance,status_fence=excluded.status_fence WHERE (excluded.role='own_pr' AND page_thread_follows.role<>'own_pr') OR (excluded.role='origin' AND page_thread_follows.role='context')",params![page,thread.id,role,provenance,now,fence])?;
     Ok(())
 }
+
+pub(super) fn record_pull_request(
+    c: &Connection,
+    pr: &PagePullRequest,
+) -> Result<bool, StoreError> {
+    let changed = c.execute(
+        "INSERT INTO page_pull_requests(page_id,workspace_id,repository,number,url,state,observed_at)
+         VALUES(?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(page_id) DO UPDATE SET workspace_id=excluded.workspace_id,
+           repository=excluded.repository,number=excluded.number,url=excluded.url,
+           state=excluded.state,observed_at=excluded.observed_at
+         WHERE excluded.observed_at>=page_pull_requests.observed_at",
+        params![pr.page_id, pr.workspace_id, pr.repository, pr.number, pr.url, pr.state, pr.observed_at],
+    )?;
+    Ok(changed != 0)
+}
+
+fn pull_request_state(t: &ExternalThread) -> &str {
+    match t.state.as_str() {
+        "merged" => "MERGED",
+        "closed" => "CLOSED",
+        _ => "OPEN",
+    }
+}
+
+pub(super) fn follow_managed_thread(
+    c: &Connection,
+    library: &str,
+    page: &str,
+    t: &ExternalThread,
+    role: ManagedThreadFollowRole,
+    now: &str,
+) -> Result<(), StoreError> {
+    if role == ManagedThreadFollowRole::Context {
+        return add_follow(
+            c,
+            library,
+            page,
+            t,
+            "context",
+            "managed_chat_verified_url",
+            now,
+        );
+    }
+    if t.kind != ExternalThreadKind::PullRequest {
+        return Err(invalid("The own_pr role requires a pull request URL."));
+    }
+    if !record_pull_request(
+        c,
+        &PagePullRequest {
+            page_id: page.into(),
+            workspace_id: None,
+            repository: format!("https://{}/{}", t.host, t.repository),
+            number: t.number,
+            url: t.url.clone(),
+            state: pull_request_state(t).into(),
+            observed_at: now.into(),
+        },
+    )? {
+        return Err(conflict(
+            "A newer Page pull request observation already exists",
+        ));
+    }
+    add_follow(
+        c,
+        library,
+        page,
+        t,
+        "own_pr",
+        "managed_chat_verified_url",
+        now,
+    )
+}
+
 /// A verified PR link supplies the branch/repository proof; a Source supplies immutable repository identity.
 pub(super) fn follow_linked_pr(
     c: &Connection,
@@ -146,16 +222,28 @@ pub(super) fn discover_own_pr(
     if t.kind != ExternalThreadKind::PullRequest {
         return Ok(vec![]);
     }
+    let state = pull_request_state(t);
+    // Declared PRs have no Workspace head to match on subsequent polls.
+    let mut pages = c
+        .prepare(
+            "UPDATE page_pull_requests SET state=?1,observed_at=?2
+         WHERE workspace_id IS NULL AND url=?3 AND state<>?1 AND observed_at<=?2
+           AND page_id IN (SELECT f.page_id FROM page_thread_follows f
+                           JOIN blocks b ON b.id=f.page_id
+                           WHERE f.external_thread_id=?4 AND f.role='own_pr' AND b.library_id=?5)
+         RETURNING page_id",
+        )?
+        .query_map(params![state, now, t.url, t.id, library], |r| r.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
     let Some(head) = &t.head else {
-        return Ok(vec![]);
+        return Ok(pages);
     };
     if head.repository_id != t.repository_id || !head.repository.eq_ignore_ascii_case(&t.repository)
     {
-        return Ok(vec![]);
+        return Ok(pages);
     }
     let repository = format!("https://{}/{}", t.host, t.repository);
     let matches=c.prepare("SELECT w.page_id,w.workspace_id FROM page_workspaces w JOIN blocks b ON b.id=w.page_id WHERE b.library_id=?1 AND b.lifecycle='active' AND lower(w.repository_url)=lower(?2) AND w.branch_name=?3")?.query_map(params![library,repository,head.branch],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut pages = vec![];
     for (page, workspace) in matches {
         let current: Option<(i64, String)> = c
             .query_row(
@@ -169,12 +257,20 @@ pub(super) fn discover_own_pr(
         }) {
             continue;
         }
-        let state = match t.state.as_str() {
-            "merged" => "MERGED",
-            "closed" => "CLOSED",
-            _ => "OPEN",
-        };
-        c.execute("INSERT INTO page_pull_requests(page_id,workspace_id,repository,number,url,state,observed_at) VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(page_id) DO UPDATE SET repository=excluded.repository,number=excluded.number,url=excluded.url,state=excluded.state,observed_at=excluded.observed_at",params![page,workspace,repository,t.number,t.url,state,now])?;
+        if !record_pull_request(
+            c,
+            &PagePullRequest {
+                page_id: page.clone(),
+                workspace_id: Some(workspace),
+                repository: repository.clone(),
+                number: t.number,
+                url: t.url.clone(),
+                state: state.into(),
+                observed_at: now.into(),
+            },
+        )? {
+            continue;
+        }
         add_follow(c, library, &page, t, "own_pr", "source_verified_head", now)?;
         pages.push(page);
     }

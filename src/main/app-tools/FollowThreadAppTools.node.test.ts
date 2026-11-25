@@ -52,8 +52,15 @@ const thread: ExternalThread = {
   observation_revision: 0,
   observations: {},
 };
+const issue: ExternalThread = {
+  ...thread,
+  id: "github:github.com:10:8",
+  number: 8,
+  kind: "issue",
+  url: "https://github.com/alice/repo/issues/8",
+};
 it.effect(
-  "commits only remotely verified context with captured managed authority and the current observation fence",
+  "follows verified threads with managed authority and rejects declaring an issue as the Page's PR",
   () =>
     Effect.gen(function* () {
       let verified = false;
@@ -106,9 +113,10 @@ it.effect(
         Effect.provideService(GitHubSourceAdapter, {
           verifyThread: (_source: Source, url: string) =>
             Effect.gen(function* () {
-              assert.equal(url, thread.url);
               if (fail) return yield* new SourceReadError({ reason: "not_found" });
               verified = true;
+              if (url === issue.url) return issue;
+              assert.equal(url, thread.url);
               return thread;
             }),
         } as never),
@@ -123,18 +131,28 @@ it.effect(
       assert.isEmpty(writes);
       fail = false;
       assert.isUndefined((yield* execute(input)).isError);
-      const intent = writes[0]!.intent;
-      assert.equal(intent.kind, "agent_command");
-      if (
-        intent.kind !== "agent_command" ||
-        intent.intent.kind !== "source" ||
-        intent.intent.command.kind !== "follow_thread"
-      )
-        throw new Error("Missing follow");
-      assert.equal(intent.provenance.authority.runtime?.session_id, "chat");
-      assert.equal(intent.intent.command.thread.observation_revision, 7);
-      assert.deepEqual(intent.intent.command.thread.observations, {
-        seen: { fingerprint: "same", revision: 3 },
+      assert.isUndefined(
+        (yield* execute({ ...input, arguments: { url: thread.url, role: "own_pr" } })).isError,
+      );
+      const rejected = yield* execute({ ...input, arguments: { url: issue.url, role: "own_pr" } });
+      assert.isTrue(rejected.isError);
+      assert.deepEqual(rejected.content, [
+        { type: "text", text: "The own_pr role requires a pull request URL." },
+      ]);
+      const roles = writes.map(({ intent }) => {
+        if (
+          intent.kind !== "agent_command" ||
+          intent.intent.kind !== "source" ||
+          intent.intent.command.kind !== "follow_thread"
+        )
+          throw new Error("Missing follow");
+        assert.equal(intent.provenance.authority.runtime?.session_id, "chat");
+        assert.equal(intent.intent.command.thread.observation_revision, 7);
+        assert.deepEqual(intent.intent.command.thread.observations, {
+          seen: { fingerprint: "same", revision: 3 },
+        });
+        return intent.intent.command.role;
       });
+      assert.deepEqual(roles, [undefined, "own_pr"]);
     }),
 );

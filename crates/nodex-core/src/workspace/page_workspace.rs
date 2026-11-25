@@ -385,7 +385,18 @@ pub(super) fn apply(
                 {
                     return Err(invalid("Invalid pull request"));
                 }
-                connection.execute("INSERT INTO page_pull_requests(page_id,workspace_id,repository,number,url,state,observed_at) VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(page_id) DO UPDATE SET workspace_id=excluded.workspace_id,repository=excluded.repository,number=excluded.number,url=excluded.url,state=excluded.state,observed_at=excluded.observed_at WHERE excluded.observed_at>=page_pull_requests.observed_at",params![value.page_id,id,repository,number,url,state,observed_at])?;
+                super::thread_follows::record_pull_request(
+                    connection,
+                    &PagePullRequest {
+                        page_id: value.page_id.clone(),
+                        workspace_id: Some(id.clone()),
+                        repository: repository.clone(),
+                        number: *number,
+                        url: url.clone(),
+                        state: state.clone(),
+                        observed_at: observed_at.clone(),
+                    },
+                )?;
                 super::thread_follows::follow_linked_pr(
                     connection,
                     library,

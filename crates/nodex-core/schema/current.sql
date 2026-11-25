@@ -4740,7 +4740,7 @@ CREATE TABLE session_workspaces (
 CREATE INDEX session_workspaces_workspace ON session_workspaces(workspace_id, session_id);
 CREATE TABLE page_pull_requests (
   page_id TEXT PRIMARY KEY REFERENCES pages(block_id) ON DELETE CASCADE,
-  workspace_id TEXT NOT NULL REFERENCES page_workspaces(workspace_id) ON DELETE CASCADE,
+  workspace_id TEXT REFERENCES page_workspaces(workspace_id) ON DELETE CASCADE,
   repository TEXT NOT NULL,
   number INTEGER NOT NULL CHECK (number > 0),
   url TEXT NOT NULL,
@@ -6117,4 +6117,4 @@ CREATE TRIGGER page_search_documents_page_ad AFTER DELETE ON pages BEGIN
 END;
 CREATE INDEX idx_document_materializations_exact_head
   ON document_materializations(document_id, generation, projected_seq, schema_version);
-PRAGMA user_version=218;
+PRAGMA user_version=219;

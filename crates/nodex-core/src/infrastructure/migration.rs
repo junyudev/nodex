@@ -506,6 +506,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 218,
         apply: migrate_v217_to_v218,
     },
+    MigrationStep {
+        from_revision: 218,
+        to_revision: 219,
+        apply: migrate_v218_to_v219,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2849,6 +2854,21 @@ fn migrate_v217_to_v218(
     Ok(())
 }
 
+fn migrate_v218_to_v219(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v218_to_v219.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"page_pull_requests_without_workspace":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v213_to_v214(
     connection: &Connection,
     context: &MigrationContext,
@@ -4399,6 +4419,10 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 
 #[cfg(test)]
 fn rewind_automation_trigger_to_v217(connection: &Connection) -> Result<(), StoreError> {
+    let revision: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if revision == 219 {
+        connection.execute_batch(include_str!("../../tests/fixtures/rewind-v219-to-v218.sql"))?;
+    }
     let present: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM pragma_table_info('automations') WHERE name='trigger_kind')",
         [],
