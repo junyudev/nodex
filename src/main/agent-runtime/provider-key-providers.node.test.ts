@@ -27,14 +27,6 @@ it("declares isolated bundled Claude providers with their own models and credent
   const home = join("profile", "account", "keys", "id-1", "claude");
   const { providers, catalogs } = providerKeyProviders({
     home: "profile",
-    environment: {
-      PATH: "/bin",
-      HTTPS_PROXY: "https://proxy.example",
-      HOME: "/home",
-      ANTHROPIC_API_KEY: "other-credential",
-      OPENAI_API_KEY: "other-credential",
-      CLAUDE_CONFIG_DIR: "other-home",
-    },
     connections: [
       connection,
       { ...connection, id: "missing" },
@@ -63,10 +55,8 @@ it("declares isolated bundled Claude providers with their own models and credent
       ],
     },
   });
+  // Only the connection's own variables: execution supplies the host's, without its credentials.
   expect(Object.fromEntries(provider.environment.map(({ name, value }) => [name, value]))).toEqual({
-    PATH: "/bin",
-    HTTPS_PROXY: "https://proxy.example",
-    HOME: "/home",
     CLAUDE_CONFIG_DIR: home,
     ANTHROPIC_BASE_URL: "https://gateway.example",
     ANTHROPIC_AUTH_TOKEN: "test-secret",
@@ -112,12 +102,7 @@ it("launches Codex with the connection's catalog, private credentials, and quick
     home: "profile with spaces",
     codexBinary: "/bundled/codex",
     codexUnavailable: componentUnavailable,
-    environment: {
-      PATH: "/bin",
-      CODEX_HOME: "/other/codex",
-      NODEX_CODEX_LAUNCH_ARGS: "-c model_provider=openai",
-      OPENAI_API_KEY: "other-secret",
-    },
+    codexSearchPath: "/bundled/codex-path:/bin",
     connections: [
       connection,
       { ...connection, id: "missing" },
@@ -173,10 +158,10 @@ it("launches Codex with the connection's catalog, private credentials, and quick
   expect(provider.config.launchArgs).not.toContain("test-secret");
   expect(catalogs[0]!.contents).not.toContain("test-secret");
   expect(provider.environment).toEqual([
-    { name: "PATH", value: "/bin", sensitive: false },
     { name: "CODEX_HOME", value: home, sensitive: false },
     { name: "CODEX_SQLITE_HOME", value: home, sensitive: false },
     { name: "CODEX_PROVIDER_API_KEY", value: "test-secret", sensitive: true },
+    { name: "PATH", value: "/bundled/codex-path:/bin", sensitive: false },
   ]);
   for (const id of ["missing", "off"]) {
     expect(providers[`key_deepseek_${id}`]).toMatchObject({ enabled: false, environment: [] });

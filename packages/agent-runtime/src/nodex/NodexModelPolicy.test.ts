@@ -100,6 +100,9 @@ it("workspace setup preserves managed routing and homes while applying project v
       ANTHROPIC_AUTH_TOKEN: "native-key",
       ANTHROPIC_API_KEY: "native-api-key",
       CLAUDE_CODE_USE_BEDROCK: "1",
+      azUre_openAI_api_key: "workspace-key",
+      claudecode: "1",
+      nodex_codex_launch_args: "--enable workspace-override",
       PATH: "/project/bin",
       PROJECT_FLAG: "yes",
     },
@@ -109,5 +112,8 @@ it("workspace setup preserves managed routing and homes while applying project v
   expect(result).toMatchObject({ ...managed, PATH: "/project/bin", PROJECT_FLAG: "yes" });
   expect(result.ANTHROPIC_API_KEY).toBeUndefined();
   expect(result.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
+  expect(result.azUre_openAI_api_key).toBeUndefined();
+  expect(result.claudecode).toBeUndefined();
+  expect(result.nodex_codex_launch_args).toBeUndefined();
   expect(withWorkspaceEnvironment(managed, workspace).ANTHROPIC_AUTH_TOKEN).toBe("native-key");
 });

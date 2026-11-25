@@ -3,6 +3,7 @@ import * as NodeOS from "node:os";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { CodexSettings, EnvironmentId, ProviderInstanceId } from "@nodex/runtime-contracts";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -115,9 +116,10 @@ it.effect.each(
         yield* store.set(new TextEncoder().encode(json));
         const ambient = {
           CODEX_HOME: "/user/.codex",
-          OPENAI_API_KEY: "dummy-global-key",
-          OPENAI_BASE_URL: "https://user-proxy.test",
-          NODEX_CODEX_LAUNCH_ARGS: "--config model_provider=global-proxy",
+          OpenAI_Api_Key: "dummy-global-key",
+          OpenAI_Base_Url: "https://user-proxy.test",
+          Nodex_Codex_Launch_Args: "--config model_provider=global-proxy",
+          Access_Token: "stale-token",
           PATH: "/usr/bin",
         };
         const runtime = yield* makeCodexManagedRuntime({
@@ -125,7 +127,7 @@ it.effect.each(
           enabled: true,
           config: decodeSettings({ setupMode: "managed", homePath: sharedHome }),
           environment: ambient,
-        });
+        }).pipe(Effect.provideService(HostProcess.Platform, "win32"));
         yield* Effect.gen(function* () {
           const effective = yield* runtime.resolve;
           assert.strictEqual(leases, 1);
@@ -149,10 +151,11 @@ it.effect.each(
             );
             assert.isFalse(yield* fs.exists(path.join(effective.config.homePath, "auth.json")));
           }
-          assert.strictEqual(effective.environment.ACCESS_TOKEN, "dummy-owned-access");
-          assert.isUndefined(effective.environment.OPENAI_API_KEY);
-          assert.isUndefined(effective.environment.OPENAI_BASE_URL);
-          assert.isUndefined(effective.environment.NODEX_CODEX_LAUNCH_ARGS);
+          assert.deepEqual(effective.environment, {
+            ACCESS_TOKEN: "dummy-owned-access",
+            CODEX_HOME: effective.config.homePath,
+            PATH: ambient.PATH,
+          });
           const args = codexAppServerArgs(effective.config.launchArgs);
           assert.include(
             args,

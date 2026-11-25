@@ -45,7 +45,7 @@ export const layer = (
       Effect.andThen(Runtime.acquireExecution),
     ),
   ).pipe(Layer.provideMerge(host));
-  return Service.layer(notify, configuration.providers).pipe(
+  return Service.layer(notify).pipe(
     Layer.provide(startup),
     Layer.provideMerge(bridge),
     Layer.provide(

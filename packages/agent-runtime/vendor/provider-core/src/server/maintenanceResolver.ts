@@ -341,7 +341,7 @@ const runHomebrew = Effect.fn("runHomebrew")(function* (
       detached: false,
       forceKillAfter: "1 second",
       env,
-      extendEnv: true,
+      extendEnv: false,
     }));
     // stderr is drained so a chatty brew cannot block on a full pipe.
     const [stdout, exitCode] = yield* Effect.all(
@@ -648,7 +648,12 @@ export const resolveProviderMaintenanceCapabilitiesEffect = Effect.fn(
     return yield* resolver.resolve(null);
   }
 
-  const env = options?.env ?? (yield* readCommandLookupEnv);
+  const platform = yield* HostProcess.Platform;
+  const env = options?.env ?? HostProcess.mergeProcessEnvironments(
+    platform,
+    yield* HostProcess.Environment,
+    yield* readCommandLookupEnv,
+  );
   // resolveCommandPath checks explicit paths for existence too, so a missing
   // binary always lands in the no-context branch and never gets an update
   // command it cannot run.
@@ -671,7 +676,7 @@ export const resolveProviderMaintenanceCapabilitiesEffect = Effect.fn(
     resolvedCommandPath,
     realCommandPath,
     env,
-    platform: yield* HostProcess.Platform,
+    platform,
   });
 });
 

@@ -205,15 +205,16 @@ const buildEntry = <R>(input: {
 > =>
   Effect.gen(function* () {
     const { driversById, parentScope, instanceId, rawInstanceId, entry } = input;
-    const unavailable = entry.componentUnavailable;
-    const pendingModels = unavailable?.installationSource
+    const component = entry.unavailable ? undefined : entry.componentUnavailable;
+    const unavailable = entry.unavailable ?? component;
+    const pendingModels = component?.installationSource
       ? input.pendingModels?.(rawInstanceId)
       : undefined;
     if (unavailable) {
       const snapshot = yield* buildUnavailableProviderSnapshot({
         driverKind: entry.driver,
         instanceId,
-        displayName: entry.displayName,
+        displayName: entry.displayName ?? (entry.unavailable ? instanceId : undefined),
         accentColor: entry.accentColor,
         reason: unavailable.message,
       });
@@ -222,11 +223,15 @@ const buildEntry = <R>(input: {
         snapshot: {
           ...snapshot,
           ...(pendingModels ? { models: pendingModels } : {}),
-          enabled: entry.enabled !== false,
-          ...(unavailable.installationSource
-            ? { installationSource: unavailable.installationSource }
+          ...(component
+            ? {
+                enabled: entry.enabled !== false,
+                componentUnavailableReason: component.reason,
+                ...(component.installationSource
+                  ? { installationSource: component.installationSource }
+                  : {}),
+              }
             : {}),
-          componentUnavailableReason: unavailable.reason,
         },
       };
     }

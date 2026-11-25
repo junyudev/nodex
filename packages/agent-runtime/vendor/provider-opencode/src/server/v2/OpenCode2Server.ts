@@ -5,6 +5,7 @@
  *
  * @module provider/opencode2/OpenCode2Server
  */
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import type { OpenCodeClient } from "@opencode/client/effect";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -61,10 +62,12 @@ export const generatePassword = Effect.gen(function* () {
 export const serverEnvironment = (
   environment: NodeJS.ProcessEnv,
   password: Redacted.Redacted,
-): NodeJS.ProcessEnv => {
-  const { OPENCODE_SERVER_PASSWORD: _inherited, ...rest } = environment;
-  return { ...rest, OPENCODE_PASSWORD: Redacted.value(password) };
-};
+  platform = process.platform,
+): NodeJS.ProcessEnv =>
+  HostProcess.mergeProcessEnvironments(platform, environment, {
+    OPENCODE_SERVER_PASSWORD: undefined,
+    OPENCODE_PASSWORD: Redacted.value(password),
+  });
 
 /** The client wraps HTTP failures in a `ClientError`; this unwraps either shape. */
 const httpFailureOf = (cause: unknown): HttpClientError.HttpClientError | undefined => {
@@ -181,6 +184,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
   }
 
   const password = yield* generatePassword;
+  const platform = yield* HostProcess.Platform;
   const fileSystem = yield* FileSystem.FileSystem;
   const environment = yield* NativeExecutionPlugin.environment(input.environment).pipe(
     Effect.mapError((cause) => new OpenCodeRuntime.OpenCodeRuntimeError({
@@ -203,7 +207,11 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
           ? use(latest)
           : Effect.die(new Error("OpenCode 2 server was lent before verification.")),
         {
-          environment: serverEnvironment(NativeExecutionPlugin.withSkills(environment, desktopSkillPaths), password),
+          environment: serverEnvironment(
+            NativeExecutionPlugin.withSkills(environment, desktopSkillPaths),
+            password,
+            platform,
+          ),
           verify: (url) => connectTo(url, password, false, bindCliShell).pipe(
             Effect.flatMap((connection) => remember({ ...connection, desktopSkillPaths })),
           ),

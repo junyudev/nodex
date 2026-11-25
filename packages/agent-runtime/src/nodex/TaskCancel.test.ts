@@ -33,7 +33,7 @@ it.live(
         Layer.provide(Bridge.layerExecutionHost.pipe(Layer.provide(bridge))),
       );
       // Seed restart recovery before activating the effect worker; no provider process is opened.
-      const application = Service.layer(notify, configuration.providers).pipe(
+      const application = Service.layer(notify).pipe(
         Layer.provideMerge(host),
         Layer.provideMerge(bridge),
       );

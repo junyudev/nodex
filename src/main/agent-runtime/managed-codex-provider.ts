@@ -2,11 +2,13 @@ import * as Redacted from "effect/Redacted";
 import type { AgentRuntimeConfiguration } from "@nodex/agent-runtime/contracts";
 import { codexAgent } from "../../shared/agents/codex";
 import { shellQuote } from "../platform/node/NodexCliShell";
-import { isolatedProviderEnvironment } from "./isolated-provider-environment";
+import { declaredProviderEnvironment } from "./provider-environment";
 
 export type ManagedCodexComponent = {
   readonly codexBinary?: string;
   readonly codexUnavailable?: AgentRuntimeConfiguration["providers"][string]["componentUnavailable"];
+  /** The search path the managed Codex needs when execution's own lacks its package tools. */
+  readonly codexSearchPath?: string;
 };
 
 export function managedCodexProvider(
@@ -14,7 +16,6 @@ export function managedCodexProvider(
     readonly homePath: string;
     readonly displayName: string;
     readonly models: readonly { readonly slug: string; readonly name: string }[];
-    readonly environment: Readonly<Record<string, string | undefined>>;
     readonly key: Redacted.Redacted | undefined;
     readonly keyVariable: string;
     readonly providerId: string;
@@ -38,12 +39,12 @@ export function managedCodexProvider(
     ...(input.codexUnavailable ? { componentUnavailable: input.codexUnavailable } : {}),
     modelAllowlist: input.models.map(({ slug }) => slug),
     environment: key
-      ? isolatedProviderEnvironment(
-          input.environment,
+      ? declaredProviderEnvironment(
           {
             CODEX_HOME: homePath,
             CODEX_SQLITE_HOME: homePath,
             [keyVariable]: Redacted.value(key),
+            ...(input.codexSearchPath ? { PATH: input.codexSearchPath } : {}),
           },
           [keyVariable],
         )

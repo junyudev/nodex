@@ -23,7 +23,7 @@ describe("mergeProviderInstanceEnvironment", () => {
           { name: "CLAUDE_CONFIG_DIR", value, sensitive: false },
           { name: "CUSTOM_VALUE", value, sensitive: false },
         ],
-        baseEnv,
+        { host: baseEnv },
       );
 
       expect(environment).toEqual({
@@ -48,7 +48,7 @@ describe("mergeProviderInstanceEnvironment", () => {
       expect(
         yield* mergeProviderInstanceEnvironment(
           [{ name: "CUSTOM_VALUE", value: "~/.custom", sensitive: false }],
-          baseEnv,
+          { host: baseEnv },
         ),
       ).toEqual({ ...baseEnv, CUSTOM_VALUE: "~/.custom" });
     }),
@@ -62,7 +62,7 @@ describe("mergeProviderInstanceEnvironment", () => {
             { name: "OPENROUTER_API_KEY", value: "sk-or-test", sensitive: true },
             { name: "ANTHROPIC_API_KEY", value: "", sensitive: false },
           ],
-          { ANTHROPIC_API_KEY: "inherited", PATH: "/bin" },
+          { host: { ANTHROPIC_API_KEY: "inherited", PATH: "/bin" } },
         ),
       ).toMatchObject({
         OPENROUTER_API_KEY: "sk-or-test",
@@ -70,5 +70,45 @@ describe("mergeProviderInstanceEnvironment", () => {
         PATH: "/bin",
       });
     }),
+  );
+
+  it.effect.each(["win32", "darwin"] as const)(
+    "uses only the declared provider credentials for isolated instances on %s",
+    (platform) =>
+      Effect.gen(function* () {
+        const host = {
+          "ProgramFiles(x86)": "C:\\Program Files (x86)",
+          "BASH_FUNC_greet%%": "() {  echo hi\n}",
+          HTTPS_PROXY: "http://proxy.example",
+          oPeNaI_ApI_KeY: "host-openai",
+          aZuRe_oPeNaI_ApI_KeY: "host-azure",
+          anthropic_auth_token: "host-anthropic",
+          Codex_Home: "/host/codex",
+          CLAUDE_CONFIG_DIR: "/host/claude",
+          claudecode: "1",
+          Nodex_Gateway_Api_Key: "host-gateway",
+          nodex_codex_launch_args: "-c model_provider=openai",
+          Path: "C:\\Windows",
+        };
+        expect(
+          yield* mergeProviderInstanceEnvironment(
+            [
+              { name: "CODEX_HOME", value: "/instance/codex", sensitive: false },
+              { name: "CODEX_PROVIDER_API_KEY", value: "instance-key", sensitive: true },
+              { name: "PATH", value: "C:\\tools", sensitive: false },
+            ],
+            { isolated: true, host },
+          ),
+        ).toEqual({
+          "ProgramFiles(x86)": "C:\\Program Files (x86)",
+          "BASH_FUNC_greet%%": "() {  echo hi\n}",
+          HTTPS_PROXY: "http://proxy.example",
+          CODEX_HOME: "/instance/codex",
+          CODEX_PROVIDER_API_KEY: "instance-key",
+          PATH: "C:\\tools",
+          ...(platform === "win32" ? {} : { Path: host.Path }),
+        });
+        expect(yield* mergeProviderInstanceEnvironment(undefined, { host })).toEqual(host);
+      }).pipe(Effect.provideService(HostProcess.Platform, platform)),
   );
 });

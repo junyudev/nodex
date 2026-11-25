@@ -1,3 +1,4 @@
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
@@ -191,14 +192,18 @@ export const environment = Effect.fn("OpenCode.NativeExecutionPlugin.environment
   yield* fs.chmod(directory, 0o700);
   yield* fs.writeFileString(`${directory}/index.js`, generation === "v1" ? sourceV1 : source);
   yield* fs.writeFileString(`${directory}/package.json`, '{"type":"module","main":"index.js"}');
-  const content = OpenCodeRuntime.resolveOpenCodeConfigContent(inherited);
+  const platform = yield* HostProcess.Platform;
+  const content = OpenCodeRuntime.resolveOpenCodeConfigContent(
+    inherited,
+    yield* HostProcess.Environment,
+    platform,
+  );
   const config = yield* Schema.decodeUnknownEffect(
     fromLenientJson(Schema.Record(Schema.String, Schema.Unknown)),
   )(content);
   const routing = `${directory}/shells`;
   yield* fs.makeDirectory(routing, { mode: 0o700 });
-  const environment: NodeJS.ProcessEnv = {
-    ...inherited,
+  return HostProcess.mergeProcessEnvironments(platform, inherited, {
     NODEX_AGENT_SHELL: "1",
     NODEX_OPENCODE_CLI_ROUTING: routing,
     OPENCODE_CONFIG_CONTENT: JSON.stringify({
@@ -215,6 +220,5 @@ export const environment = Effect.fn("OpenCode.NativeExecutionPlugin.environment
             plugins: [...(Array.isArray(config.plugins) ? config.plugins : []), directory],
           }),
     }),
-  };
-  return environment;
+  });
 });

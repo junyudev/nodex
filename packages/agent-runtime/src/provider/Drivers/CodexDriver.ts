@@ -155,10 +155,9 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv, Path.Pat
       const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const modelCatalog = yield* ModelCatalog.ModelCatalog;
       const currentCatalog = modelCatalog.current(DRIVER_KIND);
-      const processEnv = yield* mergeProviderInstanceEnvironment(
-        environment,
-        config.isolated ? {} : process.env,
-      );
+      const processEnv = yield* mergeProviderInstanceEnvironment(environment, {
+        isolated: config.isolated,
+      });
       const homeLayout = yield* resolveCodexHomeLayout(config);
       const continuationIdentity = codexContinuationIdentity(homeLayout);
       const stampIdentity = withInstanceIdentity({

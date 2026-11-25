@@ -6,8 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { FetchHttpClient } from "effect/http";
-import { ProviderInstanceConfigMap } from "@nodex/runtime-contracts";
-import * as Schema from "effect/Schema";
+import type { ProviderInstanceConfigMap } from "@nodex/runtime-contracts";
 import { DEFAULT_SIGNAL_EXPORT } from "@nodex/runtime-shared/observability";
 import * as OtelEnvironment from "@nodex/runtime-shared/otelEnvironment";
 import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
@@ -60,11 +59,11 @@ import * as Deferred from "effect/Deferred";
 import * as ServerActivation from "../serverActivation.ts";
 import * as ImportedExecution from "./ImportedExecution.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
+import * as ProviderDeclarations from "./ProviderDeclarations.ts";
 import { NodePtyAdapterLive } from "./NodePtyAdapter.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
 
 const layerPlatform = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, NodePtyAdapterLive);
-const decodeProviderConfiguration = Schema.decodeUnknownEffect(ProviderInstanceConfigMap);
 
 /** Configuration derives every writable path beneath the dedicated runtime home. */
 export const layerConfiguration = (configuration: AgentRuntimeConfiguration) =>
@@ -185,31 +184,25 @@ const layerServerActivation = Layer.effect(
  * capabilities and its explicit policy overrides; HTTP/MCP credentials come from the scoped
  * transport host, never from a renderer.
  */
-export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
-  const layerPolicy = Layer.unwrap(
-    decodeProviderConfiguration(configuration.providers).pipe(
-      Effect.map((providers) =>
-        ModelPolicy.executionProviders(
-          configuration.modelPolicy ?? DEFAULT_MODEL_POLICY,
-          providers,
-        ),
-      ),
-      Effect.map(ProviderConfiguration.layerPolicy),
+export const layerEngine = (configuration: AgentRuntimeConfiguration) =>
+  Layer.unwrap(
+    ProviderDeclarations.admit(configuration.providers).pipe(
+      Effect.map((providers) => layerAdmittedEngine(configuration, providers)),
     ),
   );
-  const layerInstances = Layer.unwrap(
-    Effect.gen(function* () {
-      const configMap = ModelPolicy.executionProviders(
-        configuration.modelPolicy ?? DEFAULT_MODEL_POLICY,
-        yield* decodeProviderConfiguration(configuration.providers),
-      );
-      return ProviderInstances.layer({
-        drivers: BUILT_IN_DRIVERS,
-        configMap,
-        pendingModels: pendingProviderModels,
-      }).pipe(Layer.provide(ProviderHost.layer), Layer.provide(layerProviderInfrastructure));
-    }),
-  );
+
+const layerAdmittedEngine = (
+  configuration: AgentRuntimeConfiguration,
+  providers: ProviderInstanceConfigMap,
+) => {
+  const modelPolicy = configuration.modelPolicy ?? DEFAULT_MODEL_POLICY;
+  const configMap = ModelPolicy.executionProviders(modelPolicy, providers);
+  const layerPolicy = ProviderConfiguration.layerPolicy(configMap);
+  const layerInstances = ProviderInstances.layer({
+    drivers: BUILT_IN_DRIVERS,
+    configMap,
+    pendingModels: pendingProviderModels,
+  }).pipe(Layer.provide(ProviderHost.layer), Layer.provide(layerProviderInfrastructure));
   return Layer.mergeAll(
     RuntimeLayer.layerProduction,
     RuntimeLayer.layerEventSink,
@@ -254,15 +247,7 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
         ),
       ),
       Layer.provideMerge(
-        Layer.effect(
-          ModelPolicy.RuntimeModelPolicy,
-          Effect.gen(function* () {
-            return yield* ModelPolicy.make(
-              configuration.modelPolicy ?? DEFAULT_MODEL_POLICY,
-              yield* decodeProviderConfiguration(configuration.providers),
-            );
-          }),
-        ),
+        Layer.effect(ModelPolicy.RuntimeModelPolicy, ModelPolicy.make(modelPolicy, providers)),
       ),
     )
     .pipe(

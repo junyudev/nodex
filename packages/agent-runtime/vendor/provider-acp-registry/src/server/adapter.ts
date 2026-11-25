@@ -144,6 +144,7 @@ function makeAcpRegistryRuntime(
   > =>
     Effect.gen(function* () {
       const { processEnvironment, ...runtimeInput } = input;
+      const platform = yield* HostProcess.Platform;
       const resolved = yield* catalog
         .resolve(options.settings, input.cwd, options.environment)
         .pipe(
@@ -158,18 +159,18 @@ function makeAcpRegistryRuntime(
       const context = yield* Layer.build(
         AcpSessionRuntime.layer({
           ownDetachedProcessGroup: true,
-          ownDescendantProcessGroups: (yield* HostProcess.Platform) === "linux",
-          processGroupPlatform: yield* HostProcess.Platform,
+          ownDescendantProcessGroups: platform === "linux",
+          processGroupPlatform: platform,
           ...runtimeInput,
           customModels: options.settings.customModels,
-          spawn:
-            processEnvironment === undefined
-              ? { ...resolved.spawn, extendEnv: options.settings.inheritEnvironment !== false }
-              : {
-                  ...resolved.spawn,
-                  env: { ...resolved.spawn.env, ...processEnvironment },
-                  extendEnv: options.settings.inheritEnvironment !== false,
-                },
+          // The instance environment is already complete; the launch never re-inherits the host.
+          spawn: {
+            ...resolved.spawn,
+            env: HostProcess.mergeProcessEnvironments(
+              platform, resolved.spawn.env, processEnvironment,
+            ),
+            extendEnv: false,
+          },
           ...(options.settings.authMethodId ? { authMethodId: options.settings.authMethodId } : {}),
         }),
       );
@@ -321,10 +322,9 @@ export const AcpRegistryAdapterV2Driver: ProviderAdapterDriver<
       return yield* makeAcpRegistryAdapterV2({
         instanceId: input.instanceId,
         settings: { ...input.config, enabled: input.enabled },
-        environment: yield* mergeProviderInstanceEnvironment(
-          input.environment,
-          input.config.inheritEnvironment === false ? {} : hostEnvironment,
-        ),
+        environment: yield* mergeProviderInstanceEnvironment(input.environment, {
+          host: input.config.inheritEnvironment === false ? {} : hostEnvironment,
+        }),
         selfInvocation,
         nativeLogging: (threadId) =>
           makeNativeLogger({

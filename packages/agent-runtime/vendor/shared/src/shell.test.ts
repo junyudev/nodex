@@ -625,13 +625,13 @@ effectIt.layer(NodeServices.layer)("resolveSpawnCommand", (it) => {
     Effect.gen(function* () {
       let resolvedEnvironment: NodeJS.ProcessEnv | undefined;
       yield* resolveSpawnCommand("codex", ["app-server"], {
-        env: { CODEX_HOME: "C:\\Users\\tester\\.codex" },
+        env: { PATH: "C:\\instance-bin", CODEX_HOME: "C:\\Users\\tester\\.codex" },
         extendEnv: true,
       }).pipe(
         Effect.provideService(HostProcess.Platform, "win32"),
         Effect.provideService(CommandResolutionCache, new Map()),
         Effect.provideService(HostProcess.Environment, {
-          PATH: "C:\\Users\\tester\\AppData\\Roaming\\npm",
+          Path: "C:\\Users\\tester\\AppData\\Roaming\\npm",
           PATHEXT: ".COM;.EXE;.BAT;.CMD",
         }),
         Effect.provideService(SpawnExecutableResolution, (_command, _platform, env) => {
@@ -641,7 +641,7 @@ effectIt.layer(NodeServices.layer)("resolveSpawnCommand", (it) => {
       );
 
       expect(resolvedEnvironment).toEqual({
-        PATH: "C:\\Users\\tester\\AppData\\Roaming\\npm",
+        PATH: "C:\\instance-bin",
         PATHEXT: ".COM;.EXE;.BAT;.CMD",
         CODEX_HOME: "C:\\Users\\tester\\.codex",
       });

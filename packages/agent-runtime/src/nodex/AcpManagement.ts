@@ -204,11 +204,11 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
     const entry = (passive ? yield* policy.desired : captured.config)[id];
     if (entry?.driver !== "acpRegistry")
       return yield* failure("The ACP instance is no longer configured.");
+    if (entry.unavailable) return yield* failure(entry.unavailable.message);
     const settings = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(entry.config);
-    const environment = yield* mergeProviderInstanceEnvironment(
-      entry.environment,
-      settings.inheritEnvironment === false ? {} : hostEnvironment,
-    );
+    const environment = yield* mergeProviderInstanceEnvironment(entry.environment, {
+      host: settings.inheritEnvironment === false ? {} : hostEnvironment,
+    });
     return { entry, settings, environment, revision: captured.revision };
   });
   const authTarget = Effect.fn("ProviderAuthentication.target")(function* (
@@ -508,7 +508,9 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
         for (const snapshot of yield* Effect.all([policy.current, policy.desired])) {
           for (const [id, config] of Object.entries(snapshot)) {
             if (config.driver !== "acpRegistry") continue;
-            const settings = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(config.config);
+            const settings = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(
+              config.config ?? {},
+            );
             if (settings.source === "registry" && settings.agentId === request.input.agentId)
               referenced.add(ProviderInstanceId.make(id));
           }

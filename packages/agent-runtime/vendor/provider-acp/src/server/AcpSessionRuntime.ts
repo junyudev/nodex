@@ -1563,12 +1563,20 @@ export const make = (
         ),
       );
 
+    const platform = yield* HostProcess.Platform;
+    const inheritedEnvironment =
+      options.spawn.extendEnv === false ? undefined : yield* HostProcess.Environment;
+    const environment = HostProcess.mergeProcessEnvironments(
+      platform,
+      inheritedEnvironment,
+      options.spawn.env,
+    );
     const spawnCommand =
       options.spawn.shell === false
         ? { command: options.spawn.command, args: options.spawn.args, shell: false }
         : yield* resolveSpawnCommand(options.spawn.command, options.spawn.args, {
-            ...(options.spawn.env ? { env: options.spawn.env } : {}),
-            extendEnv: options.spawn.extendEnv ?? true,
+            env: environment,
+            extendEnv: false,
           });
     const linuxCgroupLease =
       options.ownDescendantProcessGroups === true && options.processGroupPlatform === "linux"
@@ -1598,7 +1606,7 @@ export const make = (
             const resolved = resolveLinuxCgroupTargetCommand(
               spawnCommand.command,
               options.spawn.cwd ?? options.cwd,
-              { ...process.env, ...options.spawn.env },
+              environment,
             );
             if (resolved !== undefined) return resolved;
             return yield* new EffectAcpErrors.AcpSpawnError({
@@ -1617,7 +1625,7 @@ export const make = (
               args: spawnCommand.args,
               name: "acp",
               threadId: yield* AgentScopeThreadId,
-              env: { ...process.env, ...options.spawn.env },
+              env: environment,
             })),
             shell: false,
           };
@@ -1634,18 +1642,17 @@ export const make = (
           };
     const spawnEnvironment =
       linuxCgroupLease === undefined
-        ? options.spawn.env
-        : {
-            ...options.spawn.env,
+        ? environment
+        : HostProcess.mergeProcessEnvironments(platform, environment, {
             ELECTRON_RUN_AS_NODE: "1",
             NODEX_ACP_CGROUP_WRAPPER: "1",
-          };
+          });
     const child = yield* spawner
       .spawn(
         ChildProcess.make(containedSpawnCommand.command, containedSpawnCommand.args, {
           ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
-          ...(spawnEnvironment ? { env: spawnEnvironment } : {}),
-          extendEnv: options.spawn.extendEnv ?? true,
+          env: spawnEnvironment,
+          extendEnv: false,
           ...(options.ownDetachedProcessGroup === undefined
             ? {}
             : { detached: options.ownDetachedProcessGroup }),

@@ -31,7 +31,7 @@ interface Snapshot {
   readonly policy: Policy;
   readonly providers: ProviderInstanceConfigMap;
 }
-/** A closed credit provider must not materialize even a probe with managed credentials. */
+/** A closed credit provider never probes. Unavailable declarations still produce diagnostic snapshots. */
 export const executionProviders = (
   policy: Policy,
   providers: ProviderInstanceConfigMap,
@@ -39,6 +39,7 @@ export const executionProviders = (
   Object.fromEntries(
     Object.entries(providers).filter(
       ([instanceId, provider]) =>
+        provider.unavailable !== undefined ||
         !spendsNodexCredit({ ...provider, instanceId }) ||
         isProviderOn(policy, { ...provider, instanceId }),
     ),

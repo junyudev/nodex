@@ -284,26 +284,18 @@ function packageCommandCandidates(
   );
 }
 
-function readEnvironmentPath(
-  environment: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform,
-): string | undefined {
-  if (platform !== "win32") return environment.PATH;
-  return (
-    environment.PATH ??
-    Object.entries(environment).find(([key]) => key.toLowerCase() === "path")?.[1]
-  );
-}
-
 function withPreferredPath(
   environment: NodeJS.ProcessEnv,
   directory: string,
   platform: NodeJS.Platform,
 ): NodeJS.ProcessEnv {
-  return {
-    ...environment,
-    PATH: mergePathEntries(directory, readEnvironmentPath(environment, platform), platform),
-  };
+  return HostProcess.mergeProcessEnvironments(platform, environment, {
+    PATH: mergePathEntries(
+      directory,
+      HostProcess.readEnvironmentVariable(platform, environment, "PATH"),
+      platform,
+    ),
+  });
 }
 
 /**
@@ -730,12 +722,11 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
           return remove.pipe(Effect.catch(() => Effect.asVoid(Effect.forkDetach(retry))));
         },
       );
-      if (platform !== "win32") return { ...environment, TMPDIR: directory };
-      // Windows env keys are case-insensitive; drop aliases so ours win.
-      const rest = Object.fromEntries(
-        Object.entries(environment).filter(([key]) => !["temp", "tmp"].includes(key.toLowerCase())),
+      return HostProcess.mergeProcessEnvironments(
+        platform,
+        environment,
+        platform === "win32" ? { TEMP: directory, TMP: directory } : { TMPDIR: directory },
       );
-      return { ...rest, TEMP: directory, TMP: directory };
     },
   );
 
@@ -1396,14 +1387,13 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
               ? Effect.void
               : fileSystem.remove(candidate, { recursive: true, force: true }).pipe(Effect.ignore),
         );
-        const packageEnvironment =
+        const packageEnvironment = HostProcess.mergeProcessEnvironments(
+          platform,
+          environment,
           distribution === "npx"
-            ? { ...environment, npm_config_prefix: candidate }
-            : {
-                ...environment,
-                UV_TOOL_DIR: candidate,
-                UV_TOOL_BIN_DIR: packageBinDirectory(candidate, distribution),
-              };
+            ? { npm_config_prefix: candidate }
+            : { UV_TOOL_DIR: candidate, UV_TOOL_BIN_DIR: packageBinDirectory(candidate, distribution) },
+        );
         const managerDirectory = yield* managerBinDirectory(managerPath);
         const installEnvironment = withPreferredPath(
           packageEnvironment,
@@ -2087,15 +2077,19 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
     const identity =
       settings.source === "registry" ? settings.agentId : (settings.agentIdentity ?? "");
     return identity === "claude-acp" || identity === "claude-agent-acp"
-      ? {
-          ...environment,
-          CLAUDE_AGENT_ACP_EXPERIMENTAL_V2: environment.CLAUDE_AGENT_ACP_EXPERIMENTAL_V2 ?? "1",
-        }
+      ? HostProcess.mergeProcessEnvironments(
+          platform,
+          { CLAUDE_AGENT_ACP_EXPERIMENTAL_V2: "1" },
+          environment,
+        )
       : environment;
   };
 
   const resolve: AcpRegistryCatalog["Service"]["resolve"] = (settings, cwd, environment) =>
     Effect.gen(function* () {
+      // Both local and registry agents carry a complete environment to every launch caller.
+      const effectiveEnvironment =
+        environment ?? (settings.inheritEnvironment === false ? {} : hostEnvironment);
       if (settings.source === "local") {
         const executable = settings.commandPath.trim();
         if (!executable) {
@@ -2104,7 +2098,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
             detail: "Local ACP provider requires an executable.",
           });
         }
-        const env = applyAgentEnvironment(settings, environment ?? hostEnvironment);
+        const env = applyAgentEnvironment(settings, effectiveEnvironment);
         const command = resolveExecutable(executable, platform, env);
         if (command === undefined) {
           return yield* new AcpRegistryError({
@@ -2115,7 +2109,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
         yield* validateLocalExecutable(command);
         return {
           distribution: "local",
-          spawn: { command, args: settings.commandArgs, cwd, env, shell: false },
+          spawn: { command, args: settings.commandArgs, cwd, env, extendEnv: false, shell: false },
         } satisfies ResolvedAcpRegistryAgent;
       }
       const agentId = settings.agentId.trim();
@@ -2136,7 +2130,6 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       let command: string;
       let args: ReadonlyArray<string>;
       let commandBinDirectory: string | undefined;
-      const effectiveEnvironment = environment ?? hostEnvironment;
       const commandOverride = settings.commandPath.trim();
       if (commandOverride.length > 0) {
         const resolvedOverride = resolveExecutable(commandOverride, platform, effectiveEnvironment);
@@ -2216,10 +2209,11 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
         args = distribution.args;
       }
 
-      const baseSpawnEnvironment = {
-        ...effectiveEnvironment,
-        ...distribution.env,
-      };
+      const baseSpawnEnvironment = HostProcess.mergeProcessEnvironments(
+        platform,
+        effectiveEnvironment,
+        distribution.env,
+      );
       // Managed JavaScript entrypoints must keep working with isolated HOME,
       // where host version-manager shims can no longer resolve their toolchain.
       const packageEnvironment =
@@ -2238,6 +2232,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
           command,
           args,
           cwd,
+          extendEnv: false,
           env: applyAgentEnvironment(
             settings,
             runtimeTempDir !== undefined && UNPACKING_AGENT_IDS.has(agent.id)

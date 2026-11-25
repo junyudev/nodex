@@ -155,7 +155,7 @@ it.live("routes live and replayed task metadata to delegation ancestors only", (
     const host = Host.layer(configuration).pipe(
       Layer.provide(Bridge.layerExecutionHost.pipe(Layer.provide(bridge))),
     );
-    const application = Service.layer(notify, {}).pipe(
+    const application = Service.layer(notify).pipe(
       Layer.provideMerge(host),
       Layer.provideMerge(bridge),
     );

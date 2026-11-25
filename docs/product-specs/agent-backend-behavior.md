@@ -54,6 +54,11 @@ Changing configuration affects new connections; a live native connection retains
 captured identity and environment. An instance can be disabled without redirecting
 its Sessions to another Provider.
 
+Nodex loads and updates Provider instances independently. A configuration or preparation
+failure leaves that instance unavailable with a reason and blocks new execution for it.
+Other Providers remain usable. Correcting the configuration restores the instance under
+its existing identity.
+
 A Project supplies a default execution folder. Projectless Sessions retain their
 captured folder. Managed worktrees and their setup environments remain physical
 execution locations; they do not limit content access. Explicit Provider account
@@ -206,7 +211,9 @@ credits, requests the Claude Code Component in the background. A connection beco
 Agent finishes installing. If the Component is off, the connection points to **Settings → General →
 Components**. A Claude Code connection points Claude Code's own model names, which it uses for
 subagents and quick work, at the connection's first model, and at its lightest one for quick work.
-Regular Claude connections use the person's own executable.
+Regular Claude connections use the person's own executable. API-key connections use their own
+provider credentials and configuration for conversations, checks and quick work. They inherit
+operating-system and toolchain environment variables from the execution host.
 
 Connecting sends one model-list request with the key in the Agent's API: the provider's
 OpenAI-compatible list for Codex, falling back to the provider's documented list; the

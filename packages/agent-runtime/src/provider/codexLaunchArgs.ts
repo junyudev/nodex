@@ -1,3 +1,4 @@
+import { readEnvironmentVariable } from "@nodex/runtime-shared/HostProcess";
 import { tokenizeCliArgs } from "@nodex/runtime-shared/cliArgs";
 
 const NODEX_CODEX_LAUNCH_ARGS_ENV = "NODEX_CODEX_LAUNCH_ARGS";
@@ -5,7 +6,11 @@ const NODEX_CODEX_LAUNCH_ARGS_ENV = "NODEX_CODEX_LAUNCH_ARGS";
 export const resolveCodexLaunchArgs = (
   launchArgs?: string,
   environment: NodeJS.ProcessEnv = process.env,
-) => environment[NODEX_CODEX_LAUNCH_ARGS_ENV]?.trim() || launchArgs?.trim() || "";
+  platform = process.platform,
+) =>
+  readEnvironmentVariable(platform, environment, NODEX_CODEX_LAUNCH_ARGS_ENV)?.trim() ||
+  launchArgs?.trim() ||
+  "";
 
 const codexLaunchArgv = (launchArgs?: string): ReadonlyArray<string> => tokenizeCliArgs(launchArgs);
 

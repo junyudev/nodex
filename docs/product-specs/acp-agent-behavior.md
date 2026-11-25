@@ -52,6 +52,9 @@ explicit environment credentials and rechecking after login with an external CLI
 terminal exit triggers a new authentication check; it does not itself establish authentication.
 The Agent owns its native credential files. Environment secrets submitted to Nodex use the Profile's
 encrypted secret store and are never copied into Runtime settings or installation receipts.
+The configured Agent environment applies to conversations, connection checks, sign-in and session
+management. When host environment inheritance is disabled, all of these launches use the instance
+and distribution settings without inheriting environment variables from the Runtime process.
 
 Account requests share Nodex’s Agent authentication path. Main resolves the saved instance and
 assigns the initiating window as its owner. Operations bind their instance, owner, configuration

@@ -1057,6 +1057,13 @@ of catalogs, captured Run settings and deferred provider configuration. Project 
 cannot widen the Profile policy. Readable history retains its exact account binding even
 when execution is refused. See [Model policy](product-specs/model-policy-behavior.md).
 
+Main declares Provider instances; the Runtime admits each declaration independently and owns
+every provider process environment. A declaration carries only the instance's own homes,
+credentials and settings, never a copy of the host environment. The Runtime composes each launch
+from its own host environment, removing the host's provider credentials for an isolated instance.
+One declaration that cannot be admitted or prepared leaves only that instance unavailable. See
+[Agent backend behavior](product-specs/agent-backend-behavior.md).
+
 Ephemeral text generation uses configured Runtime provider utilities without creating product
 Sessions. Main owns the renderer request lifetime; the Runtime owns execution and native utility
 resources, which follow request interruption and process shutdown. [Page selection rewrites](product-specs/nfm-editor-ask-for-change-behavior.md)

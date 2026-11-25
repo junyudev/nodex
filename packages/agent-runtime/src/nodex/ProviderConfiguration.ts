@@ -2,11 +2,13 @@ import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.t
 import {
   ProviderInstanceId,
   ServerSettingsError,
+  type ProviderInstanceConfig,
   type ProviderInstanceConfigMap,
 } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Ref from "effect/Ref";
+import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -48,15 +50,21 @@ export const makePolicy = Effect.fn("AgentRuntime.makeProviderPolicy")(function*
     ]).pipe(
       Effect.map(([applied, wanted]) =>
         Object.fromEntries(
-          Object.entries(applied).map(([id, entry]) => [
-            id,
-            {
-              ...entry,
-              enabled:
-                wanted[id as ProviderInstanceId]?.enabled ??
-                (wanted[id as ProviderInstanceId] === undefined ? false : (entry.enabled ?? true)),
-            },
-          ]),
+          Object.entries(applied).map(([id, entry]) => {
+            const next = Object.hasOwn(wanted, id)
+              ? wanted[ProviderInstanceId.make(id)]
+              : undefined;
+            return [
+              id,
+              {
+                ...entry,
+                enabled:
+                  entry.unavailable || next?.unavailable || next === undefined
+                    ? false
+                    : (next.enabled ?? entry.enabled ?? true),
+              },
+            ];
+          }),
         ),
       ),
     ),
@@ -160,14 +168,15 @@ export const makeWithPorts = Effect.fn("AgentRuntime.ProviderConfiguration")(fun
     const next = { ...wanted };
     const deferredInstanceIds: string[] = [];
     for (const id of changed) {
-      const old = before[id];
+      const old = Object.hasOwn(before, id) ? before[id] : undefined;
       // An instance whose component is unavailable has no driver, so its work is waiting for
       // this change, not running on the old configuration.
       if (
         old !== undefined &&
+        old.unavailable === undefined &&
         old.componentUnavailable === undefined &&
         busy.has(id) &&
-        !(old.source === "nodex" && wanted[id] === undefined)
+        !(old.source === "nodex" && !Object.hasOwn(wanted, id))
       ) {
         next[id] = old;
         deferredInstanceIds.push(id);
@@ -218,6 +227,21 @@ export const runOwnedInstances = (sql: SqlClient.SqlClient) =>
     Effect.map((rows) => rows.map((row) => ProviderInstanceId.make(row.provider_instance_id))),
   );
 
+const decodeAcpSettings = Schema.decodeUnknownOption(AcpRegistrySettings);
+
+type NativeScope = readonly [agentIdentity: string, storageScope: string | undefined];
+
+const nativeScopeOf = (entry: ProviderInstanceConfig): NativeScope | undefined => {
+  if (entry.driver !== "acpRegistry" || entry.unavailable) return undefined;
+  const settings = Option.getOrUndefined(decodeAcpSettings(entry.config ?? {}));
+  if (!settings) return undefined;
+  return [
+    settings.agentIdentity ??
+      (settings.source === "registry" ? settings.agentId : settings.commandPath),
+    settings.nativeStorageScope,
+  ];
+};
+
 export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function* (
   initial: ProviderInstanceConfigMap,
 ): Effect.fn.Return<
@@ -235,6 +259,17 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
   const sessions = yield* Sessions.ProviderSessionManagerV2;
   const sql = yield* SqlClient.SqlClient;
   const policy = yield* ProviderPolicy;
+  // An unavailable update must not erase the last applied ACP identity while the row is repaired.
+  let nativeScopes = new Map<string, NativeScope>();
+  const rememberNativeScopes = (config: ProviderInstanceConfigMap) => {
+    const next = new Map<string, NativeScope>();
+    for (const [id, entry] of Object.entries(config)) {
+      const scope = nativeScopeOf(entry) ?? nativeScopes.get(id);
+      if (scope && (entry.driver === "acpRegistry" || entry.unavailable)) next.set(id, scope);
+    }
+    nativeScopes = next;
+  };
+  rememberNativeScopes(initial);
   return yield* makeWithPorts(initial, {
     busyInstances: Effect.gen(function* () {
       const native = yield* sessions.busyInstances;
@@ -261,24 +296,23 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
             (cause) => new Error("Could not retire an idle provider instance.", { cause }),
           ),
         ),
-    reconcile: (config) => registry.reconcile(config).pipe(Effect.andThen(policy.replace(config))),
+    reconcile: (config) =>
+      registry.reconcile(config).pipe(
+        Effect.tap(() => Effect.sync(() => rememberNativeScopes(config))),
+        Effect.andThen(policy.replace(config)),
+      ),
     validate: Effect.fn("ProviderConfiguration.validateNativeScope")(function* (current, desired) {
-      for (const [id, before] of Object.entries(current)) {
-        const after = desired[ProviderInstanceId.make(id)];
-        if (before.driver !== "acpRegistry" || after === undefined || Equal.equals(before, after))
+      for (const [id, after] of Object.entries(desired)) {
+        const previous = nativeScopes.get(id);
+        if (
+          !previous ||
+          after.unavailable ||
+          Equal.equals(current[ProviderInstanceId.make(id)], after)
+        )
           continue;
-        const previous = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(before.config).pipe(
-          Effect.orDie,
-        );
-        const next = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(after.config).pipe(
-          Effect.orDie,
-        );
-        const scope = (settings: AcpRegistrySettings) => [
-          settings.agentIdentity ??
-            (settings.source === "registry" ? settings.agentId : settings.commandPath),
-          settings.nativeStorageScope,
-        ];
-        if (Equal.equals(scope(previous), scope(next))) continue;
+        const next = nativeScopeOf(after);
+        // The registry reports invalid driver configuration for this instance.
+        if ((after.driver === "acpRegistry" && !next) || Equal.equals(previous, next)) continue;
         const mappings =
           yield* sql`SELECT provider_thread_id FROM orchestration_v2_projection_provider_threads WHERE provider_instance_id = ${id} LIMIT 1`.pipe(
             Effect.mapError(

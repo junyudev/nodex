@@ -305,7 +305,12 @@ const resolveClaudeConfigDirPath = Effect.fn("resolveClaudeConfigDirPath")(funct
   // for discovery to scan the same directory the runtime would. A relative
   // value is resolved against the workspace cwd — the subprocess's own cwd —
   // for the same reason.
-  const environmentConfigDir = environment.CLAUDE_CONFIG_DIR?.trim() ?? "";
+  const environmentConfigDir =
+    HostProcess.readEnvironmentVariable(
+      yield* HostProcess.Platform,
+      environment,
+      "CLAUDE_CONFIG_DIR",
+    )?.trim() ?? "";
   if (environmentConfigDir.length > 0) {
     return cwd ? path.resolve(cwd, environmentConfigDir) : path.resolve(environmentConfigDir);
   }

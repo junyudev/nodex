@@ -1,7 +1,5 @@
-import { isolatedProviderEnvironment } from "../agent-runtime/isolated-provider-environment";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import * as Redacted from "effect/Redacted";
 import type {
   AgentRuntimeOperations,
   AgentRuntimeConfiguration,
@@ -13,6 +11,7 @@ import {
   managedCodexProvider,
   type ManagedCodexComponent,
 } from "../agent-runtime/managed-codex-provider";
+import { managedClaudeProvider } from "../agent-runtime/managed-claude-provider";
 
 export const managedNodexAccountId = (identity: NodexAccountIdentity) =>
   createHash("sha256")
@@ -38,7 +37,6 @@ export function projectManagedNodexCatalog(
 export function managedNodexProviders(
   input: ManagedCodexComponent & {
     readonly home: string;
-    readonly environment: Readonly<Record<string, string | undefined>>;
     readonly managed: {
       readonly identity: NodexAccountIdentity;
       readonly access: NodexModelAccess;
@@ -49,11 +47,6 @@ export function managedNodexProviders(
   const { identity, access } = input.managed;
   const account = managedNodexAccountId(identity);
   const root = join(input.home, "account", "models", account);
-  const environment = (values: Record<string, string>) =>
-    isolatedProviderEnvironment(input.environment, values, [
-      "NODEX_GATEWAY_API_KEY",
-      "ANTHROPIC_AUTH_TOKEN",
-    ]);
   const models = NODEX_MODELS.filter((model) =>
     access.models.some((allowed) => allowed.id === model.id && allowed.protocol === model.protocol),
   );
@@ -83,24 +76,14 @@ export function managedNodexProviders(
     ...(claudeModels.length
       ? {
           [`nodex_claude_${account}`]: {
-            driver: "claudeAgent",
-            source: "nodex",
-            displayName: "Nodex",
-            enabled: true,
-            modelAllowlist: claudeModels.map((model) => model.id),
-            environment: environment({
-              CLAUDE_CONFIG_DIR: claudeHome,
-              ANTHROPIC_BASE_URL: access.anthropicBaseUrl,
-              ANTHROPIC_AUTH_TOKEN: Redacted.value(access.apiKey),
-              CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
-              CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-            }),
-            config: {
-              isolated: true,
-              binaryPath: "",
+            ...managedClaudeProvider({
               homePath: claudeHome,
-              customModels: claudeModels.map((model) => ({ slug: model.id, name: model.label })),
-            },
+              displayName: "Nodex",
+              models: claudeModels.map((model) => ({ slug: model.id, name: model.label })),
+              key: access.apiKey,
+              baseUrl: access.anthropicBaseUrl,
+            }),
+            source: "nodex",
           },
         }
       : {}),
