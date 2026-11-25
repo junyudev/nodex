@@ -27,6 +27,8 @@ import { cn } from "@/lib/utils";
 
 const RING_RADIUS = 12;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+/** Held-back headroom sits between the track (0.16) and a dimmed reading's arc (0.4). */
+const HELD_BACK_OPACITY = 0.38;
 
 /**
  * The open track: the ring with a 70° gap at the lower right, where a plus offers to sign in.
@@ -64,6 +66,20 @@ const SEVERITY_TEXT: Readonly<Record<UsageSeverity, string | undefined>> = {
 };
 
 type UsageRingTrack = "solid" | "dotted" | "spent" | "credits" | "open";
+
+const clampPercent = (percent: number) => Math.max(0, Math.min(100, percent));
+
+/**
+ * Dashes one stretch of the ring, from `from` to `to` percent clockwise from the top. A full ring
+ * is a plain circle: a dash's round caps would overlap at the top.
+ */
+function ringSegment(from: number, to: number) {
+  if (from <= 0 && to >= 100) return {};
+  return {
+    strokeDasharray: `${((RING_CIRCUMFERENCE * (to - from)) / 100).toFixed(3)} ${RING_CIRCUMFERENCE.toFixed(3)}`,
+    strokeDashoffset: ((-RING_CIRCUMFERENCE * from) / 100).toFixed(3),
+  };
+}
 
 const RING_TRACK_PAINT: Readonly<
   Record<Exclude<UsageRingTrack, "open">, { stroke: string; opacity: number }>
@@ -109,6 +125,10 @@ function UsageProviderMark({
  * is used up, an amber track is a used-up window that credits are carrying the account past, and
  * an open track with a plus is an account not signed in yet. Only low levels take color; a healthy
  * meter stays as quiet as the rail around it.
+ *
+ * When a shorter window runs out before a longer one, the arc continues faintly to the longer
+ * window's level: headroom the shorter window holds back until it resets. A used-up window then
+ * paints only what it holds back, not the whole track.
  */
 export function UsageRingGlyph({
   provider,
@@ -116,6 +136,7 @@ export function UsageRingGlyph({
   mark,
   track,
   arc,
+  heldBack,
   alert = false,
   pulse = false,
 }: {
@@ -130,10 +151,18 @@ export function UsageRingGlyph({
     readonly severity: UsageSeverity;
     readonly faded: boolean;
   } | null;
+  /** The longer window's level, which the arc's window holds back beyond its own. */
+  readonly heldBack?: { readonly percent: number; readonly severity: UsageSeverity } | null;
   readonly alert?: boolean;
   readonly pulse?: boolean;
 }) {
-  const percent = arc ? Math.max(0, Math.min(100, arc.percent)) : 0;
+  const percent = arc ? clampPercent(arc.percent) : 0;
+  const heldBackPercent = heldBack ? clampPercent(heldBack.percent) : 0;
+  const heldBackSpan = heldBackPercent - percent;
+  // A used-up window's tone covers what it blocks: the headroom it holds back, else the whole ring.
+  const blockedPaint =
+    heldBackSpan > 0 && (track === "spent" || track === "credits") ? RING_TRACK_PAINT[track] : null;
+  const trackPaint = RING_TRACK_PAINT[track === "open" || blockedPaint ? "solid" : track];
   return (
     <span
       className={cn(
@@ -161,17 +190,33 @@ export function UsageRingGlyph({
           </>
         ) : (
           <circle
-            data-usage-ring-track={track}
+            data-usage-ring-track={blockedPaint ? "solid" : track}
             cx="14"
             cy="14"
             r={RING_RADIUS}
             strokeWidth="2.25"
             strokeLinecap="round"
-            stroke={RING_TRACK_PAINT[track].stroke}
-            strokeOpacity={RING_TRACK_PAINT[track].opacity}
+            stroke={trackPaint.stroke}
+            strokeOpacity={trackPaint.opacity}
             strokeDasharray={track === "dotted" ? "0.01 3.75" : undefined}
           />
         )}
+        {heldBack && heldBackSpan > 0 ? (
+          <circle
+            data-usage-ring-held-back={blockedPaint ? track : heldBack.severity}
+            cx="14"
+            cy="14"
+            r={RING_RADIUS}
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            stroke={blockedPaint?.stroke ?? SEVERITY_TONE[heldBack.severity]}
+            strokeOpacity={
+              blockedPaint?.opacity ?? (arc?.faded ? HELD_BACK_OPACITY * 0.6 : HELD_BACK_OPACITY)
+            }
+            {...ringSegment(percent, heldBackPercent)}
+            className="transition-[stroke-dasharray,stroke-dashoffset,stroke,stroke-opacity] duration-500 ease-out motion-reduce:transition-none"
+          />
+        ) : null}
         {arc && percent > 0 ? (
           <circle
             data-usage-ring-arc={arc.severity}
@@ -182,12 +227,8 @@ export function UsageRingGlyph({
             strokeLinecap="round"
             stroke={SEVERITY_TONE[arc.severity]}
             strokeOpacity={arc.faded ? 0.4 : 1}
-            // A full ring is a plain circle: a dash's round caps would overlap at the top.
-            strokeDasharray={percent < 100 ? RING_CIRCUMFERENCE.toFixed(3) : undefined}
-            strokeDashoffset={
-              percent < 100 ? (RING_CIRCUMFERENCE * (1 - percent / 100)).toFixed(3) : undefined
-            }
-            className="transition-[stroke-dashoffset,stroke,stroke-opacity] duration-500 ease-out motion-reduce:transition-none"
+            {...ringSegment(0, percent)}
+            className="transition-[stroke-dasharray,stroke-dashoffset,stroke,stroke-opacity] duration-500 ease-out motion-reduce:transition-none"
           />
         ) : null}
       </svg>
@@ -229,6 +270,11 @@ function UsageRing({ view }: { readonly view: UsageMeterView }) {
       arc={
         level
           ? { percent: level.remainingPercent, severity: level.severity, faded: view.stale }
+          : null
+      }
+      heldBack={
+        view.heldBack
+          ? { percent: view.heldBack.remainingPercent, severity: view.heldBack.severity }
           : null
       }
       alert={view.reading.readFailed}
@@ -299,10 +345,13 @@ function UsageLevelBar({
 
 function UsageWindowRow({
   window,
+  holdingBack,
   faded,
   now,
 }: {
   readonly window: UsageWindowView;
+  /** This window runs out before a longer one, whose headroom returns when this one resets. */
+  readonly holdingBack: boolean;
   readonly faded: boolean;
   readonly now: number;
 }) {
@@ -318,7 +367,7 @@ function UsageWindowRow({
           )
       : window.resetsAt === null
         ? null
-        : exhausted
+        : exhausted || holdingBack
           ? intl.formatMessage(
               {
                 id: "workbench.workbenchRailUsageMeter.resetFuture",
@@ -607,7 +656,13 @@ export function UsageMeterCard({
           className="flex flex-col gap-3 border-t border-token-border p-3"
         >
           {view.windows.map((window) => (
-            <UsageWindowRow key={window.id} window={window} faded={view.stale} now={now} />
+            <UsageWindowRow
+              key={window.id}
+              window={window}
+              holdingBack={view.heldBack !== null && window.id === view.binding?.id}
+              faded={view.stale}
+              now={now}
+            />
           ))}
           {reading.credits !== null ? (
             <UsageCreditsRow credits={reading.credits} inUse={view.creditsInUse} />

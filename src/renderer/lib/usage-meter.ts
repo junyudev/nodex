@@ -53,6 +53,11 @@ export interface UsageReading {
   readonly credits: UsageCredits | null;
   /** A prepaid money balance the account spends from; null when it has none. */
   readonly balance: UsageBalance | null;
+  /**
+   * Each account window limits only its own models' requests, as Antigravity's quota groups do,
+   * so a shorter window never holds back a longer one.
+   */
+  readonly separateQuotas?: true;
 }
 
 /** A positive balance, or an account whose credits never run out. */
@@ -99,6 +104,11 @@ export interface UsageMeterView {
   readonly balance: UsageBalanceView | null;
   /** What the meter's ring draws: the binding window, else the balance since its last top-up. */
   readonly level: { readonly remainingPercent: number; readonly severity: UsageSeverity } | null;
+  /**
+   * The account's longest window while a shorter one runs out first: the shorter window holds
+   * back the rest of this one's headroom until it resets, so the ring draws that rest faint.
+   */
+  readonly heldBack: MeasuredUsageWindowView | null;
   readonly windows: readonly UsageWindowView[];
   /** The reading is old enough that use elsewhere on the account may have moved it. */
   readonly stale: boolean;
@@ -294,6 +304,23 @@ function compareWindows(left: UsageWindowReading, right: UsageWindowReading): nu
   return (left.durationMins ?? Infinity) - (right.durationMins ?? Infinity);
 }
 
+/** The longest account window with more left than the binding one, which is shorter. */
+function heldBackWindow(
+  accountWide: readonly MeasuredUsageWindowView[],
+  binding: MeasuredUsageWindowView | null,
+): MeasuredUsageWindowView | null {
+  if (binding === null || binding.durationMins === null) return null;
+  const bindingMins = binding.durationMins;
+  const longest = accountWide.reduce<MeasuredUsageWindowView | null>(
+    (longest, window) =>
+      window.durationMins !== null && window.durationMins > (longest?.durationMins ?? bindingMins)
+        ? window
+        : longest,
+    null,
+  );
+  return longest && longest.remainingPercent > binding.remainingPercent ? longest : null;
+}
+
 export function describeUsageMeter(
   reading: UsageReading,
   now: number = Date.now(),
@@ -342,6 +369,7 @@ export function describeUsageMeter(
             severity: balance.severity,
           }
         : null,
+    heldBack: reading.separateQuotas ? null : heldBackWindow(accountWide, binding),
     windows,
     stale,
     nextChangeAt: upcoming.length > 0 ? Math.min(...upcoming) : null,
@@ -446,9 +474,21 @@ export function describeUsageMeterLabel(view: UsageMeterView, now: number = Date
           { age: formatUsageAge(reading.observedAt, now) },
         )
       : "";
+  const heldBack = view.heldBack
+    ? getIntl().formatMessage(
+        { id: "lib.usageMeter.heldBack", defaultMessage: ", {percent}% left in {window} window" },
+        {
+          percent: view.heldBack.remainingPercent,
+          window: view.heldBack.label.toLocaleLowerCase(getIntl().locale),
+        },
+      )
+    : "";
   return getIntl().formatMessage(
-    { id: "lib.usageMeter.summary", defaultMessage: "{title} usage: {level}{credits}{age}" },
-    { title: reading.title, level, credits: describeCreditsInUse(view), age },
+    {
+      id: "lib.usageMeter.summary",
+      defaultMessage: "{title} usage: {level}{heldBack}{credits}{age}",
+    },
+    { title: reading.title, level, heldBack, credits: describeCreditsInUse(view), age },
   );
 }
 
@@ -692,6 +732,7 @@ export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boole
     // The Agent catalog reports windows only; the signed-in account's own reading has credits.
     credits: null,
     balance: null,
+    ...(meter?.separateQuotas ? { separateQuotas: true } : {}),
   };
 }
 

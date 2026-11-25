@@ -171,14 +171,60 @@ describe("usage formatting", () => {
 });
 
 describe("usage meter", () => {
+  const fiveHour = { ...reading().windows[0]!, usedPercent: 78 };
+  const weekly = { ...reading().windows[1]!, usedPercent: 36 };
+
   test("the ring follows the account window that runs out first", () => {
     const view = describeUsageMeter(reading(), NOW);
     expect(view.status).toBe("measured");
     expect(view.binding?.id).toBe("seven_day");
     expect(view.binding?.remainingPercent).toBe(30);
     expect(view.binding?.severity).toBe("low");
+    expect(view.heldBack).toBeNull();
     expect(view.stale).toBe(false);
     expect(describeUsageMeterLabel(view, NOW)).toBe("Claude usage: 30% left in weekly window");
+  });
+
+  test("the binding 5-hour window holds back the longest account window's headroom", () => {
+    const daily = {
+      ...weekly,
+      id: "daily",
+      label: "Daily",
+      durationMins: 24 * 60,
+      usedPercent: 20,
+    };
+    const view = describeUsageMeter(reading({ windows: [fiveHour, daily, weekly] }), NOW);
+    expect(view.binding?.id).toBe("five_hour");
+    expect(view.heldBack?.id).toBe("seven_day");
+    expect(view.heldBack?.remainingPercent).toBe(64);
+    expect(describeUsageMeterLabel(view, NOW)).toBe(
+      "Claude usage: 22% left in 5-hour window, 64% left in weekly window",
+    );
+  });
+
+  test.each<[condition: string, overrides: Partial<UsageReading>]>([
+    ["both windows have equal headroom", { windows: [fiveHour, { ...weekly, usedPercent: 78 }] }],
+    ["the weekly window has reset", { windows: [fiveHour, { ...weekly, resetsAt: NOW - 1 }] }],
+    [
+      "the weekly window applies only to Fable",
+      {
+        windows: [
+          fiveHour,
+          { ...weekly, id: "seven_day_fable", label: "Weekly · Fable", scope: "model" },
+        ],
+      },
+    ],
+    [
+      "the binding window has no known duration",
+      { windows: [{ ...fiveHour, durationMins: null }, weekly] },
+    ],
+    [
+      "the weekly window has no known duration",
+      { windows: [fiveHour, { ...weekly, durationMins: null }] },
+    ],
+    ["the quotas are separate", { windows: [fiveHour, weekly], separateQuotas: true }],
+  ])("does not hold back headroom when %s", (_, overrides) => {
+    expect(describeUsageMeter(reading(overrides), NOW).heldBack).toBeNull();
   });
 
   test("a model window never stands in for the account's headroom", () => {
@@ -333,11 +379,13 @@ describe("usage credits", () => {
 
   test("the rail announces credits only when they are carrying the account", () => {
     expect(describeUsageMeterLabel(describeUsageMeter(usedUp, NOW), NOW)).toBe(
-      "Claude usage: 5-hour limit reached, resets in 1 h, using credits, 1,241 left",
+      "Claude usage: 5-hour limit reached, resets in 1 h, 70% left in weekly window, using credits, 1,241 left",
     );
     expect(
       describeUsageMeterLabel(describeUsageMeter({ ...usedUp, credits: "unlimited" }, NOW), NOW),
-    ).toBe("Claude usage: 5-hour limit reached, resets in 1 h, using credits");
+    ).toBe(
+      "Claude usage: 5-hour limit reached, resets in 1 h, 70% left in weekly window, using credits",
+    );
     expect(
       describeUsageMeterLabel(describeUsageMeter(reading({ credits: 1240.5 }), NOW), NOW),
     ).toBe("Claude usage: 30% left in weekly window");
@@ -453,6 +501,17 @@ describe("usage readings", () => {
     expect(catalog).toEqual({ ...account, key: "codex:dev@example.com|" });
     expect(describeUsageMeter(catalog, NOW).binding?.id).toBe("secondary");
     expect(runtimeUsageReading(provider, true)).toEqual({ ...catalog, readFailed: true });
+  });
+
+  test("Antigravity readings mark separate quotas and Claude readings omit the flag", () => {
+    const antigravity = claudeProvider({
+      instanceId: "antigravity",
+      driver: "antigravity",
+      displayName: "Antigravity",
+      auth: { status: "authenticated", type: "oauth-personal" },
+    });
+    expect(runtimeUsageReading(antigravity, false).separateQuotas).toBe(true);
+    expect(runtimeUsageReading(claudeProvider(), false)).not.toHaveProperty("separateQuotas");
   });
 
   test.each([

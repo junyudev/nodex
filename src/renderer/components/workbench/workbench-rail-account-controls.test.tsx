@@ -284,12 +284,13 @@ describe("WorkbenchRailAccountControls", () => {
     expect(balance.compareDocumentPosition(resets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  test("a used-up window draws an amber ring while credits carry the account, red without", async () => {
+  test("a used-up 5-hour window colors held-back weekly headroom amber with credits and red without", async () => {
+    const resetsAt = Date.now() + HOUR;
     const usedUp = (credits: NonNullable<CodexAccountSnapshot["rateLimits"]>["credits"]) =>
       ({
         ...authenticatedAccount,
         rateLimits: {
-          primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: Date.now() + HOUR },
+          primary: { usedPercent: 100, windowDurationMins: 300, resetsAt },
           secondary: authenticatedAccount.rateLimits?.secondary,
           credits,
         },
@@ -311,10 +312,15 @@ describe("WorkbenchRailAccountControls", () => {
       codexMeter(view.container)
         .querySelector("[data-usage-ring-track]")
         ?.getAttribute("data-usage-ring-track");
+    const heldBackTone = () =>
+      codexMeter(view.container)
+        .querySelector("[data-usage-ring-held-back]")
+        ?.getAttribute("data-usage-ring-held-back");
 
-    expect(track()).toBe("credits");
-    expect(codexMeter(view.container).getAttribute("aria-label")).toContain(
-      "using credits, 320 left",
+    expect(track()).toBe("solid");
+    expect(heldBackTone()).toBe("credits");
+    expect(codexMeter(view.container).getAttribute("aria-label")).toBe(
+      "Codex usage: 5-hour limit reached, resets in 1 h, 61% left in weekly window, using credits, 320 left",
     );
     await act(async () => {
       fireEvent.focus(codexMeter(view.container));
@@ -325,9 +331,12 @@ describe("WorkbenchRailAccountControls", () => {
     expect(view.getByText("320")).toBeTruthy();
 
     view.rerender(rail(usedUp({ hasCredits: true, unlimited: false, balance: "0" })));
-    await waitFor(() => expect(track()).toBe("spent"));
+    await waitFor(() => expect(heldBackTone()).toBe("spent"));
+    expect(track()).toBe("solid");
     expect(view.queryByText("In use")).toBeNull();
-    expect(codexMeter(view.container).getAttribute("aria-label")).not.toContain("credits");
+    expect(codexMeter(view.container).getAttribute("aria-label")).toBe(
+      "Codex usage: 5-hour limit reached, resets in 1 h, 61% left in weekly window",
+    );
   });
 
   test("keeps quota resets collapsed and reuses the attempt key after a transport failure", async () => {
@@ -479,7 +488,7 @@ describe("WorkbenchRailAccountControls", () => {
     expect(labels()).toEqual(["Sign in to Codex", "Spaces and settings"]);
     view.rerender(renderControls(signedOutAccount, readUsage([claudeProvider()])));
     expect(labels()).toEqual([
-      "Claude usage: 12% left in 5-hour window, read 2 h ago",
+      "Claude usage: 12% left in 5-hour window, 70% left in weekly window, read 2 h ago",
       "Sign in to Codex",
       "Spaces and settings",
     ]);
@@ -546,17 +555,23 @@ describe("WorkbenchRailAccountControls", () => {
     );
 
     expect(view.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
-      "Claude usage: 12% left in 5-hour window, read 2 h ago",
+      "Claude usage: 12% left in 5-hour window, 70% left in weekly window, read 2 h ago",
       "Codex usage: 61% left in weekly window",
       "Spaces and settings",
     ]);
     const claude = view.container.querySelector<HTMLElement>('[data-usage-meter="claude"]');
     if (!claude) throw new Error("Expected the Claude usage meter");
     expect(claude.hasAttribute("data-usage-stale")).toBe(true);
+    expect(
+      claude
+        .querySelector("[data-usage-ring-held-back]")
+        ?.getAttribute("data-usage-ring-held-back"),
+    ).toBe("normal");
 
     const card = await openCard(view, claude);
     expect(textContent(card).includes("dev@example.com")).toBe(true);
     expect(textContent(card).includes("Account limits · read on this computer 2 h ago")).toBe(true);
+    expect(view.getByText("Resets in 2 h")).toBeTruthy();
     expect(
       [...card.querySelectorAll('[role="meter"]')].map((meter) =>
         meter.getAttribute("aria-valuenow"),
@@ -594,7 +609,7 @@ describe("WorkbenchRailAccountControls", () => {
     );
 
     const claude = view.getByRole("button", {
-      name: "Claude usage: 12% left in 5-hour window, read 2 h ago",
+      name: "Claude usage: 12% left in 5-hour window, 70% left in weekly window, read 2 h ago",
     });
     const card = await openCard(view, claude);
     expect(textContent(card).includes("Couldn't refresh on this computer")).toBe(true);

@@ -250,6 +250,7 @@ export const antigravityAgent = {
     label: "Antigravity",
     preferCredentialIdentity: true,
     keepWindowLabels: true,
+    separateQuotas: true,
     accountTypes: ["computer", "oauth-personal", "oauth-business"],
     accountTypeSetting: "authMethod",
     deferredReadingMs: 32_000,

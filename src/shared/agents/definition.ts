@@ -51,6 +51,8 @@ export interface AgentUsageMeter {
   /** Credential identities may distinguish accounts even when the address is unavailable. */
   readonly preferCredentialIdentity?: true;
   readonly accountWindows?: readonly string[];
+  /** Each window limits only its own models, so a shorter one never holds back a longer one. */
+  readonly separateQuotas?: true;
   readonly keepWindowLabels?: true;
   readonly accountTypes?: readonly string[];
   /** The profile setting that holds a saved profile's account type, when only some report usage. */
