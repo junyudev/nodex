@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 
 import type { OwnedDocumentDescriptor } from "../../../shared/block-documents/contracts";
 import { PAGE_DOCUMENT_SCHEMA_VERSION } from "../../../shared/block-documents/page-document";
@@ -73,6 +73,38 @@ const selectCheckpoint = async (view: ReturnType<typeof render>) => {
 };
 
 describe("canonical Page history panel", () => {
+  test("keeps Current readable while the timeline fails and recovers", async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, error: { message: "Internal storage error" } })
+      .mockResolvedValueOnce({ ok: true, value: makePage([makeCheckpointEntry()]) });
+    setHistoryPanelApi((operation) => {
+      if (operation !== "listPageHistory") throw new Error(`Unexpected ${operation}`);
+      return list();
+    });
+
+    const view = render(
+      <HistoryPanel
+        projectId="project-1"
+        pageId="card-1"
+        pageTitle="Current title"
+        pageMarkdown="Current body"
+        open
+        onClose={() => undefined}
+      />,
+    );
+    const timeline = within(view.getByRole("complementary"));
+    expect(textContent(await timeline.findByRole("alert"))).toBe("Couldn’t load Page history.");
+    expect(await view.findByText("Current body")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(timeline.getByRole("button", { name: "Retry" }));
+    });
+    expect(await timeline.findByRole("button", { name: /Manual checkpoint/ })).toBeTruthy();
+    expect(timeline.queryByRole("alert")).toBeNull();
+    expect(view.getByText("Current body")).toBeTruthy();
+  });
+
   test("previews and forward-restores a Document checkpoint", async () => {
     const checkpoint = makeCheckpointEntry();
     const calls: HistoryPanelApiOperation[] = [];
