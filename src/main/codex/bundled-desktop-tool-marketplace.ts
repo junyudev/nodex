@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
+import { BROWSER_CONNECTIONS_COMMAND } from "../browser-use/chrome/browser-connection-facts";
 import type { BrowserRuntimeArtifact } from "../../shared/browser-runtime-metadata";
 import type { VerifiedBrowserRuntimeBundle } from "./browser-runtime-bundle";
 
 const SOURCE_MARKETPLACE_NAME = "openai-bundled";
-const MATERIALIZATION_SCHEMA_VERSION = 5;
+const MATERIALIZATION_SCHEMA_VERSION = 6;
 const MATERIALIZATION_KEY_FILENAME = ".materialization-key";
 const COMPUTER_USE_SKILL_TARGET = path.join("skills", "computer-use", "SKILL.md");
 
@@ -20,6 +21,7 @@ type MarketplaceManifest = {
 
 export type MaterializedDesktopToolMarketplace = {
   browserPluginRoot: string;
+  browserPluginVersion: string;
   chromePluginRoot: string | null;
   computerUsePluginRoot: string | null;
   materializationKey: string;
@@ -111,6 +113,12 @@ async function writeClaudePluginManifest(pluginRoot: string): Promise<void> {
   await writeJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"), manifest);
 }
 
+function materializedBrowserVersion(vendorVersion: string): string {
+  // Codex installs by version. A revised local skill needs a fresh cache entry.
+  const separator = vendorVersion.includes("+") ? "." : "+";
+  return `${vendorVersion}${separator}nodex.${MATERIALIZATION_SCHEMA_VERSION}`;
+}
+
 function materializationKey(
   bundle: VerifiedBrowserRuntimeBundle,
   includeComputerUse: boolean,
@@ -118,7 +126,7 @@ function materializationKey(
   const computerUse = bundle.manifest.capabilities.computerUse;
   const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
   return JSON.stringify({
-    browserPluginVersion: bundle.manifest.browserPlugin.version,
+    browserPluginVersion: materializedBrowserVersion(bundle.manifest.browserPlugin.version),
     chromePluginClosure: chromePluginClosure(bundle),
     chromePluginVersion: chrome.status === "available" ? chrome.plugin.version : null,
     computerUsePluginVersion:
@@ -245,6 +253,56 @@ export function windowsBrowserSkillBootstrap(source: string): string {
   );
 }
 
+function nodexBrowserSkill(vendorSkill: string, platform: NodeJS.Platform): string {
+  const source = vendorSkill
+    .replace(
+      "Control the in-app Browser for opening",
+      "Control the in-app Browser and connected browser profiles for opening",
+    )
+    .replace(" It can have existing signed-in sessions.", "")
+    .replace(/^- `chrome-troubleshooting`:.*\n/mu, "");
+  const supported =
+    platform === "darwin" ? "Chrome, Edge, Brave, Opera, Vivaldi, Dia, and Arc" : "Chrome and Edge";
+  const selection = `## Browser selection
+
+The in-app Browser keeps its own sign-ins. Your connected browser profiles carry your sign-ins. Nodex can connect to ${supported} through the ChatGPT extension.
+
+An explicitly named browser or tab is a hard requirement. Follow the tab-mention instructions for a named tab. Use \`agent.browsers.get("iab")\` for the in-app Browser and \`agent.browsers.get("dot")\` for Dot. A Browser plugin mention names the in-app Browser unless it specifies a \`browserFamily\`. A Chrome plugin mention names Chrome.
+
+After bootstrap, read the live connections for a named external browser, the system default, or account work.
+
+\`\`\`js
+const connections = await nodeRepl.rpc("browser", {
+  method: "execute",
+  params: { type: "${BROWSER_CONNECTIONS_COMMAND}", browser_id: "iab" },
+});
+const inventory = await agent.browsers.list();
+nodeRepl.write({ connections, inventory });
+\`\`\`
+
+Join a connected browser's \`extensionInstanceId\` to \`inventory[].metadata.extensionInstanceId\` and use \`agent.browsers.get(match.id)\`. Use the family and app name in \`connections.connectedBrowsers\` to identify the app. This works for Dia and Arc, whose extension can report Chrome. Use the exact connected instance for all actions. Use the live connection and running status for diagnosis. Open or focus tabs through the connected instance.
+
+- For a named external browser or the user's own browser explicitly requested without a name, honor that constraint. If the requested browser is unavailable, explain the connection status and how to fix it. If multiple profiles match and the account matters, ask which profile to use.
+- For account work with no browser named, first prefer a connected profile with the site open. Use \`browser.user.openTabs()\` and match the site's origin. An open tab is a clue. Confirm access on the requested page. Next prefer a connected profile of the system default browser. If neither is available to this chat, use the in-app Browser. For other tasks, reuse a suitable binding or use \`getForUrl(url)\` or \`getDefault()\`.
+- When falling back from the expected browser, say once which browser you selected, why, and what the user can do. If Dia's extension is disconnected and the in-app Browser shows GitHub's sign-in screen, say something like “Dia is your default browser, and its ChatGPT extension isn't connected to Nodex. I selected the in-app Browser, which is asking you to sign in to GitHub. Open Dia with the ChatGPT extension enabled to use your Dia session, or sign in here.” If the connection exists but is absent from this chat's inventory, tell the user to retry in a fresh chat. When the app identity is unknown, say so.
+- If authentication stops a task in an explicitly chosen browser, ask the user to sign in there or choose another browser. Keep cookie, storage, history, and profile data out of browser selection. Use the requested site and its supported sign-in flow.
+
+After selecting a browser, return its complete documentation with \`nodeRepl.write(await browser.documentation())\` before using it.
+
+## After setup
+If setup or selection fails, read \`await agent.documentation.get("bootstrap-troubleshooting")\`. For an external browser, use the live connection facts to distinguish an unsupported browser, blocked host setup, and a disconnected extension. If the browser is closed, ask the user to open it. Direct the user to Browser Settings for host setup or to the named browser to enable the ChatGPT extension.
+
+`;
+  const start = source.indexOf("## Browser selection");
+  const afterSetup = source.indexOf("## After setup", start);
+  const end = source.indexOf("\n## ", (afterSetup < 0 ? start : afterSetup) + 1);
+  const materialized =
+    start < 0
+      ? `${source.trimEnd()}\n\n${selection}`
+      : source.slice(0, start) + selection + (end < 0 ? "" : source.slice(end + 1));
+  return platform === "win32" ? windowsBrowserSkillBootstrap(materialized) : materialized;
+}
+
 async function materializeFresh(
   options: MaterializeDesktopToolMarketplaceOptions,
   targetPath: string,
@@ -257,6 +315,7 @@ async function materializeFresh(
   const includeChrome = chrome.status === "available";
   const stagingPath = `${targetPath}.staging-${randomUUID()}`;
   const browserPluginTarget = path.join(stagingPath, "plugins", "browser");
+  const browserPluginVersion = materializedBrowserVersion(bundle.manifest.browserPlugin.version);
   const chromePluginTarget = includeChrome ? path.join(stagingPath, "plugins", "chrome") : null;
   const computerUsePluginTarget = includeComputerUse
     ? path.join(stagingPath, "plugins", "computer-use")
@@ -268,12 +327,17 @@ async function materializeFresh(
     await fs.cp(bundle.browserPluginRoot, browserPluginTarget, {
       recursive: true,
     });
-    if (bundle.manifest.targetPlatform === "win32") {
-      const relativeDocs = path.relative(bundle.browserPluginRoot, bundle.paths.browserPluginDocs);
-      const skillPath = path.join(browserPluginTarget, relativeDocs);
-      const source = await fs.readFile(skillPath, "utf8");
-      await fs.writeFile(skillPath, windowsBrowserSkillBootstrap(source), "utf8");
-    }
+    const browserManifestPath = path.join(browserPluginTarget, ".codex-plugin", "plugin.json");
+    const browserManifest = parseRecord(await readJson(browserManifestPath), "Browser plugin");
+    await writeJson(browserManifestPath, { ...browserManifest, version: browserPluginVersion });
+    const relativeDocs = path.relative(bundle.browserPluginRoot, bundle.paths.browserPluginDocs);
+    const skillPath = path.join(browserPluginTarget, relativeDocs);
+    const source = await fs.readFile(skillPath, "utf8");
+    await fs.writeFile(
+      skillPath,
+      nodexBrowserSkill(source, bundle.manifest.targetPlatform),
+      "utf8",
+    );
     if (chromePluginTarget) {
       if (!bundle.paths.chromePluginRoot) {
         throw new Error("Verified Chrome plugin path is unavailable");
@@ -330,6 +394,7 @@ async function materializeFresh(
 
   return {
     browserPluginRoot: path.join(targetPath, "plugins", "browser"),
+    browserPluginVersion,
     chromePluginRoot: includeChrome ? path.join(targetPath, "plugins", "chrome") : null,
     computerUsePluginRoot: includeComputerUse
       ? path.join(targetPath, "plugins", "computer-use")
@@ -357,6 +422,9 @@ export async function materializeBundledDesktopToolMarketplace(
   if (await isCurrentMaterialization(targetPath, key, chromeClosure, includeComputerUse)) {
     return {
       browserPluginRoot: path.join(targetPath, "plugins", "browser"),
+      browserPluginVersion: materializedBrowserVersion(
+        options.bundle.manifest.browserPlugin.version,
+      ),
       chromePluginRoot:
         chromeClosure.length > 0 ? path.join(targetPath, "plugins", "chrome") : null,
       computerUsePluginRoot: includeComputerUse

@@ -1,0 +1,1 @@
+Agents can use your signed-in Dia and Arc profiles on macOS through the ChatGPT extension. For account work, Nodex checks connected browser profiles and your system default, and the Agent explains when it needs to use the in-app Browser instead.

@@ -200,6 +200,9 @@ function fixtureContent(relativePath: string): string {
       2,
     )}\n`;
   }
+  if (relativePath === "marketplace/plugins/browser/docs/SKILL.md") {
+    return "# Browser\n\n## Browser selection\nVendor selection guidance.\n\n## After setup\nVendor recovery guidance.\n\n## Using the Browser\n";
+  }
   if (relativePath.endsWith("/.codex-plugin/plugin.json")) {
     const name = relativePath.includes("/computer-use/")
       ? "computer-use"

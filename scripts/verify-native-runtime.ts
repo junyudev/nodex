@@ -1517,6 +1517,7 @@ export const resolveNodexNativeCodeObjects = (
   manifest: NativeRuntimeManifest,
 ): readonly string[] => [
   ...manifest.binaries.map(({ bundlePath }) => join(appPath, "Contents", bundlePath)),
+  join(appPath, "Contents/Resources/native/nodex-browser-peer.node"),
   join(appPath, "Contents/Resources/native/nodex-clipboard.node"),
   join(appPath, "Contents/Resources/native/nodex-devicecheck.node"),
   join(appPath, "Contents/Resources/native/nodex-notifications.node"),
@@ -1586,6 +1587,9 @@ export function verifyPackagedNativeRuntimeStructure(
   assertRegularExecutable(cliRipgrep);
   assertMachOArchitecture(cliRipgrep, options.targetArch);
   assertMachONotNewerThan(cliRipgrep, options.targetArch, manifest.minimumMacOS);
+  const browserPeerBridge = join(contentsPath, "Resources/native/nodex-browser-peer.node");
+  assertRegularExecutable(browserPeerBridge);
+  assertMachO(browserPeerBridge, options.targetArch, manifest.minimumMacOS);
   const clipboardBridge = join(contentsPath, "Resources/native/nodex-clipboard.node");
   assertRegularExecutable(clipboardBridge);
   assertMachO(clipboardBridge, options.targetArch, manifest.minimumMacOS);

@@ -8,8 +8,9 @@ export type ChromeBrowserFamily = string;
 
 export interface ChromeBrowserFamilyDescriptor {
   readonly applicationNames: readonly string[];
-  readonly browserIconAssetPath: string;
+  readonly browserIconAssetPath: string | null;
   readonly bundleId: string;
+  readonly signingTeamId?: string;
   readonly displayName: string;
   readonly extensionIds: readonly string[];
   readonly extensionManagementUrl: string;
@@ -295,6 +296,47 @@ export function parseChromeBrowserAuthority(
   };
 }
 
+/** Nodex registers these macOS browsers with the same attested native host and origins. */
+export function withMacChromiumFamilies(authority: ChromeBrowserAuthority): ChromeBrowserAuthority {
+  const supplementalFamilies = [
+    { family: "dia", name: "Dia", bundleId: "company.thebrowser.dia" },
+    { family: "arc", name: "Arc", bundleId: "company.thebrowser.Browser" },
+  ].filter(
+    ({ family, bundleId }) =>
+      !authority.families.some((entry) => entry.family === family || entry.bundleId === bundleId),
+  );
+  const chrome = getChromeBrowserFamily(authority, "chrome");
+  if (!chrome || supplementalFamilies.length === 0) return authority;
+  const families = supplementalFamilies.map(
+    ({ family, name, bundleId }): ChromeBrowserFamilyDescriptor => {
+      const userDataDirectorySegments = ["Library", "Application Support", name, "User Data"];
+      return {
+        ...parseMacosFamily(
+          {
+            applicationNames: [`${name}.app`],
+            bundleId,
+            nativeMessagingManifestDirectories: [
+              [...userDataDirectorySegments, "NativeMessagingHosts"].join("/"),
+            ],
+            processNames: [name],
+            userDataDirectorySegments,
+          },
+          family,
+        ),
+        browserIconAssetPath: null,
+        displayName: name,
+        extensionIds: chrome.extensionIds,
+        extensionManagementUrl: "chrome://extensions",
+        family,
+        shortDisplayName: name,
+        signingTeamId: "S6N382Y83G",
+        storeUrl: chrome.storeUrl,
+      };
+    },
+  );
+  return { ...authority, families: [...authority.families, ...families] };
+}
+
 /** Reads the already-attested descriptor without following a replacement symlink. */
 export async function loadChromeBrowserAuthority(
   options: LoadChromeBrowserAuthorityOptions,
@@ -321,11 +363,12 @@ export async function loadChromeBrowserAuthority(
     if (digest !== options.expectedSha256) {
       throw new Error("Chrome browser family descriptor failed its manifest hash check");
     }
-    return parseChromeBrowserAuthority(JSON.parse(bytes.toString("utf8")) as unknown, {
+    const authority = parseChromeBrowserAuthority(JSON.parse(bytes.toString("utf8")) as unknown, {
       extensionIds: options.expectedExtensionIds,
       hostName: options.expectedHostName,
       platform: options.platform,
     });
+    return options.platform === "darwin" ? withMacChromiumFamilies(authority) : authority;
   } finally {
     await handle.close();
   }

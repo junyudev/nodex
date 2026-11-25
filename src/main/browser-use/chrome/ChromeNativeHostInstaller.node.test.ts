@@ -1,3 +1,4 @@
+import { withMacChromiumFamilies } from "./ChromeBrowserFamilyRegistry";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -65,10 +66,12 @@ describe.skipIf(process.platform === "win32")("Chrome native host installer", ()
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-chrome-install-"));
     temporaryRoots.push(root);
     const options = await makeInstallerOptions(root);
+    const authority = withMacChromiumFamilies(options.authority);
     const verifiedPaths: string[] = [];
 
     const result = await installChromeNativeHost({
       ...options,
+      authority,
       verifyNativeHost: async (nativeHostPath) => {
         verifiedPaths.push(nativeHostPath);
         return peerIdentity;
@@ -158,7 +161,22 @@ describe.skipIf(process.platform === "win32")("Chrome native host installer", ()
       schemaVersion: 2,
       updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/u),
     });
-    expect(result.manifestPaths).toHaveLength(2);
+    expect(result.manifestPaths).toHaveLength(4);
+    for (const browser of ["Dia", "Arc"]) {
+      const file = path.join(
+        await fs.realpath(options.homeDirectory),
+        "Library",
+        "Application Support",
+        browser,
+        "User Data",
+        "NativeMessagingHosts",
+        `${TEST_CHROME_HOST_NAME}.json`,
+      );
+      expect(result.manifestPaths).toContain(file);
+      expect(await fs.readFile(file, "utf8")).toBe(
+        await fs.readFile(result.manifestPaths[0]!, "utf8"),
+      );
+    }
     const manifest = JSON.parse(await fs.readFile(result.manifestPaths[0]!, "utf8")) as Record<
       string,
       unknown
@@ -177,7 +195,7 @@ describe.skipIf(process.platform === "win32")("Chrome native host installer", ()
     expect((await fs.stat(result.manifestPaths[0]!)).mode & 0o777).toBe(0o644);
 
     const firstEntryId = entry.entryId;
-    const second = await installChromeNativeHost(options);
+    const second = await installChromeNativeHost({ ...options, authority });
     expect(second).toEqual(result);
     const secondRegistry = JSON.parse(await fs.readFile(second.registryPaths[0]!, "utf8")) as {
       entries: Array<Record<string, unknown>>;

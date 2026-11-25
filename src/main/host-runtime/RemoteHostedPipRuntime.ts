@@ -289,7 +289,10 @@ interface RuntimePorts {
   readonly native: RemoteHostedPipNativePort;
   readonly diagnostics: RemoteHostedPipDiagnostics;
   readonly preferences: RemoteHostedPipPreferencesAdapter;
-  readonly resolveChromeBrowserIconPath: (browserFamily: string) => string | null;
+  readonly resolveChromeBrowserIconPath: (
+    browserFamily: string,
+    extensionInstanceId?: string,
+  ) => string | null;
   readonly resolveNativeSession: (
     threadId: string,
   ) => Effect.Effect<string | null, RemoteHostedPipNativeSessionResolutionError>;
@@ -1017,7 +1020,10 @@ const makeRuntime = (
         .upsertBrowserPresentation({
           appIconPath:
             job.backend === "chrome" && job.browserFamily
-              ? ports.resolveChromeBrowserIconPath(job.browserFamily)
+              ? ports.resolveChromeBrowserIconPath(
+                  job.browserFamily,
+                  job.extensionInstanceId ?? undefined,
+                )
               : null,
           backend: job.backend,
           browserFamily: job.browserFamily,
@@ -1334,7 +1340,10 @@ export interface RemoteHostedPipRuntimeTestOptions {
   ) => boolean;
   readonly native?: Partial<RemoteHostedPipNativePort>;
   readonly preferences: RemoteHostedPipPreferencesAdapter;
-  readonly resolveChromeBrowserIconPath?: (browserFamily: string) => string | null;
+  readonly resolveChromeBrowserIconPath?: (
+    browserFamily: string,
+    extensionInstanceId?: string,
+  ) => string | null;
   readonly resolveNativeSession?: (
     threadId: string,
   ) => Effect.Effect<string | null, RemoteHostedPipNativeSessionResolutionError>;

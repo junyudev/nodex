@@ -9,6 +9,7 @@ import { buildNativeBridge } from "./build-native-bridge";
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 
 test.skipIf(process.platform !== "darwin" || process.arch !== "arm64").each([
+  { name: "browser-peer", script: "scripts/build-browser-peer-bridge.ts" },
   { name: "clipboard", script: "scripts/build-clipboard-bridge.ts" },
   { name: "devicecheck", script: "scripts/build-devicecheck-bridge.ts" },
   { name: "notifications", script: "scripts/build-notification-bridge.ts" },

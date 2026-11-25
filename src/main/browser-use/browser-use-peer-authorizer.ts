@@ -36,7 +36,7 @@ type SocketWithFileDescriptor = Socket & {
   };
 };
 
-function readSocketFileDescriptor(socket: Socket): number | null {
+export function readSocketFileDescriptor(socket: Socket): number | null {
   const descriptor = (socket as SocketWithFileDescriptor)._handle?.fd;
   return typeof descriptor === "number" && Number.isInteger(descriptor) && descriptor >= 0
     ? descriptor

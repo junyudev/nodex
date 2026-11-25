@@ -583,6 +583,7 @@ async function probeBrowserRuntimePromise(
             makeBrowserPluginReconciler({
               browserRuntime: runtime.browserRuntime,
               client: browserPluginRequestPortFromPromise(client),
+              codexHome: stateHome,
               computerUseAvailable: () => computerUseRuntimeResult.status === "available",
               runtimeStateHome: stateHome,
             }),

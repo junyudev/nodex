@@ -170,10 +170,38 @@ describe("materializeBundledDesktopToolMarketplace", () => {
         expect.objectContaining({ relativePath: "scripts/installManifest.mjs" }),
       ]),
       chromePluginVersion: "1.0.0-test",
-      schemaVersion: 5,
+      schemaVersion: 6,
     });
     expect(fs.readFileSync(sourceSkill, "utf8")).toBe(originalSkill);
     expect(fs.readFileSync(sourceManifest, "utf8")).toBe(originalManifest);
+  });
+
+  test("gives the materialized Browser skill live account selection without editing the bundled source", async () => {
+    const fixture = await makeRuntime();
+    const source = fs.readFileSync(fixture.bundle.paths.browserPluginDocs, "utf8");
+    const result = await materializeBundledDesktopToolMarketplace({
+      ...fixture,
+      includeComputerUse: false,
+    });
+    const skill = fs.readFileSync(
+      path.join(
+        result.browserPluginRoot,
+        path.relative(fixture.bundle.browserPluginRoot, fixture.bundle.paths.browserPluginDocs),
+      ),
+      "utf8",
+    );
+    expect(result.browserPluginVersion).toBe("1.0.0-test+nodex.6");
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(result.browserPluginRoot, ".codex-plugin", "plugin.json"), "utf8"),
+    );
+    expect(manifest.version).toBe(result.browserPluginVersion);
+    expect(skill).toMatch(/Chrome, Edge, Brave, Opera, Vivaldi, Dia, and Arc/u);
+    expect(skill).toMatch(/nodex_browser_connections/u);
+    expect(skill).toContain("## Using the Browser");
+    expect(skill).not.toContain("Vendor selection guidance");
+    expect(skill).toMatch(/agent\.browsers\.get\(match\.id\)/u);
+    expect(skill).toMatch(/When falling back from the expected browser, say once/u);
+    expect(fs.readFileSync(fixture.bundle.paths.browserPluginDocs, "utf8")).toBe(source);
   });
 
   test("reuses a valid materialization without replacing local plugin files", async () => {
@@ -209,20 +237,17 @@ describe("materializeBundledDesktopToolMarketplace", () => {
         ".claude-plugin",
         "plugin.json",
       );
+      const expectedManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
       fs.rmSync(manifestPath);
       const marker = path.join(first.browserPluginRoot, "stale-marker");
       fs.writeFileSync(marker, "stale");
       await materializeBundledDesktopToolMarketplace(options);
-      expect(JSON.parse(fs.readFileSync(manifestPath, "utf8"))).toEqual({
-        name: pluginName,
-        version: "1.0.0-test",
-        description: `${pluginName} tools`,
-      });
+      expect(JSON.parse(fs.readFileSync(manifestPath, "utf8"))).toEqual(expectedManifest);
       expect(fs.existsSync(marker)).toBe(false);
     },
   );
 
-  test("rebuilds a materialization from before Claude plugin support", async () => {
+  test("rebuilds a materialization from before Nodex Browser selection", async () => {
     const fixture = await makeRuntime();
     const options = { ...fixture, includeComputerUse: true };
     const first = await materializeBundledDesktopToolMarketplace(options);
@@ -230,14 +255,14 @@ describe("materializeBundledDesktopToolMarketplace", () => {
       path.join(first.rootPath, ".materialization-key"),
       JSON.stringify({
         ...JSON.parse(first.materializationKey),
-        schemaVersion: 4,
+        schemaVersion: 5,
       }),
     );
     const marker = path.join(first.browserPluginRoot, "stale-marker");
     fs.writeFileSync(marker, "stale");
     const second = await materializeBundledDesktopToolMarketplace(options);
     expect(fs.existsSync(marker)).toBe(false);
-    expect(JSON.parse(second.materializationKey).schemaVersion).toBe(5);
+    expect(second.materializationKey).toBe(first.materializationKey);
   });
 
   test("rebuilds when an attested Chrome closure artifact no longer matches", async () => {
