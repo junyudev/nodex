@@ -155,7 +155,6 @@ test("previews source entries, requires an explicit headline to dispatch, and bi
           artifacts: [
             "macos-arm64",
             "windows-x64",
-            "windows-arm64",
             "mobile-android",
             "mobile-ios",
             "build-identity",

@@ -92,8 +92,8 @@ in an isolated store.
 
 The Agent Runtime and app-tools server run under the standalone Node pinned by
 [`node-runtime.lock.json`](node-runtime.lock.json). macOS stages the executable
-from the pinned official arm64 archive. Windows stages the pinned Node
-executable for its target. Staging verifies the executable's digest and
+from the pinned official arm64 archive. Windows stages the pinned x64 Node
+executable. Staging verifies the executable's digest and
 architecture, includes the locked Node license, and records the executable
 identity in `node-runtime.json`. The Agent Runtime's private PTY dependency
 uses the same Node executable for its build or native load check.
@@ -110,8 +110,8 @@ Upgrade runtime provenance separately from protocol or product changes:
 
 1. Select one reviewed `rust-v<version>` tag and verify its peeled source
    commit.
-2. Require the official macOS arm64 package and the Linux/Windows arm64 and x64
-   `codex-package-<target>.tar.gz` assets plus
+2. Require the official macOS arm64 package, the Linux arm64 and x64 and the
+   Windows x64 `codex-package-<target>.tar.gz` assets plus
    `codex-package_SHA256SUMS`.
 3. Compare the checksum-manifest entry, GitHub asset digest, downloaded archive
    digest, and byte length for the macOS arm64 package; bind every managed
@@ -127,8 +127,7 @@ Upgrade runtime provenance separately from protocol or product changes:
      --out /path/to/candidate-lock.json
    ```
 
-   Add `--windows-arm64 /path/to/windows-arm64.tar.gz` and
-   `--windows-x64 /path/to/windows-x64.tar.gz` to derive both Windows pins.
+   Add `--windows-x64 /path/to/windows-x64.tar.gz` to derive the Windows pin.
    Each archive is checked against the reviewed checksum manifest, exact file
    inventory and native architecture before its metadata is recorded. Relocking
    also records the macOS archive's unpacked file bytes for the Component store. These

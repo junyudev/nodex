@@ -5,15 +5,10 @@ export const hostCapabilities = (
   desktopTools?: { readonly browserReady?: boolean; readonly computerUseReady?: boolean },
 ) => {
   const mac = platform === "darwin";
-  const windows =
-    platform === "win32" &&
-    (architecture === undefined || architecture === "x64" || architecture === "arm64");
+  const windows = platform === "win32" && (architecture === undefined || architecture === "x64");
   return Object.freeze({
     backgroundService: mac,
-    autoUpdate:
-      (mac && (architecture === undefined || architecture === "arm64")) ||
-      (platform === "win32" &&
-        (architecture === undefined || architecture === "x64" || architecture === "arm64")),
+    autoUpdate: (mac && (architecture === undefined || architecture === "arm64")) || windows,
     browserControl: mac || (windows && desktopTools?.browserReady === true),
     browserProfileImport: mac,
     computerControl: mac || (windows && desktopTools?.computerUseReady === true),

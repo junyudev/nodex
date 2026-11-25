@@ -20,7 +20,6 @@ const ZERO_SHA256 = "0".repeat(64);
 export type AgentRuntimeRelockOptions = {
   agentRuntimePlatformContractVerifier?: AgentRuntimeMacosPlatformContractVerifier;
   arm64ArchivePath?: string;
-  windowsArm64ArchivePath?: string;
   windowsX64ArchivePath?: string;
   lockPath?: string;
   outputPath: string;
@@ -69,7 +68,6 @@ export async function createAgentRuntimeRelockCandidate(
     let candidate = lock;
     const archives = [
       ["darwin-arm64", options.arm64ArchivePath, "darwin", "arm64"],
-      ["win32-arm64", options.windowsArm64ArchivePath, "win32", "arm64"],
       ["win32-x64", options.windowsX64ArchivePath, "win32", "x64"],
     ] as const;
     if (!archives.some(([, archivePath]) => archivePath)) {
@@ -129,17 +127,15 @@ export async function createAgentRuntimeRelockCandidate(
 export function parseAgentRuntimeRelockCli(argv: string[]): AgentRuntimeRelockOptions {
   const args = argv.filter((value) => value !== "--");
   let arm64ArchivePath: string | undefined;
-  let windowsArm64ArchivePath: string | undefined;
   let windowsX64ArchivePath: string | undefined;
   let lockPath: string | undefined;
   let outputPath: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const value = args[index + 1];
-    if (["--arm64", "--windows-arm64", "--windows-x64", "--base-lock", "--out"].includes(arg!)) {
+    if (["--arm64", "--windows-x64", "--base-lock", "--out"].includes(arg!)) {
       if (!value) throw new Error(`Missing value for ${arg}`);
       if (arg === "--arm64") arm64ArchivePath = value;
-      if (arg === "--windows-arm64") windowsArm64ArchivePath = value;
       if (arg === "--windows-x64") windowsX64ArchivePath = value;
       if (arg === "--base-lock") lockPath = value;
       if (arg === "--out") outputPath = value;
@@ -148,7 +144,7 @@ export function parseAgentRuntimeRelockCli(argv: string[]): AgentRuntimeRelockOp
     }
     throw new Error(`Unexpected argument: ${arg}`);
   }
-  if (!arm64ArchivePath && !windowsArm64ArchivePath && !windowsX64ArchivePath) {
+  if (!arm64ArchivePath && !windowsX64ArchivePath) {
     throw new Error("At least one official Codex release archive is required");
   }
   if (!lockPath) throw new Error("--base-lock is required");
@@ -160,7 +156,6 @@ export function parseAgentRuntimeRelockCli(argv: string[]): AgentRuntimeRelockOp
   }
   return {
     arm64ArchivePath,
-    windowsArm64ArchivePath,
     windowsX64ArchivePath,
     lockPath,
     outputPath: resolvedOutputPath,

@@ -36,7 +36,7 @@ test.skipIf(process.platform !== "win32")(
       expect(native.node.architecture).toBe(process.arch);
       expect(materializeAgentRuntimeNative(root)).toEqual(native);
       expect(
-        verifyWindowsArchitectureClosure(native.packageRoot, process.arch as "x64" | "arm64", {
+        verifyWindowsArchitectureClosure(native.packageRoot, "x64", {
           nodeHost: process.execPath,
         }).length,
       ).toBeGreaterThan(3);

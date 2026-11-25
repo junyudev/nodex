@@ -10,7 +10,7 @@ import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 
 const [root, arch = process.arch] = process.argv.slice(2);
 if (!root || process.argv.length > 4)
-  throw new Error("Usage: verify-windows-runtime.ts <root> [x64|arm64]");
+  throw new Error("Usage: verify-windows-runtime.ts <root> [x64]");
 const target = desktopBuildTarget("win32", arch);
 const desktopToolsRoot = [
   join(root, "resources/browser-runtime"),

@@ -8,7 +8,7 @@ import type { ArchitectureBuildManifest } from "./bundle";
 import { buildIdentityOf, sha256File, type ReleaseIdentity } from "./model";
 import { makeMobileReleaseFixture } from "./mobile-release.fixture";
 import { createWindowsArchitectureUpdate } from "./windows-updates";
-import { WINDOWS_ARCHITECTURES, windowsInstallerName } from "./targets";
+import { windowsInstallerName } from "./targets";
 
 export const fixtureIdentity = (channel: "stable" | "nightly" = "stable"): ReleaseIdentity => ({
   schemaVersion: 1,
@@ -30,90 +30,86 @@ export function makeWindowsReleaseFixture(root: string, identity = fixtureIdenti
     .toString("base64");
   const signFile = (filePath: string) =>
     sign(null, readFileSync(filePath), privateKey).toString("base64");
-  const builds = WINDOWS_ARCHITECTURES.map((arch) => {
-    const architecture = `windows-${arch}` as const;
-    const build = join(root, architecture);
-    const update = join(root, `update-${architecture}`);
-    mkdirSync(build, { recursive: true });
-    const name = windowsInstallerName(identity.version, arch);
-    const installerPath = join(build, name);
-    writeFileSync(installerPath, `installer:${arch}:${identity.version}`);
-    const provenancePath = join(build, "windows-build-provenance.json");
-    writeFileSync(provenancePath, "provenance");
-    const manifest: ArchitectureBuildManifest = {
-      schemaVersion: 3,
+  const arch = "x64";
+  const architecture = "windows-x64";
+  const build = join(root, architecture);
+  const update = join(root, `update-${architecture}`);
+  mkdirSync(build, { recursive: true });
+  const name = windowsInstallerName(identity.version, arch);
+  const installerPath = join(build, name);
+  writeFileSync(installerPath, `installer:${arch}:${identity.version}`);
+  const provenancePath = join(build, "windows-build-provenance.json");
+  writeFileSync(provenancePath, "provenance");
+  const manifest: ArchitectureBuildManifest = {
+    schemaVersion: 3,
+    architecture,
+    updates: "enabled",
+    buildIdentity: buildIdentityOf(identity),
+    sourceSha: identity.sourceSha,
+    sourceTree: identity.sourceTree,
+    version: identity.version,
+    artifacts: [
+      {
+        name,
+        architecture,
+        role: "windows-installer",
+        bytes: statSync(installerPath).size,
+        sha256: sha256File(installerPath),
+      },
+    ],
+    packageProvenanceSha256: sha256File(provenancePath),
+    agentSkills: { manifestSha256: "9".repeat(64), treeSha256: "a".repeat(64) },
+    preparedBuild: { generation: "7".repeat(64), manifestSha256: "3".repeat(64), state: "clean" },
+    runtimeLocks: {
+      agentSha256: "4".repeat(64),
+      browserSha256: "5".repeat(64),
+      sparkleSha256: "b".repeat(64),
+      nodeSha256: "c".repeat(64),
+    },
+    runner: { image: "test" },
+  };
+  const probePath = join(build, "installed-app-probe.json");
+  writeFileSync(
+    probePath,
+    JSON.stringify({
+      failures: [],
+      evidence: { target: architecture },
+      normalQuit: {},
+      upgrade: {},
+      uninstall: {},
+    }),
+  );
+  writeFileSync(
+    provenancePath,
+    JSON.stringify({
+      schemaVersion: 1,
       architecture,
       updates: "enabled",
       buildIdentity: buildIdentityOf(identity),
-      sourceSha: identity.sourceSha,
-      sourceTree: identity.sourceTree,
-      version: identity.version,
-      artifacts: [
-        {
-          name,
-          architecture,
-          role: "windows-installer",
-          bytes: statSync(installerPath).size,
-          sha256: sha256File(installerPath),
-        },
-      ],
-      packageProvenanceSha256: sha256File(provenancePath),
-      agentSkills: { manifestSha256: "9".repeat(64), treeSha256: "a".repeat(64) },
-      preparedBuild: { generation: "7".repeat(64), manifestSha256: "3".repeat(64), state: "clean" },
-      runtimeLocks: {
-        agentSha256: "4".repeat(64),
-        browserSha256: "5".repeat(64),
-        sparkleSha256: "b".repeat(64),
-        nodeSha256: "c".repeat(64),
-      },
-      runner: { image: "test" },
-    };
-    const probePath = join(build, "installed-app-probe.json");
-    writeFileSync(
-      probePath,
-      JSON.stringify({
-        failures: [],
-        evidence: { target: architecture },
-        normalQuit: {},
-        upgrade: {},
-        uninstall: {},
-      }),
-    );
-    writeFileSync(
-      provenancePath,
-      JSON.stringify({
-        schemaVersion: 1,
-        architecture,
-        updates: "enabled",
-        buildIdentity: buildIdentityOf(identity),
-        artifacts: manifest.artifacts,
-        runtimeLocks: manifest.runtimeLocks,
-        preparedManifestSha256: manifest.preparedBuild.manifestSha256,
-        installedProbeSha256: sha256File(probePath),
-      }),
-    );
-    writeFileSync(
-      join(build, "architecture-build.json"),
-      JSON.stringify({ ...manifest, packageProvenanceSha256: sha256File(provenancePath) }),
-    );
-    createWindowsArchitectureUpdate({
-      architecture: arch,
-      identity,
-      installerPath,
-      outputDirectory: update,
-      publishedAt: "1970-01-01T00:00:00Z",
-      releaseNotes: "Release <notes> & details",
-      publicKey: rawPublicKey,
-      sign: signFile,
-      sealAppcast: () => {},
-    });
-    return { build, update };
+      artifacts: manifest.artifacts,
+      runtimeLocks: manifest.runtimeLocks,
+      preparedManifestSha256: manifest.preparedBuild.manifestSha256,
+      installedProbeSha256: sha256File(probePath),
+    }),
+  );
+  writeFileSync(
+    join(build, "architecture-build.json"),
+    JSON.stringify({ ...manifest, packageProvenanceSha256: sha256File(provenancePath) }),
+  );
+  createWindowsArchitectureUpdate({
+    architecture: arch,
+    identity,
+    installerPath,
+    outputDirectory: update,
+    publishedAt: "1970-01-01T00:00:00Z",
+    releaseNotes: "Release <notes> & details",
+    publicKey: rawPublicKey,
+    sign: signFile,
+    sealAppcast: () => {},
   });
   return {
-    windowsX64Directory: builds[0].build,
-    windowsArm64Directory: builds[1].build,
-    windowsX64UpdateDirectory: builds[0].update,
-    windowsArm64UpdateDirectory: builds[1].update,
+    windowsX64Directory: build,
+    windowsX64UpdateDirectory: update,
     windowsPublicKey: rawPublicKey,
   };
 }

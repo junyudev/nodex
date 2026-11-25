@@ -18,7 +18,6 @@ import { stageStandaloneRipgrepRuntime } from "./standalone-ripgrep-runtime";
 import { ripgrepFixture } from "./testing/ripgrep-runtime-fixture";
 
 test("the desktop and SSH targets share one validated release and license", () => {
-  expect(ripgrepTarget("win32", "arm64")).toBe("win32-arm64");
   expect(ripgrepTarget("linux", "x64")).toBe("linux-x64");
   expect(ripgrepRelease.licenseSha256).toBe(
     ripgrepSha256(readFileSync("resources/ripgrep/LICENSE")),
@@ -29,13 +28,13 @@ test("the desktop and SSH targets share one validated release and license", () =
       ...invalid,
       builds: {
         ...invalid.builds,
-        "win32-arm64": {
-          ...invalid.builds["win32-arm64"],
-          archive: { ...invalid.builds["win32-arm64"].archive, url: "https://example.net/rg.zip" },
+        "win32-x64": {
+          ...invalid.builds["win32-x64"],
+          archive: { ...invalid.builds["win32-x64"].archive, url: "https://example.net/rg.zip" },
         },
       },
     }),
-  ).toThrow("win32-arm64");
+  ).toThrow("win32-x64");
 });
 
 test("verifies a replaced signature and rejects changed Mach-O bytes", () => {

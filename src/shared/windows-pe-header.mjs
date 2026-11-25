@@ -55,4 +55,4 @@ export function inspectWindowsPe(file) {
   }
 }
 
-export const WINDOWS_PE_MACHINE = Object.freeze({ x64: 0x8664, arm64: 0xaa64 });
+export const WINDOWS_PE_MACHINE = Object.freeze({ x64: 0x8664 });

@@ -291,7 +291,7 @@ downloads, ready-to-install state, and installation. Main switches the packaged
 updater before persisting the choice, rolls it back if persistence fails, and
 serializes mutations across windows.
 
-Packaged macOS arm64 and Windows x64/arm64 share update states: idle, checking,
+Packaged macOS arm64 and Windows x64 share update states: idle, checking,
 available, downloading, downloaded, installing, up to date, recoverable error,
 and unsupported. Download progress and Restart to update use the same controls.
 Unpackaged builds report that updates require a packaged build; packages with

@@ -9,7 +9,7 @@ releases its files the next time it starts.
 
 ## Availability
 
-The built-in Browser is available to local Agents on macOS and on Windows x64 and arm64 when the verified runtime and its transport are ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
+The built-in Browser is available to local Agents on macOS and Windows when the verified runtime and its transport are ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
 
 On macOS, the installed app registers the host for the personal Profile and repairs registrations
 whose host executable has disappeared. A registration pointing to another
@@ -36,7 +36,7 @@ An Agent's JavaScript session keeps what the Agent has set up in it, such as its
 
 ### Existing browsers on Windows
 
-Nodex connects to Chrome and Edge through the ChatGPT extension. Browser Settings shows **Waiting for extension** until an allowed extension instance connects. **Ready** means Nodex can address that instance and its tabs. Browser discovery uses the extension's exact ID and instance ID. Windows on Arm works without the optional extension-storage lookup for profile names and ordering.
+Nodex connects to Chrome and Edge through the ChatGPT extension. Browser Settings shows **Waiting for extension** until an allowed extension instance connects. **Ready** means Nodex can address that instance and its tabs. Browser discovery uses the extension's exact ID and instance ID.
 
 Windows registers the browser host for the current user. The Chrome and Edge native-messaging keys under \`HKCU\Software\Google\Chrome\NativeMessagingHosts\` and \`HKCU\Software\Microsoft\Edge\NativeMessagingHosts\` are shared by the 32-bit and 64-bit registry views. Nodex writes each key once and leaves machine-wide entries alone. The browser opens the manifest in the owning Nodex Profile, which points to the verified host executable for the installed Windows architecture.
 

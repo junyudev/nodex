@@ -4,7 +4,7 @@ import { z } from "zod";
 import { APP_UPDATE_BUILD_VERSION_PATTERN } from "../shared/app-version";
 import { APP_UPDATE_PUBLIC_KEY } from "./app-update-trust";
 
-export const windowsUpdateFeedUrls = (architecture: "x64" | "arm64") => ({
+export const windowsUpdateFeedUrls = (architecture: "x64") => ({
   stable: `https://nodex.jyu.app/updates/stable/windows-${architecture}/appcast.xml`,
   nightly: `https://nodex.jyu.app/updates/nightly/windows-${architecture}/appcast.xml`,
 });
@@ -12,7 +12,7 @@ export const windowsUpdateFeedUrls = (architecture: "x64" | "arm64") => ({
 const manifest = z
   .object({
     schemaVersion: z.literal(1),
-    architecture: z.enum(["x64", "arm64"]),
+    architecture: z.literal("x64"),
     updates: z.enum(["disabled", "enabled"]),
     buildVersion: z.string().regex(APP_UPDATE_BUILD_VERSION_PATTERN),
     feedUrls: z.object({ stable: z.string(), nightly: z.string() }).strict().nullable(),

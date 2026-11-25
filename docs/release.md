@@ -23,7 +23,7 @@ mobile builds and full Release Bundle for 14 days. Promote within that window.
 Published assets include versioned downloads, signed feeds, `release-identity.json`,
 `release-bundle.json` and `SHA256SUMS`. Stable also publishes the `latest` aliases.
 The private Bundle carries `release-notes.md` and the verified iOS payload in
-`testflight/`. Both Windows CPUs are built and probed on native runners.
+`testflight/`. The Windows x64 installer is built and probed on a native runner.
 See [Windows distribution](release-windows.md).
 
 The macOS app ships the standalone Node runtime. It downloads Desktop Tools
@@ -324,7 +324,6 @@ feed and verify the update signature before extraction. The stable feeds are:
 ```text
 https://nodex.jyu.app/updates/stable/arm64/appcast.xml
 https://nodex.jyu.app/updates/stable/windows-x64/appcast.xml
-https://nodex.jyu.app/updates/stable/windows-arm64/appcast.xml
 ```
 
 The isolated Nightly feeds are:
@@ -332,7 +331,6 @@ The isolated Nightly feeds are:
 ```text
 https://nodex.jyu.app/updates/nightly/arm64/appcast.xml
 https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml
-https://nodex.jyu.app/updates/nightly/windows-arm64/appcast.xml
 ```
 
 GitHub Release stores immutable macOS full-update archives, Windows installers,
@@ -432,8 +430,8 @@ release.
 ### Windows signed update contract
 
 Windows finalizers use the same pinned Sparkle `sign_update` tool and protected
-Ed25519 key as macOS. The direct protected job matrix covers `arm64`,
-`windows-x64`, and `windows-arm64`; reusable workflows never receive that key.
+Ed25519 key as macOS. The direct protected job matrix covers `arm64` and
+`windows-x64`; reusable workflows never receive that key.
 Each Windows feed has exactly one item with the Release Identity build version,
 display version, source publication date, embedded release notes, and one
 `application/octet-stream` enclosure marked `sparkle:os="windows"`. Its URL is
@@ -521,9 +519,7 @@ in `Resources/ripgrep-runtime`. The payload gate checks the closed executable an
 license set for each architecture. macOS signs the executable with Nodex's
 identity and verifies its pinned Mach-O content. Package provenance records the
 lock and signed payload hashes. The Windows installer preserves the official
-PE bytes and stages the retail Visual C++ dependency beside the arm64 executable.
-The installed-app probe runs ripgrep and checks its pinned
-version on both Windows architectures.
+PE bytes. The installed-app probe runs ripgrep and checks its pinned version.
 
 The Codex runtime verifier checks the Component's Mach-O files, including
 `codex-path/rg`, against the OpenAI team in the release lock. The app's native
@@ -568,8 +564,8 @@ workflow definition. Inside that boundary, the shared provenance guard requires
 the immutable SHA to be reachable from `main` and to have a successful
 protected-main `Main CI` push run before any source checkout or execution.
 The hosted Apple silicon runner uses that source and the protected signing environment.
-Both native Windows runners build and probe the same certified identity. All
-three update finalizers and the complete Bundle assembly are required.
+The native Windows x64 runner builds and probes the same certified identity. Both
+update finalizers and the complete Bundle assembly are required.
 Rehearsal also uses the protected Sparkle finalization environment, but it does
 not receive `contents: write`, Homebrew/landing credentials, or a Sentry upload
 token. It creates no tag, Release, tap commit, feed commit, or production
@@ -660,7 +656,7 @@ associated with the producing run.
 
 The Desktop Tool release lock selects a separate closure for each target.
 Apple silicon includes Browser Use, Computer Use and native PiP. Windows x64
-and arm64 include Browser Use and Computer Use. Each lock entry pins the archive,
+includes Browser Use and Computer Use. Each lock entry pins the archive,
 manifest and runtime versions. A local candidate has a null URL and can be
 materialized from a supplied archive or the digest-addressed cache. Automated
 packaging selects published assets.
@@ -709,8 +705,7 @@ reviewed source commit after the owner approves distribution.
   vp run browser-runtime:publish -- \
     --repo junyudev/nodex --tag "$runtime_tag" --lock "$runtime_candidate" \
     --arm64 "$(runtime_archive darwin-arm64)" \
-    --win32-x64 "$(runtime_archive win32-x64)" \
-    --win32-arm64 "$(runtime_archive win32-arm64)"
+    --win32-x64 "$(runtime_archive win32-x64)"
   gh release download "$runtime_tag" --repo junyudev/nodex \
     --dir "$runtime_downloads"
   jq -r --arg dir "$runtime_downloads" \

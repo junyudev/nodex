@@ -75,7 +75,7 @@ export function parseWindowsArchitectureUpdateManifest(
   requireShape(candidate.appcast, ["name", "feedPath", "bytes", "sha256", "edSignature"]);
   if (
     candidate.schemaVersion !== 1 ||
-    (candidate.architecture !== "windows-x64" && candidate.architecture !== "windows-arm64") ||
+    candidate.architecture !== "windows-x64" ||
     candidate.channel !== identity.channel ||
     candidate.sourceSha !== identity.sourceSha ||
     candidate.tag !== identity.tag ||
@@ -85,7 +85,7 @@ export function parseWindowsArchitectureUpdateManifest(
     candidate.deltas.length !== 0
   )
     throw new Error("Windows update manifest does not match its Release Identity.");
-  const architecture = candidate.architecture === "windows-x64" ? "x64" : "arm64";
+  const architecture = "x64";
   const full = parseSparkleFileIdentity(candidate.full, identity.tag, "Windows installer");
   const appcastName = `Nodex-${identity.version}-appcast-${candidate.architecture}.xml`;
   const appcast = candidate.appcast;
@@ -255,28 +255,27 @@ export function verifyWindowsReleaseAssets(
   root: string,
   publicKey = readConfiguredPublicKey(),
 ): void {
-  for (const architecture of ["windows-x64", "windows-arm64"] as const) {
-    const name = `Nodex-${bundle.version}-update-${architecture}.json`;
-    const manifest = parseWindowsArchitectureUpdateManifest(
-      JSON.parse(readFileSync(join(root, name), "utf8")),
-    );
+  const architecture = "windows-x64";
+  const name = `Nodex-${bundle.version}-update-${architecture}.json`;
+  const manifest = parseWindowsArchitectureUpdateManifest(
+    JSON.parse(readFileSync(join(root, name), "utf8")),
+  );
+  if (
+    manifest.architecture !== architecture ||
+    !isDeepStrictEqual(manifest.releaseIdentity, bundle.releaseIdentity) ||
+    bundle.architectures[architecture].updateManifestSha256 !== sha256File(join(root, name))
+  )
+    throw new Error("Windows update manifest is not bound by the Release Bundle.");
+  for (const identity of [manifest.full, manifest.appcast]) {
+    const asset = bundle.assets.find(({ name }) => name === identity.name);
     if (
-      manifest.architecture !== architecture ||
-      !isDeepStrictEqual(manifest.releaseIdentity, bundle.releaseIdentity) ||
-      bundle.architectures[architecture].updateManifestSha256 !== sha256File(join(root, name))
+      !asset ||
+      asset.architecture !== architecture ||
+      asset.bytes !== identity.bytes ||
+      asset.sha256 !== identity.sha256
     )
-      throw new Error("Windows update manifest is not bound by the Release Bundle.");
-    for (const identity of [manifest.full, manifest.appcast]) {
-      const asset = bundle.assets.find(({ name }) => name === identity.name);
-      if (
-        !asset ||
-        asset.architecture !== architecture ||
-        asset.bytes !== identity.bytes ||
-        asset.sha256 !== identity.sha256
-      )
-        throw new Error("Windows update assets are not bound by the Release Bundle.");
-      verifyFileSignature(join(root, identity.name), identity.edSignature, publicKey);
-    }
-    verifySparkleAppcastContract(readFileSync(join(root, manifest.appcast.name), "utf8"), manifest);
+      throw new Error("Windows update assets are not bound by the Release Bundle.");
+    verifyFileSignature(join(root, identity.name), identity.edSignature, publicKey);
   }
+  verifySparkleAppcastContract(readFileSync(join(root, manifest.appcast.name), "utf8"), manifest);
 }

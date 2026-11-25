@@ -132,7 +132,6 @@ function makePublishFixture(): BrowserRuntimePublishOptions {
       {
         assets: {
           "win32-x64": null,
-          "win32-arm64": null,
           "darwin-arm64": {
             archiveSha256: arm64Archive.archiveSha256,
             archiveSize: arm64Archive.archiveSize,

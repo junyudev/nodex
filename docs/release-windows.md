@@ -1,34 +1,28 @@
 # Windows packaging runbook
 
-Nodex builds Windows 11 installers natively for x64 and arm64. The Windows
+Nodex builds its Windows 11 installer natively for x64. The Windows
 workflow and official release pipeline share one native distribution implementation.
-Stable releases and Nightly prereleases include both CPUs in the same verified
+Stable releases and Nightly prereleases include it in the same verified
 Release Bundle as macOS arm64. [Application releases](release.md) owns identity,
 certification, protected finalization, promotion and Rehearsal.
 
 ## Build an installer
 
-Use the [Windows development prerequisites](development.md#windows-11-x64-and-arm64)
-and a clean worktree on a matching native Windows host:
+Use the [Windows development prerequisites](development.md#windows-11-x64)
+and a clean worktree on a native x64 Windows host:
 
 ```powershell
 vp install --frozen-lockfile
 vp run package:win:x64
-# Or, on native Windows arm64:
-vp run package:win:arm64
 ```
 
-`package:win` selects the host CPU. Packaging builds the application, stages the
+Packaging builds the application, stages the
 native runtime, verifies the prepared output, then invokes electron-builder NSIS.
 The reusable Windows distribution runs build, staging, architecture verification,
 packaging, and the installed-app probe through one repository-owned Release Module. Its `package:win:prepared <arch>` entrypoint verifies the existing prepared
 build and generates the Windows update manifest before packaging; it does not rebuild or restage source.
-A target CPU different from the build host is rejected. The artifacts are:
-
-| Architecture | Installer                                  |
-| ------------ | ------------------------------------------ |
-| x64          | `dist/Nodex-<version>-win-x64-setup.exe`   |
-| arm64        | `dist/Nodex-<version>-win-arm64-setup.exe` |
+A host that is not native x64 is rejected. The installer is
+`dist/Nodex-<version>-win-x64-setup.exe`.
 
 The one-click installer is per-user, includes no elevation helper, and requests no administrator access.
 Its application identity is `app.jyu.nodex`. It installs under the user's Programs
@@ -44,7 +38,7 @@ the committed PNG icon through the pinned packager's icon tooling.
 The installer packs its payload as one solid LZMA2 archive. Updates use signed full
 installers, so nothing consumes block-level differential downloads, and the archive
 settings those need (a 1 MiB dictionary and per-file blocks) would cost 61 MiB on the
-v0.5.1 arm64 payload. In exchange, compression takes about eight times longer in release
+v0.5.1 payload. In exchange, compression takes about eight times longer in release
 builds and extraction needs a 256 MiB dictionary in memory.
 After releasing the previous installation, NSIS uses Windows' native `tar.exe`
 to extract the archive directly into the installation directory. This keeps
@@ -119,17 +113,16 @@ verification evidence when using this option.
 The Windows payload contains native Core and CLI executables, the locked official
 Codex app-server package, separately locked Node, the standalone Agent Runtime,
 official Agent Skills, and third-party notices. Published Desktop Tool assets
-add a per-architecture Browser Use and Computer Use closure outside ASAR.
+add a Browser Use and Computer Use closure outside ASAR.
 The Windows package omits macOS bridges and helpers, Sparkle, native PiP, and the
 Python workspace runtime.
 
-The Desktop Tool lock pins each Windows archive independently. Windows staging
+The Desktop Tool lock pins the Windows archive. Windows staging
 downloads a published asset and stages its exact closure. A null asset entry or
 an unpublished candidate (`url: null`) leaves the closure out and removes any
 previously staged copy. The installer still works and Desktop Tools report
-unavailable. The installed-app probe reports `skipped: no published runtime` for
-that CPU. A failed published download or an incomplete closure fails the build. For local candidate inspection,
-`materialize-browser-runtime.ts --target-platform win32 --target-arch <arch>`
+unavailable. The installed-app probe reports `skipped: no published runtime`. A failed published download or an incomplete closure fails the build. For local candidate inspection,
+`materialize-browser-runtime.ts --target-platform win32 --target-arch x64`
 accepts `--archive` or a digest-addressed `--cache`.
 
 Electron-builder copies the matching stage to `resources/browser-runtime`
@@ -148,7 +141,7 @@ it, including the Swift helper's retail CRT. The build worker never adds or
 substitutes DLLs in the sealed Desktop Tool tree.
 
 Codex archive hashes, file inventories, entrypoint hashes and canonical runtime
-metadata digests are pinned separately for both Windows CPUs. Node's executable
+metadata digests are pinned for Windows x64. Node's executable
 hash/size and license hash are pinned in `node-runtime.lock.json`. node-pty's
 matching N-API prebuild is copied to a private output and loaded by staged Node;
 the root dependency remains Electron's own rebuild. Only each runtime's required
@@ -184,7 +177,6 @@ vp run verify:runtime:win .generated/node-runtime/win32-x64 x64
 vp run verify:runtime:win dist/win-unpacked x64
 ```
 
-For arm64, use `arm64` and electron-builder's `dist/win-arm64-unpacked` directory.
 NSIS's bootstrap is an installer launcher; its own machine type is distinct from
 the verified installed payload CPU. The installed probe also recognizes only
 the exact NSIS maintenance uninstaller as a bootstrap; an application binary
@@ -213,7 +205,7 @@ requirements for the supported Windows edition; a successful load on a build
 runner is insufficient. OpenConsole's inbox dependencies include IME/Uniscribe,
 Direct2D and `d3dcompiler_47.dll`, and [Windows ICU](https://learn.microsoft.com/en-us/windows/win32/intl/international-components-for-unicode--icu-)
 (`icu.dll`, present since Windows 10 1903). The pinned terminal payload is scanned
-recursively for both CPUs in unit tests, including its nested OpenConsole helper.
+recursively in unit tests, including its nested OpenConsole helper.
 The installed native Claude SDK is also checked before packaging; its `WSOCK32.dll`
 delay import uses the inbox [Winsock compatibility layer](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsaisblocking).
 Node-gyp's `node.exe` delay import in `.node` addons binds the already-loaded
@@ -351,15 +343,14 @@ runtime identities. Windows SmartScreen may warn on first download.
 
 Official assets use the source version:
 
-| Asset                  | Name                                                             |
-| ---------------------- | ---------------------------------------------------------------- |
-| x64 installer          | `Nodex-<displayVersion>-windows-x64.exe`                         |
-| arm64 installer        | `Nodex-<displayVersion>-windows-arm64.exe`                       |
-| Stable aliases         | `Nodex-latest-windows-x64.exe`, `Nodex-latest-windows-arm64.exe` |
-| Signed appcast         | `Nodex-<displayVersion>-appcast-windows-<arch>.xml`              |
-| Closed update manifest | `Nodex-<displayVersion>-update-windows-<arch>.json`              |
+| Asset                  | Name                                             |
+| ---------------------- | ------------------------------------------------ |
+| Installer              | `Nodex-<displayVersion>-windows-x64.exe`         |
+| Stable alias           | `Nodex-latest-windows-x64.exe`                   |
+| Signed appcast         | `Nodex-<displayVersion>-appcast-windows-x64.xml` |
+| Closed update manifest | `Nodex-<displayVersion>-update-windows-x64.json` |
 
-Stable aliases have exactly the same bytes as their versioned installer. Nightly
+The stable alias has exactly the same bytes as the versioned installer. Nightly
 prereleases contain versioned assets only and never change GitHub Latest. The
 internal local packager names in the build table above are renamed only after
 verification; they are not public asset names.
@@ -369,9 +360,9 @@ The architecture manifest binds that Build Identity, clean prepared generation,
 packaged app version, official Skills identity, runtime lock digests, native runner
 versions, installer hash and package provenance. The Windows provenance includes
 all unpacked payload file hashes and the successful installed-app probe receipt.
-A missing CPU or failed probe blocks the complete release.
+A missing installer or failed probe blocks the complete release.
 
-A direct job bound to `sparkle-feed-finalization` signs each installer with the
+A direct job bound to `sparkle-feed-finalization` signs the installer with the
 existing Sparkle `sign_update` tool and `SPARKLE_ED25519_PRIVATE_KEY`. It produces
 a signed single-item appcast with the monotonic build version, display version,
 publication date, release notes, exact byte length and `sparkle:os="windows"`.
@@ -383,9 +374,7 @@ their hashes and stable aliases to `SHA256SUMS` and `release-bundle.json`.
 The feeds are:
 
 - `https://nodex.jyu.app/updates/stable/windows-x64/appcast.xml`
-- `https://nodex.jyu.app/updates/stable/windows-arm64/appcast.xml`
 - `https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml`
-- `https://nodex.jyu.app/updates/nightly/windows-arm64/appcast.xml`
 
 Pages stores only feed snapshots; installer bytes remain GitHub Release assets.
 Projection preflights every architecture, rejects lower build versions and
@@ -435,11 +424,11 @@ support. Feed requests and every redirect require HTTPS. The Sparkle-format
 RSS appcast is limited to 1 MiB and 100 direct items; DTDs, entity declarations,
 malformed XML and conflicting build identities are rejected. Windows full
 installers must use immutable Nodex GitHub Release asset URLs named
-`Nodex-<displayVersion>-windows-<arch>.exe`. Only the newest matching CPU with a
+`Nodex-<displayVersion>-windows-x64.exe`. Only the newest matching CPU with a
 strictly greater numeric Release Identity build tuple is eligible.
 
 Downloads stream with backpressure into the selected Profile's
-`updates/windows-<arch>/prepared-<uuid>.exe.download`, bounded by the appcast's
+`updates/windows-x64/prepared-<uuid>.exe.download`, bounded by the appcast's
 exact byte count and a 1 GiB ceiling. Main verifies the exact bytes with Node
 Ed25519 against the same pinned Sparkle key before renaming to `.exe` and
 reporting readiness. Ed25519 is not a streaming prehash signature: Node's final
@@ -464,7 +453,7 @@ path, preserving the selected
 installer is strictly per-user and never elevates. Startup removes any abandoned prepared file.
 
 The native installer probe additionally runs the same silent update command over
-a running installed app on both architectures. It requires a new installed host
+a running installed app. It requires a new installed host
 and authenticated Core generation with the same Profile ID and Core artifact,
 Agent Runtime readiness, preserved Profile marker/database and protocol handler,
 exactly one installed Desktop, and every previous installation process stopped.
@@ -477,4 +466,4 @@ below the packaged parser; no key, HTTP feed, or updater-control override ships
 in the application. CI installers keep updates disabled. The installer probe
 proves NSIS handoff; it does not exercise the production updater against a local
 feed. Acceptance still requires installing a published nightly and receiving a
-newer published nightly through the real HTTPS feeds on x64 and arm64.
+newer published nightly through the real HTTPS feeds.

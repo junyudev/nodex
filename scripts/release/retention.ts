@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readPublishedReleaseIndex } from "./github-release";
+import { RELEASE_ARCHITECTURES } from "./targets";
 
 interface RemoteAsset {
   readonly digest?: string | null;
@@ -21,7 +22,7 @@ interface RemoteRelease {
 }
 
 const NIGHTLY_TAG = /^v\d+\.\d+\.\d+-nightly\.\d{8}\.[1-9]\d*$/u;
-const NIGHTLY_FEEDS = ["arm64", "windows-x64", "windows-arm64"].map(
+const NIGHTLY_FEEDS = RELEASE_ARCHITECTURES.map(
   (architecture) => `https://nodex.jyu.app/updates/nightly/${architecture}/appcast.xml`,
 );
 

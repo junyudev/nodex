@@ -44,30 +44,27 @@ async function fixture(
     executable: path.join(directory, executable),
   };
 }
-test.each(["x64", "arm64"] as const)(
-  "Windows %s execution uses verified Node without browser tooling",
-  async (arch) => {
-    const input = await fixture(arch);
-    const runtime = await resolveNodeExecutionRuntime(input);
-    expect(runtime).toEqual({
-      status: "available",
-      source: "standalone",
-      executable: path.join(input.directory, "node.exe"),
-      version: input.release.version,
-    });
-    expect(
-      agentRuntimeNodeExecutable({
-        isPackaged: true,
-        environment: {},
-        nodeRuntime: runtime,
-      }),
-    ).toBe(path.join(input.directory, "node.exe"));
-  },
-);
+test("Windows x64 execution uses verified Node without browser tooling", async () => {
+  const input = await fixture();
+  const runtime = await resolveNodeExecutionRuntime(input);
+  expect(runtime).toEqual({
+    status: "available",
+    source: "standalone",
+    executable: path.join(input.directory, "node.exe"),
+    version: input.release.version,
+  });
+  expect(
+    agentRuntimeNodeExecutable({
+      isPackaged: true,
+      environment: {},
+      nodeRuntime: runtime,
+    }),
+  ).toBe(path.join(input.directory, "node.exe"));
+});
 test.each(["darwin", "win32"] as const)(
   "%s manifest cannot authorize a different binary",
   async (platform) => {
-    const input = await fixture("arm64", platform);
+    const input = await fixture(platform === "darwin" ? "arm64" : "x64", platform);
     const bytes = Buffer.from("other executable");
     await writeFile(input.executable, bytes);
     await writeFile(

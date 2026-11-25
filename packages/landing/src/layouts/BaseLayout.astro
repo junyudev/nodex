@@ -85,17 +85,10 @@ const cardUrl = new URL(card.file, Astro.site).href;
     <script is:inline>
       (() => {
         // Download actions follow the visitor's OS; macOS stays the default without a match.
-        const agent = navigator.userAgentData;
-        const platform = agent?.platform || navigator.platform || navigator.userAgent;
+        const platform =
+          navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
         if (!/^win|windows/iu.test(platform)) return;
-        const root = document.documentElement;
-        root.dataset.os = "windows";
-        agent
-          ?.getHighEntropyValues?.(["architecture"])
-          .then(({ architecture }) => {
-            if (architecture === "arm") root.dataset.arch = "arm64";
-          })
-          .catch(() => {});
+        document.documentElement.dataset.os = "windows";
       })();
     </script>
     <script>

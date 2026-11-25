@@ -31,7 +31,7 @@ const text = (item: Element, name: string, namespace = ""): string | undefined =
 /** No DTDs, entities, recovery parsing, nested enclosures or unbounded feed trees. */
 export function selectWindowsUpdate(
   xml: string,
-  architecture: "x64" | "arm64",
+  architecture: "x64",
   runningBuildVersion: string,
 ): WindowsUpdateItem | null {
   if (Buffer.byteLength(xml) > MAX_APPCAST_BYTES || /<!DOCTYPE|<!ENTITY/iu.test(xml)) {

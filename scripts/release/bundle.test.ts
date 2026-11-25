@@ -205,7 +205,7 @@ test("assembles the complete macOS and Windows signed release closure", () => {
     identity: fixtureIdentity(),
   });
 
-  expect(bundle.schemaVersion).toBe(7);
+  expect(bundle.schemaVersion).toBe(8);
   expect(bundle.assets.map(({ name }) => name).sort()).toEqual(
     [
       `Nodex-${VERSION}-appcast-arm64.xml`,
@@ -218,12 +218,10 @@ test("assembles the complete macOS and Windows signed release closure", () => {
       `Nodex-${VERSION}-android.apk`,
       "Nodex-latest-android.apk",
       "release-identity.json",
-      ...["x64", "arm64"].flatMap((architecture) => [
-        `Nodex-${VERSION}-windows-${architecture}.exe`,
-        `Nodex-latest-windows-${architecture}.exe`,
-        `Nodex-${VERSION}-appcast-windows-${architecture}.xml`,
-        `Nodex-${VERSION}-update-windows-${architecture}.json`,
-      ]),
+      `Nodex-${VERSION}-windows-x64.exe`,
+      "Nodex-latest-windows-x64.exe",
+      `Nodex-${VERSION}-appcast-windows-x64.xml`,
+      `Nodex-${VERSION}-update-windows-x64.json`,
     ].sort(),
   );
   const componentName = appComponentManifestName(VERSION);
@@ -319,13 +317,48 @@ test("reads a published ZIP index and rejects ZIP for new releases", () => {
     ...bundle.assets.find(({ role }) => role === "sparkle-full")!,
     name: `Nodex-${VERSION}-arm64.zip`,
   };
-  const history = {
-    ...bundle,
-    schemaVersion: 6,
-    assets: bundle.assets
-      .filter(({ role }) => role !== "components-manifest")
-      .map((asset) => (asset.role === "sparkle-full" ? zipAsset : asset)),
+  const legacyWindows = "windows-arm64";
+  const legacyAssets = bundle.assets.flatMap((asset) =>
+    asset.architecture === "windows-x64"
+      ? [
+          asset,
+          {
+            ...asset,
+            architecture: legacyWindows,
+            name: asset.name.replace("windows-x64", legacyWindows),
+          },
+        ]
+      : [asset],
+  );
+  const legacyArchitectures = {
+    ...bundle.architectures,
+    [legacyWindows]: bundle.architectures["windows-x64"],
   };
+  const historyFor = (schemaVersion: number) => ({
+    ...bundle,
+    schemaVersion,
+    architectures: legacyArchitectures,
+    mobile: schemaVersion === 4 ? undefined : bundle.mobile,
+    assets: legacyAssets
+      .filter(
+        ({ role, name }) =>
+          (schemaVersion >= 7 || role !== "components-manifest") &&
+          (schemaVersion >= 6 || name !== `Nodex-${VERSION}-arm64.dmg`) &&
+          (schemaVersion >= 5 || role !== "android-apk"),
+      )
+      .map((asset) => (schemaVersion < 7 && asset.role === "sparkle-full" ? zipAsset : asset)),
+  });
+  for (const schemaVersion of [4, 5, 6, 7]) {
+    const legacy = historyFor(schemaVersion);
+    const parsed = parseReleaseHistoryBundle(legacy);
+    expect(parsed.schemaVersion).toBe(schemaVersion);
+    if (schemaVersion === 4) expect(parsed.mobile).toBeUndefined();
+    expect(() => parseReleaseBundleManifest(legacy)).toThrow("manifest is invalid");
+  }
+  expect(() =>
+    parseReleaseBundleManifest({ ...historyFor(7), schemaVersion: bundle.schemaVersion }),
+  ).toThrow("manifest is invalid");
+  const history = historyFor(6);
   const bundlePath = join(output, "release-bundle.json");
   writeFileSync(bundlePath, JSON.stringify(history));
   const checksums = [
@@ -602,31 +635,4 @@ test("refuses a phone build signed by anyone but Nodex", () => {
       identity: fixtureIdentity(),
     }),
   ).toThrow("signer");
-});
-
-test("still reads published desktop-only bundles as history", () => {
-  const arm64 = makeArchitecture("arm64");
-  const output = join(fixture, "output");
-  assembleReleaseBundle({
-    ...windows,
-    arm64Directory: arm64,
-    arm64UpdateDirectory: makeUpdate("arm64", arm64),
-    outputDirectory: output,
-    identity: fixtureIdentity(),
-  });
-  const { mobile: _mobile, ...current } = JSON.parse(
-    readFileSync(join(output, "release-bundle.json"), "utf8"),
-  );
-  const desktopOnly = {
-    ...current,
-    schemaVersion: 4,
-    assets: current.assets.filter(
-      ({ role, name }: { role: string; name: string }) =>
-        role !== "android-apk" &&
-        role !== "components-manifest" &&
-        name !== `Nodex-${VERSION}-arm64.dmg`,
-    ),
-  };
-  expect(parseReleaseHistoryBundle(desktopOnly).mobile).toBeUndefined();
-  expect(() => parseReleaseBundleManifest(desktopOnly)).toThrow("invalid");
 });

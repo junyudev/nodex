@@ -3,7 +3,7 @@ import type { AfterPackContext } from "electron-builder";
 export interface RestorePackagedBrowserRuntimeClosureOptions {
   readonly packagedBrowserRoot: string;
   readonly sourceBrowserRoot: string;
-  readonly windowsArch: "x64" | "arm64";
+  readonly windowsArch: "x64";
   readonly expectedManifestSha256?: string;
   readonly restore?: boolean;
 }

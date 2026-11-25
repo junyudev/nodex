@@ -1,5 +1,5 @@
 export type DesktopArchitecture = "x64" | "arm64";
-export type WindowsArchitecture = DesktopArchitecture;
+export type WindowsArchitecture = "x64";
 
 export type DesktopBuildTarget =
   | {
@@ -15,13 +15,18 @@ export type DesktopBuildTarget =
       readonly platform: "win32";
       readonly arch: WindowsArchitecture;
       readonly key: `win32-${WindowsArchitecture}`;
-      readonly rustTarget: "x86_64-pc-windows-msvc" | "aarch64-pc-windows-msvc";
+      readonly rustTarget: "x86_64-pc-windows-msvc";
       readonly executableSuffix: ".exe";
       readonly runtime: "windows";
       readonly rustPackages: readonly string[];
     };
 
 /** One target contract selects native binaries and optional platform runtimes. */
+export function desktopBuildTarget<Platform extends DesktopBuildTarget["platform"]>(
+  platform: Platform,
+  arch?: string,
+): Extract<DesktopBuildTarget, { platform: Platform }>;
+export function desktopBuildTarget(platform?: string, arch?: string): DesktopBuildTarget;
 export function desktopBuildTarget(
   platform: string = process.platform,
   arch: string = process.arch,
@@ -36,12 +41,12 @@ export function desktopBuildTarget(
       runtime: "macos",
       rustPackages: ["nodex-core-server", "nodex-cli", "nodex-browser-profile-helper"],
     };
-  if (platform === "win32" && (arch === "x64" || arch === "arm64"))
+  if (platform === "win32" && arch === "x64")
     return {
       platform,
       arch,
       key: `win32-${arch}`,
-      rustTarget: arch === "x64" ? "x86_64-pc-windows-msvc" : "aarch64-pc-windows-msvc",
+      rustTarget: "x86_64-pc-windows-msvc",
       executableSuffix: ".exe",
       runtime: "windows",
       rustPackages: ["nodex-core-server", "nodex-cli", "nodex-platform"],

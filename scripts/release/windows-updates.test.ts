@@ -31,7 +31,7 @@ const read = (file: string) => JSON.parse(readFileSync(file, "utf8"));
 const write = (file: string, value: unknown) => writeFileSync(file, JSON.stringify(value));
 
 test.each(["stable", "nightly"] as const)(
-  "%s bundles include both signed Windows installers and isolated feeds",
+  "%s bundles include the signed Windows x64 installer and isolated feeds",
   async (channel) => {
     const inputs = makeReleaseFixture(root, channel);
     const identity = fixtureIdentity(channel);
@@ -39,23 +39,21 @@ test.each(["stable", "nightly"] as const)(
     const bundle = assembleReleaseBundle({ ...inputs, outputDirectory: output });
     expect(Object.keys(bundle.architectures).sort()).toEqual([...RELEASE_ARCHITECTURES].sort());
     const installerAssets = bundle.assets.filter(({ role }) => role === "windows-installer");
-    expect(installerAssets).toHaveLength(channel === "stable" ? 4 : 2);
+    expect(installerAssets).toHaveLength(channel === "stable" ? 2 : 1);
     expect(installerAssets.filter(({ name }) => name.includes("latest"))).toHaveLength(
-      channel === "stable" ? 2 : 0,
+      channel === "stable" ? 1 : 0,
     );
-    for (const arch of ["x64", "arm64"]) {
-      const bytes = readFileSync(join(output, `Nodex-${identity.version}-windows-${arch}.exe`));
-      if (channel === "stable")
-        expect(readFileSync(join(output, `Nodex-latest-windows-${arch}.exe`))).toEqual(bytes);
-      const xml = readFileSync(
-        join(output, `Nodex-${identity.version}-appcast-windows-${arch}.xml`),
-        "utf8",
-      );
-      expect(xml).toContain(`sparkle:os="windows"`);
-      expect(xml).toContain(
-        `/releases/download/${identity.tag}/Nodex-${identity.version}-windows-${arch}.exe`,
-      );
-    }
+    const bytes = readFileSync(join(output, `Nodex-${identity.version}-windows-x64.exe`));
+    if (channel === "stable")
+      expect(readFileSync(join(output, `Nodex-latest-windows-x64.exe`))).toEqual(bytes);
+    const xml = readFileSync(
+      join(output, `Nodex-${identity.version}-appcast-windows-x64.xml`),
+      "utf8",
+    );
+    expect(xml).toContain(`sparkle:os="windows"`);
+    expect(xml).toContain(
+      `/releases/download/${identity.tag}/Nodex-${identity.version}-windows-x64.exe`,
+    );
     const bundlePath = join(output, "release-bundle.json");
     const assetNames = releaseAssetPaths(bundlePath, inputs.windowsPublicKey).map((path) =>
       basename(path),
@@ -94,7 +92,7 @@ test.each(["stable", "nightly"] as const)(
       windowsPublicKey: inputs.windowsPublicKey,
       attempts: 1,
     });
-    expect(fetch.mock.calls.filter(([, init]) => init?.method === "HEAD")).toHaveLength(3);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === "HEAD")).toHaveLength(2);
   },
 );
 
@@ -114,7 +112,7 @@ test("rejects a missing Windows architecture, disabled update channel, or mismat
     rmSync(join(root, "output"), { recursive: true, force: true });
   }
   write(path, build);
-  rmSync(inputs.windowsArm64Directory, { recursive: true });
+  rmSync(inputs.windowsX64Directory, { recursive: true });
   expect(() =>
     assembleReleaseBundle({ ...inputs, outputDirectory: join(root, "output") }),
   ).toThrow();
@@ -163,7 +161,7 @@ test("preflights every feed before projecting, rejecting rollback and same-build
   const bundlePath = join(output, "release-bundle.json");
   for (const buildVersion of ["2.0.0", "1.0.1"]) {
     const site = join(root, buildVersion);
-    const feed = join(site, "updates/stable/windows-arm64/appcast.xml");
+    const feed = join(site, "updates/stable/windows-x64/appcast.xml");
     mkdirSync(dirname(feed), { recursive: true });
     writeFileSync(
       feed,
@@ -187,7 +185,7 @@ test("bundle admission requires every Windows asset and byte-identical stable al
   expect(() =>
     parseReleaseBundleManifest({
       ...bundle,
-      assets: bundle.assets.filter(({ name }) => name !== "Nodex-latest-windows-arm64.exe"),
+      assets: bundle.assets.filter(({ name }) => name !== "Nodex-latest-windows-x64.exe"),
     }),
   ).toThrow("missing");
   expect(() =>
@@ -210,7 +208,7 @@ test("rejects Windows update projection and identity substitutions", () => {
   for (const mutation of [
     {
       ...manifest,
-      appcast: { ...manifest.appcast, feedPath: "updates/stable/windows-arm64/appcast.xml" },
+      appcast: { ...manifest.appcast, feedPath: "updates/nightly/windows-x64/appcast.xml" },
     },
     {
       ...manifest,

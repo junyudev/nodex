@@ -143,6 +143,7 @@ const buildHarness = (input: {
               ...(input.appBuildVersion ? { appBuildVersion: input.appBuildVersion } : {}),
               isPackaged: input.isPackaged ?? true,
               platform: input.platform ?? "darwin",
+              arch: input.platform === "win32" ? "x64" : "arm64",
             }),
             callbackRuntimeLayer,
           ),

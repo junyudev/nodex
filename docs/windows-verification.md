@@ -1,18 +1,18 @@
 # Windows verification
 
-Nodex supports Windows 11 on x64 (primary) and arm64. Windows evidence comes from
+Nodex supports Windows 11 on x64. Windows evidence comes from
 three layers. Each layer proves what the cheaper layer cannot; none substitutes for
 another.
 
-| Layer       | Environment                                                                            | Proves                                                                                                                                                 |
-| ----------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Automated   | GitHub `windows-latest` (Windows Server, x64) and `windows-11-arm` (Windows 11, arm64) | Native builds, Rust and application suites, per-architecture packaging and closure, silent install, packaged Core and Agent Runtime startup, uninstall |
-| Interactive | Windows 11 arm64 virtual machine on an Apple silicon Mac                               | Windows semantics under a standard user: UI, input, shell integration, installer and upgrade flows, both architecture builds                           |
-| Acceptance  | Physical x64 Windows 11 PC                                                             | GPU rendering, representative performance, power and session lifecycle, physical peripherals                                                           |
+| Layer       | Environment                                        | Proves                                                                                                                                |
+| ----------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Automated   | GitHub `windows-latest` (Windows Server, x64)      | Native builds, Rust and application suites, packaging and closure, silent install, packaged Core and Agent Runtime startup, uninstall |
+| Interactive | Windows 11 virtual machine on an Apple silicon Mac | Windows semantics under a standard user: UI, input, shell integration, installer and upgrade flows                                    |
+| Acceptance  | Physical x64 Windows 11 PC                         | GPU rendering, representative performance, power and session lifecycle, physical peripherals                                          |
 
 The automated layer is defined in [`.github/workflows/windows.yml`](../.github/workflows/windows.yml)
-and runs the full `unit`, `core-client`, `main`, `renderer`, and `integration` suites
-on each CPU. Core-client exercises the real Rust Core over named pipes under host
+and runs the full `unit`, `core-client`, `main`, `renderer`, and `integration` suites.
+Core-client exercises the real Rust Core over named pipes under host
 Node; Main and integration use Electron's ABI. It is described in [CI](CI.md); packaging and artifacts are described in
 [the Windows release runbook](release-windows.md).
 
@@ -38,29 +38,27 @@ A null Windows asset entry reports that no conformance-tested runtime is availab
 Neither case exercises the vendor runtime.
 
 Before publishing a Windows archive or admitting a new app-server pair, run
-the same staged vendor check on each matching Windows worker with the approved
-local archive. In a disposable checkout, substitute the native CPU and archive
-path below. When using a Windows VM, run the probe from the signed-in console.
+the same staged vendor check on a native x64 Windows worker with the approved
+local archive. In a disposable checkout, substitute the archive path below. When using a Windows VM, run the probe from the signed-in console.
 Use an interactive-logon scheduled task when connecting over SSH.
 
 ```powershell
-$arch = 'x64' # Use 'arm64' on the native arm64 worker.
 $archive = 'C:\path\to\the\locked\archive.tar.gz'
-vp exec tsx scripts/desktop-build.ts stage-codex win32 $arch
-vp exec tsx scripts/materialize-browser-runtime.ts --target-platform win32 --target-arch $arch --archive $archive --out .generated/desktop-tool-candidate
-vp exec tsx scripts/stage-codex-runtime.ts --target-platform win32 --target-arch $arch --out .generated/codex-runtime --reuse-existing --browser-runtime-source .generated/desktop-tool-candidate
+vp exec tsx scripts/desktop-build.ts stage-codex win32 x64
+vp exec tsx scripts/materialize-browser-runtime.ts --target-platform win32 --target-arch x64 --archive $archive --out .generated/desktop-tool-candidate
+vp exec tsx scripts/stage-codex-runtime.ts --target-platform win32 --target-arch x64 --out .generated/codex-runtime --reuse-existing --browser-runtime-source .generated/desktop-tool-candidate
 $env:NODEX_REQUIRE_STAGED_DESKTOP_TOOLS = '1'
 vp run test:integration src/main/platform/node/WindowsDesktopTools.integration.ts -t 'initializes the staged vendor Windows REPL'
 Remove-Item Env:NODEX_REQUIRE_STAGED_DESKTOP_TOOLS
 ```
 
 The staged probe can verify the exact candidate pair in the release lock before
-it is recorded. After the native probes pass on both architectures, add both
-pairs to `src/shared/browser-app-server-compatibility.mjs`. The installed probe
+it is recorded. After the native probe passes, add the pair to
+`src/shared/browser-app-server-compatibility.mjs`. The installed probe
 requires the same conformance record as the application.
 
 The interactive layer covers the published extensions, Browser routing and
-Computer Use under a standard user on Windows 11. Use a native arm64 VM and a
+Computer Use under a standard user on Windows 11. Use the virtual machine and a
 native x64 Windows session. The physical x64 gate additionally covers mixed
 DPI, multiple monitors, GPU capture, Defender, and sleep or session transitions.
 
@@ -96,9 +94,9 @@ timing luck fails there first. Suites follow these rules on every platform:
   the VC++ Redistributable installed globally. Clean-machine DLL availability is
   therefore checked statically, including delay imports and transitive app-local
   dependencies, by the [runtime closure policy](release-windows.md#clean-machine-dependency-policy).
-- **An arm64 virtual machine** runs x64 builds through emulation. It cannot reveal an
-  arm64 executable accidentally packaged into an x64 build, and its timing is not
-  representative. The x64 package is therefore always proven on a native x64 runner.
+- **The virtual machine** runs on Apple silicon, so the x64 build runs through emulation
+  and its timing is not representative. The package is therefore always proven on a
+  native x64 runner.
   The machine also has no nested virtualization, so WSL 2, Windows Sandbox, and
   virtualization-based security are unavailable.
 - **Only physical hardware** exercises real GPU drivers, mixed-DPI monitors,
@@ -106,7 +104,7 @@ timing luck fails there first. Suites follow these rules on every platform:
 
 ## Interactive machine setup
 
-Use Windows 11 Pro or Enterprise for arm64 in a hypervisor with snapshot support.
+Use Windows 11 Pro or Enterprise in a hypervisor with snapshot support.
 
 - Allocate 6–8 virtual CPUs, 12–16 GB of memory, and about 150 GB of disk.
 - Create a **standard (non-administrator)** account whose name contains a space and
@@ -138,8 +136,6 @@ Use Windows 11 Pro or Enterprise for arm64 in a hypervisor with snapshot support
   internet zone mark that SmartScreen evaluates.
 
 ## Interactive checklist
-
-Run the checklist with both the arm64 and the x64 installer.
 
 1. **Install and first launch**: per-user install without elevation, SmartScreen
    prompt for an unsigned build, Start menu entry, `nodex://` link opens the running
@@ -206,14 +202,14 @@ installed CLI and sibling helpers on the clean machine.
 ### Computer Use
 
 With a clean Windows 11 standard-user desktop, run the following on
-native x64 and native arm64. Start with the Codex desktop app absent and without a
+native x64. Start with the Codex desktop app absent and without a
 separately installed Visual C++ runtime. Repeat the capture and interruption steps
 with Codex installed to check isolation.
 
 - In **Settings → Computer use**, verify **Available**, the enable switch, and the
   always-allowed app list. Confirm the helper starts only after an Agent makes its
   first Computer Use call. Record the REPL and helper image paths, machine type,
-  signer, and the helper process tree. On arm64, both executables must run natively.
+  signer, and the helper process tree.
 - In a local Codex chat and a local non-Codex chat, list apps, select a Notepad window,
   capture it, and enter disposable text using keyboard and pointer. Check capture
   and coordinate accuracy on the physical x64 machine at mixed DPI and with two
@@ -247,12 +243,12 @@ setup.
 
 ## Existing-browser control
 
-Run in an interactive standard-user Windows 11 session on x64 and arm64 with the installed app's default Nodex Profile in a disposable Windows account and disposable browser profiles. Record the architecture, Nodex build, browser and extension versions, Settings states, and the before/after HKCU default values. For the production extension host, query both of these keys with `/ve /reg:32` and `/ve /reg:64`.
+Run in an interactive standard-user Windows 11 session with the installed app's default Nodex Profile in a disposable Windows account and disposable browser profiles. Record the architecture, Nodex build, browser and extension versions, Settings states, and the before/after HKCU default values. For the production extension host, query both of these keys with `/ve /reg:32` and `/ve /reg:64`.
 
 - `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.openai.codexextension`
 - `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.openai.codexextension`
 
-- **Clean install.** Start with the other desktop app absent. Install the published ChatGPT extension in Chrome and Edge. Test Edge with the Edge Add-ons ID and Chrome with the Chrome Web Store ID. Confirm **Waiting for extension** before connection and **Ready** after connection. From a local Agent, read a test page and select its exact tab. Repeat with two browser profiles and confirm commands reach the selected extension instance. On arm64, verify routing when optional browser-profile names are absent.
+- **Clean install.** Start with the other desktop app absent. Install the published ChatGPT extension in Chrome and Edge. Test Edge with the Edge Add-ons ID and Chrome with the Chrome Web Store ID. Confirm **Waiting for extension** before connection and **Ready** after connection. From a local Agent, read a test page and select its exact tab. Repeat with two browser profiles and confirm commands reach the selected extension instance.
 - **Repair.** Close both browsers, remove the Profile's native-messaging manifest and reopen Nodex. If it reports **Needs repair**, choose **Repair**. Verify the manifest is regenerated with the exact extension origins and the verified host path. Restart both browsers and repeat the handshake. Test the 32-bit and 64-bit registry queries and confirm they see the same HKCU default.
 - **Co-install and take over.** Install and connect the other desktop app first. Record its Chrome registration and any Edge-specific registration. Open Nodex and confirm **In use by another app**, the original manifest path and unchanged values. Choose **Use with Nodex**, reconnect both browsers, and repeat the handshake. Confirm an alternate installed Profile and a development launch without opt-in leave HKCU unchanged. Run `vp run dev --register-browser-host` from a separate development Profile and confirm it reports **In use by another Nodex Profile** while the installed Profile owns the values.
 - **Temporary development registration.** With the installed Profile’s registration off, opt in from a development Profile. Verify that quitting returns any previous values, including after an approved takeover. Replace one default while the development instance is running and verify quitting preserves that replacement.

@@ -45,7 +45,11 @@ import {
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { stageBrowserRuntime } from "./stage-browser-runtime";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../src/shared/browser-runtime-metadata";
-import { desktopBuildTarget, type DesktopArchitecture } from "./desktop-build-target";
+import {
+  desktopBuildTarget,
+  type DesktopArchitecture,
+  type DesktopBuildTarget,
+} from "./desktop-build-target";
 import { stageWindowsVcRuntime } from "./windows-vc-runtime.mjs";
 import {
   assertPeArchitecture,
@@ -96,18 +100,30 @@ export type StageAgentRuntimeOptions = {
 
 type CliOptions = StageAgentRuntimeOptions;
 
-export type AgentRuntimeTarget = {
-  targetArch: DesktopArchitecture;
-  targetKey: "darwin-arm64" | `win32-${DesktopArchitecture}`;
-  targetPlatform: "darwin" | "win32";
-  targetTriple: string;
+type RuntimeTargetFor<T extends DesktopBuildTarget> = {
+  targetArch: T["arch"];
+  targetKey: T["key"];
+  targetPlatform: T["platform"];
+  targetTriple: T["rustTarget"];
 };
+
+export type AgentRuntimeTarget =
+  | RuntimeTargetFor<Extract<DesktopBuildTarget, { platform: "darwin" }>>
+  | RuntimeTargetFor<Extract<DesktopBuildTarget, { platform: "win32" }>>;
 
 export function resolveCodexRuntimeTarget(
   targetPlatform: string,
   targetArch: string,
 ): AgentRuntimeTarget {
   const target = desktopBuildTarget(targetPlatform, targetArch);
+  if (target.platform === "win32") {
+    return {
+      targetPlatform: target.platform,
+      targetArch: target.arch,
+      targetKey: target.key,
+      targetTriple: target.rustTarget,
+    };
+  }
   return {
     targetPlatform: target.platform,
     targetArch: target.arch,
@@ -122,7 +138,7 @@ function targetReleaseLock(
   target: AgentRuntimeTarget,
 ): CodexAppServerReleaseLock {
   if (target.targetPlatform !== "win32") return lock;
-  const build = lock.builds[target.targetKey as `win32-${DesktopArchitecture}`];
+  const build = lock.builds[target.targetKey];
   return {
     ...lock,
     requiredArtifacts: build.requiredArtifacts,

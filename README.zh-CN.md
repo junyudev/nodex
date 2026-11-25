@@ -148,9 +148,8 @@ Nodex 目前为 Beta。直接登录你已有的 Codex、Claude Code、Antigravit
 
 - **macOS 15+**（Apple 芯片）：`brew install --cask junyudev/tap/nodex`，或下载
   [磁盘映像](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)。
-- **Windows 11**：[x64](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe) 或
-  [Arm](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe) 安装包。安装包尚未代码签名，如果出现 SmartScreen，
-  点“更多信息”，再点“仍要运行”。
+- **Windows 11**（x64）：[安装包](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe)。
+  安装包尚未代码签名，如果出现 SmartScreen，点“更多信息”，再点“仍要运行”。
 - **iPhone 和 Android**：[TestFlight 公测](https://testflight.apple.com/join/Yz8Kpcty) 或 [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk)。
   Nodex Mobile 需要电脑上的 Nodex 保持运行。
 

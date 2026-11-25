@@ -65,7 +65,7 @@ export interface AppUpdateRuntimeOptions {
 
 const createUpdaterPlatform = (config: MainConfigValue): AppUpdaterPlatform | null => {
   if (!config.isPackaged || !hostCapabilities(config.platform, config.arch).autoUpdate) return null;
-  if (config.platform === "win32" && (config.arch === "x64" || config.arch === "arm64")) {
+  if (config.platform === "win32" && config.arch === "x64") {
     return createPackagedWindowsAppUpdaterPlatform({
       resourcesPath: config.resourcesPath,
       architecture: config.arch,

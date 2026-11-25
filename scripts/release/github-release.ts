@@ -8,7 +8,6 @@ import {
   parseReleaseBundleManifest,
   parseReleaseHistoryBundle,
   COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS,
-  type ReleaseBundleManifest,
 } from "./bundle";
 import { sha256File, type ReleaseIdentity } from "./model";
 
@@ -58,12 +57,12 @@ const readBundle = (bundlePath: string) => {
 
 const verifyChecksumAllowlist = (
   resolvedBundle: string,
-  bundle: Pick<ReleaseBundleManifest, "assets">,
+  assets: readonly { readonly name: string; readonly sha256: string }[],
 ): string => {
   const checksumPath = join(dirname(resolvedBundle), "SHA256SUMS");
   assertRegularFile(checksumPath);
   const checksumEntries = [
-    ...bundle.assets.map(({ name, sha256 }) => ({ name, sha256 })),
+    ...assets.map(({ name, sha256 }) => ({ name, sha256 })),
     { name: basename(resolvedBundle), sha256: sha256File(resolvedBundle) },
   ].sort((left, right) => left.name.localeCompare(right.name));
   const expectedChecksums = `${checksumEntries.map(({ name, sha256 }) => `${sha256}  ${name}`).join("\n")}\n`;
@@ -212,7 +211,7 @@ export const releaseAssetPaths = (
       throw new Error(`Release asset ${artifact.name} does not match release-bundle.json.`);
     }
   }
-  verifyChecksumAllowlist(resolvedBundle, bundle);
+  verifyChecksumAllowlist(resolvedBundle, bundle.assets);
   verifyWindowsReleaseAssets(bundle, root, windowsPublicKey);
   return paths;
 };
@@ -233,7 +232,7 @@ export const readPublishedReleaseIndex = (bundlePath: string) => {
   if (!COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS.includes(bundle.schemaVersion)) {
     throw new Error("Published release verification requires a complete Release Bundle.");
   }
-  const checksumPath = verifyChecksumAllowlist(resolvedBundle, bundle);
+  const checksumPath = verifyChecksumAllowlist(resolvedBundle, bundle.assets);
   const assets = new Map<string, ReleaseAssetIdentity>([
     ...bundle.assets.map(
       (asset) => [asset.name, { bytes: asset.bytes, sha256: asset.sha256 }] as const,

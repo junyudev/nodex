@@ -121,36 +121,28 @@ Prepare additional architectures explicitly in a dedicated checkout by setting
 `supportedArchitectures` before installation; this installs optional packages,
 not cross-compiled native addons.
 
-### Windows 11 (x64 and arm64)
+### Windows 11 (x64)
 
-Use a native toolchain for the CPU you are building. Install Git, the pinned
+Use a native x64 toolchain. Install Git, the pinned
 Node version, [Rustup](https://rustup.rs/), and the
 [Vite+ CLI](https://viteplus.dev/guide/install). Install Visual Studio 2022
 Build Tools with **Desktop development with C++**, the Windows SDK, and the
-MSVC x64/x86 tools; arm64 development also needs the MSVC ARM64/ARM64EC tools.
-Install the matching **Spectre-mitigated libraries**, which are separate optional
-components. `vp install` runs `electron-builder install-app-deps`; rebuilding
-node-pty's winpty/conpty projects fails with **MSB8040** when these are missing.
-Select these Visual Studio 2022 component IDs (all three for an arm64 host):
-
-| Component ID                                                   | Required libraries |
-| -------------------------------------------------------------- | ------------------ |
-| `Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre` | x64/x86            |
-| `Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre`   | ARM64              |
-| `Microsoft.VisualStudio.Component.VC.Runtimes.ARM64EC.Spectre` | ARM64EC            |
+MSVC x64/x86 tools. Also install the x64/x86 **Spectre-mitigated libraries**
+(`Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre`), a separate optional
+component. `vp install` runs `electron-builder install-app-deps`; rebuilding
+node-pty's winpty/conpty projects fails with **MSB8040** when it is missing.
 
 For an existing Build Tools installation, run the VS 2022 bootstrapper from an
 administrator PowerShell, adjusting `--installPath` if needed:
 
 ```powershell
-.\vs_BuildTools.exe modify --installPath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools" --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --add Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre --add Microsoft.VisualStudio.Component.VC.Runtimes.ARM64EC.Spectre --passive --wait --norestart
+.\vs_BuildTools.exe modify --installPath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools" --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --passive --wait --norestart
 ```
 
 These IDs come from the [VS 2022 release component catalog](https://aka.ms/vs/17/release/channel).
 Install Python 3 for node-gyp. Use a Developer PowerShell with these tools on
-PATH when a native dependency needs rebuilding. Avoid an x64 Node installation
-when building the arm64 app. `node -p process.arch` and `rustc -vV` must report
-the intended native CPU and MSVC host.
+PATH when a native dependency needs rebuilding. `node -p process.arch` and
+`rustc -vV` must report x64 and the MSVC host.
 
 From the worktree root, in PowerShell:
 
@@ -160,15 +152,12 @@ vp run core:binaries:prepare:dev
 vp run build
 vp run dev --home "$env:USERPROFILE/repo/nodex/runs.local/windows-build"
 vp run package:win:x64
-# On a native Windows arm64 machine:
-vp run package:win:arm64
 ```
 
 Adjust the development home to the primary checkout's `runs.local` directory.
 It must be absolute and belong to this worktree. The installed Profile defaults
 to `%USERPROFILE%\.nodex`; development continues to use the launcher's isolated
-`<home>/.nodex`. Build and staging commands select the host CPU by default;
-`package:win` packages the host architecture. Cross-packaging is rejected.
+`<home>/.nodex`. Windows builds, staging and packaging target x64 only.
 
 Development HTTP, HMR and renderer port checks use loopback only; no Windows
 Firewall network-access permission is needed. The pinned Vite+ patch skips its

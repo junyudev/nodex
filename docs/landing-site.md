@@ -128,7 +128,7 @@ of the original visit. With JavaScript
 disabled, the static language links work from the English default. Product demos follow the
 homepage language, including the replica UI and the scripted workspace content. Social card
 artwork, the changelog, and legal pages are in English.
-Download links point at the stable alias assets every GitHub Release carries: `Nodex-latest-arm64.dmg` for macOS and `Nodex-latest-windows-x64.exe` / `Nodex-latest-windows-arm64.exe` for Windows. The homepage's download action follows the visitor's platform. An inline script in `BaseLayout.astro` marks Windows visitors (`data-os="windows"`, plus `data-arch="arm64"` when the browser reports an Arm CPU), and the `windows` and `arm` Tailwind variants switch the action to the matching Windows installer and its SmartScreen note before first paint. Without the script, or on any other platform, the page offers macOS. The nav's Download goes to `/download/`, which lists every build without relying on JavaScript; the visitor's detected Windows architecture is emphasized there.
+Download links point at the stable alias assets every GitHub Release carries: `Nodex-latest-arm64.dmg` for macOS and `Nodex-latest-windows-x64.exe` for Windows. The homepage's download action follows the visitor's platform. An inline script in `BaseLayout.astro` marks Windows visitors with `data-os="windows"`, and the `windows` Tailwind variant switches the action to the Windows installer and its SmartScreen note before first paint. Without the script, or on any other platform, the page offers macOS. The nav's Download goes to `/download/`, which lists every build without relying on JavaScript.
 The same page's `#mobile` card offers Nodex Mobile: the public TestFlight beta for iPhone and the `Nodex-latest-android.apk` alias every stable release carries, both in `DOWNLOADS` so their clicks count the same way. A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The homepage's mobile section and Link a device in Settings → Remote both point at this card rather than at a store.
 Windows downloads appear only when the release the site describes carries Windows installers: `windowsDownloadsAvailable` in `src/lib/site.ts` compares the root app version with 0.5.0, the last stable release published without them. Once a later release is the oldest one the site can describe, that gate can be removed.
 The homepage release stamp is build-time data: the typed `VERSION_LABEL` constant imports the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
@@ -166,8 +166,8 @@ There is no separate landing-only validation workflow or second required check.
     publishes only its update feed
   - commits only when there is a diff
   - is also called by release promotion after the immutable app Release is
-    verified; that mode projects the Release Bundle's exact signed macOS arm64,
-    Windows x64 and Windows arm64 appcast snapshots into their stable feed paths, rejects feed
+    verified; that mode projects the Release Bundle's exact signed macOS arm64
+    and Windows x64 appcast snapshots into their stable feed paths, rejects feed
     rollback or same-version byte drift, and verifies the public bytes and
     immutable enclosures after push
 
@@ -186,14 +186,12 @@ the reusable deployment workflow:
 
 In `NodexApp/NodexApp.github.io`, configure GitHub Pages to publish from the default branch root.
 
-Each channel has one macOS arm64 feed and one feed per Windows CPU:
+Each channel has one macOS arm64 feed and one Windows x64 feed:
 
 - `https://nodex.jyu.app/updates/stable/arm64/appcast.xml`
 - `https://nodex.jyu.app/updates/stable/windows-x64/appcast.xml`
-- `https://nodex.jyu.app/updates/stable/windows-arm64/appcast.xml`
 - `https://nodex.jyu.app/updates/nightly/arm64/appcast.xml`
 - `https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml`
-- `https://nodex.jyu.app/updates/nightly/windows-arm64/appcast.xml`
 
 The Pages repository stores only the signed feed control plane. Full ZIPs,
 Windows installers and deltas remain immutable assets of the corresponding `junyudev/nodex` GitHub

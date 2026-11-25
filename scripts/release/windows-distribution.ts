@@ -141,11 +141,7 @@ export function buildWindowsDistribution(options: {
   task("run", "package:win:prepared", options.architecture);
   assertSourceIdentity(cwd, identity);
 
-  const appRoot = join(
-    cwd,
-    "dist",
-    options.architecture === "x64" ? "win-unpacked" : "win-arm64-unpacked",
-  );
+  const appRoot = join(cwd, "dist", "win-unpacked");
   const resources = join(appRoot, "resources");
   const preparedPath = join(cwd, ".generated/prepared-electron-build.json");
   const prepared = JSON.parse(readFileSync(preparedPath, "utf8")) as PreparedElectronBuildManifest;

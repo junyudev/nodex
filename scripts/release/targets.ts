@@ -4,8 +4,8 @@ import type { BuildIdentity } from "./model";
 export type MacArchitecture = "arm64";
 export type WindowsReleaseArchitecture = `windows-${WindowsArchitecture}`;
 export type ReleaseArchitecture = MacArchitecture | WindowsReleaseArchitecture;
-export const RELEASE_ARCHITECTURES = ["arm64", "windows-x64", "windows-arm64"] as const;
-export const WINDOWS_ARCHITECTURES = ["x64", "arm64"] as const;
+export const RELEASE_ARCHITECTURES = ["arm64", "windows-x64"] as const;
+export const WINDOWS_ARCHITECTURES = ["x64"] as const;
 
 export const windowsInstallerName = (version: string, architecture: WindowsArchitecture): string =>
   `Nodex-${version}-windows-${architecture}.exe`;

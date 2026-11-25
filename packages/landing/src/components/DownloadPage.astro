@@ -38,8 +38,8 @@ const link = "underline decoration-ink-3/40 underline-offset-[3px] hover:text-in
   imageAlt={zh ? "Nodex 的 macOS、Windows、iOS 和 Android 下载选项。" : undefined}
   socialCard="download"
   description={zh
-    ? "下载适用于 Apple 芯片 Mac 和 Windows 11（x64、Arm）的 Nodex，以及 iOS 和 Android 版 Nodex Mobile。"
-    : "Download Nodex for macOS on Apple silicon or Windows 11 on x64 and Arm, and Nodex Mobile for iOS and Android."}
+    ? "下载适用于 Apple 芯片 Mac 和 Windows 11 x64 的 Nodex，以及 iOS 和 Android 版 Nodex Mobile。"
+    : "Download Nodex for macOS on Apple silicon or Windows 11 on x64, and Nodex Mobile for iOS and Android."}
 >
   <SiteNav locale={locale} page="download" />
   <main class="mx-auto max-w-[1000px] px-6 py-16 sm:py-24">
@@ -75,35 +75,22 @@ const link = "underline decoration-ink-3/40 underline-offset-[3px] hover:text-in
           <PlatformIcon platform="windows" class="size-[22px]" />
           <div>
             <h2 id="download-windows" class="text-[19px] font-semibold tracking-[-0.02em]">Windows</h2>
-            <p class="font-mono text-[12px] tracking-wide text-ink-3">{zh ? "Windows 11 · x64 和 Arm" : "Windows 11 · x64 & Arm"}</p>
+            <p class="font-mono text-[12px] tracking-wide text-ink-3">Windows 11 · x64</p>
           </div>
         </div>
         {
           WINDOWS_AVAILABLE ? (
             <>
-              <div class="flex flex-wrap gap-3">
-                <a
-                  href={DOWNLOADS["windows-x64"]}
-                  data-download="windows-x64"
-                  class:list={[button, filled, "arm:border arm:border-line arm:bg-raised/60 arm:text-ink"]}
-                >
-                  {zh ? "下载 x64 版" : "Download for x64"}
-                </a>
-                <a
-                  href={DOWNLOADS["windows-arm64"]}
-                  data-download="windows-arm64"
-                  class:list={[button, outlined, "arm:border-transparent arm:bg-ink arm:text-page"]}
-                >
-                  {zh ? "下载 Arm 版" : "Download for Arm"}
-                </a>
-              </div>
+              <a href={DOWNLOADS["windows-x64"]} data-download="windows-x64" class:list={[button, filled, "self-start"]}>
+                {zh ? "下载 x64 版" : "Download for x64"}
+              </a>
               <p class:list={[note, "mt-auto"]}>
                 {zh ? "可为当前账号安装，无需管理员权限。安装程序暂未签名。如果出现 SmartScreen 提示，请选择「更多信息」，再选择「仍要运行」。" : "Installs for your account without administrator rights. Nodex isn't code-signed yet: if SmartScreen appears, choose More info, then Run anyway."}
               </p>
             </>
           ) : (
             <p class:list={[note, "mt-auto"]}>
-              {zh ? "Windows 版将在下个版本上线。现在可以下载 x64 和 Arm 每日构建版，见" : "Arrives with the next release. Until then, nightly builds for x64 and Arm are on"}{" "}
+              {zh ? "Windows 版将在下个版本上线。现在可以下载每日构建版，见" : "Arrives with the next release. Until then, nightly builds are on"}{" "}
               <a href={RELEASES_URL} data-download="github-releases" class={link}>GitHub Releases</a>{zh ? "。" : "."}
             </p>
           )

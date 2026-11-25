@@ -33,7 +33,7 @@ export function ripgrepFixture(target: RipgrepTarget) {
     binary.write("MZ", 0);
     binary.writeUInt32LE(64, 60);
     binary.writeUInt32LE(0x4550, 64);
-    binary.writeUInt16LE(target === "win32-arm64" ? 0xaa64 : 0x8664, 68);
+    binary.writeUInt16LE(0x8664, 68);
   }
   const license = "Fixture license\n";
   const release = {

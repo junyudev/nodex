@@ -6,10 +6,7 @@ import { APP_UPDATE_PUBLIC_KEY } from "../src/main/app-update-trust";
 import { windowsUpdateFeedUrls } from "../src/main/windows-app-update-config";
 
 /** Uses the same release inputs as Sparkle and prepared Electron output. */
-export function windowsUpdateManifest(
-  architecture: "x64" | "arm64",
-  environment: NodeJS.ProcessEnv,
-) {
+export function windowsUpdateManifest(architecture: "x64", environment: NodeJS.ProcessEnv) {
   const updates = environment.NODEX_APP_UPDATES ?? "disabled";
   const identity = environment.NODEX_BUILD_IDENTITY_PATH
     ? parseBuildIdentity(JSON.parse(readFileSync(environment.NODEX_BUILD_IDENTITY_PATH, "utf8")))
@@ -30,7 +27,7 @@ export function windowsUpdateManifest(
   };
 }
 
-export function stageWindowsUpdateManifest(root: string, architecture: "x64" | "arm64"): void {
+export function stageWindowsUpdateManifest(root: string, architecture: "x64"): void {
   const directory = join(root, ".generated/windows-updater", architecture);
   mkdirSync(directory, { recursive: true });
   writeFileSync(
@@ -41,7 +38,6 @@ export function stageWindowsUpdateManifest(root: string, architecture: "x64" | "
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const architecture = process.argv[2];
-  if (architecture !== "x64" && architecture !== "arm64")
-    throw new Error("Usage: windows-update-manifest.ts <x64|arm64>");
+  if (architecture !== "x64") throw new Error("Usage: windows-update-manifest.ts <x64>");
   stageWindowsUpdateManifest(process.cwd(), architecture);
 }

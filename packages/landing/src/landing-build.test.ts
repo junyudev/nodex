@@ -304,8 +304,6 @@ const RELEASE_ALIASES = {
   macos: "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg",
   "windows-x64":
     "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe",
-  "windows-arm64":
-    "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe",
 } as const;
 
 // The APK alias is the one every stable Release Bundle must carry, so the link can never dangle.

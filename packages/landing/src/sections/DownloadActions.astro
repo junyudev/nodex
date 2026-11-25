@@ -26,16 +26,10 @@ const primary =
     </a>
     {
       windows ? (
-        <>
-          <a href={DOWNLOADS["windows-x64"]} data-download="windows-x64" class:list={[primary, "hidden windows:inline-flex arm:hidden"]}>
-            <PlatformIcon platform="windows" class="size-[15px]" />
-            {zh ? "下载 Windows 版" : "Download for Windows"}
-          </a>
-          <a href={DOWNLOADS["windows-arm64"]} data-download="windows-arm64" class:list={[primary, "hidden arm:inline-flex"]}>
-            <PlatformIcon platform="windows" class="size-[15px]" />
-            {zh ? "下载 Windows 版" : "Download for Windows"}
-          </a>
-        </>
+        <a href={DOWNLOADS["windows-x64"]} data-download="windows-x64" class:list={[primary, "hidden windows:inline-flex"]}>
+          <PlatformIcon platform="windows" class="size-[15px]" />
+          {zh ? "下载 Windows 版" : "Download for Windows"}
+        </a>
       ) : null
     }
     <BrewCommand locale={locale} class={windows ? "windows:hidden" : undefined} />
@@ -52,7 +46,7 @@ const primary =
       <p class="font-mono text-[12px] tracking-wide text-ink-3">
         {zh ? "免费开源" : "Free & open source"} · <span class="landing-version-label">{VERSION_LABEL}</span> beta ·{" "}
         <span class:list={[windows && "windows:hidden"]}>{zh ? "Apple 芯片 · macOS 15+" : "Apple silicon · macOS 15+"}</span>
-        {windows ? <span class="hidden windows:inline">{zh ? "Windows 11 · x64 和 Arm" : "Windows 11 · x64 & Arm"}</span> : null} ·{" "}
+        {windows ? <span class="hidden windows:inline">Windows 11 · x64</span> : null} ·{" "}
         <a href={localizedPath("download", locale)} class="underline decoration-ink-3/40 underline-offset-[3px] hover:text-ink">
           {zh ? "所有下载" : "All downloads"}
         </a>
