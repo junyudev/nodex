@@ -773,6 +773,18 @@ export const CODEX_COMMAND_REGISTRY = [
     allowsSequences: true,
     commandMenuGroupKey: "navigation",
   }),
+  command(
+    "goToSettled",
+    "Go to Settled",
+    "Browse and search settled chats",
+    241.7,
+    "app",
+    ["G E"],
+    {
+      allowsSequences: true,
+      commandMenuGroupKey: "navigation",
+    },
+  ),
   command("goToSettings", "Go to Settings", "Open Settings", 242, "app", ["G S"], {
     allowsSequences: true,
     commandMenuGroupKey: "navigation",
@@ -1272,6 +1284,10 @@ const COMMAND_TITLE_MESSAGES = defineMessages({
     id: "command.goToInsights.title",
     defaultMessage: "Go to Insights",
   },
+  goToSettled: {
+    id: "command.goToSettled.title",
+    defaultMessage: "Go to Settled",
+  },
   goToSettings: {
     id: "command.goToSettings.title",
     defaultMessage: "Go to Settings",
@@ -1582,6 +1598,10 @@ const COMMAND_DESCRIPTION_MESSAGES = defineMessages({
   goToInsights: {
     id: "command.goToInsights.description",
     defaultMessage: "Open Insights",
+  },
+  goToSettled: {
+    id: "command.goToSettled.description",
+    defaultMessage: "Browse and search settled chats",
   },
   goToSettings: {
     id: "command.goToSettings.description",

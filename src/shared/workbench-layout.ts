@@ -295,6 +295,12 @@ export type WorkbenchStableLocation =
       readonly kind: "insights";
       readonly path: string;
       readonly returnTo: WorkbenchSceneLocation;
+    }
+  | {
+      /** Every chat the reader settled, newest first, to browse and search. */
+      readonly kind: "settled";
+      readonly path: string;
+      readonly returnTo: WorkbenchSceneLocation;
     };
 
 export type WorkbenchLocationV9 =
@@ -311,10 +317,13 @@ export type WorkbenchLocationV9 =
       readonly returnTo: WorkbenchSceneLocation;
     };
 
-/** Home remembers its own routes; Space, Automations, Customize and Insights restore their own state. */
+/**
+ * Home remembers its own routes; Space, Automations, Customize and Insights restore their own
+ * state, and Settled is a page over Home that closes back to it.
+ */
 export type WorkbenchHomeLocation = Exclude<
   WorkbenchStableLocation,
-  { readonly kind: "library" | "automations" | "plugins" | "insights" | "plugin_app" }
+  { readonly kind: "library" | "automations" | "plugins" | "insights" | "settled" | "plugin_app" }
 >;
 
 /** Rail destinations. Insights shares Home's sidebar; the others own a contextual sidebar. */
@@ -447,6 +456,7 @@ export function getWorkbenchHomeLocation(
     location.kind === "plugins" ||
     location.kind === "plugin_app" ||
     location.kind === "insights" ||
+    location.kind === "settled" ||
     location.kind === "pending-worktree"
   ) {
     return null;

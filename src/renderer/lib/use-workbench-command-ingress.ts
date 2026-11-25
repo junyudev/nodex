@@ -42,6 +42,7 @@ export interface WorkbenchCommandPort {
   readonly openCommandPalette: (request?: CommandMenuOpenRequest) => void;
   readonly goToPages: () => void;
   readonly goToInsights: () => void;
+  readonly goToSettled: () => void;
   readonly goToSettings: () => void;
   readonly toggleSettings: () => void;
   readonly openKeyboardShortcuts: () => void;
@@ -251,6 +252,10 @@ export function useWorkbenchCommandIngress(
     () => portRef.current?.goToInsights(),
     [],
   );
+  const goToSettled = useCallback<WorkbenchCommandPort["goToSettled"]>(
+    () => portRef.current?.goToSettled(),
+    [],
+  );
   const goToPages = useCallback<WorkbenchCommandPort["goToPages"]>(
     () => portRef.current?.goToPages(),
     [],
@@ -409,6 +414,7 @@ export function useWorkbenchCommandIngress(
       openCommandPalette,
       goToPages,
       goToInsights,
+      goToSettled,
       goToSettings,
       toggleSettings,
       openKeyboardShortcuts,
@@ -420,6 +426,7 @@ export function useWorkbenchCommandIngress(
       execute,
       goToPages,
       goToInsights,
+      goToSettled,
       goToSettings,
       navigate,
       openCommandPalette,

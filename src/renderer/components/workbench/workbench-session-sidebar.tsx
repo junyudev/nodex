@@ -253,6 +253,8 @@ export interface SidebarChatLifecycle {
   readonly onAcceptSessionWork: (session: ProjectSessionDomain) => void | Promise<void>;
   /** Settles every chat named at once, with one Undo for all of them. */
   readonly onSettleSessions: (sessions: readonly ProjectSessionDomain[]) => void | Promise<void>;
+  /** Opens the Settled page, showing one Project's chats or every Project's. */
+  readonly onOpenSettledChats: (projectId: string | null) => void;
   readonly snoozeShortcutLabel?: string;
   readonly onVisibleChatsChange: (chats: readonly SidebarVisibleChat[]) => void;
   readonly organizeShortcutLabel?: string;
@@ -2010,7 +2012,11 @@ function SidebarThreadOrganizerSections({
       source={{
         hasMore: lifecycle.settledLane.collection.hasMore,
         loadMore: lifecycle.settledLane.loadMore,
+        loading: lifecycle.settledLane.loadingMore,
+        failed: lifecycle.settledLane.loadMoreFailed,
       }}
+      total={lifecycle.settledLane.collection.totalCount}
+      onOpenPage={() => lifecycle.onOpenSettledChats(lifecycle.scopeProjectId)}
       extraPages={sidebarListExtraPages.settled ?? 0}
       onExtraPagesChange={(extraPages) => onSidebarListExtraPagesChange("settled", extraPages)}
       forcedVisibleKey={activeThreadKey}
@@ -2087,7 +2093,12 @@ function SidebarThreadOrganizerSections({
           collapsed={sidebarCollapsibleSections.active}
           onToggle={toggleShelf("active")}
           attention={laneAttention(chatLanes.active)}
-          source={{ hasMore: openLane.collection.hasMore, loadMore: openLane.loadMore }}
+          source={{
+            hasMore: openLane.collection.hasMore,
+            loadMore: openLane.loadMore,
+            loading: openLane.loadingMore,
+            failed: openLane.loadMoreFailed,
+          }}
           extraPages={sidebarListExtraPages.active ?? 0}
           onExtraPagesChange={(extraPages) => onSidebarListExtraPagesChange("active", extraPages)}
         />

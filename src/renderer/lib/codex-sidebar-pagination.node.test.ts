@@ -3,6 +3,7 @@ import {
   CODEX_SIDEBAR_PROJECT_GROUP_MAX_GROUPS,
   CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS,
   CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
+  clampCodexSidebarExtraPages,
   paginateCodexSidebarItems,
 } from "./codex-sidebar-pagination";
 
@@ -134,5 +135,16 @@ describe("paginateCodexSidebarItems", () => {
     const hidesOnlyForced = paginate(7, 1, { forcedVisibleKey: "item-7" });
     expect(hidesOnlyForced.visibleItems.length).toBe(7);
     expect(hidesOnlyForced.canShowLess).toBe(false);
+  });
+});
+
+describe("clampCodexSidebarExtraPages", () => {
+  test("stops Show more at the step that reaches the reveal limit", () => {
+    expect(clampCodexSidebarExtraPages(9, 10, 30)).toBe(4);
+    expect(clampCodexSidebarExtraPages(2, 10, 30)).toBe(2);
+    // A limit between steps reveals the step that covers it.
+    expect(clampCodexSidebarExtraPages(9, 10, 27)).toBe(4);
+    expect(clampCodexSidebarExtraPages(9, 10, undefined)).toBe(9);
+    expect(clampCodexSidebarExtraPages(9, null, 30)).toBe(9);
   });
 });

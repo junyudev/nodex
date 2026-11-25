@@ -12,6 +12,20 @@ export const CODEX_SIDEBAR_DEFAULT_PAGER_ROW_CLASS = "flex items-center gap-1 px
 export const CODEX_SIDEBAR_PROJECT_THREAD_PAGER_ROW_CLASS =
   "flex gap-1 px-8 py-1 after:block after:h-px after:content-[''] last:after:hidden";
 
+/**
+ * The deepest Show more step a list takes when it reveals at most `revealLimit` rows; a
+ * remembered depth beyond it shows the limit.
+ */
+export function clampCodexSidebarExtraPages(
+  extraPages: number,
+  maxItems: number | null,
+  revealLimit: number | undefined,
+): number {
+  if (maxItems === null || revealLimit === undefined) return extraPages;
+  const deepest = Math.max(0, Math.ceil((revealLimit - maxItems) / CODEX_SIDEBAR_PAGE_INCREMENT));
+  return Math.min(extraPages, deepest);
+}
+
 export interface CodexSidebarPaginationResult<T> {
   filteredItems: T[];
   visibleItems: T[];

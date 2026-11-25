@@ -59,6 +59,7 @@ import {
 } from "@/lib/workbench-shell-geometry";
 import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { INSIGHTS_ROOT_PATH } from "@/features/insights/insights-routes";
+import { buildSettledChatsPath } from "@/features/settled-chats/settled-chats-routes";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { inboxScopeProjectId, LIBRARY_INBOX, type InboxScope } from "../../../shared/inbox";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
@@ -702,6 +703,8 @@ export function WorkbenchRuntime({
     workbenchWindow.location.kind === "plugins" ? workbenchWindow.location.path : null;
   const insightsPath =
     workbenchWindow.location.kind === "insights" ? workbenchWindow.location.path : null;
+  const settledPath =
+    workbenchWindow.location.kind === "settled" ? workbenchWindow.location.path : null;
   const pendingWorktreeClientThreadId =
     workbenchWindow.location.kind === "pending-worktree"
       ? workbenchWindow.location.clientThreadId
@@ -730,17 +733,18 @@ export function WorkbenchRuntime({
     [settingsPath, workbenchWindow],
   );
   /**
-   * Automations, Customize and Insights are path routes over the current Scene. Closing one
-   * returns to that Scene before another destination opens.
+   * Automations, Customize, Insights and Settled are path routes over the current Scene. Closing
+   * one returns to that Scene before another destination opens.
    */
   const setDestinationRoute = useCallback(
-    (kind: "automations" | "plugins" | "insights", path: string | null) => {
+    (kind: "automations" | "plugins" | "insights" | "settled", path: string | null) => {
       const location = workbenchWindow.location;
       if (path === null) {
         if (
           location.kind === "automations" ||
           location.kind === "plugins" ||
-          location.kind === "insights"
+          location.kind === "insights" ||
+          location.kind === "settled"
         ) {
           workbenchWindow.closeRoute();
         }
@@ -773,6 +777,10 @@ export function WorkbenchRuntime({
   );
   const setInsightsPath = useCallback(
     (path: string | null) => setDestinationRoute("insights", path),
+    [setDestinationRoute],
+  );
+  const setSettledPath = useCallback(
+    (path: string | null) => setDestinationRoute("settled", path),
     [setDestinationRoute],
   );
   const setPendingWorktreeClientThreadId = useCallback(
@@ -1920,7 +1928,9 @@ export function WorkbenchRuntime({
     threadSummaryPanelLayoutMode,
   } = useWorkbenchChromeLayout({
     activeSessionId: activeSession?.id ?? null,
-    destinationRouteOpen: Boolean(activePlugin ?? automationsPath ?? pluginsPath ?? insightsPath),
+    destinationRouteOpen: Boolean(
+      activePlugin ?? automationsPath ?? pluginsPath ?? insightsPath ?? settledPath,
+    ),
     bottomPanelOpen,
     bottomPanelRequestedHeight: bottomPanel?.size.heightPx ?? null,
     headerLeftWidth,
@@ -2348,6 +2358,17 @@ export function WorkbenchRuntime({
     setInsightsPath(INSIGHTS_ROOT_PATH);
   }, [closePendingWorktreeRoute, setInsightsPath, setSettingsPath]);
 
+  const openSettledChats = useCallback(
+    (projectId: string | null) => {
+      closePendingWorktreeRoute();
+      setSettingsPath(null);
+      setReopenStableWorktreeAfterSettingsId(null);
+      setReopenPendingWorktreeAfterSettingsClientThreadId(null);
+      setSettledPath(buildSettledChatsPath(projectId));
+    },
+    [closePendingWorktreeRoute, setSettledPath, setSettingsPath],
+  );
+
   const presentExistingDatabaseView = useCallback(
     async (projectId: string, databaseViewId: string): Promise<boolean> => {
       const result = await sceneNavigator.presentPanelSurface({
@@ -2627,6 +2648,7 @@ export function WorkbenchRuntime({
     onSnoozeSession: setSessionSnooze,
     onSettleSessions: settleSessions,
     onAcceptSessionWork: acceptSessionWork,
+    onOpenSettledChats: openSettledChats,
     onVisibleChatsChange: reportVisibleChats,
     snoozeShortcutLabel: formatCommandShortcutLabel(
       commandKeymapState ?? createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows"),
@@ -4158,6 +4180,7 @@ export function WorkbenchRuntime({
     openCommandPalette,
     goToPages: workbenchWindow.selectLibrary,
     goToInsights: openInsights,
+    goToSettled: () => openSettledChats(sidebarScopeProjectId),
     goToSettings: openSettings,
     toggleSettings,
     openKeyboardShortcuts: openKeyboardShortcutHelp,
@@ -4601,6 +4624,7 @@ export function WorkbenchRuntime({
     automationsRouteShell,
     pluginsRouteShell,
     insightsRouteShell,
+    settledRouteShell,
     pendingWorktreeRouteShell,
     settingsRouteShell,
   } = useWorkbenchRouteSurfaces({
@@ -4647,6 +4671,20 @@ export function WorkbenchRuntime({
       props: { navigation: customizeNavigation },
     },
     insights: { path: insightsPath },
+    settled: {
+      path: settledPath,
+      props: {
+        projects,
+        resolveScene: sessionCatalog.resolveScene,
+        onPathChange: setSettledPath,
+        onOpenSession: (session) => {
+          closePendingWorktreeRoute();
+          selectSession(session);
+        },
+        onReopenSession: toggleSessionSettled,
+        onOpenSessionContextMenu: openSessionContextMenu,
+      },
+    },
     pendingWorktree: {
       clientThreadId: pendingWorktreeClientThreadId,
       props: {
@@ -4683,7 +4721,8 @@ export function WorkbenchRuntime({
       },
     },
   });
-  // Automations, Customize and Insights are page routes over the Scene; they own the title row.
+  // Automations, Customize, Insights and Settled are page routes over the Scene; they own the
+  // title row.
   const pluginAppRouteShell =
     workbenchWindow.location.kind === "plugin_app" ? (
       <WorkbenchSessionScopePath
@@ -4696,7 +4735,11 @@ export function WorkbenchRuntime({
       </WorkbenchSessionScopePath>
     ) : null;
   const destinationRouteShell =
-    pluginAppRouteShell ?? automationsRouteShell ?? pluginsRouteShell ?? insightsRouteShell;
+    pluginAppRouteShell ??
+    automationsRouteShell ??
+    pluginsRouteShell ??
+    insightsRouteShell ??
+    settledRouteShell;
   // A full-width Scene panel covers the title row only while its Scene is showing,
   // never under a route such as Automations opened over it.
   const appShellHeaderCoveredByScene = rightPanelFullView && destinationRouteShell == null;
@@ -6455,6 +6498,17 @@ export function WorkbenchRuntime({
                             selected
                           >
                             {insightsRouteShell}
+                          </WorkbenchSessionScopePath>
+                        ),
+                      }}
+                      settled={{
+                        content: () => (
+                          <WorkbenchSessionScopePath
+                            thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                            route={{ routeKey: settledPath!, kind: "settled" }}
+                            selected
+                          >
+                            {settledRouteShell}
                           </WorkbenchSessionScopePath>
                         ),
                       }}

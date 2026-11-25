@@ -51,6 +51,7 @@ test.each([true, false])(
             pendingWorktree={emptySlot}
             plugins={emptySlot}
             insights={emptySlot}
+            settled={emptySlot}
             automations={emptySlot}
             session={{ content: () => <article>Page content</article> }}
           />

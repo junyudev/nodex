@@ -19,9 +19,14 @@ const InsightsRoute = lazy(async () => ({
   default: (await import("@/features/insights/insights-route")).InsightsRoute,
 }));
 
+const SettledChatsRoute = lazy(async () => ({
+  default: (await import("@/features/settled-chats/settled-chats-route")).SettledChatsRoute,
+}));
+
 type SettingsProps = Omit<ComponentProps<typeof SettingsRouteShell>, "path">;
 type AutomationsProps = Omit<ComponentProps<typeof AutomationsRoute>, "path">;
 type PluginsProps = Omit<ComponentProps<typeof PluginsRoute>, "path">;
+type SettledChatsProps = Omit<ComponentProps<typeof SettledChatsRoute>, "path">;
 type PendingWorktreeProps = Omit<ComponentProps<typeof PendingWorktreeRoute>, "clientThreadId">;
 
 interface WorkbenchRouteSurfacesInput {
@@ -40,6 +45,10 @@ interface WorkbenchRouteSurfacesInput {
   readonly insights: {
     readonly path: string | null;
   };
+  readonly settled: {
+    readonly path: string | null;
+    readonly props: SettledChatsProps;
+  };
   readonly pendingWorktree: {
     readonly clientThreadId: string | null;
     readonly props: PendingWorktreeProps;
@@ -55,6 +64,7 @@ export function useWorkbenchRouteSurfaces({
   automations,
   plugins,
   insights,
+  settled,
   pendingWorktree,
 }: WorkbenchRouteSurfacesInput) {
   const intl = useIntl();
@@ -109,6 +119,13 @@ export function useWorkbenchRouteSurfaces({
     </ApplicationSurface>
   ) : null;
 
+  // Settled reads the Space's own chats, so a team window shows them too.
+  const settledRouteShell = settled.path ? (
+    <ApplicationSurface>
+      <SettledChatsRoute path={settled.path} {...settled.props} />
+    </ApplicationSurface>
+  ) : null;
+
   const pendingWorktreeRouteShell = pendingWorktree.clientThreadId ? (
     <ApplicationSurface>
       <PendingWorktreeRoute
@@ -122,6 +139,7 @@ export function useWorkbenchRouteSurfaces({
     automationsRouteShell,
     pluginsRouteShell,
     insightsRouteShell,
+    settledRouteShell,
     pendingWorktreeRouteShell,
     settingsRouteShell,
   };

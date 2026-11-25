@@ -5,14 +5,20 @@ import type { SidebarChatShelf } from "@/lib/sidebar-chat-lifecycle";
 import type { SidebarGroupStatus } from "@/lib/sidebar-status";
 import { SIDEBAR_GROUP_STATUS_LABELS } from "@/lib/sidebar-status";
 import type { WorkbenchSessionCollectionState } from "@/lib/use-workbench-session-catalog";
-import { CheckmarkIcon } from "@/components/shared/icons";
+import { CheckmarkIcon, OpenInIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { CODEX_SIDEBAR_SECTION_ACTION_BUTTON_CLASS, CodexSidebarSection } from "./codex-sidebar";
+import {
+  CODEX_SIDEBAR_SECTION_ACTION_BUTTON_CLASS,
+  CodexSidebarPagerButton,
+  CodexSidebarSection,
+} from "./codex-sidebar";
 import { SidebarPaginatedItems, SidebarPaginatedRows } from "./sidebar-paginated-items";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
 
 /** Settled chats shown before Show more; a settled chat is rarely the one a person wants. */
 const SIDEBAR_SETTLED_SHELF_MAX_ITEMS = 10;
+/** The most settled chats the sidebar reveals; older ones are browsed on the Settled page. */
+const SIDEBAR_SETTLED_SHELF_REVEAL_LIMIT = 30;
 
 const SHELF_HEADINGS: Readonly<Record<SidebarChatShelf, MessageDescriptor>> = defineMessages({
   pinned: { id: "workbench.sidebarChatLanes.pinned", defaultMessage: "Pinned" },
@@ -101,6 +107,8 @@ export function SidebarChatLaneSection({
   onExtraPagesChange,
   forcedVisibleKey,
   actions,
+  total,
+  onOpenPage,
   renderThread,
   renderRows,
 }: {
@@ -113,7 +121,16 @@ export function SidebarChatLaneSection({
   /** What the lane's chats ask of the reader, summarized while the lane is collapsed. */
   attention?: SidebarGroupStatus | null;
   /** Rows the list has not read yet. */
-  source?: { readonly hasMore: boolean; readonly loadMore: () => void | Promise<void> };
+  source?: {
+    readonly hasMore: boolean;
+    readonly loadMore: () => void | Promise<void>;
+    readonly loading?: boolean;
+    readonly failed?: boolean;
+  };
+  /** How many chats the lane holds, read or not, for the way to its page. */
+  total?: number | null;
+  /** Opens the lane's own page, where its whole history is browsed. */
+  onOpenPage?: () => void;
   extraPages: number;
   onExtraPagesChange: (extraPages: number) => void;
   forcedVisibleKey: string | null;
@@ -133,7 +150,16 @@ export function SidebarChatLaneSection({
       heading={heading}
       collapsed={collapsed}
       onToggle={onToggle}
-      actions={actions}
+      actions={
+        onOpenPage ? (
+          <>
+            {actions}
+            <SidebarOpenLanePageButton heading={heading} onOpen={onOpenPage} />
+          </>
+        ) : (
+          actions
+        )
+      }
       status={
         attention ? (
           <SidebarStatusIndicator
@@ -161,11 +187,33 @@ export function SidebarChatLaneSection({
             source
               ? {
                   hasMore: source.hasMore,
-                  failed: state.kind === "error",
+                  loading: source.loading,
+                  failed: state.kind === "error" || source.failed === true,
                   loadMore: source.loadMore,
                 }
               : undefined
           }
+          revealLimit={onOpenPage ? SIDEBAR_SETTLED_SHELF_REVEAL_LIMIT : undefined}
+          overflowAction={
+            onOpenPage ? (
+              <CodexSidebarPagerButton
+                onClick={onOpenPage}
+                data-app-action-sidebar-lane-view-all=""
+              >
+                {intl.formatMessage(
+                  {
+                    id: "workbench.sidebarChatLanes.viewAll",
+                    defaultMessage: "{count, plural, =0 {View all} other {View all #}}",
+                  },
+                  { count: total ?? 0 },
+                )}
+              </CodexSidebarPagerButton>
+            ) : undefined
+          }
+          endNote={intl.formatMessage({
+            id: "workbench.sidebarChatLanes.endOfLane",
+            defaultMessage: "That’s all",
+          })}
         >
           {(pagination, pager) => (
             <div className="isolate flex flex-col [contain:layout]">
@@ -185,6 +233,30 @@ export function SidebarChatLaneSection({
         </SidebarPaginatedItems>
       </div>
     </CodexSidebarSection>
+  );
+}
+
+function SidebarOpenLanePageButton({ heading, onOpen }: { heading: string; onOpen: () => void }) {
+  const intl = useIntl();
+  const label = intl.formatMessage(
+    { id: "workbench.sidebarChatLanes.openLanePage", defaultMessage: "Open {lane}" },
+    { lane: heading },
+  );
+  return (
+    <NodexTooltip tooltipContent={label} side="bottom">
+      <button
+        type="button"
+        aria-label={label}
+        className={CODEX_SIDEBAR_SECTION_ACTION_BUTTON_CLASS}
+        data-app-action-sidebar-lane-open-page=""
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen();
+        }}
+      >
+        <OpenInIcon className="icon-xs" />
+      </button>
+    </NodexTooltip>
   );
 }
 

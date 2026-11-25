@@ -92,6 +92,13 @@ function resolveLocationTitleParts(
           defaultMessage: "Insights",
         }),
       ];
+    case "settled":
+      return [
+        intl.formatMessage({
+          id: "lib.workbenchWindowTitle.settled",
+          defaultMessage: "Settled",
+        }),
+      ];
     case "settings":
       return [
         intl.formatMessage({

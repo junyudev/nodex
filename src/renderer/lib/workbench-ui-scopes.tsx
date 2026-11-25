@@ -37,6 +37,7 @@ export interface RouteScopeDescriptor {
     | "plugins"
     | "plugin-app"
     | "insights"
+    | "settled"
     | "inbox"
     | "settings"
     | "library"

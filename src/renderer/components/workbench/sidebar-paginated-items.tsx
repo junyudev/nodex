@@ -14,6 +14,7 @@ import {
 import { flushSync } from "react-dom";
 import {
   CODEX_SIDEBAR_DEFAULT_PAGER_ROW_CLASS,
+  clampCodexSidebarExtraPages,
   paginateCodexSidebarItems,
   type CodexSidebarPaginationResult,
 } from "@/lib/codex-sidebar-pagination";
@@ -41,6 +42,12 @@ export interface SidebarPaginatedItemsProps<T> {
   readonly suppressedKeys?: ReadonlySet<string>;
   readonly pagerClassName?: string;
   readonly source?: SidebarPaginatedSource;
+  /** The most rows Show more reveals, for a list whose depths belong to a page of its own. */
+  readonly revealLimit?: number;
+  /** Offered after Show more while the list holds rows it does not show, such as its page. */
+  readonly overflowAction?: ReactNode;
+  /** Said where Show more was once the list has shown everything it holds. */
+  readonly endNote?: ReactNode;
   readonly children: (pagination: CodexSidebarPaginationResult<T>, pager: ReactNode) => ReactNode;
 }
 
@@ -61,6 +68,9 @@ export function SidebarPaginatedItems<T>({
   suppressedKeys,
   pagerClassName = CODEX_SIDEBAR_DEFAULT_PAGER_ROW_CLASS,
   source,
+  revealLimit,
+  overflowAction,
+  endNote,
   children,
 }: SidebarPaginatedItemsProps<T>) {
   const focusRestoreTargetRef = useRef<HTMLButtonElement | null>(null);
@@ -91,8 +101,10 @@ export function SidebarPaginatedItems<T>({
       suppressedKeys,
     ],
   );
+  // A remembered depth past the reveal limit shows the limit.
+  const depth = clampCodexSidebarExtraPages(extraPages, maxItems, revealLimit);
   // The pager and source filling follow the owner's depth; the rows follow a fold in flight.
-  const pagination = useMemo(() => paginate(extraPages), [extraPages, paginate]);
+  const pagination = useMemo(() => paginate(depth), [depth, paginate]);
   const shown = useMemo(
     () => (heldExtraPages === null ? pagination : paginate(heldExtraPages)),
     [heldExtraPages, paginate, pagination],
@@ -133,15 +145,15 @@ export function SidebarPaginatedItems<T>({
     interruptFold();
     setHeldExtraPages(null);
     hold();
-    onExtraPagesChange?.(extraPages + 1);
+    onExtraPagesChange?.(depth + 1);
     restorePagerFocus();
-  }, [extraPages, hold, interruptFold, onExtraPagesChange, restorePagerFocus]);
+  }, [depth, hold, interruptFold, onExtraPagesChange, restorePagerFocus]);
 
   const { canShowLess } = pagination;
   const showLess = useCallback(() => {
     if (!canShowLess) return;
     interruptFold();
-    const onScreen = heldExtraPages ?? extraPages;
+    const onScreen = heldExtraPages ?? depth;
     const keepPager = pinPager(pagerRef.current);
     const showFirstPage = () =>
       flushSync(() => {
@@ -165,7 +177,7 @@ export function SidebarPaginatedItems<T>({
   }, [
     canShowLess,
     contentHeight,
-    extraPages,
+    depth,
     fold,
     heldExtraPages,
     hold,
@@ -176,20 +188,36 @@ export function SidebarPaginatedItems<T>({
   ]);
 
   const hasOverflow = pagination.hasOverflow || hasMoreAtSource;
+  // Rows the depth asks for that reading stopped short of: the pager offers the read again.
+  const readFailed =
+    Boolean(source?.failed) && hasMoreAtSource && loadedRows <= pagination.visibleCount;
+  const offersShowMore =
+    hasOverflow &&
+    (revealLimit === undefined || maxItems === null || pagination.visibleCount < revealLimit);
+  const lead = readFailed ? (
+    <CodexSidebarPagerButton ref={focusRestoreTargetRef} onClick={() => void source?.loadMore()}>
+      <FormattedMessage
+        id="workbench.sidebarPaginatedItems.retry"
+        defaultMessage="Couldn’t load more · Retry"
+      />
+    </CodexSidebarPagerButton>
+  ) : offersShowMore ? (
+    <CodexSidebarPagerButton ref={focusRestoreTargetRef} onClick={showMore}>
+      <FormattedMessage id="workbench.sidebarPaginatedItems.showMore" defaultMessage="Show more" />
+    </CodexSidebarPagerButton>
+  ) : !hasOverflow && canShowLess && endNote != null ? (
+    <span className="px-2 py-0.5 text-sm leading-[18px] text-token-description-foreground -ml-[9px] select-none">
+      {endNote}
+    </span>
+  ) : null;
   const pager =
     pagination.showPager || hasMoreAtSource ? (
       <div ref={pagerRef} className={pagerClassName} role="listitem">
-        {hasOverflow ? (
-          <CodexSidebarPagerButton ref={focusRestoreTargetRef} onClick={showMore}>
-            <FormattedMessage
-              id="workbench.sidebarPaginatedItems.showMore"
-              defaultMessage="Show more"
-            />
-          </CodexSidebarPagerButton>
-        ) : null}
+        {lead}
+        {hasOverflow ? overflowAction : null}
         {canShowLess ? (
           <CodexSidebarPagerButton
-            ref={hasOverflow ? undefined : focusRestoreTargetRef}
+            ref={offersShowMore || readFailed ? undefined : focusRestoreTargetRef}
             onClick={showLess}
           >
             <FormattedMessage

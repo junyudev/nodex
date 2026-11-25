@@ -21,6 +21,7 @@ import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sectio
 import { sidebarAttentionScenario } from "./scenarios/sidebar-attention";
 import { sidebarChatStatusScenario } from "./scenarios/sidebar-chat-status";
 import { sidebarPaginationScenario } from "./scenarios/sidebar-pagination";
+import { sidebarSettledHistoryScenario } from "./scenarios/sidebar-settled-history";
 import { sidebarLinkedPageStatusScenario } from "./scenarios/sidebar-linked-page-status";
 import { libraryFilesScenario } from "./scenarios/library-files";
 import { pageFileProvenanceScenario } from "./scenarios/page-file-provenance";
@@ -53,6 +54,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [sidebarAttentionScenario.id, sidebarAttentionScenario],
   [sidebarChatStatusScenario.id, sidebarChatStatusScenario],
   [sidebarPaginationScenario.id, sidebarPaginationScenario],
+  [sidebarSettledHistoryScenario.id, sidebarSettledHistoryScenario],
   [sidebarLinkedPageStatusScenario.id, sidebarLinkedPageStatusScenario],
   [libraryFilesScenario.id, libraryFilesScenario],
   [pageFileProvenanceScenario.id, pageFileProvenanceScenario],

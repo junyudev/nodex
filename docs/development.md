@@ -613,6 +613,16 @@ Projects list pages the other Projects the same way:
 vp run dev --home "$HOME/repo/nodex/runs.local/sidebar-pagination" --seed sidebar/pagination
 ```
 
+`sidebar/settled-history` settles 64 chats across Nodex, Core, Web, and the
+Library, one at a time so each has its own place, and leaves two open. That is
+more than one window of Core's chat list and more than the Settled shelf
+reveals: expand Settled and press Show more until it offers View all 64, then
+scroll the Settled page to its end, search it, or show one Project:
+
+```bash
+vp run dev --home "$HOME/repo/nodex/runs.local/settled-history" --seed sidebar/settled-history
+```
+
 `window/titles` creates the Atlas and Beacon Projects, a threadless chat in each,
 and the Q4 roadmap Page in Space, for reviewing native window titles across
 several windows. `tests/e2e/window-titles.spec.ts` consumes it:

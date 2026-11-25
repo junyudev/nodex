@@ -27,6 +27,7 @@ function makePort(): WorkbenchCommandPort {
     execute: vi.fn(() => true),
     openCommandPalette: vi.fn(),
     goToInsights: vi.fn(),
+    goToSettled: vi.fn(),
     toggleSettings: vi.fn(),
     openKeyboardShortcuts: vi.fn(),
     openDesktopNotification: vi.fn(),

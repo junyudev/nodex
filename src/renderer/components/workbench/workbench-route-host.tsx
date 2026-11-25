@@ -19,6 +19,7 @@ interface WorkbenchRouteHostProps {
   readonly plugins: WorkbenchRouteSlot;
   readonly pluginApp?: ReactNode;
   readonly insights: WorkbenchRouteSlot;
+  readonly settled: WorkbenchRouteSlot;
   /** The selected Scene: a Project, a Session, the Library, the Library Inbox, or empty. */
   readonly session: WorkbenchRouteSlot;
 }
@@ -79,6 +80,7 @@ export function WorkbenchRouteHost({
   plugins,
   pluginApp,
   insights,
+  settled,
   session,
 }: WorkbenchRouteHostProps) {
   if (location.kind === "settings") return settings;
@@ -121,14 +123,13 @@ export function WorkbenchRouteHost({
     );
   }
 
-  if (location.kind === "insights") {
+  if (location.kind === "insights" || location.kind === "settled") {
+    const slot = location.kind === "insights" ? insights : settled;
     return (
       <>
         {sidebar}
-        <WorkbenchRouteMain sidebarMounted={sidebarMounted}>
-          {insights.content()}
-        </WorkbenchRouteMain>
-        {insights.afterMain}
+        <WorkbenchRouteMain sidebarMounted={sidebarMounted}>{slot.content()}</WorkbenchRouteMain>
+        {slot.afterMain}
       </>
     );
   }

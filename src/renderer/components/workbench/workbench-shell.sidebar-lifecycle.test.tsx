@@ -313,7 +313,7 @@ describe("workbench session shell / chat lifecycle", () => {
     const settled = getSidebarSection(screen.container, "Settled");
     expect(settled.getAttribute("data-app-action-sidebar-section-collapsed")).toBe("true");
     await act(async () => {
-      fireEvent.click(within(settled).getByRole("button", { name: /Settled/ }));
+      fireEvent.click(within(settled).getByRole("button", { name: "Settled" }));
       await Promise.resolve();
     });
     await waitFor(() => expect(laneTitles(screen.container, "Settled")).toEqual(["Finished"]));
