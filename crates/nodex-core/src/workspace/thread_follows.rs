@@ -339,6 +339,11 @@ pub(super) fn ingest(
 ) -> Result<bool, StoreError> {
     let t = thread(c, library, &event.thread_id)?;
     let following=c.prepare("SELECT f.page_id,f.role,COALESCE(link.status_fence,f.status_fence),f.last_fact_at_ms,b.lifecycle FROM page_thread_follows f JOIN blocks b ON b.id=f.page_id LEFT JOIN page_active_chats active ON active.page_id=f.page_id LEFT JOIN project_session_pages link ON link.page_id=active.page_id AND link.session_id=active.session_id WHERE f.external_thread_id=?1 AND b.library_id=?2 ORDER BY f.page_id")?.query_map(params![t.id,library],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?,r.get::<_,String>(4)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    if event.actor_class == SourceActorClass::Ci
+        && matches!(event.kind.as_str(), "check" | "status")
+    {
+        return Ok(!following.is_empty());
+    }
     for (page, role, fence, last, lifecycle) in &following {
         let target:Option<(String,i64,Option<String>,Option<String>)>=c.query_row("SELECT a.session_id,a.revision,e.runtime_id,e.runtime_thread_id FROM page_active_chats a JOIN project_sessions s ON s.id=a.session_id AND s.archived=0 LEFT JOIN project_session_execution_bindings e ON e.session_id=s.id WHERE a.page_id=?1",[page],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
         // Eligibility is the Page's stage when this observation enters Core, before its milestone.

@@ -454,7 +454,9 @@ fn activity_is_paginated_filtered_and_records_channel_and_trigger_facts() {
     reply(&w, "reply", "Work started.");
     let mut update = event(&w, "check", "event", SourceActorClass::Ci);
     update.url = "https://github.com/alice/repo/actions/runs/99".into();
-    batch(&w, "update", current_thread(&w), vec![update]);
+    let finished = event(&w, "ci_finished", "settled", SourceActorClass::Ci);
+    let thread = current_thread(&w);
+    batch(&w, "update", thread.clone(), vec![update, finished]);
     let all = activity(&w, ActivityFilter::All, None, 100);
     let channel = all
         .items
@@ -486,16 +488,21 @@ fn activity_is_paginated_filtered_and_records_channel_and_trigger_facts() {
             label: "alice/repo #1".into()
         })
     );
-    assert!(all.items.iter().any(|r| r.id.starts_with("trigger:")));
-    let delivery = all
+    assert_eq!(
+        all.items
+            .iter()
+            .filter(|r| r.id.starts_with("trigger:"))
+            .count(),
+        2
+    );
+    let deliveries: Vec<_> = all
         .items
         .iter()
-        .find(|r| r.id.starts_with("delivery:"))
-        .unwrap();
-    assert_eq!(
-        delivery.url.as_deref(),
-        Some("https://github.com/alice/repo/actions/runs/99")
-    );
+        .filter(|r| r.id.starts_with("delivery:"))
+        .collect();
+    assert_eq!(deliveries.len(), 1);
+    let delivery = deliveries[0];
+    assert_eq!(delivery.url.as_deref(), Some(thread.url.as_str()));
     assert_eq!(
         delivery.subject,
         Some(ActivitySubject::Thread {

@@ -229,6 +229,35 @@ it.effect("leaves changed chat targets unresolved without creating or sending wo
     assert.isTrue(f.deliveries.every((d) => d.state === "unresolved"));
   }),
 );
+it.effect("delivers compact CI summaries tied to the observed head", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const [failed, passed] = f.deliveries;
+    const jobUrl = "https://github.com/alice/repo/actions/runs/1/job/4";
+    Object.assign(failed!.trigger.event, {
+      kind: "ci_finished",
+      actor_login: "GitHub",
+      actor_class: "ci",
+      text: `1 failed — app tests / renderer-1 ${jobUrl}; 19 passed`,
+      metadata: { head_sha: "abcdef012345", state: "failure" },
+    });
+    Object.assign(passed!.trigger.event, {
+      kind: "ci_finished",
+      actor_login: "GitHub",
+      actor_class: "ci",
+      text: "20 checks",
+      metadata: { head_sha: "fedcba012345", state: "success" },
+    });
+    const worker = yield* f.service;
+    yield* worker.drain;
+    yield* worker.drain;
+    assert.lengthOf(f.sent, 1);
+    assert.deepEqual(f.sent[0]!.message.text.split("\n").slice(-2), [
+      `GitHub update · CI finished on PR #7 (abcdef0): 1 failed — app tests / renderer-1 ${jobUrl}; 19 passed`,
+      "GitHub update · CI passed on PR #7 (fedcba0): 20 checks",
+    ]);
+  }),
+);
 it.effect("bounds compact text while preserving the event link", () =>
   Effect.gen(function* () {
     const f = yield* fixture;

@@ -15,6 +15,7 @@ import {
   overlapStart,
   nextPage,
   type PollInput,
+  type PollResult,
   type Position,
   type Source,
 } from "./GitHubSourceAdapter";
@@ -198,7 +199,7 @@ describe("GitHub Source polling", () => {
         return response([], { etag: '"same"' });
       });
       const first = yield* f.adapter.poll(input());
-      expect(first.triggers).toHaveLength(1);
+      expect(first.triggers.map((trigger) => trigger.kind)).toEqual(["check", "ci_finished"]);
       const restarted = yield* makeGitHubSourceAdapter(f.api).poll(
         input({
           known: first.threads,
@@ -207,6 +208,121 @@ describe("GitHub Source polling", () => {
       );
       expect(restarted.triggers).toHaveLength(0);
       expect(f.requests.some((r) => r.ifNoneMatch === '"same"')).toBe(true);
+    }),
+  );
+  it.effect("settles the current head across cached pages and detects new CI attempts", () =>
+    Effect.gen(function* () {
+      const checkUrl = "https://github.com/alice/repo/actions/runs/1/job/4";
+      const checkedAt = "2026-11-05T00:00:13Z";
+      const failedCheck = {
+        id: 4,
+        name: "app tests / renderer-1",
+        status: "completed",
+        conclusion: "failure" as string | null,
+        completed_at: checkedAt,
+        html_url: checkUrl,
+      };
+      const succeededStatus = {
+        id: 8,
+        context: "deploy",
+        state: "success",
+        created_at: checkedAt,
+      };
+      let head = "abcdef0";
+      let checks = [failedCheck];
+      let extraChecks: typeof checks = [];
+      let statuses = [{ ...succeededStatus, id: 7, state: "pending" }];
+      let checkValidator = '"checks"';
+      const f = fake(({ path, ifNoneMatch }) => {
+        if (path.startsWith("search/"))
+          return response({ total_count: 0, incomplete_results: false, items: [] });
+        if (path === "repos/alice/repo/pulls/7") return response({ ...pr, head: { sha: head } });
+        if (path.includes("/check-runs?page=2")) return response({ check_runs: extraChecks });
+        if (path.includes("/check-runs")) {
+          if (ifNoneMatch === checkValidator) return response(null, {}, 304);
+          return response(
+            { check_runs: checks },
+            {
+              etag: checkValidator,
+              link: `<https://api.github.com/repos/alice/repo/commits/${head}/check-runs?page=2>; rel="next"`,
+            },
+          );
+        }
+        if (path.includes("/statuses")) return response(statuses);
+        return response([]);
+      });
+      const poll = (previous?: PollResult) =>
+        makeGitHubSourceAdapter(f.api).poll(
+          previous
+            ? input({
+                known: previous.threads,
+                position: { ...position, baseline: true, cursor: previous.cursor },
+              })
+            : input({
+                position: {
+                  ...position,
+                  cursor: {
+                    ...position.cursor,
+                    validators: {
+                      [`etag:repos/alice/repo/commits/${head}/check-runs?per_page=100`]:
+                        checkValidator,
+                    },
+                  },
+                },
+              }),
+        );
+
+      const pending = yield* poll();
+      expect(pending.triggers.map((trigger) => trigger.kind)).toEqual(["check", "status"]);
+      statuses = [succeededStatus, { ...statuses[0]!, context: "DEPLOY" }];
+      const settled = yield* poll(pending);
+      const rollup = settled.triggers.find((trigger) => trigger.kind === "ci_finished");
+      expect(rollup).toMatchObject({
+        actor_class: "ci",
+        text: `1 failed — app tests / renderer-1 ${checkUrl}; 1 passed`,
+        metadata: { head_sha: head, state: "failure" },
+      });
+      expect(f.requests.filter((r) => r.ifNoneMatch === checkValidator)).toHaveLength(1);
+      expect((yield* poll(settled)).triggers).toEqual([]);
+
+      // A new check on a later page must block settlement even if the first page is unchanged.
+      extraChecks = [{ ...failedCheck, id: 5, status: "in_progress", conclusion: null }];
+      const added = yield* poll(settled);
+      expect(added.triggers.map((trigger) => trigger.kind)).toEqual(["check"]);
+      extraChecks = [{ ...extraChecks[0]!, status: "completed", conclusion: "success" }];
+      const expanded = yield* poll(added);
+      expect(expanded.triggers.filter((trigger) => trigger.kind === "ci_finished")).toEqual([
+        expect.objectContaining({
+          text: `1 failed — app tests / renderer-1 ${checkUrl}; 2 passed`,
+        }),
+      ]);
+
+      checkValidator = '"rerunning"';
+      checks = [{ ...failedCheck, status: "queued", conclusion: null }];
+      const rerunning = yield* poll(expanded);
+      expect(rerunning.triggers.map((trigger) => trigger.kind)).toEqual(["check"]);
+      checkValidator = '"reran"';
+      checks = [failedCheck];
+      const reran = yield* poll(rerunning);
+      expect(reran.triggers.filter((trigger) => trigger.kind === "ci_finished")).toEqual([
+        expect.objectContaining({
+          text: `1 failed — app tests / renderer-1 ${checkUrl}; 2 passed`,
+        }),
+      ]);
+
+      expect(
+        reran.triggers.find((trigger) => trigger.kind === "ci_finished")?.semantic_key,
+      ).not.toBe(expanded.triggers.find((trigger) => trigger.kind === "ci_finished")?.semantic_key);
+
+      head = "fedcba0";
+      checks = [{ ...failedCheck, conclusion: "success" }];
+      const nextHead = yield* poll(reran);
+      expect(nextHead.triggers.filter((trigger) => trigger.kind === "ci_finished")).toEqual([
+        expect.objectContaining({
+          text: "3 checks",
+          metadata: { head_sha: head, state: "success" },
+        }),
+      ]);
     }),
   );
   it.effect(
@@ -347,7 +463,17 @@ describe("GitHub Source polling", () => {
           return response({ total_count: 1, incomplete_results: false, items: [pr] });
         if (path === "repos/alice/repo/pulls/7") return response(pr);
         if (path.includes("/issues/7/comments")) return response([event(1)]);
-        if (path.includes("/check-runs")) return response({ check_runs: [] });
+        if (path.includes("/check-runs"))
+          return response({
+            check_runs: [
+              {
+                id: 10,
+                status: "completed",
+                conclusion: "success",
+                completed_at: "2026-11-05T00:00:13Z",
+              },
+            ],
+          });
         return response([]);
       });
       const result = yield* f.adapter.poll(

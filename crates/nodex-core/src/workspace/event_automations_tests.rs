@@ -15,6 +15,19 @@ fn configured_automation(
     mode: AutomationMode,
     runbook: Option<&str>,
 ) -> Automation {
+    create_automation(w, id, event_input(id, mode, runbook))
+}
+
+fn automation_with_comments(w: &TestWorkspace, mode: AutomationMode) {
+    let mut input = event_input("automation", mode, None);
+    let AutomationTriggerInput::Event { filter } = &mut input.trigger else {
+        panic!("Expected an event trigger");
+    };
+    filter.events.push(AutomationSourceEventKind::Comment);
+    create_automation(w, "automation", input);
+}
+
+fn create_automation(w: &TestWorkspace, id: &str, input: AutomationInput) -> Automation {
     apply(
         &w.module,
         &format!("root-{id}"),
@@ -37,7 +50,6 @@ fn configured_automation(
             ]),
         },
     );
-    let input = event_input(id, mode, runbook);
     AutomationModule::new("profile-1", "library-1", &w.kernel)
         .apply(
             &context(),
@@ -336,12 +348,20 @@ fn event_trigger_survives_status_changes_and_replacement_in_either_direction() {
 }
 
 fn event(w: &TestWorkspace, n: i64) {
+    source_event(w, n, "check");
+}
+
+fn source_event(w: &TestWorkspace, n: i64, kind: &str) {
     let mut batch = ingest(w, n - 1, "lease");
-    if let SourceCommand::IngestSourceBatch { triggers, .. } = &mut batch {
-        triggers[0].semantic_key = format!("github:github.com:10:check:{n}:failure");
-        triggers[0].kind = "check".into();
-        triggers[0].actor_class = SourceActorClass::Ci;
-        triggers[0].metadata = json!({"state":"failure"});
+    let SourceCommand::IngestSourceBatch { triggers, .. } = &mut batch else {
+        panic!("Expected Source ingestion");
+    };
+    let event = &mut triggers[0];
+    event.kind = kind.into();
+    event.semantic_key = format!("github:github.com:10:{kind}:{n}");
+    if kind != "comment" {
+        event.actor_class = SourceActorClass::Ci;
+        event.metadata = json!({"state":"failure"});
     }
     apply(&w.module, &format!("event-{n}"), command(batch));
 }
@@ -755,7 +775,7 @@ fn incompatible_actions_require_owner_confirmation_instead_of_auto() {
 fn confirming_ask_starts_its_reviewed_page_and_follows_the_thread() {
     use nodex_core_contracts::{collection::CollectionWindowRequest, inbox::*};
     let w = setup();
-    automation(&w, "automation", AutomationMode::AskFirst);
+    automation_with_comments(&w, AutomationMode::AskFirst);
     event(&w, 1);
     let r = pending(&w).remove(0);
     begin(&w, &r);
@@ -774,7 +794,7 @@ fn confirming_ask_starts_its_reviewed_page_and_follows_the_thread() {
         panic!("Inbox")
     };
     let proposal = window.items[0].proposal.clone().unwrap();
-    event(&w, 2);
+    source_event(&w, 2, "comment");
     assert_eq!(pending(&w).len(), 1);
     apply(
         &w.module,
@@ -866,11 +886,11 @@ fn auto_launch_requires_its_current_standing_grant() {
 #[test]
 fn updates_queued_during_auto_assessment_reach_the_new_origin_follow() {
     let w = setup();
-    automation(&w, "automation", AutomationMode::Run);
+    automation_with_comments(&w, AutomationMode::Run);
     event(&w, 1);
     let r = pending(&w).remove(0);
     begin(&w, &r);
-    event(&w, 2);
+    source_event(&w, 2, "comment");
     apply(&w.module, "submit", submit(&r, true));
     assert!(pending(&w).is_empty());
     w.kernel
@@ -1048,11 +1068,11 @@ fn event_work_keeps_its_frozen_target_and_runbook_without_binding_later_person_s
 #[test]
 fn a_concurrent_context_follow_retires_the_assessment_and_delivers_its_retained_batch() {
     let w = setup();
-    automation(&w, "automation", AutomationMode::DryRun);
+    automation_with_comments(&w, AutomationMode::DryRun);
     event(&w, 1);
     let r = pending(&w).remove(0);
     begin(&w, &r);
-    event(&w, 2);
+    source_event(&w, 2, "comment");
     create_project(&w.module, "work-project", "project:work");
     super::follows::card(&w, "019d0000-0000-7000-8000-000000000093", "worker", true);
     super::follows::context_follow(&w, "worker", "follow");
@@ -1068,7 +1088,7 @@ fn a_concurrent_context_follow_retires_the_assessment_and_delivers_its_retained_
             assert_eq!(
                 c.query_row("SELECT count(*) FROM thread_deliveries", [], |r| r
                     .get::<_, i64>(0))?,
-                2
+                1
             );
             assert_eq!(
                 c.query_row("SELECT count(*) FROM automation_decisions", [], |r| r
@@ -1112,7 +1132,7 @@ fn follow_updates_wait_for_automation_launch_admission_and_cannot_wake_a_rejecte
                 side_chat_source_session_id: None,
             },
         );
-        event(&w, 2);
+        source_event(&w, 2, "ci_finished");
         let SourceReadValue::Deliveries { deliveries } = query(
             &w,
             SourceRead::Deliveries {
@@ -1131,7 +1151,7 @@ fn follow_updates_wait_for_automation_launch_admission_and_cannot_wake_a_rejecte
             command(SourceCommand::PrepareThreadDeliveryBatch {
                 message_id: "source-update".into(),
                 delivery_ids: vec![deliveries[0].id.clone()],
-                body: "A later check failed".into(),
+                body: "CI finished with failures".into(),
             }),
         );
         let held = || {

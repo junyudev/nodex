@@ -1,0 +1,1 @@
+Followed pull requests send a single CI summary to active work once all checks and commit statuses on the current commit finish. The summary names failed checks and links to their results, while individual check updates remain available in Activity.

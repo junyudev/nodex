@@ -76,6 +76,46 @@ const eventSchema = z.object({
   name: z.string().optional(),
   label: z.object({ name: z.string() }).optional(),
 });
+type GitHubEvent = z.infer<typeof eventSchema>;
+type CiObservation = {
+  version: string;
+  outcome: "passed" | "failed" | "skipped" | null;
+  time: number;
+  name: string;
+  url: string;
+};
+
+function ciOutcome(kind: string, event: GitHubEvent): CiObservation["outcome"] {
+  if (kind === "status") {
+    if (event.state === "success") return "passed";
+    return event.state === "failure" || event.state === "error" ? "failed" : null;
+  }
+  if (event.status !== "completed" || !event.conclusion) return null;
+  if (event.conclusion === "success") return "passed";
+  return event.conclusion === "skipped" || event.conclusion === "neutral" ? "skipped" : "failed";
+}
+
+function ciSummary(checks: readonly CiObservation[]) {
+  const passed = checks.filter((check) => check.outcome === "passed").length;
+  const failed = checks.filter((check) => check.outcome === "failed");
+  const skipped = checks.length - passed - failed.length;
+  if (passed === checks.length)
+    return { state: "success", text: `${passed} ${passed === 1 ? "check" : "checks"}` };
+
+  const summary: string[] = [];
+  if (failed.length) {
+    const details = failed.slice(0, 3).map(({ name, url }) => {
+      const label = Array.from(name.replace(/\s+/g, " ").trim()).slice(0, 80).join("");
+      return url && url.length <= 200 ? `${label} ${url}` : label;
+    });
+    if (failed.length > details.length) details.push(`+${failed.length - details.length} more`);
+    summary.push(`${failed.length} failed — ${details.join(", ")}`);
+  }
+  if (passed) summary.push(`${passed} passed`);
+  if (skipped) summary.push(`${skipped} skipped or neutral`);
+  return { state: failed.length ? "failure" : "completed", text: summary.join("; ") };
+}
+
 const lifecycle = new Set([
   "labeled",
   "unlabeled",
@@ -304,6 +344,8 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
             return yield* new SourceReadError({ reason: "repository_changed" });
           const old = position.cursor;
           const validators: Record<string, string> = {};
+          // Bound the extra durable cursor data. Pages beyond this budget are read in full.
+          let ciSnapshotBudget = 128 * 1024;
           const savedThreads = new Map(input.known.map((thread) => [thread.number, thread]));
           const observations = new Map<number, Record<string, Model["SourceObservation"]>>(
             input.known.map((thread) => [thread.number, { ...thread.observations }]),
@@ -328,16 +370,17 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
           };
           const request = Effect.fn("GitHubSourceAdapter.request")(function* (
             path: string,
-            snapshot = false,
+            snapshot?: "full" | "ci",
           ) {
+            const savedBody = old.validators[`body:${path}`];
+            // Older cursors can have an ETag without a cached CI page.
+            const etag = !snapshot || savedBody ? old.validators[`etag:${path}`] : undefined;
             const response = yield* api
               .rest({
                 host: source.config.host,
                 path,
                 operation: "source.poll",
-                ...(old.validators[`etag:${path}`]
-                  ? { ifNoneMatch: old.validators[`etag:${path}`] }
-                  : {}),
+                ...(etag ? { ifNoneMatch: etag } : {}),
               })
               .pipe(
                 Effect.mapError(
@@ -356,8 +399,8 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
             delayMs = Math.max(delayMs, responseDelay(response.headers, nowMs));
             if (response.truncated || response.invalidUtf8)
               return yield* new SourceReadError({ reason: "response_incomplete" });
-            const etag = response.headers.etag ?? old.validators[`etag:${path}`];
-            if (etag) validators[`etag:${path}`] = etag;
+            const validator = response.headers.etag ?? (response.status === 304 ? etag : undefined);
+            if (validator) validators[`etag:${path}`] = validator;
             const next = yield* Effect.try({
               try: () =>
                 response.status === 304
@@ -367,12 +410,8 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
             });
             if (next) validators[`next:${path}`] = next;
             const body =
-              response.status === 304
-                ? snapshot
-                  ? old.validators[`body:${path}`]
-                  : undefined
-                : response.body;
-            if (snapshot && body) validators[`body:${path}`] = body;
+              response.status === 304 ? (snapshot ? savedBody : undefined) : response.body;
+            if (snapshot === "full" && body) validators[`body:${path}`] = body;
             if (response.status === 304 && !snapshot) return { body: null, next };
             if (!body)
               return yield* new SourceReadError({ reason: "conditional_snapshot_missing" });
@@ -384,28 +423,46 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
           const list = Effect.fn("GitHubSourceAdapter.pages")(function* (
             start: string,
             field?: string,
+            snapshot?: "ci",
           ) {
             const values: unknown[] = [];
             let path: string | undefined = start;
             const visited = new Set<string>();
             while (path) {
-              if (visited.has(path))
+              const page = path;
+              if (visited.has(page))
                 return yield* new SourceReadError({ reason: "pagination_cycle" });
-              visited.add(path);
-              const response: { body: unknown; next: string | undefined } = yield* request(path);
-              if (response.body !== null) {
-                const parsed = z
-                  .array(z.unknown())
-                  .safeParse(
-                    field && typeof response.body === "object"
-                      ? Reflect.get(response.body, field)
-                      : response.body,
-                  );
-                if (!parsed.success)
-                  return yield* new SourceReadError({ reason: "malformed_collection" });
-                values.push(...parsed.data);
-              }
+              visited.add(page);
+              const response: { body: unknown; next: string | undefined } = yield* request(
+                page,
+                snapshot,
+              );
               path = response.next;
+              if (response.body === null && !snapshot) continue;
+              const parsed = z
+                .array(z.unknown())
+                .safeParse(
+                  field && response.body && typeof response.body === "object"
+                    ? Reflect.get(response.body, field)
+                    : response.body,
+                );
+              if (!parsed.success)
+                return yield* new SourceReadError({ reason: "malformed_collection" });
+              values.push(...parsed.data);
+              if (!snapshot || !validators[`etag:${page}`]) continue;
+              // Drop GitHub's check output and other fields that observation never reads.
+              const items = parsed.data.map((item) => {
+                const event = eventSchema.safeParse(item);
+                return event.success ? event.data : item;
+              });
+              const body = jsonString(field ? { [field]: items } : items);
+              const size = new TextEncoder().encode(body).length;
+              if (size > ciSnapshotBudget) {
+                delete validators[`body:${page}`];
+                continue;
+              }
+              validators[`body:${page}`] = body;
+              ciSnapshotBudget -= size;
             }
             return values;
           });
@@ -493,7 +550,7 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
           ): Effect.fn.Return<unknown[], SourceReadError> {
             const q = `repo:${repository.name} ${qualifier} updated:${DateTime.formatIso(DateTime.makeUnsafe(from))}..${DateTime.formatIso(DateTime.makeUnsafe(to))}`;
             const path = `search/issues?q=${encodeURIComponent(q)}&sort=updated&order=asc&per_page=100`;
-            const first = yield* request(path, true);
+            const first = yield* request(path, "full");
             if (first.body === null) return [];
             const parsed = z
               .object({
@@ -577,7 +634,9 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
             head?: string,
             field?: string,
           ) {
-            const items = yield* list(path, field);
+            const items = yield* list(path, field, head ? "ci" : undefined);
+            const ci = new Map<string, CiObservation>();
+            let complete = true;
             const latestReview = new Map<string, number>();
             if (kind === "review")
               for (const item of items) {
@@ -601,6 +660,7 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
               const parsed = eventSchema.safeParse(item);
               if (!parsed.success) {
                 quarantineItem(path, item);
+                complete = false;
                 continue;
               }
               const raw = parsed.data;
@@ -613,12 +673,9 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
                   raw.created_at ??
                   raw.started_at,
               );
+              const hasRemoteTime = Number.isFinite(remoteTime);
               const time =
-                (kind === "check" || kind === "status") && !Number.isFinite(remoteTime)
-                  ? position.baseline
-                    ? nowMs
-                    : boundary - 1
-                  : remoteTime;
+                head && !hasRemoteTime ? (position.baseline ? nowMs : boundary - 1) : remoteTime;
               if (!Number.isFinite(time)) {
                 quarantineItem(path, item);
                 continue;
@@ -629,10 +686,36 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
               const fingerprint = digest(
                 jsonString([state, text, raw.updated_at, raw.completed_at]),
               );
+              const observationKey = `${kind}:${raw.id}:${head ?? ""}`;
               const observation =
                 kind === "comment" || kind === "review_comment"
                   ? { revision: 1, initial: true }
-                  : changed(thread.number, `${kind}:${raw.id}:${head ?? ""}`, fingerprint);
+                  : changed(thread.number, observationKey, fingerprint);
+              const occurredAt =
+                (head || kind === "review") &&
+                observation &&
+                !observation.initial &&
+                position.baseline
+                  ? nowMs
+                  : time;
+              const url = raw.html_url ?? raw.details_url ?? raw.target_url ?? thread.url;
+              if (head) {
+                // The statuses endpoint returns newest first. Keep every historical Trigger,
+                // but use only the current status per context to decide whether CI has settled.
+                const context =
+                  kind === "status" ? (raw.context ?? "default").toLowerCase() : String(raw.id);
+                if (!ci.has(context))
+                  ci.set(context, {
+                    version: `${observationKey}:${thread.observations[observationKey]!.revision}`,
+                    outcome: ciOutcome(kind, raw),
+                    time: observation || hasRemoteTime ? occurredAt : boundary - 1,
+                    name:
+                      raw.name ||
+                      raw.context ||
+                      (kind === "check" ? `Check #${raw.id}` : "Commit status"),
+                    url,
+                  });
+              }
               if (!observation) continue;
               const key =
                 kind === "check" || kind === "status"
@@ -643,12 +726,7 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
               emit(thread, {
                 semantic_key: prefix + key,
                 kind: kind === "lifecycle" ? raw.event! : kind,
-                occurred_at_ms:
-                  (kind === "check" || kind === "status" || kind === "review") &&
-                  !observation.initial &&
-                  position.baseline
-                    ? nowMs
-                    : time,
+                occurred_at_ms: occurredAt,
                 actor_login: actor?.login ?? "GitHub",
                 actor_class:
                   kind === "check" || kind === "status"
@@ -671,14 +749,15 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
                   name: raw.name ?? raw.context ?? null,
                   observed_revision: observation.revision,
                 },
-                url: raw.html_url ?? raw.details_url ?? raw.target_url ?? thread.url,
+                url,
               });
             }
+            return complete ? [...ci.values()] : null;
           });
           for (const [number, kind] of numbers) {
             const base = `repos/${repository.name}`;
             const path = `${base}/${kind === "pull_request" ? "pulls" : "issues"}/${number}`;
-            const response = yield* request(path, true);
+            const response = yield* request(path, "full");
             const parsed = threadSchema.safeParse(response.body);
             if (!parsed.success) {
               quarantineItem(path, response.body);
@@ -758,19 +837,36 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
             );
             if (!raw.head?.sha)
               return yield* new SourceReadError({ reason: "pull_request_head_missing" });
-            yield* observeEvents(
+            const head = raw.head.sha;
+            const checks = yield* observeEvents(
               thread,
-              `${base}/commits/${raw.head.sha}/check-runs?per_page=100`,
+              `${base}/commits/${head}/check-runs?per_page=100`,
               "check",
-              raw.head.sha,
+              head,
               "check_runs",
             );
-            yield* observeEvents(
+            const statuses = yield* observeEvents(
               thread,
-              `${base}/commits/${raw.head.sha}/statuses?per_page=100`,
+              `${base}/commits/${head}/statuses?per_page=100`,
               "status",
-              raw.head.sha,
+              head,
             );
+            if (!checks || !statuses) continue;
+            const ci = [...checks, ...statuses];
+            if (ci.length === 0 || ci.some((check) => check.outcome === null)) continue;
+            const fingerprint = digest(jsonString(ci.map((check) => check.version).sort()));
+            if (!changed(number, `ci_finished:${head}`, fingerprint)) continue;
+            const { state, text } = ciSummary(ci);
+            emit(thread, {
+              semantic_key: `${prefix}ci_finished:${number}:${head}:${fingerprint}`,
+              kind: "ci_finished",
+              occurred_at_ms: ci.reduce((latest, check) => Math.max(latest, check.time), -Infinity),
+              actor_login: "GitHub",
+              actor_class: "ci",
+              text,
+              metadata: { head_sha: head, state },
+              url: thread.url,
+            });
           }
           return {
             threads: [...threads.values()],
