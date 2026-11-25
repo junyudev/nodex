@@ -1,3 +1,4 @@
+import { describe, expect, test } from "vite-plus/test";
 import type { ItemStartedNotification } from "@nodex/codex-app-server-protocol/v2/ItemStartedNotification";
 import { assert, it } from "@effect/vitest";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
@@ -15,722 +16,1170 @@ import {
   make,
   makeWithCapacities,
 } from "./CodexApplicationRequestInbox";
+import {
+  admitCodexCoalescedWaiter,
+  admitCodexScheduledRequest,
+  CODEX_REQUEST_SCHEDULER_LIMITS,
+  codexRequestBackgroundLane,
+  codexRequestCoalescingKey,
+  codexScheduledRequestBytes,
+  defaultCodexRequestPriority,
+  emptyCodexRequestSelectionState,
+  isCodexForegroundHistoryRequest,
+  selectNextCodexScheduledRequest,
+  type CodexRequestPriority,
+  type CodexRequestSchedulingSource,
+  type CodexScheduledRequestDescriptor,
+} from "./CodexRequestSchedulerPolicy";
 
-it.effect("keeps exact request occurrences lossless and settles each at most once", () =>
-  Effect.gen(function* () {
-    const rootScope = yield* Scope.make();
-    const generationScope = yield* Scope.make();
-    const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
-    const generation = yield* inbox
-      .openGeneration("local", 1)
-      .pipe(Effect.provideService(Scope.Scope, generationScope));
+describe("CodexApplicationRequestInbox", () => {
+  it.effect("keeps exact request occurrences lossless and settles each at most once", () =>
+    Effect.gen(function* () {
+      const rootScope = yield* Scope.make();
+      const generationScope = yield* Scope.make();
+      const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
+      const generation = yield* inbox
+        .openGeneration("local", 1)
+        .pipe(Effect.provideService(Scope.Scope, generationScope));
 
-    const first = yield* generation.admit({
-      requestId: 7,
-      protocol: "extension",
-      method: "approval",
-      params: { n: 1 },
-    });
-    const second = yield* generation.admit({
-      requestId: 7,
-      protocol: "extension",
-      method: "approval",
-      params: { n: 2 },
-    });
-    const admitted = yield* inbox.occurrences.pipe(
-      Stream.filter((occurrence) => occurrence.kind === "request"),
-      Stream.take(2),
-      Stream.runCollect,
-    );
+      const first = yield* generation.admit({
+        requestId: 7,
+        protocol: "extension",
+        method: "approval",
+        params: { n: 1 },
+      });
+      const second = yield* generation.admit({
+        requestId: 7,
+        protocol: "extension",
+        method: "approval",
+        params: { n: 2 },
+      });
+      const admitted = yield* inbox.occurrences.pipe(
+        Stream.filter((occurrence) => occurrence.kind === "request"),
+        Stream.take(2),
+        Stream.runCollect,
+      );
 
-    assert.deepEqual([...admitted], [first, second]);
-    assert.notStrictEqual(first.occurrenceToken, second.occurrenceToken);
-    assert.isTrue(yield* inbox.settle(second, { kind: "result", value: "second" }));
-    assert.isTrue(yield* inbox.settle(first, { kind: "result", value: "first" }));
-    assert.isFalse(yield* inbox.settle(first, { kind: "result", value: "duplicate" }));
+      assert.deepEqual([...admitted], [first, second]);
+      assert.notStrictEqual(first.occurrenceToken, second.occurrenceToken);
+      assert.isTrue(yield* inbox.settle(second, { kind: "result", value: "second" }));
+      assert.isTrue(yield* inbox.settle(first, { kind: "result", value: "first" }));
+      assert.isFalse(yield* inbox.settle(first, { kind: "result", value: "duplicate" }));
 
-    const settled = yield* generation.settlements.pipe(Stream.take(2), Stream.runCollect);
-    assert.deepEqual(
-      [...settled].map(({ occurrence, outcome }) => ({
-        token: occurrence.occurrenceToken,
-        outcome,
-      })),
-      [
-        { token: second.occurrenceToken, outcome: { kind: "result", value: "second" } },
-        { token: first.occurrenceToken, outcome: { kind: "result", value: "first" } },
-      ],
-    );
+      const settled = yield* generation.settlements.pipe(Stream.take(2), Stream.runCollect);
+      assert.deepEqual(
+        [...settled].map(({ occurrence, outcome }) => ({
+          token: occurrence.occurrenceToken,
+          outcome,
+        })),
+        [
+          { token: second.occurrenceToken, outcome: { kind: "result", value: "second" } },
+          { token: first.occurrenceToken, outcome: { kind: "result", value: "first" } },
+        ],
+      );
 
-    yield* Scope.close(generationScope, Exit.void);
-    yield* Scope.close(rootScope, Exit.void);
-  }),
-);
+      yield* Scope.close(generationScope, Exit.void);
+      yield* Scope.close(rootScope, Exit.void);
+    }),
+  );
 
-it.effect("retains response trace metadata through request settlement", () =>
-  Effect.gen(function* () {
-    const rootScope = yield* Scope.make();
-    const generationScope = yield* Scope.make();
-    const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
-    const generation = yield* inbox
-      .openGeneration("local", 1)
-      .pipe(Effect.provideService(Scope.Scope, generationScope));
-    const occurrence = yield* generation.admit({
-      requestId: 11,
-      protocol: "extension",
-      method: "item/tool/requestUserInput",
-      params: {},
-    });
-    const trace = {
-      traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
-      tracestate: "vendor=value",
-    };
+  it.effect("namespaces durable occurrence identities across Inbox lifetimes", () =>
+    Effect.gen(function* () {
+      const admitFirst = (rootScope: Scope.Scope, generationScope: Scope.Scope) =>
+        Effect.gen(function* () {
+          const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
+          const generation = yield* inbox
+            .openGeneration("local", 1)
+            .pipe(Effect.provideService(Scope.Scope, generationScope));
+          return yield* generation.admit({
+            requestId: 1,
+            protocol: "extension",
+            method: "approval",
+            params: {},
+          });
+        });
 
-    assert.isTrue(
-      yield* inbox.settle(occurrence, { kind: "result", value: { answers: {} } }, trace),
-    );
-    const settlement = yield* generation.settlements.pipe(Stream.runHead);
-    assert.isTrue(settlement._tag === "Some");
-    if (settlement._tag === "Some") assert.deepEqual(settlement.value.trace, trace);
+      const firstRoot = yield* Scope.make();
+      const firstGeneration = yield* Scope.make();
+      const first = yield* admitFirst(firstRoot, firstGeneration);
 
-    yield* Scope.close(generationScope, Exit.void);
-    yield* Scope.close(rootScope, Exit.void);
-  }),
-);
+      const secondRoot = yield* Scope.make();
+      const secondGeneration = yield* Scope.make();
+      const second = yield* admitFirst(secondRoot, secondGeneration);
 
-it.effect("namespaces durable occurrence identities across Inbox lifetimes", () =>
-  Effect.gen(function* () {
-    const admitFirst = (rootScope: Scope.Scope, generationScope: Scope.Scope) =>
+      assert.strictEqual(first.occurrenceToken, 1);
+      assert.strictEqual(second.occurrenceToken, 1);
+      assert.notStrictEqual(first.occurrenceId, second.occurrenceId);
+
+      yield* Scope.close(firstGeneration, Exit.void);
+      yield* Scope.close(firstRoot, Exit.void);
+      yield* Scope.close(secondGeneration, Exit.void);
+      yield* Scope.close(secondRoot, Exit.void);
+    }),
+  );
+
+  it.effect("fences stale generation leases and rejects all live occurrences explicitly", () =>
+    Effect.gen(function* () {
+      const rootScope = yield* Scope.make();
+      const firstScope = yield* Scope.make();
+      const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
+      const first = yield* inbox
+        .openGeneration("remote:a", 4)
+        .pipe(Effect.provideService(Scope.Scope, firstScope));
+      const outstanding = yield* first.admit({
+        requestId: "same",
+        protocol: "extension",
+        method: "user-input",
+        params: {},
+      });
+      const closing = CodexAppServerRequestError.internalError("Endpoint generation is closing");
+
+      assert.strictEqual(yield* first.rejectOutstanding(closing), 1);
+      assert.isFalse(yield* inbox.settle(outstanding, { kind: "abandon" }));
+      const rejection = yield* first.settlements.pipe(Stream.runHead);
+      assert.strictEqual(rejection._tag, "Some");
+      if (rejection._tag === "Some") assert.strictEqual(rejection.value.outcome.kind, "error");
+
+      yield* Scope.close(firstScope, Exit.void);
+      const staleExit = yield* first
+        .admit({ requestId: "late", protocol: "extension", method: "approval", params: {} })
+        .pipe(Effect.exit);
+      assert.isTrue(Exit.isFailure(staleExit));
+      if (Exit.isFailure(staleExit)) {
+        assert.strictEqual(
+          (Cause.squash(staleExit.cause) as CodexApplicationRequestGenerationUnavailable).reason,
+          "closed",
+        );
+      }
+
+      const replacementScope = yield* Scope.make();
+      const replacement = yield* inbox
+        .openGeneration("remote:a", 4)
+        .pipe(Effect.provideService(Scope.Scope, replacementScope));
+      const current = yield* replacement.admit({
+        requestId: "same",
+        protocol: "extension",
+        method: "user-input",
+        params: {},
+      });
+      assert.isTrue(current.occurrenceToken > outstanding.occurrenceToken);
+
+      yield* Scope.close(replacementScope, Exit.void);
+      yield* Scope.close(rootScope, Exit.void);
+    }),
+  );
+
+  it.effect(
+    "withdraws queued and in-flight interpretation when its Endpoint generation closes",
+    () =>
       Effect.gen(function* () {
+        const rootScope = yield* Scope.make();
+        const generationScope = yield* Scope.make();
         const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
         const generation = yield* inbox
-          .openGeneration("local", 1)
+          .openGeneration("remote:a", 9)
           .pipe(Effect.provideService(Scope.Scope, generationScope));
-        return yield* generation.admit({
-          requestId: 1,
+        const inFlight = yield* generation.admit({
+          requestId: "in-flight",
           protocol: "extension",
           method: "approval",
           params: {},
         });
-      });
+        const queued = yield* generation.admit({
+          requestId: "queued",
+          protocol: "extension",
+          method: "user-input",
+          params: {},
+        });
+        const started = yield* Deferred.make<void>();
+        const interrupted = yield* Deferred.make<void>();
+        const interpretationFiber = yield* inbox
+          .interpret(
+            inFlight,
+            Deferred.succeed(started, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.ensuring(Deferred.succeed(interrupted, undefined)),
+            ),
+          )
+          .pipe(Effect.forkIn(rootScope, { startImmediately: true }));
+        yield* Deferred.await(started);
 
-    const firstRoot = yield* Scope.make();
-    const firstGeneration = yield* Scope.make();
-    const first = yield* admitFirst(firstRoot, firstGeneration);
+        yield* Scope.close(generationScope, Exit.void);
+        assert.deepEqual(yield* Fiber.join(interpretationFiber), { kind: "withdrawn" });
+        yield* Deferred.await(interrupted);
 
-    const secondRoot = yield* Scope.make();
-    const secondGeneration = yield* Scope.make();
-    const second = yield* admitFirst(secondRoot, secondGeneration);
+        let lateInterpretationRan = false;
+        assert.deepEqual(
+          yield* inbox.interpret(
+            queued,
+            Effect.sync(() => {
+              lateInterpretationRan = true;
+            }),
+          ),
+          { kind: "withdrawn" },
+        );
+        assert.isFalse(lateInterpretationRan);
+        assert.isFalse(yield* inbox.settle(queued, { kind: "result", value: "stale" }));
+        yield* Scope.close(rootScope, Exit.void);
+      }),
+  );
 
-    assert.strictEqual(first.occurrenceToken, 1);
-    assert.strictEqual(second.occurrenceToken, 1);
-    assert.notStrictEqual(first.occurrenceId, second.occurrenceId);
-
-    yield* Scope.close(firstGeneration, Exit.void);
-    yield* Scope.close(firstRoot, Exit.void);
-    yield* Scope.close(secondGeneration, Exit.void);
-    yield* Scope.close(secondRoot, Exit.void);
-  }),
-);
-
-it.effect("fences stale generation leases and rejects all live occurrences explicitly", () =>
-  Effect.gen(function* () {
-    const rootScope = yield* Scope.make();
-    const firstScope = yield* Scope.make();
-    const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
-    const first = yield* inbox
-      .openGeneration("remote:a", 4)
-      .pipe(Effect.provideService(Scope.Scope, firstScope));
-    const outstanding = yield* first.admit({
-      requestId: "same",
-      protocol: "extension",
-      method: "user-input",
-      params: {},
-    });
-    const closing = CodexAppServerRequestError.internalError("Endpoint generation is closing");
-
-    assert.strictEqual(yield* first.rejectOutstanding(closing), 1);
-    assert.isFalse(yield* inbox.settle(outstanding, { kind: "abandon" }));
-    const rejection = yield* first.settlements.pipe(Stream.runHead);
-    assert.strictEqual(rejection._tag, "Some");
-    if (rejection._tag === "Some") assert.strictEqual(rejection.value.outcome.kind, "error");
-
-    yield* Scope.close(firstScope, Exit.void);
-    const staleExit = yield* first
-      .admit({ requestId: "late", protocol: "extension", method: "approval", params: {} })
-      .pipe(Effect.exit);
-    assert.isTrue(Exit.isFailure(staleExit));
-    if (Exit.isFailure(staleExit)) {
-      assert.strictEqual(
-        (Cause.squash(staleExit.cause) as CodexApplicationRequestGenerationUnavailable).reason,
-        "closed",
-      );
-    }
-
-    const replacementScope = yield* Scope.make();
-    const replacement = yield* inbox
-      .openGeneration("remote:a", 4)
-      .pipe(Effect.provideService(Scope.Scope, replacementScope));
-    const current = yield* replacement.admit({
-      requestId: "same",
-      protocol: "extension",
-      method: "user-input",
-      params: {},
-    });
-    assert.isTrue(current.occurrenceToken > outstanding.occurrenceToken);
-
-    yield* Scope.close(replacementScope, Exit.void);
-    yield* Scope.close(rootScope, Exit.void);
-  }),
-);
-
-it.effect("withdraws queued and in-flight interpretation when its Endpoint generation closes", () =>
-  Effect.gen(function* () {
-    const rootScope = yield* Scope.make();
-    const generationScope = yield* Scope.make();
-    const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
-    const generation = yield* inbox
-      .openGeneration("remote:a", 9)
-      .pipe(Effect.provideService(Scope.Scope, generationScope));
-    const inFlight = yield* generation.admit({
-      requestId: "in-flight",
-      protocol: "extension",
-      method: "approval",
-      params: {},
-    });
-    const queued = yield* generation.admit({
-      requestId: "queued",
-      protocol: "extension",
-      method: "user-input",
-      params: {},
-    });
-    const started = yield* Deferred.make<void>();
-    const interrupted = yield* Deferred.make<void>();
-    const interpretationFiber = yield* inbox
-      .interpret(
-        inFlight,
-        Deferred.succeed(started, undefined).pipe(
-          Effect.andThen(Effect.never),
-          Effect.ensuring(Deferred.succeed(interrupted, undefined)),
-        ),
-      )
-      .pipe(Effect.forkIn(rootScope, { startImmediately: true }));
-    yield* Deferred.await(started);
-
-    yield* Scope.close(generationScope, Exit.void);
-    assert.deepEqual(yield* Fiber.join(interpretationFiber), { kind: "withdrawn" });
-    yield* Deferred.await(interrupted);
-
-    let lateInterpretationRan = false;
-    assert.deepEqual(
-      yield* inbox.interpret(
-        queued,
-        Effect.sync(() => {
-          lateInterpretationRan = true;
-        }),
-      ),
-      { kind: "withdrawn" },
-    );
-    assert.isFalse(lateInterpretationRan);
-    assert.isFalse(yield* inbox.settle(queued, { kind: "result", value: "stale" }));
-    yield* Scope.close(rootScope, Exit.void);
-  }),
-);
-
-it.effect("fails only the exact generation after a canonical consequence failure", () =>
-  Effect.gen(function* () {
-    const rootScope = yield* Scope.make();
-    const generationScope = yield* Scope.make();
-    const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
-    const generation = yield* inbox
-      .openGeneration("local", 3)
-      .pipe(Effect.provideService(Scope.Scope, generationScope));
-    const occurrence = yield* generation.admit({
-      requestId: "bad-consequence",
-      protocol: "extension",
-      method: "test/fail",
-      params: {},
-    });
-    const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
-
-    const cause = new Error("projection failed");
-    assert.isTrue(yield* inbox.failGeneration(occurrence, cause));
-    assert.isFalse(yield* inbox.failGeneration(occurrence, cause));
-    const error = yield* Fiber.join(termination);
-    assert.strictEqual(error.hostId, "local");
-    assert.strictEqual(error.generation, 3);
-    assert.strictEqual(error.occurrenceId, occurrence.occurrenceId);
-    assert.strictEqual(error.cause, cause);
-
-    yield* Scope.close(generationScope, Exit.void);
-    yield* Scope.close(rootScope, Exit.void);
-  }),
-);
-
-it.effect("fails closed when canonical occurrence capacity is exhausted", () =>
-  Effect.gen(function* () {
-    const rootScope = yield* Scope.make();
-    const generationScope = yield* Scope.make();
-    const inbox = yield* makeWithCapacities({ occurrences: 1, settlements: 1 }).pipe(
-      Effect.provideService(Scope.Scope, rootScope),
-    );
-    const generation = yield* inbox
-      .openGeneration("local", 5)
-      .pipe(Effect.provideService(Scope.Scope, generationScope));
-    const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
-
-    yield* inbox.publishNotification({
-      hostId: "local",
-      generation: 5,
-      protocol: "extension",
-      method: "test/first",
-      params: {},
-    });
-    yield* inbox.publishNotification({
-      hostId: "local",
-      generation: 5,
-      protocol: "extension",
-      method: "test/overflow",
-      params: {},
-    });
-    const error = yield* Fiber.join(termination);
-
-    assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(error.cause));
-    if (Schema.is(CodexApplicationIngressOverflow)(error.cause)) {
-      assert.strictEqual(error.cause.channel, "occurrences");
-      assert.strictEqual(error.cause.capacity, 1);
-    }
-    const late = yield* generation
-      .admit({
-        requestId: "late",
-        protocol: "extension",
-        method: "test/late",
-        params: {},
-      })
-      .pipe(Effect.exit);
-    assert.isTrue(Exit.isFailure(late));
-    if (Exit.isFailure(late)) {
-      assert.strictEqual(
-        (Cause.squash(late.cause) as CodexApplicationRequestGenerationUnavailable).reason,
-        "overflow",
-      );
-    }
-
-    yield* Scope.close(generationScope, Exit.void);
-    yield* Scope.close(rootScope, Exit.void);
-  }),
-);
-
-it.effect(
-  "fails a giant occurrence before queue retention and recovers on a fresh generation",
-  () =>
-    Effect.gen(function* () {
-      const rootScope = yield* Scope.make();
-      const failedScope = yield* Scope.make();
-      const inbox = yield* makeWithCapacities({
-        occurrences: 4,
-        settlements: 1,
-        occurrenceBytes: 16_384,
-        singleOccurrenceBytes: 4_096,
-      }).pipe(Effect.provideService(Scope.Scope, rootScope));
-      const failed = yield* inbox
-        .openGeneration("local", 7)
-        .pipe(Effect.provideService(Scope.Scope, failedScope));
-      const termination = yield* failed.termination.pipe(Effect.flip, Effect.forkChild);
-
-      yield* inbox.publishNotification({
-        hostId: "local",
-        generation: 7,
-        protocol: "extension",
-        method: "test/giant",
-        params: { text: "x".repeat(8_192) },
-      });
-      const failure = yield* Fiber.join(termination);
-      assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(failure.cause));
-      if (Schema.is(CodexApplicationIngressOverflow)(failure.cause)) {
-        assert.strictEqual(failure.cause.channel, "occurrence-bytes");
-        assert.strictEqual(failure.cause.maximumOccurrenceBytes, 4_096);
-      }
-
-      yield* Scope.close(failedScope, Exit.void);
-      const recoveredScope = yield* Scope.make();
-      const recovered = yield* inbox
-        .openGeneration("local", 8)
-        .pipe(Effect.provideService(Scope.Scope, recoveredScope));
-      yield* inbox.publishNotification({
-        hostId: "local",
-        generation: 8,
-        protocol: "extension",
-        method: "test/recovered",
-        params: { text: "small" },
-      });
-      const delivered = yield* inbox.occurrences.pipe(Stream.take(1), Stream.runCollect);
-      assert.strictEqual([...delivered][0]?.method, "test/recovered");
-      assert.strictEqual(recovered.generation, 8);
-
-      yield* Scope.close(recoveredScope, Exit.void);
-      yield* Scope.close(rootScope, Exit.void);
-    }),
-);
-
-it.effect(
-  "releases all 4096 FIFO byte reservations after consumption before enforcing the next overflow",
-  () =>
+  it.effect("fails only the exact generation after a canonical consequence failure", () =>
     Effect.gen(function* () {
       const rootScope = yield* Scope.make();
       const generationScope = yield* Scope.make();
-      const inbox = yield* makeWithCapacities({
-        occurrences: 4_096,
-        settlements: 1,
-        occurrenceBytes: 8 * 1024 * 1024,
-        singleOccurrenceBytes: 8 * 1024,
-      }).pipe(Effect.provideService(Scope.Scope, rootScope));
+      const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
       const generation = yield* inbox
-        .openGeneration("local", 9)
+        .openGeneration("local", 3)
         .pipe(Effect.provideService(Scope.Scope, generationScope));
-
-      const publishSmall = (index: number) =>
-        inbox.publishNotification({
-          hostId: "local",
-          generation: 9,
-          protocol: "extension",
-          method: `test/small/${index}`,
-          params: { index },
-        });
-      const indexes = Array.from({ length: 4_096 }, (_, index) => index);
-      yield* Effect.forEach(indexes, publishSmall, { discard: true });
-      const consumed = yield* inbox.occurrences.pipe(Stream.take(4_096), Stream.runCollect);
-      assert.strictEqual([...consumed].length, 4_096);
-
-      yield* publishSmall(4_096);
-      const recovered = yield* inbox.occurrences.pipe(Stream.take(1), Stream.runCollect);
-      assert.strictEqual([...recovered][0]?.method, "test/small/4096");
-
-      const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
-      yield* Effect.forEach(indexes, publishSmall, { discard: true });
-      yield* inbox.publishNotification({
-        hostId: "local",
-        generation: 9,
+      const occurrence = yield* generation.admit({
+        requestId: "bad-consequence",
         protocol: "extension",
-        method: "test/overflow-after-recovery",
+        method: "test/fail",
         params: {},
       });
-      const failure = yield* Fiber.join(termination);
-      assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(failure.cause));
-      if (Schema.is(CodexApplicationIngressOverflow)(failure.cause)) {
-        assert.strictEqual(failure.cause.channel, "occurrences");
-        assert.strictEqual(failure.cause.capacity, 4_096);
+      const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
+
+      const cause = new Error("projection failed");
+      assert.isTrue(yield* inbox.failGeneration(occurrence, cause));
+      assert.isFalse(yield* inbox.failGeneration(occurrence, cause));
+      const error = yield* Fiber.join(termination);
+      assert.strictEqual(error.hostId, "local");
+      assert.strictEqual(error.generation, 3);
+      assert.strictEqual(error.occurrenceId, occurrence.occurrenceId);
+      assert.strictEqual(error.cause, cause);
+
+      yield* Scope.close(generationScope, Exit.void);
+      yield* Scope.close(rootScope, Exit.void);
+    }),
+  );
+
+  it.effect("fails closed when canonical occurrence capacity is exhausted", () =>
+    Effect.gen(function* () {
+      const rootScope = yield* Scope.make();
+      const generationScope = yield* Scope.make();
+      const inbox = yield* makeWithCapacities({ occurrences: 1, settlements: 1 }).pipe(
+        Effect.provideService(Scope.Scope, rootScope),
+      );
+      const generation = yield* inbox
+        .openGeneration("local", 5)
+        .pipe(Effect.provideService(Scope.Scope, generationScope));
+      const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
+
+      yield* inbox.publishNotification({
+        hostId: "local",
+        generation: 5,
+        protocol: "extension",
+        method: "test/first",
+        params: {},
+      });
+      yield* inbox.publishNotification({
+        hostId: "local",
+        generation: 5,
+        protocol: "extension",
+        method: "test/overflow",
+        params: {},
+      });
+      const error = yield* Fiber.join(termination);
+
+      assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(error.cause));
+      if (Schema.is(CodexApplicationIngressOverflow)(error.cause)) {
+        assert.strictEqual(error.cause.channel, "occurrences");
+        assert.strictEqual(error.cause.capacity, 1);
+      }
+      const late = yield* generation
+        .admit({
+          requestId: "late",
+          protocol: "extension",
+          method: "test/late",
+          params: {},
+        })
+        .pipe(Effect.exit);
+      assert.isTrue(Exit.isFailure(late));
+      if (Exit.isFailure(late)) {
+        assert.strictEqual(
+          (Cause.squash(late.cause) as CodexApplicationRequestGenerationUnavailable).reason,
+          "overflow",
+        );
       }
 
       yield* Scope.close(generationScope, Exit.void);
       yield* Scope.close(rootScope, Exit.void);
     }),
-);
+  );
 
-it.effect("fails the exact generation instead of dropping a request settlement", () =>
-  Effect.gen(function* () {
-    const rootScope = yield* Scope.make();
-    const generationScope = yield* Scope.make();
-    const inbox = yield* makeWithCapacities({ occurrences: 4, settlements: 1 }).pipe(
-      Effect.provideService(Scope.Scope, rootScope),
-    );
-    const generation = yield* inbox
-      .openGeneration("remote:a", 6)
-      .pipe(Effect.provideService(Scope.Scope, generationScope));
-    const first = yield* generation.admit({
-      requestId: "first",
-      protocol: "extension",
-      method: "test/first",
-      params: {},
-    });
-    const second = yield* generation.admit({
-      requestId: "second",
-      protocol: "extension",
-      method: "test/second",
-      params: {},
-    });
-    const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
-
-    assert.isTrue(yield* inbox.settle(first, { kind: "result", value: null }));
-    assert.isFalse(yield* inbox.settle(second, { kind: "result", value: null }));
-    const error = yield* Fiber.join(termination);
-
-    assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(error.cause));
-    if (Schema.is(CodexApplicationIngressOverflow)(error.cause)) {
-      assert.strictEqual(error.cause.channel, "settlements");
-      assert.strictEqual(error.cause.capacity, 1);
-    }
-    yield* Scope.close(generationScope, Exit.void);
-    yield* Scope.close(rootScope, Exit.void);
-  }),
-);
-
-it.effect(
-  "fences native application calls by Endpoint generation and revokes them on closure",
-  () =>
-    Effect.scoped(
+  it.effect(
+    "fails a giant occurrence before queue retention and recovers on a fresh generation",
+    () =>
       Effect.gen(function* () {
-        const inbox = yield* make;
-        const generationScope = yield* Scope.make();
-        yield* inbox
-          .openGeneration("local", 1)
-          .pipe(Effect.provideService(Scope.Scope, generationScope));
-        const source = { hostId: "local", generation: 1 };
-        yield* inbox.observeAppCallNotification(source, {
-          method: "turn/started",
-          params: {
-            threadId: "thread-1",
-            turn: {
-              rootTurnId: null,
-              id: "turn-1",
-              items: [],
-              itemsView: "full",
-              status: "inProgress",
-              error: null,
-              startedAt: null,
-              completedAt: null,
-              durationMs: null,
-            },
-          },
+        const rootScope = yield* Scope.make();
+        const failedScope = yield* Scope.make();
+        const inbox = yield* makeWithCapacities({
+          occurrences: 4,
+          settlements: 1,
+          occurrenceBytes: 16_384,
+          singleOccurrenceBytes: 4_096,
+        }).pipe(Effect.provideService(Scope.Scope, rootScope));
+        const failed = yield* inbox
+          .openGeneration("local", 7)
+          .pipe(Effect.provideService(Scope.Scope, failedScope));
+        const termination = yield* failed.termination.pipe(Effect.flip, Effect.forkChild);
+
+        yield* inbox.publishNotification({
+          hostId: "local",
+          generation: 7,
+          protocol: "extension",
+          method: "test/giant",
+          params: { text: "x".repeat(8_192) },
         });
-        yield* inbox.observeAppCallNotification(source, {
-          method: "item/started",
-          params: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            startedAtMs: 1,
-            item: {
-              type: "mcpToolCall",
-              environmentId: null,
-              id: "call-1",
-              server: "nodex_app",
-              tool: "read_page",
-              status: "inProgress",
-              arguments: { pageId: "page-1" },
-              appContext: null,
-              mcpAppUi: null,
-              pluginId: null,
-              readOnlyHint: true,
-              result: null,
-              error: null,
-              durationMs: null,
-            },
-          },
+        const failure = yield* Fiber.join(termination);
+        assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(failure.cause));
+        if (Schema.is(CodexApplicationIngressOverflow)(failure.cause)) {
+          assert.strictEqual(failure.cause.channel, "occurrence-bytes");
+          assert.strictEqual(failure.cause.maximumOccurrenceBytes, 4_096);
+        }
+
+        yield* Scope.close(failedScope, Exit.void);
+        const recoveredScope = yield* Scope.make();
+        const recovered = yield* inbox
+          .openGeneration("local", 8)
+          .pipe(Effect.provideService(Scope.Scope, recoveredScope));
+        yield* inbox.publishNotification({
+          hostId: "local",
+          generation: 8,
+          protocol: "extension",
+          method: "test/recovered",
+          params: { text: "small" },
         });
-        const input = {
-          name: "read_page",
-          arguments: { pageId: "page-1" },
-          metadata: {
-            callId: "call-1",
-            "x-codex-turn-metadata": { thread_id: "thread-1", turn_id: "turn-1" },
-          },
-        };
-        const wrongGeneration = yield* inbox
-          .runAppCall({ ...source, generation: 2 }, input, () => Effect.succeed(1))
-          .pipe(Effect.flip);
-        assert.strictEqual(wrongGeneration.reason, "revoked");
-        const started = yield* Deferred.make<void>();
-        const stopped = yield* Deferred.make<void>();
-        const call = yield* inbox
-          .runAppCall(source, input, () =>
-            Deferred.succeed(started, undefined).pipe(
-              Effect.andThen(Effect.never),
-              Effect.ensuring(Deferred.succeed(stopped, undefined)),
-            ),
-          )
-          .pipe(Effect.flip, Effect.forkChild);
-        yield* Deferred.await(started);
-        yield* Scope.close(generationScope, Exit.void);
-        assert.strictEqual((yield* Fiber.join(call)).reason, "revoked");
-        yield* Deferred.await(stopped);
-        const retired = yield* inbox
-          .runAppCall(source, input, () => Effect.succeed(1))
-          .pipe(Effect.flip);
-        assert.strictEqual(retired.reason, "revoked");
+        const delivered = yield* inbox.occurrences.pipe(Stream.take(1), Stream.runCollect);
+        assert.strictEqual([...delivered][0]?.method, "test/recovered");
+        assert.strictEqual(recovered.generation, 8);
+
+        yield* Scope.close(recoveredScope, Exit.void);
+        yield* Scope.close(rootScope, Exit.void);
       }),
-    ),
-);
+  );
 
-it.effect("resolves renderer response identities only while the exact occurrence is retained", () =>
-  Effect.gen(function* () {
-    const inbox = yield* make;
-    const generation = yield* inbox.openGeneration("local", 1);
-    const occurrence = yield* generation.admit({
-      requestId: 7,
-      protocol: "extension",
-      method: "test/occurrence",
-      params: {},
-    });
-    assert.strictEqual(yield* inbox.resolveOccurrence(occurrence), occurrence);
-    for (const wrong of [
-      { hostId: "remote" },
-      { generation: 2 },
-      { requestId: "7" },
-      { method: "item/tool/call" },
-      { occurrenceToken: occurrence.occurrenceToken + 1 },
-    ]) {
-      assert.isNull(yield* inbox.resolveOccurrence({ ...occurrence, ...wrong }));
-    }
-    assert.isTrue(yield* inbox.settle(occurrence, { kind: "result", value: {} }));
-    assert.isNull(yield* inbox.resolveOccurrence(occurrence));
-  }).pipe(Effect.scoped),
-);
-
-const nativeCall = (turnId: string, callId = "call") =>
-  ({
-    threadId: "thread",
-    turnId,
-    startedAtMs: 1,
-    item: {
-      type: "mcpToolCall",
-      environmentId: null,
-      id: callId,
-      server: "nodex_app",
-      tool: "read_page",
-      status: "inProgress",
-      arguments: { pageId: "page" },
-      appContext: null,
-      mcpAppUi: null,
-      pluginId: null,
-      readOnlyHint: true,
-      result: null,
-      error: null,
-      durationMs: null,
-    },
-  }) satisfies ItemStartedNotification;
-const nativeRequest = (turnId: string, callId = "call") => ({
-  name: "read_page",
-  arguments: { pageId: "page" },
-  metadata: { callId, "x-codex-turn-metadata": { thread_id: "thread", turn_id: turnId } },
-});
-const nativeTurn = (id: string, status: "inProgress" | "completed") => ({
-  id,
-  rootTurnId: null,
-  items: [],
-  itemsView: "full" as const,
-  status,
-  error: null,
-  startedAt: null,
-  completedAt: null,
-  durationMs: null,
-});
-
-it.effect(
-  "retains original native background calls through completion and the next Turn, with exact cancellation",
-  () =>
-    Effect.scoped(
+  it.effect(
+    "releases all 4096 FIFO byte reservations after consumption before enforcing the next overflow",
+    () =>
       Effect.gen(function* () {
-        const inbox = yield* make;
+        const rootScope = yield* Scope.make();
         const generationScope = yield* Scope.make();
-        yield* inbox
-          .openGeneration("remote", 1)
+        const inbox = yield* makeWithCapacities({
+          occurrences: 4_096,
+          settlements: 1,
+          occurrenceBytes: 8 * 1024 * 1024,
+          singleOccurrenceBytes: 8 * 1024,
+        }).pipe(Effect.provideService(Scope.Scope, rootScope));
+        const generation = yield* inbox
+          .openGeneration("local", 9)
           .pipe(Effect.provideService(Scope.Scope, generationScope));
-        const source = { hostId: "remote", generation: 1 };
-        yield* inbox.observeAppCallNotification(source, {
-          method: "item/started",
-          params: nativeCall("a"),
-        });
-        const original = yield* inbox.captureNativeTurnSource(source, "thread", "a");
-        yield* inbox.observeAppCallNotification(source, {
-          method: "turn/completed",
-          params: {
-            threadId: "thread",
-            turn: nativeTurn("a", "completed"),
-          },
-        });
-        yield* inbox.observeAppCallNotification(source, {
-          method: "turn/started",
-          params: {
-            threadId: "thread",
-            turn: nativeTurn("b", "inProgress"),
-          },
-        });
-        yield* inbox.observeAppCallNotification(source, {
-          method: "item/started",
-          params: nativeCall("b"),
-        });
-        const next = yield* inbox.captureNativeTurnSource(source, "thread", "b");
-        assert.isTrue(original?.isActive());
-        const started = yield* Deferred.make<void>();
-        const call = yield* inbox
-          .runAppCall(source, nativeRequest("a"), (claim) => {
-            assert.strictEqual(claim.turnId, "a");
-            return Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never));
-          })
-          .pipe(Effect.flip, Effect.forkChild);
-        yield* Deferred.await(started);
-        yield* inbox.cancelAppCalls(source, "thread", "a");
-        assert.strictEqual((yield* Fiber.join(call)).reason, "revoked");
-        assert.isFalse(original?.isActive());
-        assert.isTrue(next?.isActive());
-        yield* inbox.observeAppCallNotification(source, {
-          method: "item/started",
-          params: nativeCall("a", "late"),
-        });
-        assert.isNull(yield* inbox.captureNativeTurnSource(source, "thread", "a"));
-        assert.strictEqual(
-          yield* inbox.runAppCall(source, nativeRequest("b"), (claim) =>
-            Effect.succeed(claim.turnId),
-          ),
-          "b",
-        );
-        yield* inbox.observeAppCallNotification(source, {
-          method: "item/completed",
-          params: {
-            threadId: "thread",
-            turnId: "b",
-            completedAtMs: 2,
-            item: nativeCall("b").item,
-          },
-        });
-        yield* Scope.close(generationScope, Exit.void);
-        assert.isFalse(next?.isActive());
-      }),
-    ),
-);
 
-it.effect(
-  "retires overflowed native call generations immediately without damaging sibling connections",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const inbox = yield* make;
-        const failed = yield* inbox.openGeneration("remote:a", 1);
-        yield* inbox.openGeneration("remote:b", 1);
-        const source = { hostId: "remote:a", generation: 1, occurrenceId: "large-native-call" };
-        const original = yield* inbox.captureNativeTurnSource(source, "thread", "a");
-        const sibling = yield* inbox.captureNativeTurnSource(
-          { hostId: "remote:b", generation: 1 },
-          "thread",
-          "a",
-        );
-        const event = nativeCall("a");
-        yield* inbox.observeAppCallNotification(source, {
-          method: "item/started",
-          params: {
-            ...event,
-            item: { ...event.item, arguments: { body: "x".repeat(4 * 1024 * 1024) } },
-          },
-        });
-        const failure = yield* failed.termination.pipe(Effect.flip);
-        assert.strictEqual(failure.occurrenceId, "large-native-call");
-        assert.isFalse(original?.isActive());
-        assert.isTrue(sibling?.isActive());
-        assert.isNull(yield* inbox.captureNativeTurnSource(source, "thread", "a"));
-        const admission = yield* failed
-          .admit({
-            requestId: "late",
+        const publishSmall = (index: number) =>
+          inbox.publishNotification({
+            hostId: "local",
+            generation: 9,
             protocol: "extension",
-            method: "test/occurrence",
-            params: {},
-          })
-          .pipe(Effect.flip);
-        assert.strictEqual(admission.reason, "overflow");
-        assert.strictEqual(
-          (yield* inbox
-            .runAppCall(source, nativeRequest("a"), () => Effect.succeed(1))
-            .pipe(Effect.flip)).reason,
-          "revoked",
-        );
+            method: `test/small/${index}`,
+            params: { index },
+          });
+        const indexes = Array.from({ length: 4_096 }, (_, index) => index);
+        yield* Effect.forEach(indexes, publishSmall, { discard: true });
+        const consumed = yield* inbox.occurrences.pipe(Stream.take(4_096), Stream.runCollect);
+        assert.strictEqual([...consumed].length, 4_096);
+
+        yield* publishSmall(4_096);
+        const recovered = yield* inbox.occurrences.pipe(Stream.take(1), Stream.runCollect);
+        assert.strictEqual([...recovered][0]?.method, "test/small/4096");
+
+        const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
+        yield* Effect.forEach(indexes, publishSmall, { discard: true });
+        yield* inbox.publishNotification({
+          hostId: "local",
+          generation: 9,
+          protocol: "extension",
+          method: "test/overflow-after-recovery",
+          params: {},
+        });
+        const failure = yield* Fiber.join(termination);
+        assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(failure.cause));
+        if (Schema.is(CodexApplicationIngressOverflow)(failure.cause)) {
+          assert.strictEqual(failure.cause.channel, "occurrences");
+          assert.strictEqual(failure.cause.capacity, 4_096);
+        }
+
+        yield* Scope.close(generationScope, Exit.void);
+        yield* Scope.close(rootScope, Exit.void);
       }),
-    ),
-);
+  );
+
+  it.effect("fails the exact generation instead of dropping a request settlement", () =>
+    Effect.gen(function* () {
+      const rootScope = yield* Scope.make();
+      const generationScope = yield* Scope.make();
+      const inbox = yield* makeWithCapacities({ occurrences: 4, settlements: 1 }).pipe(
+        Effect.provideService(Scope.Scope, rootScope),
+      );
+      const generation = yield* inbox
+        .openGeneration("remote:a", 6)
+        .pipe(Effect.provideService(Scope.Scope, generationScope));
+      const first = yield* generation.admit({
+        requestId: "first",
+        protocol: "extension",
+        method: "test/first",
+        params: {},
+      });
+      const second = yield* generation.admit({
+        requestId: "second",
+        protocol: "extension",
+        method: "test/second",
+        params: {},
+      });
+      const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
+
+      assert.isTrue(yield* inbox.settle(first, { kind: "result", value: null }));
+      assert.isFalse(yield* inbox.settle(second, { kind: "result", value: null }));
+      const error = yield* Fiber.join(termination);
+
+      assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(error.cause));
+      if (Schema.is(CodexApplicationIngressOverflow)(error.cause)) {
+        assert.strictEqual(error.cause.channel, "settlements");
+        assert.strictEqual(error.cause.capacity, 1);
+      }
+      yield* Scope.close(generationScope, Exit.void);
+      yield* Scope.close(rootScope, Exit.void);
+    }),
+  );
+
+  it.effect(
+    "fences native application calls by Endpoint generation and revokes them on closure",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inbox = yield* make;
+          const generationScope = yield* Scope.make();
+          yield* inbox
+            .openGeneration("local", 1)
+            .pipe(Effect.provideService(Scope.Scope, generationScope));
+          const source = { hostId: "local", generation: 1 };
+          yield* inbox.observeAppCallNotification(source, {
+            method: "turn/started",
+            params: {
+              threadId: "thread-1",
+              turn: {
+                rootTurnId: null,
+                id: "turn-1",
+                items: [],
+                itemsView: "full",
+                status: "inProgress",
+                error: null,
+                startedAt: null,
+                completedAt: null,
+                durationMs: null,
+              },
+            },
+          });
+          yield* inbox.observeAppCallNotification(source, {
+            method: "item/started",
+            params: {
+              threadId: "thread-1",
+              turnId: "turn-1",
+              startedAtMs: 1,
+              item: {
+                type: "mcpToolCall",
+                environmentId: null,
+                id: "call-1",
+                server: "nodex_app",
+                tool: "read_page",
+                status: "inProgress",
+                arguments: { pageId: "page-1" },
+                appContext: null,
+                mcpAppUi: null,
+                pluginId: null,
+                readOnlyHint: true,
+                result: null,
+                error: null,
+                durationMs: null,
+              },
+            },
+          });
+          const input = {
+            name: "read_page",
+            arguments: { pageId: "page-1" },
+            metadata: {
+              callId: "call-1",
+              "x-codex-turn-metadata": { thread_id: "thread-1", turn_id: "turn-1" },
+            },
+          };
+          const wrongGeneration = yield* inbox
+            .runAppCall({ ...source, generation: 2 }, input, () => Effect.succeed(1))
+            .pipe(Effect.flip);
+          assert.strictEqual(wrongGeneration.reason, "revoked");
+          const started = yield* Deferred.make<void>();
+          const stopped = yield* Deferred.make<void>();
+          const call = yield* inbox
+            .runAppCall(source, input, () =>
+              Deferred.succeed(started, undefined).pipe(
+                Effect.andThen(Effect.never),
+                Effect.ensuring(Deferred.succeed(stopped, undefined)),
+              ),
+            )
+            .pipe(Effect.flip, Effect.forkChild);
+          yield* Deferred.await(started);
+          yield* Scope.close(generationScope, Exit.void);
+          assert.strictEqual((yield* Fiber.join(call)).reason, "revoked");
+          yield* Deferred.await(stopped);
+          const retired = yield* inbox
+            .runAppCall(source, input, () => Effect.succeed(1))
+            .pipe(Effect.flip);
+          assert.strictEqual(retired.reason, "revoked");
+        }),
+      ),
+  );
+
+  it.effect(
+    "resolves renderer response identities only while the exact occurrence is retained",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* make;
+        const generation = yield* inbox.openGeneration("local", 1);
+        const occurrence = yield* generation.admit({
+          requestId: 7,
+          protocol: "extension",
+          method: "test/occurrence",
+          params: {},
+        });
+        assert.strictEqual(yield* inbox.resolveOccurrence(occurrence), occurrence);
+        for (const wrong of [
+          { hostId: "remote" },
+          { generation: 2 },
+          { requestId: "7" },
+          { method: "item/tool/call" },
+          { occurrenceToken: occurrence.occurrenceToken + 1 },
+        ]) {
+          assert.isNull(yield* inbox.resolveOccurrence({ ...occurrence, ...wrong }));
+        }
+        assert.isTrue(yield* inbox.settle(occurrence, { kind: "result", value: {} }));
+        assert.isNull(yield* inbox.resolveOccurrence(occurrence));
+      }).pipe(Effect.scoped),
+  );
+
+  const nativeCall = (turnId: string, callId = "call") =>
+    ({
+      threadId: "thread",
+      turnId,
+      startedAtMs: 1,
+      item: {
+        type: "mcpToolCall",
+        environmentId: null,
+        id: callId,
+        server: "nodex_app",
+        tool: "read_page",
+        status: "inProgress",
+        arguments: { pageId: "page" },
+        appContext: null,
+        mcpAppUi: null,
+        pluginId: null,
+        readOnlyHint: true,
+        result: null,
+        error: null,
+        durationMs: null,
+      },
+    }) satisfies ItemStartedNotification;
+  const nativeRequest = (turnId: string, callId = "call") => ({
+    name: "read_page",
+    arguments: { pageId: "page" },
+    metadata: { callId, "x-codex-turn-metadata": { thread_id: "thread", turn_id: turnId } },
+  });
+  const nativeTurn = (id: string, status: "inProgress" | "completed") => ({
+    id,
+    rootTurnId: null,
+    items: [],
+    itemsView: "full" as const,
+    status,
+    error: null,
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+  });
+
+  it.effect(
+    "retains original native background calls through completion and the next Turn, with exact cancellation",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inbox = yield* make;
+          const generationScope = yield* Scope.make();
+          yield* inbox
+            .openGeneration("remote", 1)
+            .pipe(Effect.provideService(Scope.Scope, generationScope));
+          const source = { hostId: "remote", generation: 1 };
+          yield* inbox.observeAppCallNotification(source, {
+            method: "item/started",
+            params: nativeCall("a"),
+          });
+          const original = yield* inbox.captureNativeTurnSource(source, "thread", "a");
+          yield* inbox.observeAppCallNotification(source, {
+            method: "turn/completed",
+            params: {
+              threadId: "thread",
+              turn: nativeTurn("a", "completed"),
+            },
+          });
+          yield* inbox.observeAppCallNotification(source, {
+            method: "turn/started",
+            params: {
+              threadId: "thread",
+              turn: nativeTurn("b", "inProgress"),
+            },
+          });
+          yield* inbox.observeAppCallNotification(source, {
+            method: "item/started",
+            params: nativeCall("b"),
+          });
+          const next = yield* inbox.captureNativeTurnSource(source, "thread", "b");
+          assert.isTrue(original?.isActive());
+          const started = yield* Deferred.make<void>();
+          const call = yield* inbox
+            .runAppCall(source, nativeRequest("a"), (claim) => {
+              assert.strictEqual(claim.turnId, "a");
+              return Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never));
+            })
+            .pipe(Effect.flip, Effect.forkChild);
+          yield* Deferred.await(started);
+          yield* inbox.cancelAppCalls(source, "thread", "a");
+          assert.strictEqual((yield* Fiber.join(call)).reason, "revoked");
+          assert.isFalse(original?.isActive());
+          assert.isTrue(next?.isActive());
+          yield* inbox.observeAppCallNotification(source, {
+            method: "item/started",
+            params: nativeCall("a", "late"),
+          });
+          assert.isNull(yield* inbox.captureNativeTurnSource(source, "thread", "a"));
+          assert.strictEqual(
+            yield* inbox.runAppCall(source, nativeRequest("b"), (claim) =>
+              Effect.succeed(claim.turnId),
+            ),
+            "b",
+          );
+          yield* inbox.observeAppCallNotification(source, {
+            method: "item/completed",
+            params: {
+              threadId: "thread",
+              turnId: "b",
+              completedAtMs: 2,
+              item: nativeCall("b").item,
+            },
+          });
+          yield* Scope.close(generationScope, Exit.void);
+          assert.isFalse(next?.isActive());
+        }),
+      ),
+  );
+
+  it.effect(
+    "retires overflowed native call generations immediately without damaging sibling connections",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inbox = yield* make;
+          const failed = yield* inbox.openGeneration("remote:a", 1);
+          yield* inbox.openGeneration("remote:b", 1);
+          const source = { hostId: "remote:a", generation: 1, occurrenceId: "large-native-call" };
+          const original = yield* inbox.captureNativeTurnSource(source, "thread", "a");
+          const sibling = yield* inbox.captureNativeTurnSource(
+            { hostId: "remote:b", generation: 1 },
+            "thread",
+            "a",
+          );
+          const event = nativeCall("a");
+          yield* inbox.observeAppCallNotification(source, {
+            method: "item/started",
+            params: {
+              ...event,
+              item: { ...event.item, arguments: { body: "x".repeat(4 * 1024 * 1024) } },
+            },
+          });
+          const failure = yield* failed.termination.pipe(Effect.flip);
+          assert.strictEqual(failure.occurrenceId, "large-native-call");
+          assert.isFalse(original?.isActive());
+          assert.isTrue(sibling?.isActive());
+          assert.isNull(yield* inbox.captureNativeTurnSource(source, "thread", "a"));
+          const admission = yield* failed
+            .admit({
+              requestId: "late",
+              protocol: "extension",
+              method: "test/occurrence",
+              params: {},
+            })
+            .pipe(Effect.flip);
+          assert.strictEqual(admission.reason, "overflow");
+          assert.strictEqual(
+            (yield* inbox
+              .runAppCall(source, nativeRequest("a"), () => Effect.succeed(1))
+              .pipe(Effect.flip)).reason,
+            "revoked",
+          );
+        }),
+      ),
+  );
+});
+
+describe("CodexRequestSchedulerPolicy", () => {
+  const scheduledRequest = (
+    requestId: string,
+    overrides: Partial<CodexScheduledRequestDescriptor> = {},
+  ): CodexScheduledRequestDescriptor => {
+    const method = overrides.method ?? "thread/read";
+    const priority = overrides.priority ?? defaultCodexRequestPriority(method);
+    const source = overrides.source ?? null;
+    return {
+      requestId,
+      hostId: "local",
+      generation: 1,
+      method,
+      params: { threadId: "thread-a" },
+      priority,
+      source,
+      backgroundLane: codexRequestBackgroundLane(priority, source),
+      foregroundHistory: isCodexForegroundHistoryRequest(method, priority),
+      conversationId: "thread-a",
+      widgetId: null,
+      timeoutMs: null,
+      queuedBytes: 1,
+      ...overrides,
+    };
+  };
+
+  const queueOf = (
+    count: number,
+    priority: CodexRequestPriority,
+    overrides: Partial<CodexScheduledRequestDescriptor> = {},
+  ): CodexScheduledRequestDescriptor[] =>
+    Array.from({ length: count }, (_, index) =>
+      scheduledRequest(`${priority}-${index}`, {
+        priority,
+        conversationId: `thread-${index}`,
+        ...overrides,
+      }),
+    );
+
+  describe("Codex request scheduler method policy", () => {
+    test("keeps ordinary and caller-overridden work in the requested priority", () => {
+      expect(defaultCodexRequestPriority("thread/fork")).toBe("interactive");
+      expect(defaultCodexRequestPriority("config/read")).toBe("interactive");
+      expect(
+        codexRequestCoalescingKey(scheduledRequest("config", { method: "config/read" })),
+      ).not.toBeNull();
+      expect(defaultCodexRequestPriority("thread/read", "background")).toBe("background");
+    });
+  });
+
+  describe("Codex request coalescing policy", () => {
+    test("uses serialized request identity independently of caller routing context", () => {
+      const first = scheduledRequest("first", {
+        method: "thread/turns/list",
+        params: { turnId: "turn-a", page: { limit: 100, cursor: "next" } },
+        priority: "background",
+        source: "tail_history",
+        conversationId: "thread-a",
+        widgetId: "widget-a",
+        timeoutMs: 60_000,
+      });
+      const reordered = scheduledRequest("second", {
+        ...first,
+        requestId: "second",
+        params: { page: { cursor: "next", limit: 100 }, turnId: "turn-a" },
+      });
+      const key = codexRequestCoalescingKey(first);
+      expect(key).not.toBeNull();
+      expect(codexRequestCoalescingKey(reordered)).not.toBe(key);
+      for (const changed of [
+        { hostId: "remote" },
+        { generation: 2 },
+        { conversationId: "thread-b" },
+        { widgetId: "widget-b" },
+      ]) {
+        expect(codexRequestCoalescingKey({ ...first, ...changed })).toBe(key);
+      }
+
+      for (const changed of [
+        { timeoutMs: 30_000 },
+        { source: "thread_hydration" as CodexRequestSchedulingSource },
+        { priority: "interactive" as const },
+        { params: { turnId: "turn-b" } },
+      ]) {
+        expect(codexRequestCoalescingKey({ ...first, ...changed })).not.toBe(key);
+      }
+    });
+
+    test("does not coalesce item pages or mutations and skips unsafe keys", () => {
+      expect(
+        codexRequestCoalescingKey(scheduledRequest("plugins", { method: "plugin/installed" })),
+      ).toBeNull();
+      expect(
+        codexRequestCoalescingKey(scheduledRequest("items", { method: "thread/items/list" })),
+      ).toBeNull();
+      expect(
+        codexRequestCoalescingKey(scheduledRequest("mutation", { method: "turn/start" })),
+      ).toBeNull();
+      expect(
+        codexRequestCoalescingKey(scheduledRequest("disabled"), { coalesce: false }),
+      ).toBeNull();
+      const params: { self?: unknown } = {};
+      params.self = params;
+      expect(codexRequestCoalescingKey(scheduledRequest("cyclic", { params }))).toBeNull();
+      expect(codexScheduledRequestBytes("thread/read", params)).toBeNull();
+    });
+
+    test("admits parameterless requests and treats omitted params like null for coalescing", () => {
+      const omittedBytes = codexScheduledRequestBytes("configRequirements/read", undefined);
+      expect(omittedBytes).toBe(
+        new TextEncoder().encode('{"method":"configRequirements/read"}').byteLength,
+      );
+
+      const omitted = scheduledRequest("omitted", {
+        method: "configRequirements/read",
+        params: undefined,
+        queuedBytes: omittedBytes ?? -1,
+      });
+      const explicitNull = scheduledRequest("null", {
+        method: "configRequirements/read",
+        params: null,
+      });
+
+      expect(
+        admitCodexScheduledRequest({ request: omitted, queued: [], inFlightCount: 0 }),
+      ).toEqual({
+        accepted: true,
+      });
+      expect(codexRequestCoalescingKey(omitted)).not.toBeNull();
+      expect(codexRequestCoalescingKey(omitted)).toBe(codexRequestCoalescingKey(explicitNull));
+    });
+
+    test("caps logical waiters independently of the physical queue", () => {
+      expect(admitCodexCoalescedWaiter(127)).toEqual({ accepted: true });
+      expect(admitCodexCoalescedWaiter(128)).toMatchObject({
+        accepted: false,
+        rejection: { reason: "coalesced-queue-full", waiterCount: 128, limit: 128 },
+      });
+    });
+  });
+
+  describe("Codex request queue admission", () => {
+    test.each([
+      ["background", 128],
+      ["critical", 16],
+      ["interactive", 64],
+    ] as const)("enforces the %s count cap when execution capacity is full", (priority, count) => {
+      const queued = queueOf(count, priority);
+      const result = admitCodexScheduledRequest({
+        inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+        request: scheduledRequest("candidate", {
+          priority,
+          conversationId: "candidate-thread",
+        }),
+        queued,
+      });
+      expect(result).toMatchObject({
+        accepted: false,
+        rejection: { reason: "priority-queue-full", queuedCount: count, limit: count },
+      });
+    });
+
+    test("enforces the count cap for a conversation/widget group", () => {
+      const group = queueOf(20, "interactive", {
+        conversationId: "thread-a",
+        widgetId: "widget-a",
+      });
+      expect(
+        admitCodexScheduledRequest({
+          inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+          request: scheduledRequest("group-count", {
+            conversationId: "thread-a",
+            widgetId: "widget-a",
+          }),
+          queued: group,
+        }),
+      ).toMatchObject({
+        accepted: false,
+        rejection: { reason: "group-queue-full", queuedCount: 20 },
+      });
+    });
+
+    test("admits critical work at queue pressure while any physical execution slot is free", () => {
+      const queued = queueOf(20, "critical", { conversationId: "thread-a" });
+      const request = scheduledRequest("critical", {
+        priority: "critical",
+        conversationId: "thread-a",
+      });
+      expect(
+        admitCodexScheduledRequest({
+          request,
+          queued,
+          inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight - 1,
+        }),
+      ).toEqual({
+        accepted: true,
+      });
+      expect(
+        admitCodexScheduledRequest({
+          request,
+          queued,
+          inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+        }),
+      ).toMatchObject({
+        accepted: false,
+      });
+    });
+  });
+
+  describe("Codex request dispatch selection", () => {
+    test("reserves total and noncritical capacity while letting critical work take the final slot", () => {
+      const fiveNonCritical = queueOf(5, "interactive");
+      const queued = [
+        scheduledRequest("interactive", { priority: "interactive" }),
+        scheduledRequest("critical", { priority: "critical" }),
+      ];
+      const selected = selectNextCodexScheduledRequest({
+        queued,
+        inFlight: fiveNonCritical,
+        state: emptyCodexRequestSelectionState(),
+      });
+      expect(selected?.request.requestId).toBe("critical");
+      expect(
+        selectNextCodexScheduledRequest({
+          queued,
+          inFlight: [...fiveNonCritical, ...queueOf(3, "critical")],
+          state: emptyCodexRequestSelectionState(),
+        }),
+      ).toBeNull();
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [queued[0]!],
+          inFlight: fiveNonCritical,
+          state: emptyCodexRequestSelectionState(),
+        }),
+      ).toBeNull();
+    });
+
+    test.each(["thread/read", "thread/turns/list", "thread/items/list", "thread/items/read"])(
+      "reserves the fifth noncritical slot for foreground %s",
+      (method) => {
+        const ordinary = queueOf(4, "interactive", {
+          method: "ordinary/read",
+          foregroundHistory: false,
+        });
+        const history = scheduledRequest("history", { method, conversationId: "history" });
+        const generic = scheduledRequest("generic", {
+          method: "ordinary/read",
+          foregroundHistory: false,
+        });
+        expect(
+          selectNextCodexScheduledRequest({
+            queued: [generic, history],
+            inFlight: ordinary,
+            state: emptyCodexRequestSelectionState(),
+          })?.request.requestId,
+        ).toBe("history");
+        for (const candidate of [
+          generic,
+          scheduledRequest("timeline", {
+            method: "thread/timeline/list",
+            foregroundHistory: false,
+          }),
+          scheduledRequest("background-history", {
+            method,
+            priority: "background",
+            foregroundHistory: false,
+          }),
+        ]) {
+          expect(
+            selectNextCodexScheduledRequest({
+              queued: [candidate],
+              inFlight: ordinary,
+              state: emptyCodexRequestSelectionState(),
+            }),
+          ).toBeNull();
+        }
+        expect(
+          selectNextCodexScheduledRequest({
+            queued: [generic],
+            inFlight: [...ordinary.slice(0, 3), history],
+            state: emptyCodexRequestSelectionState(),
+          })?.request.requestId,
+        ).toBe("generic");
+      },
+    );
+
+    test("prefers one eligible background request after four interactive dispatches", () => {
+      const queued = [
+        scheduledRequest("interactive", { priority: "interactive" }),
+        scheduledRequest("background", {
+          priority: "background",
+          source: "tail_history",
+          backgroundLane: "thread",
+        }),
+      ];
+      const first = selectNextCodexScheduledRequest({
+        queued,
+        inFlight: [],
+        state: emptyCodexRequestSelectionState(),
+      });
+      expect(first?.request.requestId).toBe("interactive");
+      const fairState = {
+        ...(first?.nextState ?? emptyCodexRequestSelectionState()),
+        interactiveDispatchesSinceBackground:
+          CODEX_REQUEST_SCHEDULER_LIMITS.interactiveDispatchesBeforeBackground,
+      };
+      const background = selectNextCodexScheduledRequest({
+        queued,
+        inFlight: [],
+        state: fairState,
+      });
+      expect(background?.request.requestId).toBe("background");
+      expect(background?.nextState.interactiveDispatchesSinceBackground).toBe(0);
+    });
+
+    test("selects no-conversation work first, then rotates conversations and widgets", () => {
+      const global = scheduledRequest("global", { conversationId: null, widgetId: null });
+      const queue = [
+        scheduledRequest("a-1", { conversationId: "a", widgetId: "one" }),
+        scheduledRequest("a-2", { conversationId: "a", widgetId: "two" }),
+        scheduledRequest("b-1", { conversationId: "b", widgetId: "one" }),
+      ];
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [...queue, global],
+          inFlight: [],
+          state: emptyCodexRequestSelectionState(),
+        })?.request.requestId,
+      ).toBe("global");
+
+      const first = selectNextCodexScheduledRequest({
+        queued: queue,
+        inFlight: [],
+        state: emptyCodexRequestSelectionState(),
+      });
+      const second = selectNextCodexScheduledRequest({
+        queued: queue,
+        inFlight: [],
+        state: first!.nextState,
+      });
+      const third = selectNextCodexScheduledRequest({
+        queued: queue,
+        inFlight: [],
+        state: second!.nextState,
+      });
+      expect([
+        first?.request.requestId,
+        second?.request.requestId,
+        third?.request.requestId,
+      ]).toEqual(["a-1", "b-1", "a-2"]);
+    });
+
+    test("enforces conversation, widget, background, and background-lane in-flight caps", () => {
+      const sameWidget = queueOf(3, "interactive", {
+        conversationId: "a",
+        widgetId: "one",
+      });
+      const selected = selectNextCodexScheduledRequest({
+        queued: [
+          scheduledRequest("blocked-widget", { conversationId: "a", widgetId: "one" }),
+          scheduledRequest("other-widget", { conversationId: "a", widgetId: "two" }),
+        ],
+        inFlight: sameWidget,
+        state: emptyCodexRequestSelectionState(),
+      });
+      expect(selected?.request.requestId).toBe("other-widget");
+
+      const sameConversation = queueOf(4, "interactive", { conversationId: "a" });
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [
+            scheduledRequest("blocked-conversation", { conversationId: "a" }),
+            scheduledRequest("other-conversation", { conversationId: "b" }),
+          ],
+          inFlight: sameConversation,
+          state: emptyCodexRequestSelectionState(),
+        })?.request.requestId,
+      ).toBe("other-conversation");
+
+      const metadataInFlight = queueOf(3, "background", {
+        source: null,
+        backgroundLane: "metadata",
+      });
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [
+            scheduledRequest("metadata", {
+              priority: "background",
+              source: null,
+              backgroundLane: "metadata",
+            }),
+          ],
+          inFlight: metadataInFlight,
+          state: emptyCodexRequestSelectionState(),
+        }),
+      ).toBeNull();
+
+      const hydrationInFlight = queueOf(2, "background", {
+        source: "tail_history",
+        backgroundLane: "thread",
+      });
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [
+            scheduledRequest("hydration", {
+              priority: "background",
+              source: "tail_history",
+              backgroundLane: "thread",
+            }),
+          ],
+          inFlight: hydrationInFlight,
+          state: emptyCodexRequestSelectionState(),
+        }),
+      ).toBeNull();
+
+      const catalogInFlight = [
+        scheduledRequest("catalog-active", {
+          priority: "background",
+          source: "thread_catalog",
+          backgroundLane: "thread",
+        }),
+      ];
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [
+            scheduledRequest("catalog", {
+              priority: "background",
+              source: "thread_catalog",
+              backgroundLane: "thread",
+            }),
+          ],
+          inFlight: catalogInFlight,
+          state: emptyCodexRequestSelectionState(),
+        }),
+      ).toBeNull();
+
+      const backgroundInFlight = queueOf(3, "background", {
+        source: "tail_history",
+        backgroundLane: "thread",
+      });
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [
+            scheduledRequest("background", {
+              priority: "background",
+              source: "tail_history",
+              backgroundLane: "thread",
+            }),
+          ],
+          inFlight: backgroundInFlight,
+          state: emptyCodexRequestSelectionState(),
+        }),
+      ).toBeNull();
+    });
+  });
+});

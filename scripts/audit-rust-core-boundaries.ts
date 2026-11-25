@@ -136,10 +136,8 @@ for (const file of ["src/shared/ipc-api.ts"]) {
 const retainedLocalStoreFiles = new Set([
   // Profile-local UI preferences share the existing atom repository; no Core truth lives here.
   "ProfilePersistedAtoms.ts",
-  "ProfilePersistedAtoms.node.test.ts",
   "ProfileAssets.ts",
   // Profile-local host state shares one explicit owner; this is not Core data authority.
-  "ProfilePersistedAtoms.node.test.ts",
   "ProfilePersistedAtoms.ts",
   "assets.test.ts",
   "assets.ts",
@@ -151,7 +149,6 @@ const retainedLocalStoreFiles = new Set([
   "persisted-atoms.ts",
   "store-maintenance-gate.test.ts",
   "store-maintenance-gate.ts",
-  "TemporaryAssets.node.test.ts",
   "TemporaryAssets.ts",
 ]);
 for (const entry of readdirSync(path.join(repositoryRoot, "src/main/local-store"))) {

@@ -1,3 +1,4 @@
+import { describe, expect, test, vi } from "vite-plus/test";
 import { EventEmitter } from "node:events";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -22,708 +23,704 @@ import type {
   BlockTransferIntent,
   BlockTransferUndoIntent,
 } from "../../shared/block-transfer";
+import { FileExportRuntime } from "../library-application/FileExportRuntime";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
+import type { RendererClientEvent } from "../codex/renderer-client-runtime-contracts";
+import {
+  attachNodexStructuralClipboardWriteClaim,
+  type NodexClipboardEnvelopeV1,
+} from "../../shared/clipboard-paste";
+import {
+  ElectronClipboard,
+  type ElectronClipboardPort,
+} from "../platform/electron/ElectronClipboard";
+import { RendererClientRuntime } from "./RendererClientRuntime";
+import {
+  live as liveStructuralClipboardRuntime,
+  STRUCTURAL_CLIPBOARD_REGISTRATION_GRACE_MS,
+  STRUCTURAL_CLIPBOARD_SESSION_TIMEOUT_MS,
+  StructuralClipboardRuntime,
+} from "./StructuralClipboardRuntime";
+import type { CodexHostMessagePart } from "../../shared/codex-host-chunked-message";
+import { CodexHostChunkedMessageSender } from "./CodexHostChunkedMessageSender";
 
-const access = { kind: "project" as const, projectId: "project:test" };
-const request = (): LibraryModuleApplyRequest => ({
-  operationId: createUuidV7(),
-  storeEpoch: "epoch:test",
-  operation: {
-    kind: "apply_structural_edit",
-    command: { kind: "release_history", tokens: [] },
-  },
-});
-const rejected = {
-  ok: false,
-  error: { code: "revision_conflict", message: "Definitively not committed", retryable: true },
-} satisfies LibraryModuleApplyResult;
-const unknown = {
-  ok: false,
-  error: { code: "unknown", message: "Response unavailable", retryable: true },
-} satisfies LibraryModuleApplyResult;
-const databaseReceipt = (operationId: string): DatabaseApplyResultV2 => ({
-  ok: true,
-  localCommit: { status: "no_op", observed: { store_epoch: "epoch:test", commit_head: 7 } },
-  value: {
-    operationId,
-    projectId: access.projectId,
-    libraryId: "library:test",
-    storeEpoch: "epoch:test",
-    duplicate: true,
-    operationKinds: [],
-    operationOutcomes: [],
-    affectedDatabaseIds: [],
-    affectedDataSourceIds: [],
-    affectedPageIds: [],
-    affectedViewIds: [],
-    committedRevisions: {},
-    commitSeq: 7,
-    committedAt: "2026-09-05T00:00:00.000Z",
-  },
-});
-const token = (recipeOperationId: string): LibraryStructuralHistoryToken => ({
-  recipeOperationId,
-  recipeHash: "a".repeat(64),
-  storeEpoch: "epoch:test",
-});
-const reversed = (): LibraryModuleApplyResult => ({
-  ok: true,
-  localCommit: { status: "no_op", observed: { store_epoch: "epoch:test", commit_head: 0 } },
-  value: {
+describe("EditorHistoryRuntime", () => {
+  const access = { kind: "project" as const, projectId: "project:test" };
+  const request = (): LibraryModuleApplyRequest => ({
     operationId: createUuidV7(),
-    profileId: "profile:test",
-    libraryId: "library:test",
     storeEpoch: "epoch:test",
-    operationKind: "reverse_structural_edit",
-    duplicate: false,
-    didMutate: false,
-    createdTarget: null,
-    canvasMutation: null,
-    structuralEdit: {
+    operation: {
+      kind: "apply_structural_edit",
+      command: { kind: "release_history", tokens: [] },
+    },
+  });
+  const rejected = {
+    ok: false,
+    error: { code: "revision_conflict", message: "Definitively not committed", retryable: true },
+  } satisfies LibraryModuleApplyResult;
+  const unknown = {
+    ok: false,
+    error: { code: "unknown", message: "Response unavailable", retryable: true },
+  } satisfies LibraryModuleApplyResult;
+  const databaseReceipt = (operationId: string): DatabaseApplyResultV2 => ({
+    ok: true,
+    localCommit: { status: "no_op", observed: { store_epoch: "epoch:test", commit_head: 7 } },
+    value: {
+      operationId,
+      projectId: access.projectId,
+      libraryId: "library:test",
+      storeEpoch: "epoch:test",
+      duplicate: true,
+      operationKinds: [],
+      operationOutcomes: [],
+      affectedDatabaseIds: [],
+      affectedDataSourceIds: [],
+      affectedPageIds: [],
+      affectedViewIds: [],
+      committedRevisions: {},
+      commitSeq: 7,
+      committedAt: "2026-09-05T00:00:00.000Z",
+    },
+  });
+  const token = (recipeOperationId: string): LibraryStructuralHistoryToken => ({
+    recipeOperationId,
+    recipeHash: "a".repeat(64),
+    storeEpoch: "epoch:test",
+  });
+  const reversed = (): LibraryModuleApplyResult => ({
+    ok: true,
+    localCommit: { status: "no_op", observed: { store_epoch: "epoch:test", commit_head: 0 } },
+    value: {
+      operationId: createUuidV7(),
+      profileId: "profile:test",
+      libraryId: "library:test",
+      storeEpoch: "epoch:test",
       operationKind: "reverse_structural_edit",
-      history: token("inverse"),
-      sourceRootBlockIds: [],
-      resultRootBlockIds: [],
-      copiedBlockIds: {},
-      copiedDocumentIds: {},
-      documentCommits: [],
+      duplicate: false,
+      didMutate: false,
+      createdTarget: null,
+      canvasMutation: null,
+      structuralEdit: {
+        operationKind: "reverse_structural_edit",
+        history: token("inverse"),
+        sourceRootBlockIds: [],
+        resultRootBlockIds: [],
+        copiedBlockIds: {},
+        copiedDocumentIds: {},
+        documentCommits: [],
+        affectedPageIds: [],
+        affectedDatabaseIds: [],
+        clipboard: null,
+        supersededHistoryRecipeOperationIds: [],
+        resume: null,
+      },
+      affectedParentKeys: [],
       affectedPageIds: [],
       affectedDatabaseIds: [],
-      clipboard: null,
-      supersededHistoryRecipeOperationIds: [],
-      resume: null,
+      affectedViewIds: [],
+      committedRevisions: {},
+      commitSeq: 0,
+      committedAt: "2026-09-04T00:00:00.000Z",
     },
-    affectedParentKeys: [],
-    affectedPageIds: [],
-    affectedDatabaseIds: [],
-    affectedViewIds: [],
-    committedRevisions: {},
-    commitSeq: 0,
-    committedAt: "2026-09-04T00:00:00.000Z",
-  },
-});
-const target = () => Object.assign(new EventEmitter(), { id: 1, isDestroyed: () => false });
-type HistoryTarget = Parameters<EditorHistoryRuntime["Service"]["apply"]>[0];
-const fixture = (
-  port: Pick<LibraryModule["Service"], "apply" | "closeEditorHistoryOwner">,
-  database: Partial<DatabaseModule["Service"]> = {},
-  documents: Partial<DesktopDocumentSessionRuntime["Service"]> = {},
-) =>
-  live.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        Layer.succeed(LibraryModule, port as LibraryModule["Service"]),
-        Layer.succeed(DatabaseModule, database as DatabaseModule["Service"]),
-        Layer.succeed(
-          DesktopDocumentSessionRuntime,
-          documents as DesktopDocumentSessionRuntime["Service"],
+  });
+  const target = () => Object.assign(new EventEmitter(), { id: 1, isDestroyed: () => false });
+  type HistoryTarget = Parameters<EditorHistoryRuntime["Service"]["apply"]>[0];
+  const fixture = (
+    port: Pick<LibraryModule["Service"], "apply" | "closeEditorHistoryOwner">,
+    database: Partial<DatabaseModule["Service"]> = {},
+    documents: Partial<DesktopDocumentSessionRuntime["Service"]> = {},
+  ) =>
+    live.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(LibraryModule, port as LibraryModule["Service"]),
+          Layer.succeed(DatabaseModule, database as DatabaseModule["Service"]),
+          Layer.succeed(
+            DesktopDocumentSessionRuntime,
+            documents as DesktopDocumentSessionRuntime["Service"],
+          ),
         ),
       ),
-    ),
+    );
+
+  it.effect(
+    "Database recovery outlives a lost waiter and closed renderer without changing its request",
+    () =>
+      Effect.gen(function* () {
+        const calls: DatabaseApplyV2[] = [];
+        const started = yield* Deferred.make<void>();
+        const recovered = yield* Deferred.make<void>();
+        const context = yield* Layer.build(
+          fixture(
+            {
+              apply: () => Effect.succeed(rejected),
+              closeEditorHistoryOwner: () => Effect.void,
+            },
+            {
+              apply: (received) =>
+                Effect.gen(function* () {
+                  calls.push(structuredClone(received));
+                  if (calls.length <= 2) {
+                    yield* Deferred.succeed(started, undefined);
+                    return unknown;
+                  }
+                  yield* Deferred.succeed(recovered, undefined);
+                  return databaseReceipt(received.operationId);
+                }),
+            },
+          ),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target();
+        const original: DatabaseApplyV2 = {
+          operationId: createUuidV7(),
+          projectId: access.projectId,
+          storeEpoch: "epoch:test",
+          actor: {},
+          operations: [],
+        };
+        const expected = structuredClone(original);
+        const waiting = yield* history
+          .applyDatabase(window as unknown as HistoryTarget, original)
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(started);
+        yield* Fiber.interrupt(waiting);
+        window.emit("render-process-gone");
+        Object.assign(original, { storeEpoch: "changed-after-ingress" });
+        yield* TestClock.adjust("100 millis");
+        yield* TestClock.adjust("200 millis");
+        yield* Deferred.await(recovered);
+        assert.deepEqual(calls, [expected, expected, expected]);
+      }),
   );
 
-it.effect(
-  "Database recovery outlives a lost waiter and closed renderer without changing its request",
-  () =>
-    Effect.gen(function* () {
-      const calls: DatabaseApplyV2[] = [];
-      const started = yield* Deferred.make<void>();
-      const recovered = yield* Deferred.make<void>();
-      const context = yield* Layer.build(
-        fixture(
-          {
-            apply: () => Effect.succeed(rejected),
-            closeEditorHistoryOwner: () => Effect.void,
-          },
-          {
-            apply: (received) =>
-              Effect.gen(function* () {
-                calls.push(structuredClone(received));
-                if (calls.length <= 2) {
-                  yield* Deferred.succeed(started, undefined);
-                  return unknown;
-                }
-                yield* Deferred.succeed(recovered, undefined);
-                return databaseReceipt(received.operationId);
-              }),
-          },
-        ),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target();
-      const original: DatabaseApplyV2 = {
-        operationId: createUuidV7(),
-        projectId: access.projectId,
-        storeEpoch: "epoch:test",
-        actor: {},
-        operations: [],
-      };
-      const expected = structuredClone(original);
-      const waiting = yield* history
-        .applyDatabase(window as unknown as HistoryTarget, original)
-        .pipe(Effect.forkScoped);
-      yield* Deferred.await(started);
-      yield* Fiber.interrupt(waiting);
-      window.emit("render-process-gone");
-      Object.assign(original, { storeEpoch: "changed-after-ingress" });
-      yield* TestClock.adjust("100 millis");
-      yield* TestClock.adjust("200 millis");
-      yield* Deferred.await(recovered);
-      assert.deepEqual(calls, [expected, expected, expected]);
-    }),
-);
-
-it.effect(
-  "Database duplicate waiters share one admitted attempt and reject changed identities",
-  () =>
-    Effect.gen(function* () {
-      let writes = 0;
-      const response = yield* Deferred.make<DatabaseApplyResultV2>();
-      const context = yield* Layer.build(
-        fixture(
-          {
-            apply: () => Effect.succeed(rejected),
-            closeEditorHistoryOwner: () => Effect.void,
-          },
-          {
-            apply: () =>
-              Effect.gen(function* () {
-                writes++;
-                return yield* Deferred.await(response);
-              }),
-          },
-        ),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target() as unknown as HistoryTarget;
-      const original: DatabaseApplyV2 = {
-        operationId: createUuidV7(),
-        projectId: access.projectId,
-        storeEpoch: "epoch:test",
-        actor: {},
-        operations: [],
-      };
-      const first = yield* history.applyDatabase(window, original).pipe(Effect.forkScoped);
-      yield* Effect.yieldNow;
-      const second = yield* history
-        .applyDatabase(window, structuredClone(original))
-        .pipe(Effect.forkScoped);
-      yield* Effect.yieldNow;
-      const collision = yield* history.applyDatabase(window, {
-        ...original,
-        projectId: "project:other",
-      });
-      assert.isFalse(collision.ok);
-      assert.equal(writes, 1);
-      const receipt = databaseReceipt(original.operationId);
-      yield* Deferred.succeed(response, receipt);
-      assert.deepEqual(yield* Fiber.join(first), receipt);
-      assert.deepEqual(yield* Fiber.join(second), receipt);
-    }),
-);
-
-it.effect.each(["library_database", "transfer", "reverse_transfer"] as const)(
-  "%s retains unknown results after renderer loss",
-  (kind) =>
-    Effect.gen(function* () {
-      const calls: string[] = [];
-      const owners: (string | undefined)[] = [];
-      let closedOwner: string | undefined;
-      const terminated = {
-        ok: false as const,
-        error: {
-          code: "project_not_found" as const,
-          message: "Project removed",
-          retryable: false,
-          reloadRequired: true,
-        },
-      };
-      const send = (received: object, owner?: string) =>
-        Effect.sync(() => {
-          calls.push(JSON.stringify(received));
-          owners.push(owner);
-          if (calls.length > 1) return terminated;
-          return { ...unknown, error: { ...unknown.error, reloadRequired: false } };
-        });
-      const context = yield* Layer.build(
-        fixture(
-          {
-            apply: () => Effect.succeed(rejected),
-            closeEditorHistoryOwner: (owner) =>
-              Effect.sync(() => {
-                closedOwner = owner;
-              }),
-          },
-          { applyLibrary: send },
-          { transferBlocks: send, undoBlockTransfer: send },
-        ),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target();
-      const common = {
-        operationId: createUuidV7(),
-        projectId: access.projectId,
-        storeEpoch: "epoch:test",
-      };
-      const transfer: BlockTransferIntent = {
-        ...common,
-        actor: {},
-        mode: "move",
-        rootBlockIds: ["block:test"],
-        causalDependencies: [],
-        source: { kind: "document", documentId: "document:test" },
-        target: { kind: "library", libraryId: "library:test" },
-        promotionPolicy: "literal",
-      };
-      const reverse: BlockTransferUndoIntent = {
-        ...common,
-        token: {
-          transferOperationId: "transfer:test",
-          recipeHash: "a".repeat(64),
-          storeEpoch: common.storeEpoch,
-        },
-      };
-      const targetWindow = window as unknown as HistoryTarget;
-      const action =
-        kind === "library_database"
-          ? history.applyLibraryDatabase(targetWindow, {
-              operationId: common.operationId,
-              storeEpoch: common.storeEpoch,
-              operations: [],
-            })
-          : kind === "transfer"
-            ? history.transferBlocks(targetWindow, transfer)
-            : history.reverseBlockTransfer(targetWindow, reverse);
-      const waiting = yield* action.pipe(Effect.forkScoped);
-      yield* Effect.yieldNow;
-      window.emit("destroyed");
-      yield* TestClock.adjust("100 millis");
-      assert.deepEqual(yield* Fiber.join(waiting), terminated);
-      assert.equal(calls.length, 2);
-      assert.equal(calls[0], calls[1]);
-      if (kind !== "library_database") {
-        assert.isString(closedOwner);
-        assert.deepEqual(owners, [closedOwner, closedOwner]);
-      }
-    }),
-);
-
-it.effect(
-  "Database admission rejects stale generations and oversized requests before sending",
-  () =>
-    Effect.gen(function* () {
-      let writes = 0;
-      const context = yield* Layer.build(
-        fixture(
-          {
-            apply: () => Effect.succeed(rejected),
-            closeEditorHistoryOwner: () => Effect.void,
-          },
-          {
-            apply: () =>
-              Effect.sync(() => {
-                writes++;
-                return rejected;
-              }),
-          },
-        ),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target();
-      const original: DatabaseApplyV2 = {
-        operationId: createUuidV7(),
-        projectId: access.projectId,
-        storeEpoch: "epoch:test",
-        actor: {},
-        operations: [],
-      };
-      const stale = history.applyDatabase(window as unknown as HistoryTarget, original);
-      window.emit("render-process-gone");
-      assert.isFalse((yield* stale).ok);
-      assert.isFalse(
-        (yield* history.applyDatabase(window as unknown as HistoryTarget, {
+  it.effect(
+    "Database duplicate waiters share one admitted attempt and reject changed identities",
+    () =>
+      Effect.gen(function* () {
+        let writes = 0;
+        const response = yield* Deferred.make<DatabaseApplyResultV2>();
+        const context = yield* Layer.build(
+          fixture(
+            {
+              apply: () => Effect.succeed(rejected),
+              closeEditorHistoryOwner: () => Effect.void,
+            },
+            {
+              apply: () =>
+                Effect.gen(function* () {
+                  writes++;
+                  return yield* Deferred.await(response);
+                }),
+            },
+          ),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target() as unknown as HistoryTarget;
+        const original: DatabaseApplyV2 = {
+          operationId: createUuidV7(),
+          projectId: access.projectId,
+          storeEpoch: "epoch:test",
+          actor: {},
+          operations: [],
+        };
+        const first = yield* history.applyDatabase(window, original).pipe(Effect.forkScoped);
+        yield* Effect.yieldNow;
+        const second = yield* history
+          .applyDatabase(window, structuredClone(original))
+          .pipe(Effect.forkScoped);
+        yield* Effect.yieldNow;
+        const collision = yield* history.applyDatabase(window, {
           ...original,
-          actor: { payload: "x".repeat(32 * 1024 * 1024) },
-        })).ok,
-      );
-      assert.equal(writes, 0);
-      yield* history.applyDatabase(window as unknown as HistoryTarget, original);
-      assert.equal(writes, 1);
-    }),
-);
+          projectId: "project:other",
+        });
+        assert.isFalse(collision.ok);
+        assert.equal(writes, 1);
+        const receipt = databaseReceipt(original.operationId);
+        yield* Deferred.succeed(response, receipt);
+        assert.deepEqual(yield* Fiber.join(first), receipt);
+        assert.deepEqual(yield* Fiber.join(second), receipt);
+      }),
+  );
 
-it.effect.each([true, false])(
-  "abandoned Promotion resolves and releases its capability while the window remains open, symmetric: %s",
-  (symmetric) =>
-    Effect.gen(function* () {
-      const response = yield* Deferred.make<BlockTransferCommandResult>();
-      const started = yield* Deferred.make<void>();
-      const cleanup = yield* Deferred.make<LibraryModuleApplyRequest>();
-      const calls: BlockTransferIntent[] = [];
-      const context = yield* Layer.build(
-        fixture(
-          {
-            apply: (scope, received) =>
+  it.effect.each(["library_database", "transfer", "reverse_transfer"] as const)(
+    "%s retains unknown results after renderer loss",
+    (kind) =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        const owners: (string | undefined)[] = [];
+        let closedOwner: string | undefined;
+        const terminated = {
+          ok: false as const,
+          error: {
+            code: "project_not_found" as const,
+            message: "Project removed",
+            retryable: false,
+            reloadRequired: true,
+          },
+        };
+        const send = (received: object, owner?: string) =>
+          Effect.sync(() => {
+            calls.push(JSON.stringify(received));
+            owners.push(owner);
+            if (calls.length > 1) return terminated;
+            return { ...unknown, error: { ...unknown.error, reloadRequired: false } };
+          });
+        const context = yield* Layer.build(
+          fixture(
+            {
+              apply: () => Effect.succeed(rejected),
+              closeEditorHistoryOwner: (owner) =>
+                Effect.sync(() => {
+                  closedOwner = owner;
+                }),
+            },
+            { applyLibrary: send },
+            { transferBlocks: send, undoBlockTransfer: send },
+          ),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target();
+        const common = {
+          operationId: createUuidV7(),
+          projectId: access.projectId,
+          storeEpoch: "epoch:test",
+        };
+        const transfer: BlockTransferIntent = {
+          ...common,
+          actor: {},
+          mode: "move",
+          rootBlockIds: ["block:test"],
+          causalDependencies: [],
+          source: { kind: "document", documentId: "document:test" },
+          target: { kind: "library", libraryId: "library:test" },
+          promotionPolicy: "literal",
+        };
+        const reverse: BlockTransferUndoIntent = {
+          ...common,
+          token: {
+            transferOperationId: "transfer:test",
+            recipeHash: "a".repeat(64),
+            storeEpoch: common.storeEpoch,
+          },
+        };
+        const targetWindow = window as unknown as HistoryTarget;
+        const action =
+          kind === "library_database"
+            ? history.applyLibraryDatabase(targetWindow, {
+                operationId: common.operationId,
+                storeEpoch: common.storeEpoch,
+                operations: [],
+              })
+            : kind === "transfer"
+              ? history.transferBlocks(targetWindow, transfer)
+              : history.reverseBlockTransfer(targetWindow, reverse);
+        const waiting = yield* action.pipe(Effect.forkScoped);
+        yield* Effect.yieldNow;
+        window.emit("destroyed");
+        yield* TestClock.adjust("100 millis");
+        assert.deepEqual(yield* Fiber.join(waiting), terminated);
+        assert.equal(calls.length, 2);
+        assert.equal(calls[0], calls[1]);
+        if (kind !== "library_database") {
+          assert.isString(closedOwner);
+          assert.deepEqual(owners, [closedOwner, closedOwner]);
+        }
+      }),
+  );
+
+  it.effect(
+    "Database admission rejects stale generations and oversized requests before sending",
+    () =>
+      Effect.gen(function* () {
+        let writes = 0;
+        const context = yield* Layer.build(
+          fixture(
+            {
+              apply: () => Effect.succeed(rejected),
+              closeEditorHistoryOwner: () => Effect.void,
+            },
+            {
+              apply: () =>
+                Effect.sync(() => {
+                  writes++;
+                  return rejected;
+                }),
+            },
+          ),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target();
+        const original: DatabaseApplyV2 = {
+          operationId: createUuidV7(),
+          projectId: access.projectId,
+          storeEpoch: "epoch:test",
+          actor: {},
+          operations: [],
+        };
+        const stale = history.applyDatabase(window as unknown as HistoryTarget, original);
+        window.emit("render-process-gone");
+        assert.isFalse((yield* stale).ok);
+        assert.isFalse(
+          (yield* history.applyDatabase(window as unknown as HistoryTarget, {
+            ...original,
+            actor: { payload: "x".repeat(32 * 1024 * 1024) },
+          })).ok,
+        );
+        assert.equal(writes, 0);
+        yield* history.applyDatabase(window as unknown as HistoryTarget, original);
+        assert.equal(writes, 1);
+      }),
+  );
+
+  it.effect.each([true, false])(
+    "abandoned Promotion resolves and releases its capability while the window remains open, symmetric: %s",
+    (symmetric) =>
+      Effect.gen(function* () {
+        const response = yield* Deferred.make<BlockTransferCommandResult>();
+        const started = yield* Deferred.make<void>();
+        const cleanup = yield* Deferred.make<LibraryModuleApplyRequest>();
+        const calls: BlockTransferIntent[] = [];
+        const context = yield* Layer.build(
+          fixture(
+            {
+              apply: (scope, received) =>
+                Effect.gen(function* () {
+                  assert.deepEqual(scope, access);
+                  yield* Deferred.succeed(cleanup, received);
+                  return rejected;
+                }),
+              closeEditorHistoryOwner: () => Effect.void,
+            },
+            {},
+            {
+              transferBlocks: (received) =>
+                Effect.gen(function* () {
+                  calls.push(received);
+                  if (calls.length === 1) {
+                    yield* Deferred.succeed(started, undefined);
+                    return { ...unknown, error: { ...unknown.error, reloadRequired: false } };
+                  }
+                  return yield* Deferred.await(response);
+                }),
+            },
+          ),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target() as unknown as HistoryTarget;
+        const original: BlockTransferIntent = {
+          operationId: createUuidV7(),
+          projectId: access.projectId,
+          storeEpoch: "epoch:test",
+          actor: {},
+          mode: "move",
+          rootBlockIds: ["block:test"],
+          causalDependencies: [],
+          source: { kind: "document", documentId: "document:test" },
+          target: { kind: "library", libraryId: "library:test" },
+          promotionPolicy: "literal",
+        };
+        const expected = structuredClone(original);
+        const waiting = yield* history.transferBlocks(window, original).pipe(Effect.forkScoped);
+        yield* Deferred.await(started);
+        assert.deepEqual(yield* history.handoffAbandonTransfer(window, original), {
+          accepted: true,
+        });
+        yield* Fiber.interrupt(waiting);
+        Object.assign(original, { rootBlockIds: ["changed-after-handoff"] });
+        assert.isFalse(yield* Deferred.isDone(cleanup));
+        yield* TestClock.adjust("100 millis");
+        yield* Deferred.succeed(response, {
+          ok: true,
+          localCommit: { status: "no_op", observed: { store_epoch: "epoch:test", commit_head: 1 } },
+          value: {
+            ...expected,
+            duplicate: true,
+            sourceRootBlockIds: ["block:test"],
+            resultRootBlockIds: ["block:test"],
+            copiedBlockIds: {},
+            transformationEvidence: [],
+            finalLocations: {},
+            finalLocationRevisions: {},
+            documentCommits: [],
+            affectedDatabaseBlockIds: [],
+            commitSeq: 1,
+            committedAt: "2026-09-05T00:00:00Z",
+            history: symmetric ? token(expected.operationId) : null,
+            undoToken: {
+              transferOperationId: expected.operationId,
+              recipeHash: "a".repeat(64),
+              storeEpoch: "epoch:test",
+            },
+          },
+        });
+        assert.deepEqual((yield* Deferred.await(cleanup)).operation, {
+          kind: "apply_structural_edit",
+          command: { kind: "release_history", tokens: [token(expected.operationId)] },
+        });
+        assert.deepEqual(calls, [expected, expected]);
+      }),
+  );
+
+  it.effect.each(["forward", "inverse"] as const)(
+    "%s abandonment waits for the exact outcome before releasing capabilities",
+    (direction) =>
+      Effect.gen(function* () {
+        const outcome = yield* Deferred.make<LibraryModuleApplyResult>();
+        const cleanup = yield* Deferred.make<LibraryModuleApplyRequest>();
+        const calls: LibraryModuleApplyRequest[] = [];
+        const context = yield* Layer.build(
+          fixture({
+            apply: (_access, received) =>
               Effect.gen(function* () {
-                assert.deepEqual(scope, access);
+                calls.push(received);
+                if (
+                  !(
+                    received.operation.kind === "apply_structural_edit" &&
+                    received.operation.command.kind === "release_history"
+                  )
+                )
+                  return yield* Deferred.await(outcome);
                 yield* Deferred.succeed(cleanup, received);
                 return rejected;
               }),
             closeEditorHistoryOwner: () => Effect.void,
-          },
-          {},
-          {
-            transferBlocks: (received) =>
-              Effect.gen(function* () {
-                calls.push(received);
-                if (calls.length === 1) {
-                  yield* Deferred.succeed(started, undefined);
-                  return { ...unknown, error: { ...unknown.error, reloadRequired: false } };
-                }
-                return yield* Deferred.await(response);
-              }),
-          },
-        ),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target() as unknown as HistoryTarget;
-      const original: BlockTransferIntent = {
-        operationId: createUuidV7(),
-        projectId: access.projectId,
-        storeEpoch: "epoch:test",
-        actor: {},
-        mode: "move",
-        rootBlockIds: ["block:test"],
-        causalDependencies: [],
-        source: { kind: "document", documentId: "document:test" },
-        target: { kind: "library", libraryId: "library:test" },
-        promotionPolicy: "literal",
-      };
-      const expected = structuredClone(original);
-      const waiting = yield* history.transferBlocks(window, original).pipe(Effect.forkScoped);
-      yield* Deferred.await(started);
-      assert.deepEqual(yield* history.handoffAbandonTransfer(window, original), { accepted: true });
-      yield* Fiber.interrupt(waiting);
-      Object.assign(original, { rootBlockIds: ["changed-after-handoff"] });
-      assert.isFalse(yield* Deferred.isDone(cleanup));
-      yield* TestClock.adjust("100 millis");
-      yield* Deferred.succeed(response, {
-        ok: true,
-        localCommit: { status: "no_op", observed: { store_epoch: "epoch:test", commit_head: 1 } },
-        value: {
-          ...expected,
-          duplicate: true,
-          sourceRootBlockIds: ["block:test"],
-          resultRootBlockIds: ["block:test"],
-          copiedBlockIds: {},
-          transformationEvidence: [],
-          finalLocations: {},
-          finalLocationRevisions: {},
-          documentCommits: [],
-          affectedDatabaseBlockIds: [],
-          commitSeq: 1,
-          committedAt: "2026-09-05T00:00:00Z",
-          history: symmetric ? token(expected.operationId) : null,
-          undoToken: {
-            transferOperationId: expected.operationId,
-            recipeHash: "a".repeat(64),
-            storeEpoch: "epoch:test",
-          },
-        },
-      });
-      assert.deepEqual((yield* Deferred.await(cleanup)).operation, {
-        kind: "apply_structural_edit",
-        command: { kind: "release_history", tokens: [token(expected.operationId)] },
-      });
-      assert.deepEqual(calls, [expected, expected]);
-    }),
-);
-
-it.effect.each(["forward", "inverse"] as const)(
-  "%s abandonment waits for the exact outcome before releasing capabilities",
-  (direction) =>
-    Effect.gen(function* () {
-      const outcome = yield* Deferred.make<LibraryModuleApplyResult>();
-      const cleanup = yield* Deferred.make<LibraryModuleApplyRequest>();
-      const calls: LibraryModuleApplyRequest[] = [];
-      const context = yield* Layer.build(
-        fixture({
-          apply: (_access, received) =>
-            Effect.gen(function* () {
-              calls.push(received);
-              if (
-                !(
-                  received.operation.kind === "apply_structural_edit" &&
-                  received.operation.command.kind === "release_history"
-                )
-              )
-                return yield* Deferred.await(outcome);
-              yield* Deferred.succeed(cleanup, received);
-              return rejected;
-            }),
-          closeEditorHistoryOwner: () => Effect.void,
-        }),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target() as unknown as HistoryTarget;
-      const original: LibraryModuleApplyRequest = {
-        ...request(),
-        operation:
-          direction === "inverse"
-            ? { kind: "reverse_structural_edit", token: token("original") }
-            : {
-                kind: "apply_structural_edit",
-                command: {
-                  kind: "delete_selection",
-                  selection: {
-                    sourceDocumentId: "document:test",
-                    sourceHead: { documentId: "document:test", generation: 1, expectedHeadSeq: 1 },
-                    rootBlockIds: ["block:test"],
+          }),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target() as unknown as HistoryTarget;
+        const original: LibraryModuleApplyRequest = {
+          ...request(),
+          operation:
+            direction === "inverse"
+              ? { kind: "reverse_structural_edit", token: token("original") }
+              : {
+                  kind: "apply_structural_edit",
+                  command: {
+                    kind: "delete_selection",
+                    selection: {
+                      sourceDocumentId: "document:test",
+                      sourceHead: {
+                        documentId: "document:test",
+                        generation: 1,
+                        expectedHeadSeq: 1,
+                      },
+                      rootBlockIds: ["block:test"],
+                    },
+                    reason: { kind: "delete" },
+                    direction: "forward",
                   },
-                  reason: { kind: "delete" },
-                  direction: "forward",
                 },
+        };
+        const waiting = yield* history.apply(window, access, original).pipe(Effect.forkScoped);
+        yield* Effect.yieldNow;
+        assert.deepEqual(yield* history.handoffAbandon(window, access, original), {
+          accepted: true,
+        });
+        yield* Fiber.interrupt(waiting);
+        assert.deepEqual(calls, [original]);
+        assert.isFalse(yield* Deferred.isDone(cleanup));
+        yield* Deferred.succeed(outcome, reversed());
+        const released = yield* Deferred.await(cleanup);
+        assert.deepEqual(released.operation, {
+          kind: "apply_structural_edit",
+          command: {
+            kind: "release_history",
+            tokens:
+              direction === "inverse" ? [token("original"), token("inverse")] : [token("inverse")],
+          },
+        });
+        assert.equal(calls.length, 2);
+      }),
+  );
+
+  it.effect(
+    "release handoff completes before Core responds, without inventing a commit receipt",
+    () =>
+      Effect.gen(function* () {
+        const blocked = yield* Deferred.make<LibraryModuleApplyResult>();
+        const context = yield* Layer.build(
+          fixture({
+            apply: () => Deferred.await(blocked),
+            closeEditorHistoryOwner: () => Effect.void,
+          }),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target();
+        const handedOff = yield* history.handoffRelease(
+          window as unknown as HistoryTarget,
+          access,
+          request(),
+        );
+        assert.deepEqual(handedOff, { accepted: true });
+        const localRequest: LibraryModuleApplyRequest = {
+          ...request(),
+          operation: {
+            kind: "apply_structural_edit",
+            command: {
+              kind: "set_local_history_retention",
+              retention: {
+                surfaceId: "surface",
+                documentId: "document",
+                generation: 1,
+                revision: 2,
+                blockIds: [],
+                retainDocument: false,
+                closed: false,
               },
-      };
-      const waiting = yield* history.apply(window, access, original).pipe(Effect.forkScoped);
-      yield* Effect.yieldNow;
-      assert.deepEqual(yield* history.handoffAbandon(window, access, original), { accepted: true });
-      yield* Fiber.interrupt(waiting);
-      assert.deepEqual(calls, [original]);
-      assert.isFalse(yield* Deferred.isDone(cleanup));
-      yield* Deferred.succeed(outcome, reversed());
-      const released = yield* Deferred.await(cleanup);
-      assert.deepEqual(released.operation, {
-        kind: "apply_structural_edit",
-        command: {
-          kind: "release_history",
-          tokens:
-            direction === "inverse" ? [token("original"), token("inverse")] : [token("inverse")],
-        },
-      });
-      assert.equal(calls.length, 2);
-    }),
-);
-
-it.effect(
-  "release handoff completes before Core responds, without inventing a commit receipt",
-  () =>
-    Effect.gen(function* () {
-      const blocked = yield* Deferred.make<LibraryModuleApplyResult>();
-      const context = yield* Layer.build(
-        fixture({
-          apply: () => Deferred.await(blocked),
-          closeEditorHistoryOwner: () => Effect.void,
-        }),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target();
-      const handedOff = yield* history.handoffRelease(
-        window as unknown as HistoryTarget,
-        access,
-        request(),
-      );
-      assert.deepEqual(handedOff, { accepted: true });
-      const localRequest: LibraryModuleApplyRequest = {
-        ...request(),
-        operation: {
-          kind: "apply_structural_edit",
-          command: {
-            kind: "set_local_history_retention",
-            retention: {
-              surfaceId: "surface",
-              documentId: "document",
-              generation: 1,
-              revision: 2,
-              blockIds: [],
-              retainDocument: false,
-              closed: false,
             },
           },
-        },
-      };
-      assert.deepEqual(
-        (yield* history.handoffRelease(window as unknown as HistoryTarget, access, localRequest))
-          .accepted,
-        false,
-      );
-      const closed: LibraryModuleApplyRequest = {
-        ...request(),
-        operation: {
-          kind: "apply_structural_edit",
-          command: {
-            kind: "set_local_history_retention",
-            retention: {
-              surfaceId: "surface",
-              documentId: "document",
-              generation: 1,
-              revision: 3,
-              blockIds: [],
-              retainDocument: false,
-              closed: true,
+        };
+        assert.deepEqual(
+          (yield* history.handoffRelease(window as unknown as HistoryTarget, access, localRequest))
+            .accepted,
+          false,
+        );
+        const closed: LibraryModuleApplyRequest = {
+          ...request(),
+          operation: {
+            kind: "apply_structural_edit",
+            command: {
+              kind: "set_local_history_retention",
+              retention: {
+                surfaceId: "surface",
+                documentId: "document",
+                generation: 1,
+                revision: 3,
+                blockIds: [],
+                retainDocument: false,
+                closed: true,
+              },
             },
           },
-        },
-      };
-      assert.deepEqual(
-        yield* history.handoffRelease(window as unknown as HistoryTarget, access, closed),
-        { accepted: true },
-      );
-      assert.equal(yield* Deferred.isDone(blocked), false);
-      window.emit("destroyed");
-    }),
-);
-
-it.effect.each(["revision_conflict", "recovery_required"] as const)(
-  "Main retains the exact unknown attempt until %s after its renderer waiter is interrupted",
-  (code) =>
-    Effect.gen(function* () {
-      const calls: Array<{ request: LibraryModuleApplyRequest; owner: string | undefined }> = [];
-      const reached = yield* Deferred.make<void>();
-      const completed = yield* Deferred.make<void>();
-      const ended: string[] = [];
-      const context = yield* Layer.build(
-        fixture({
-          apply: (_access, received, owner) =>
-            Effect.gen(function* () {
-              calls.push({ request: received, owner });
-              if (calls.length === 1) {
-                yield* Deferred.succeed(reached, undefined);
-                return unknown;
-              }
-              yield* Deferred.succeed(completed, undefined);
-              return { ...rejected, error: { ...rejected.error, code } };
-            }),
-          closeEditorHistoryOwner: (owner) =>
-            Effect.sync(() => {
-              ended.push(owner);
-            }),
-        }),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target();
-      const original = request();
-      const waiting = yield* history
-        .apply(window as unknown as HistoryTarget, access, original)
-        .pipe(Effect.forkScoped);
-      yield* Deferred.await(reached);
-      yield* Fiber.interrupt(waiting);
-      yield* TestClock.adjust("100 millis");
-      yield* Deferred.await(completed);
-      assert.equal(calls.length, 2);
-      assert.strictEqual(calls[0]!.request, original);
-      assert.strictEqual(calls[1]!.request, original);
-      assert.equal(calls[0]!.owner, calls[1]!.owner);
-      yield* TestClock.adjust("10 seconds");
-      assert.equal(calls.length, 2);
-      window.emit("destroyed");
-      yield* Effect.yieldNow;
-      assert.deepEqual(ended, [calls[0]!.owner]);
-    }),
-);
-
-it.effect("an effect admitted by an old renderer cannot start in its replacement's lifetime", () =>
-  Effect.gen(function* () {
-    let writes = 0;
-    const context = yield* Layer.build(
-      fixture({
-        apply: () =>
-          Effect.sync(() => {
-            writes++;
-            return rejected;
-          }),
-        closeEditorHistoryOwner: () => Effect.void,
+        };
+        assert.deepEqual(
+          yield* history.handoffRelease(window as unknown as HistoryTarget, access, closed),
+          { accepted: true },
+        );
+        assert.equal(yield* Deferred.isDone(blocked), false);
+        window.emit("destroyed");
       }),
-    );
-    const history = Context.get(context, EditorHistoryRuntime);
-    const window = target();
-    const old = history.apply(window as unknown as HistoryTarget, access, request());
-    window.emit("render-process-gone");
-    const result = yield* old;
-    assert.equal(result.ok, false);
-    assert.equal(writes, 0);
-    yield* history.apply(window as unknown as HistoryTarget, access, request());
-    assert.equal(writes, 1);
-  }),
-);
+  );
 
-it.effect(
-  "same-document navigation keeps history; a new renderer generation closes only its old owner",
-  () =>
-    Effect.gen(function* () {
-      const owners: string[] = [];
-      const ended: string[] = [];
-      const context = yield* Layer.build(
-        fixture({
-          apply: (_access, _request, owner) =>
-            Effect.sync(() => {
-              owners.push(owner!);
-              return rejected;
-            }),
-          closeEditorHistoryOwner: (owner) =>
-            Effect.sync(() => {
-              ended.push(owner);
-            }),
-        }),
-      );
-      const history = Context.get(context, EditorHistoryRuntime);
-      const window = target();
-      const apply = () => history.apply(window as unknown as HistoryTarget, access, request());
-      yield* apply();
-      window.emit("did-start-navigation", { isMainFrame: true, isSameDocument: true });
-      yield* apply();
-      window.emit("did-start-navigation", { isMainFrame: false, isSameDocument: false });
-      yield* apply();
-      assert.deepEqual(owners, [owners[0], owners[0], owners[0]]);
-      window.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
-      yield* apply();
-      assert.notEqual(owners[3], owners[0]);
-      window.emit("render-process-gone");
-      yield* apply();
-      assert.notEqual(owners[4], owners[3]);
-      assert.deepEqual(ended, [owners[0], owners[3]]);
-    }),
-);
-
-it.effect("cleanup retries independently with the same owner and close operation", () =>
-  Effect.gen(function* () {
-    const calls: string[][] = [];
-    const attempted = yield* Deferred.make<void>();
-    const released = yield* Deferred.make<void>();
-    const context = yield* Layer.build(
-      fixture({
-        apply: () => Effect.succeed(rejected),
-        closeEditorHistoryOwner: (owner, operationId) =>
-          Effect.gen(function* () {
-            calls.push([owner, operationId]);
-            if (calls.length === 1) {
-              yield* Deferred.succeed(attempted, undefined);
-              return yield* new LibraryModuleError({
-                operation: "close",
-                cause: new Error("offline"),
-              });
-            }
-            yield* Deferred.succeed(released, undefined);
+  it.effect.each(["revision_conflict", "recovery_required"] as const)(
+    "Main retains the exact unknown attempt until %s after its renderer waiter is interrupted",
+    (code) =>
+      Effect.gen(function* () {
+        const calls: Array<{ request: LibraryModuleApplyRequest; owner: string | undefined }> = [];
+        const reached = yield* Deferred.make<void>();
+        const completed = yield* Deferred.make<void>();
+        const ended: string[] = [];
+        const context = yield* Layer.build(
+          fixture({
+            apply: (_access, received, owner) =>
+              Effect.gen(function* () {
+                calls.push({ request: received, owner });
+                if (calls.length === 1) {
+                  yield* Deferred.succeed(reached, undefined);
+                  return unknown;
+                }
+                yield* Deferred.succeed(completed, undefined);
+                return { ...rejected, error: { ...rejected.error, code } };
+              }),
+            closeEditorHistoryOwner: (owner) =>
+              Effect.sync(() => {
+                ended.push(owner);
+              }),
           }),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target();
+        const original = request();
+        const waiting = yield* history
+          .apply(window as unknown as HistoryTarget, access, original)
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(reached);
+        yield* Fiber.interrupt(waiting);
+        yield* TestClock.adjust("100 millis");
+        yield* Deferred.await(completed);
+        assert.equal(calls.length, 2);
+        assert.strictEqual(calls[0]!.request, original);
+        assert.strictEqual(calls[1]!.request, original);
+        assert.equal(calls[0]!.owner, calls[1]!.owner);
+        yield* TestClock.adjust("10 seconds");
+        assert.equal(calls.length, 2);
+        window.emit("destroyed");
+        yield* Effect.yieldNow;
+        assert.deepEqual(ended, [calls[0]!.owner]);
       }),
-    );
-    const history = Context.get(context, EditorHistoryRuntime);
-    const window = target();
-    yield* history.apply(window as unknown as HistoryTarget, access, request());
-    window.emit("destroyed");
-    yield* Deferred.await(attempted);
-    yield* TestClock.adjust("100 millis");
-    yield* Deferred.await(released);
-    assert.equal(calls.length, 2);
-    assert.deepEqual(calls[0], calls[1]);
-  }),
-);
+  );
 
-it.effect(
-  "authoritative cleanup expiry renews the request without changing its closed lifetime",
-  () =>
+  it.effect(
+    "an effect admitted by an old renderer cannot start in its replacement's lifetime",
+    () =>
+      Effect.gen(function* () {
+        let writes = 0;
+        const context = yield* Layer.build(
+          fixture({
+            apply: () =>
+              Effect.sync(() => {
+                writes++;
+                return rejected;
+              }),
+            closeEditorHistoryOwner: () => Effect.void,
+          }),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target();
+        const old = history.apply(window as unknown as HistoryTarget, access, request());
+        window.emit("render-process-gone");
+        const result = yield* old;
+        assert.equal(result.ok, false);
+        assert.equal(writes, 0);
+        yield* history.apply(window as unknown as HistoryTarget, access, request());
+        assert.equal(writes, 1);
+      }),
+  );
+
+  it.effect(
+    "same-document navigation keeps history; a new renderer generation closes only its old owner",
+    () =>
+      Effect.gen(function* () {
+        const owners: string[] = [];
+        const ended: string[] = [];
+        const context = yield* Layer.build(
+          fixture({
+            apply: (_access, _request, owner) =>
+              Effect.sync(() => {
+                owners.push(owner!);
+                return rejected;
+              }),
+            closeEditorHistoryOwner: (owner) =>
+              Effect.sync(() => {
+                ended.push(owner);
+              }),
+          }),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target();
+        const apply = () => history.apply(window as unknown as HistoryTarget, access, request());
+        yield* apply();
+        window.emit("did-start-navigation", { isMainFrame: true, isSameDocument: true });
+        yield* apply();
+        window.emit("did-start-navigation", { isMainFrame: false, isSameDocument: false });
+        yield* apply();
+        assert.deepEqual(owners, [owners[0], owners[0], owners[0]]);
+        window.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
+        yield* apply();
+        assert.notEqual(owners[3], owners[0]);
+        window.emit("render-process-gone");
+        yield* apply();
+        assert.notEqual(owners[4], owners[3]);
+        assert.deepEqual(ended, [owners[0], owners[3]]);
+      }),
+  );
+
+  it.effect("cleanup retries independently with the same owner and close operation", () =>
     Effect.gen(function* () {
       const calls: string[][] = [];
-      const expired = yield* Deferred.make<void>();
+      const attempted = yield* Deferred.make<void>();
       const released = yield* Deferred.make<void>();
       const context = yield* Layer.build(
         fixture({
@@ -732,8 +729,11 @@ it.effect(
             Effect.gen(function* () {
               calls.push([owner, operationId]);
               if (calls.length === 1) {
-                yield* Deferred.succeed(expired, undefined);
-                return "identity_expired" as const;
+                yield* Deferred.succeed(attempted, undefined);
+                return yield* new LibraryModuleError({
+                  operation: "close",
+                  cause: new Error("offline"),
+                });
               }
               yield* Deferred.succeed(released, undefined);
             }),
@@ -743,10 +743,693 @@ it.effect(
       const window = target();
       yield* history.apply(window as unknown as HistoryTarget, access, request());
       window.emit("destroyed");
-      yield* Deferred.await(expired);
+      yield* Deferred.await(attempted);
       yield* TestClock.adjust("100 millis");
       yield* Deferred.await(released);
-      assert.equal(calls[0]![0], calls[1]![0]);
-      assert.notEqual(calls[0]![1], calls[1]![1]);
+      assert.equal(calls.length, 2);
+      assert.deepEqual(calls[0], calls[1]);
     }),
-);
+  );
+
+  it.effect(
+    "authoritative cleanup expiry renews the request without changing its closed lifetime",
+    () =>
+      Effect.gen(function* () {
+        const calls: string[][] = [];
+        const expired = yield* Deferred.make<void>();
+        const released = yield* Deferred.make<void>();
+        const context = yield* Layer.build(
+          fixture({
+            apply: () => Effect.succeed(rejected),
+            closeEditorHistoryOwner: (owner, operationId) =>
+              Effect.gen(function* () {
+                calls.push([owner, operationId]);
+                if (calls.length === 1) {
+                  yield* Deferred.succeed(expired, undefined);
+                  return "identity_expired" as const;
+                }
+                yield* Deferred.succeed(released, undefined);
+              }),
+          }),
+        );
+        const history = Context.get(context, EditorHistoryRuntime);
+        const window = target();
+        yield* history.apply(window as unknown as HistoryTarget, access, request());
+        window.emit("destroyed");
+        yield* Deferred.await(expired);
+        yield* TestClock.adjust("100 millis");
+        yield* Deferred.await(released);
+        assert.equal(calls[0]![0], calls[1]![0]);
+        assert.notEqual(calls[0]![1], calls[1]![1]);
+      }),
+  );
+});
+
+describe("StructuralClipboardRuntime", () => {
+  const live = liveStructuralClipboardRuntime;
+  const firstClaim = "0199134e-cbb0-7000-8000-000000000003";
+  const secondClaim = "0199134e-cbb0-7000-8000-000000000004";
+
+  const envelope = (actionHint: "copy" | "cut"): NodexClipboardEnvelopeV1 => ({
+    version: 1,
+    profileId: "profile-1",
+    libraryId: "library-1",
+    storeEpoch: "epoch-1",
+    bundleId: "bundle-1",
+    capability: "a".repeat(64),
+    manifestHash: "b".repeat(64),
+    actionHint,
+  });
+
+  const makeClipboard = (initialClaim = firstClaim) => {
+    let html = attachNodexStructuralClipboardWriteClaim("<p>Portable</p>", initialClaim);
+    let text = "Portable";
+    let currentClaim: string | null = initialClaim;
+    const port: ElectronClipboardPort = {
+      readPaste: Effect.sync(() => ({ html, text })),
+      replaceClaimedPresentation: (next) =>
+        Effect.sync(() => {
+          if (currentClaim !== next.writeClaim)
+            return { ok: false, failure: "superseded" } as const;
+          if (next.html !== undefined) html = next.html;
+          text = next.text;
+          return { ok: true } as const;
+        }),
+      writeImage: () => Effect.void,
+      writeText: () => Effect.void,
+      createImageFromBuffer: () => {
+        throw new Error("unused");
+      },
+      createImageFromDataUrl: () => {
+        throw new Error("unused");
+      },
+    };
+    return {
+      port,
+      setClaim: (claim: string | null) => {
+        currentClaim = claim;
+      },
+    };
+  };
+
+  const rendererClientLayer = (events: RendererClientRuntime["Service"]["events"] = Stream.empty) =>
+    Layer.succeed(
+      RendererClientRuntime,
+      RendererClientRuntime.of({
+        register: () => {
+          throw new Error("unused");
+        },
+        ensureClient: () => {
+          throw new Error("unused");
+        },
+        getClientIdForWebContentsId: () => null,
+        getWebContentsIdForClientId: () => null,
+        getClientCount: () => 0,
+        getClientIds: () => [],
+        sendToClient: () => false,
+        sendCriticalToClient: () => false,
+        sendToClients: () => ({
+          sentClientIds: [],
+          unavailableClientIds: [],
+          failedClientIds: [],
+        }),
+        broadcast: () => 0,
+        handleDeliveryAcknowledgment: () => Effect.void,
+        disposeClient: () => Effect.void,
+        events,
+      }),
+    );
+
+  const withRuntime = (
+    clipboard: ElectronClipboardPort,
+    events: RendererClientRuntime["Service"]["events"] = Stream.empty,
+    clipboardText: FileExportRuntime["Service"]["clipboardText"] = (_access, _envelope, text) =>
+      Effect.succeed(text),
+  ) =>
+    live.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(
+            FileExportRuntime,
+            FileExportRuntime.of({ materialize: () => Effect.die("unused"), clipboardText }),
+          ),
+          Layer.succeed(ElectronClipboard, ElectronClipboard.of(clipboard)),
+          rendererClientLayer(events),
+        ),
+      ),
+    );
+
+  it.effect("connects a target waiter that arrives before source registration", () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const context = yield* Layer.build(withRuntime(clipboard.port));
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      const waiting = yield* Effect.forkChild(runtime.awaitResolution({ writeClaim: firstClaim }));
+      yield* Effect.yieldNow;
+
+      assert.deepEqual(
+        yield* runtime.begin(
+          {
+            writeClaim: firstClaim,
+            actionHint: "copy",
+            libraryId: "library-1",
+            storeEpoch: "epoch-1",
+          },
+          "client-11",
+        ),
+        { ok: true },
+      );
+      assert.deepEqual(
+        yield* runtime.publish(
+          {
+            envelope: envelope("copy"),
+            writeClaim: firstClaim,
+            html: "<p>Portable</p>",
+            text: "Portable",
+          },
+          "client-11",
+        ),
+        { ok: true },
+      );
+      assert.deepEqual(yield* Fiber.join(waiting), {
+        kind: "ready",
+        envelope: envelope("copy"),
+        disposition: "structural",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("keeps cut pending until source commit settles and safely falls back to copy", () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const context = yield* Layer.build(withRuntime(clipboard.port));
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      yield* runtime.begin(
+        {
+          writeClaim: firstClaim,
+          actionHint: "cut",
+          libraryId: "library-1",
+          storeEpoch: "epoch-1",
+        },
+        "client-12",
+      );
+      yield* runtime.publish(
+        {
+          envelope: envelope("cut"),
+          writeClaim: firstClaim,
+          html: "<p>Portable</p>",
+          text: "Portable",
+        },
+        "client-12",
+      );
+      const waiting = yield* Effect.forkChild(
+        runtime.awaitResolution({
+          writeClaim: firstClaim,
+          publishedEnvelope: envelope("cut"),
+        }),
+      );
+      yield* Effect.yieldNow;
+      assert.isUndefined(waiting.pollUnsafe());
+
+      assert.deepEqual(
+        yield* runtime.settle({ writeClaim: firstClaim, outcome: "source_preserved" }, "client-12"),
+        { ok: true },
+      );
+      assert.deepEqual(yield* Fiber.join(waiting), {
+        kind: "ready",
+        envelope: envelope("cut"),
+        disposition: "copy_fallback",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not let a timeout infer that an in-flight source cut was preserved", () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const context = yield* Layer.build(withRuntime(clipboard.port));
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      yield* runtime.begin(
+        {
+          writeClaim: firstClaim,
+          actionHint: "cut",
+          libraryId: "library-1",
+          storeEpoch: "epoch-1",
+        },
+        "client-15",
+      );
+      yield* runtime.publish(
+        {
+          envelope: envelope("cut"),
+          writeClaim: firstClaim,
+          html: "<p>Portable</p>",
+          text: "Portable",
+        },
+        "client-15",
+      );
+      const waiting = yield* Effect.forkChild(runtime.awaitResolution({ writeClaim: firstClaim }));
+
+      yield* TestClock.adjust(STRUCTURAL_CLIPBOARD_SESSION_TIMEOUT_MS);
+      assert.isUndefined(waiting.pollUnsafe());
+      clipboard.setClaim(secondClaim);
+      yield* runtime.begin(
+        { writeClaim: secondClaim, actionHint: "copy", storeEpoch: "epoch-1" },
+        "client-16",
+      );
+      yield* runtime.publish(
+        {
+          writeClaim: secondClaim,
+          envelope: envelope("copy"),
+          html: "<p>Newer</p>",
+          text: "Newer",
+        },
+        "client-16",
+      );
+      assert.isUndefined(waiting.pollUnsafe());
+      yield* runtime.settle({ writeClaim: firstClaim, outcome: "cut_committed" }, "client-15");
+      assert.deepEqual(yield* Fiber.join(waiting), {
+        kind: "ready",
+        envelope: envelope("cut"),
+        disposition: "structural",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("recovers a published capability only when no host session owns its claim", () =>
+    Effect.gen(function* () {
+      const context = yield* Layer.build(withRuntime(makeClipboard().port));
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      assert.deepEqual(
+        yield* runtime.awaitResolution({
+          writeClaim: firstClaim,
+          publishedEnvelope: envelope("cut"),
+        }),
+        { kind: "ready", envelope: envelope("cut"), disposition: "structural" },
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("supersedes an older pending claim after the newer native claim passes CAS", () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const context = yield* Layer.build(withRuntime(clipboard.port));
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      yield* runtime.begin(
+        {
+          writeClaim: firstClaim,
+          actionHint: "copy",
+          libraryId: "library-1",
+          storeEpoch: "epoch-1",
+        },
+        "client-11",
+      );
+      const waiting = yield* Effect.forkChild(runtime.awaitResolution({ writeClaim: firstClaim }));
+
+      clipboard.setClaim(secondClaim);
+      assert.deepEqual(
+        yield* runtime.begin(
+          {
+            writeClaim: secondClaim,
+            actionHint: "copy",
+            libraryId: "library-1",
+            storeEpoch: "epoch-1",
+          },
+          "client-12",
+        ),
+        { ok: true },
+      );
+      assert.deepEqual(
+        yield* runtime.publish(
+          {
+            envelope: { ...envelope("copy"), bundleId: "bundle-2" },
+            writeClaim: secondClaim,
+            html: "<p>New portable value</p>",
+            text: "New portable value",
+          },
+          "client-12",
+        ),
+        { ok: true },
+      );
+      assert.deepEqual(yield* Fiber.join(waiting), {
+        kind: "portable_fallback",
+        reason: "superseded",
+      });
+
+      assert.deepEqual(
+        yield* runtime.begin(
+          {
+            writeClaim: firstClaim,
+            actionHint: "copy",
+            libraryId: "library-1",
+            storeEpoch: "epoch-1",
+          },
+          "client-11",
+        ),
+        { ok: false, failure: "superseded" },
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("settles a preparing source when its renderer client is disposed", () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const events = yield* PubSub.unbounded<RendererClientEvent>({ replay: 1 });
+      const context = yield* Layer.build(withRuntime(clipboard.port, Stream.fromPubSub(events)));
+      yield* Effect.yieldNow;
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      yield* runtime.begin(
+        {
+          writeClaim: firstClaim,
+          actionHint: "copy",
+          libraryId: "library-1",
+          storeEpoch: "epoch-1",
+        },
+        "client-13",
+      );
+      const waiter = yield* Effect.forkChild(runtime.awaitResolution({ writeClaim: firstClaim }));
+      yield* PubSub.publish(events, {
+        kind: "disposed",
+        clientId: "client-13",
+        webContentsId: 13,
+        reason: "destroyed",
+      });
+      yield* Effect.yieldNow;
+      assert.deepEqual(yield* Fiber.join(waiter), {
+        kind: "portable_fallback",
+        reason: "source_closed",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not infer a committed cut when its source renderer is disposed", () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const events = yield* PubSub.unbounded<RendererClientEvent>({ replay: 1 });
+      const context = yield* Layer.build(withRuntime(clipboard.port, Stream.fromPubSub(events)));
+      yield* Effect.yieldNow;
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      yield* runtime.begin(
+        {
+          writeClaim: firstClaim,
+          actionHint: "cut",
+          libraryId: "library-1",
+          storeEpoch: "epoch-1",
+        },
+        "client-14",
+      );
+      yield* runtime.publish(
+        {
+          envelope: envelope("cut"),
+          writeClaim: firstClaim,
+          html: "<p>Portable</p>",
+          text: "Portable",
+        },
+        "client-14",
+      );
+      const waiter = yield* Effect.forkChild(runtime.awaitResolution({ writeClaim: firstClaim }));
+      yield* PubSub.publish(events, {
+        kind: "disposed",
+        clientId: "client-14",
+        webContentsId: 14,
+        reason: "destroyed",
+      });
+      yield* Effect.yieldNow;
+      assert.deepEqual(yield* Fiber.join(waiter), {
+        kind: "portable_fallback",
+        reason: "source_closed",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("bounds an unregistered waiter with the Effect clock", () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const context = yield* Layer.build(withRuntime(clipboard.port));
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      const waiting = yield* Effect.forkChild(runtime.awaitResolution({ writeClaim: firstClaim }));
+      yield* TestClock.adjust(STRUCTURAL_CLIPBOARD_REGISTRATION_GRACE_MS - 1);
+      assert.isUndefined(waiting.pollUnsafe());
+      yield* TestClock.adjust(1);
+      assert.deepEqual(yield* Fiber.join(waiting), {
+        kind: "portable_fallback",
+        reason: "timeout",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "a suspended export does not delay Cut readiness and cannot overwrite a newer claim",
+    () =>
+      Effect.gen(function* () {
+        const clipboard = makeClipboard();
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const context = yield* Layer.build(
+          withRuntime(clipboard.port, Stream.empty, () =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(started, undefined);
+              yield* Deferred.await(release);
+              return "/private/export.png";
+            }),
+          ),
+        );
+        const runtime = Context.get(context, StructuralClipboardRuntime);
+        yield* runtime.begin(
+          {
+            writeClaim: firstClaim,
+            actionHint: "cut",
+            libraryId: "library-1",
+            storeEpoch: "epoch-1",
+          },
+          "client-11",
+        );
+        assert.deepEqual(
+          yield* runtime.publish(
+            {
+              envelope: envelope("cut"),
+              writeClaim: firstClaim,
+              html: "<p>Portable</p>",
+              text: "Portable",
+              fileExportAccess: { kind: "library" },
+            },
+            "client-11",
+          ),
+          { ok: true },
+        );
+        yield* Deferred.await(started);
+        assert.deepEqual(
+          yield* runtime.settle({ writeClaim: firstClaim, outcome: "cut_committed" }, "client-11"),
+          { ok: true },
+        );
+        const resolution = yield* runtime.awaitResolution({ writeClaim: firstClaim });
+        assert.strictEqual(resolution.kind, "ready");
+        clipboard.setClaim(secondClaim);
+        yield* Deferred.succeed(release, undefined);
+        yield* Effect.yieldNow;
+        assert.strictEqual((yield* clipboard.port.readPaste).text, "Portable");
+      }),
+  );
+
+  it.effect("a completed Copy keeps its export alive and preserves structural HTML", () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const release = yield* Deferred.make<void>();
+      const context = yield* Layer.build(
+        withRuntime(clipboard.port, Stream.empty, () =>
+          Deferred.await(release).pipe(Effect.as("/private/export.png")),
+        ),
+      );
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      yield* runtime.begin(
+        {
+          writeClaim: firstClaim,
+          actionHint: "copy",
+          libraryId: "library-1",
+          storeEpoch: "epoch-1",
+        },
+        "client-11",
+      );
+      yield* runtime.publish(
+        {
+          envelope: envelope("copy"),
+          writeClaim: firstClaim,
+          html: "<p>Portable</p>",
+          text: "Portable",
+          fileExportAccess: { kind: "library" },
+        },
+        "client-11",
+      );
+      const original = yield* clipboard.port.readPaste;
+      assert.strictEqual(
+        (yield* runtime.awaitResolution({ writeClaim: firstClaim })).kind,
+        "ready",
+      );
+      yield* Deferred.succeed(release, undefined);
+      yield* Effect.yieldNow;
+      const enhanced = yield* clipboard.port.readPaste;
+      assert.strictEqual(enhanced.text, "/private/export.png");
+      assert.strictEqual(enhanced.html, original.html);
+    }),
+  );
+});
+
+describe("CodexHostChunkedMessageSender", () => {
+  type Target = { readonly id: number };
+  type Message = { readonly name: string; readonly payload: unknown };
+  type Delivery = { readonly message: Message; readonly part: CodexHostMessagePart | null };
+
+  const makeSender = (input: {
+    readonly delivered: Delivery[];
+    readonly onSendError?: (error: unknown) => void;
+    readonly deliver?: (message: Message, part: CodexHostMessagePart | null) => void;
+    readonly subscribe?: (callbacks: {
+      readonly onDestroyed: () => void;
+      readonly onLoaded: () => void;
+      readonly onLoading: () => void;
+    }) => () => void;
+    readonly retryDelayMs?: number;
+  }) =>
+    new CodexHostChunkedMessageSender<Target, Message>({
+      batchTargetBytes: 128,
+      inlineThresholdBytes: 128,
+      deliver: (_target, message, part) => {
+        input.deliver?.(message, part);
+        input.delivered.push({ message, part });
+      },
+      getPayload: (message) => message.payload,
+      onSendError: (_target, error) => input.onSendError?.(error),
+      retryDelayMs: input.retryDelayMs,
+      scheduleRetry: (callback, delayMs) => {
+        const timer = setTimeout(callback, delayMs);
+        return () => clearTimeout(timer);
+      },
+      subscribe: input.subscribe ? (_target, callbacks) => input.subscribe!(callbacks) : undefined,
+    });
+
+  const acknowledgeToEnd = (
+    sender: CodexHostChunkedMessageSender<Target, Message>,
+    target: Target,
+    delivered: Delivery[],
+  ): void => {
+    for (;;) {
+      const current = delivered.at(-1)?.part;
+      if (!current) throw new Error("Expected an active chunked-message part");
+      sender.acknowledge(target, current.transferId, current.sequence);
+      if (current.kind === "end") return;
+    }
+  };
+
+  describe("CodexHostChunkedMessageSender", () => {
+    test("gates a target FIFO on exact ACKs while critical inline messages bypass a normal transfer", () => {
+      const delivered: Delivery[] = [];
+      const sender = makeSender({ delivered });
+      const target = { id: 1 };
+      const large = { name: "large", payload: { text: "x".repeat(256) } };
+      const queued = { name: "queued", payload: { type: "queued" } };
+      const critical = { name: "critical", payload: { type: "approval" } };
+
+      sender.send(target, large);
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]?.part?.kind).toBe("start");
+      sender.send(target, queued);
+      sender.sendCritical(target, critical);
+      expect(delivered.map((entry) => entry.message.name)).toEqual(["large", "critical"]);
+      expect(delivered[1]?.part).toBeNull();
+
+      const start = delivered[0]!.part!;
+      sender.acknowledge(target, start.transferId, start.sequence + 1);
+      sender.acknowledge(target, "wrong-transfer", start.sequence);
+      expect(delivered).toHaveLength(2);
+
+      sender.acknowledge(target, start.transferId, start.sequence);
+      acknowledgeToEnd(sender, target, delivered);
+      expect(delivered.at(-1)).toEqual({ message: queued, part: null });
+    });
+
+    test("restarts an active transfer after a target loading cycle", () => {
+      const delivered: Delivery[] = [];
+      let callbacks:
+        | {
+            readonly onDestroyed: () => void;
+            readonly onLoaded: () => void;
+            readonly onLoading: () => void;
+          }
+        | undefined;
+      const sender = makeSender({
+        delivered,
+        subscribe: (value) => {
+          callbacks = value;
+          return () => undefined;
+        },
+      });
+      const target = { id: 2 };
+      const large = { name: "large", payload: { text: "y".repeat(256) } };
+
+      sender.send(target, large);
+      const first = delivered[0]?.part;
+      expect(first?.kind).toBe("start");
+      callbacks?.onLoading();
+      if (!first) throw new Error("Missing first transfer part");
+      sender.acknowledge(target, first.transferId, first.sequence);
+      expect(delivered).toHaveLength(1);
+
+      callbacks?.onLoaded();
+      const restarted = delivered[1]?.part;
+      expect(restarted?.kind).toBe("start");
+      expect(restarted?.transferId).not.toBe(first.transferId);
+    });
+
+    test("retries the same undelivered part after the configured send-error delay", () => {
+      vi.useFakeTimers();
+      try {
+        const delivered: Delivery[] = [];
+        const errors: unknown[] = [];
+        let attempts = 0;
+        const sender = makeSender({
+          delivered,
+          retryDelayMs: 1_000,
+          onSendError: (error) => errors.push(error),
+          deliver: () => {
+            attempts += 1;
+            if (attempts === 1) throw new Error("transient send failure");
+          },
+        });
+        const target = { id: 3 };
+
+        sender.send(target, { name: "large", payload: { text: "z".repeat(256) } });
+        expect(attempts).toBe(1);
+        expect(delivered).toHaveLength(0);
+        expect(errors).toHaveLength(1);
+
+        vi.advanceTimersByTime(999);
+        expect(attempts).toBe(1);
+        vi.advanceTimersByTime(1);
+        expect(attempts).toBe(2);
+        expect(delivered[0]?.part?.kind).toBe("start");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("drops target state on destruction", () => {
+      const delivered: Delivery[] = [];
+      let onDestroyed: (() => void) | undefined;
+      const sender = makeSender({
+        delivered,
+        subscribe: (callbacks) => {
+          onDestroyed = callbacks.onDestroyed;
+          return () => undefined;
+        },
+      });
+      const target = { id: 4 };
+
+      sender.send(target, { name: "large", payload: { text: "q".repeat(256) } });
+      sender.send(target, { name: "queued", payload: { type: "queued" } });
+      expect(delivered).toHaveLength(1);
+      onDestroyed?.();
+      const first = delivered[0]?.part;
+      if (!first) throw new Error("Missing first transfer part");
+      sender.acknowledge(target, first.transferId, first.sequence);
+      expect(delivered).toHaveLength(1);
+    });
+  });
+});
