@@ -9,6 +9,7 @@ import type { components } from "@nodex/core-protocol";
 import type { IpcApi } from "../../shared/ipc-api";
 import { CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { createHash } from "node:crypto";
 import { ElectronIpc } from "../platform/electron/ElectronIpc";
 import { rendererLocalCommitApply } from "../core-client/types";
 import { AgentsMapReadInputSchema } from "../../shared/schemas/agents-map";
@@ -257,9 +258,16 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("agent-runtime:session:move", (_, input) =>
       call<"agent-runtime:session:move">("session_move", input),
     );
-    yield* ipc.handlePlainCommand("agent-runtime:session:respond", (_, input) =>
-      call<"agent-runtime:session:respond">("session_respond", input),
-    );
+    yield* ipc.handlePlainCommand("agent-runtime:session:respond", (_, input) => {
+      const submissionId =
+        input.submissionId ??
+        (input.answers && input.runId !== null
+          ? `hosted-answer:${createHash("sha256")
+              .update(JSON.stringify([input.sessionId, input.runId, input.requestId]))
+              .digest("hex")}`
+          : undefined);
+      return call<"agent-runtime:session:respond">("session_respond", { ...input, submissionId });
+    });
     // Only the Run's requester, the chat's owner or a Space Owner stops its work; Core checks
     // each call.
     yield* ipc.handlePlainCommand("agent-runtime:session:stop", (_, input) =>

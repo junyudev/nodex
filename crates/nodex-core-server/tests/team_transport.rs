@@ -1810,12 +1810,64 @@ fn phone_stream_authentication_invocation_proofs_budgets_and_revocation() {
     );
     let accepted = delivery(proof, "phone-message", json!({"kind":"user"}));
     assert_eq!(accepted["status"], "ok", "{accepted}");
+    let requested = core
+        .local_request_proof(
+            "/core/v1/modules/workspace/apply",
+            binding,
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "store_epoch":host.store_epoch,"operation_id":team_operation_id(),
+            "intent":{"kind":"mutate_session","session_id":"phone-delivery-session",
+                "intent":{"kind":"record_user_message","message_id":"phone-message"}}}),
+            Some(proof),
+        )
+        .1;
+    assert_eq!(requested["status"], "ok", "{requested}");
     assert_eq!(publish(json!({"t":"res","id":2,"ok":true,"r":{}})).1, true);
     assert!(phone.read().unwrap().into_text().unwrap().contains("res"));
     assert_eq!(
         delivery(proof, "phone-message", json!({"kind":"user"}))["status"],
         "error"
     );
+    let (status, attributed) = core.local_request(
+        "/core/v1/agent-runs/record",
+        binding,
+        json!({"session_id":"phone-delivery-session","run_id":"run","message_id":"phone-message",
+            "driver":"codex","label":"Codex"}),
+    );
+    assert_eq!(status, 200, "{attributed}");
+    let (_, observed) = core.local_request("/core/v1/modules/workspace/apply", binding,
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "store_epoch":host.store_epoch, "operation_id":team_operation_id(),
+            "intent":{"kind":"record_session_execution","session_id":"phone-delivery-session",
+                "expected_revision":0,"observation":{"state":"waiting","runId":"run","runStartedAt":0,
+                "pendingRequestIds":["question"],"pendingRequests":[
+                    {"id":"question","kind":"question","question":"Continue?","options":[]}],
+                "queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,
+                "progressFingerprint":"question","progressSince":0}}}));
+    assert_eq!(observed["status"], "ok", "{observed}");
+    phone.send(Message::text(json!({"t":"req","id":3,"m":"chat.respond","p":{
+        "sessionId":"phone-delivery-session","runId":"run","requestId":"question",
+        "submissionId":"phone-answer","response":{"kind":"answers","answers":{"choice":["Yes"]}}
+    }}).to_string())).unwrap();
+    let (_, response) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(response["kind"], "request", "{response}");
+    let proof = response["credential"].as_str().unwrap();
+    let answer = |id: &str| {
+        core.local_request_proof("/core/v1/modules/workspace/apply", binding,
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                "store_epoch":host.store_epoch,"operation_id":team_operation_id(),
+                "intent":{"kind":"record_chat_delivery","session_id":"phone-delivery-session",
+                    "delivery_id":id,"body_hash":"0".repeat(64),"author":{"kind":"user"},
+                    "attachment_count":0,"question_answer_run_id":"run","question_answer_request_id":"question"}}),
+            Some(proof)).1
+    };
+    let forged = answer("forged-answer");
+    assert_eq!(forged["payload"]["code"], "unauthorized", "{forged}");
+    let accepted = answer("phone-answer");
+    assert_eq!(accepted["status"], "ok", "{accepted}");
+    assert_eq!(publish(json!({"t":"res","id":3,"ok":true,"r":{}})).1, true);
+    assert!(phone.read().unwrap().into_text().unwrap().contains("res"));
+
     // The network cannot use either a local lease or an invocation proof to impersonate a Host.
     assert_eq!(
         core.request(
@@ -3414,6 +3466,56 @@ impl HostedChats {
             .map(|run| json!({"run_id":run["run_id"],"edit":run["edit"]}))
             .collect()
     }
+}
+
+#[test]
+fn a_member_records_only_their_live_hosted_question_answer() {
+    let chats = HostedChats::start();
+    let alice = &chats.alice;
+    chats.send(alice, "prompt");
+    chats.run("run", "prompt");
+    let observed = chats.host_apply(
+        None,
+        json!({"kind":"record_session_execution","session_id":"chat","expected_revision":0,
+            "observation":{"state":"waiting","runId":"run","runStartedAt":0,
+                "pendingRequestIds":["question","other-question"],
+                "pendingRequests":[{"id":"question","kind":"question","question":"Continue?","options":[]},
+                    {"id":"other-question","kind":"question","question":"How?","options":[]}],
+                "queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,
+                "progressFingerprint":"question","progressSince":0}}),
+    );
+    assert_eq!(observed["status"], "ok", "{observed}");
+    let response = json!({"sessionId":"chat","runId":"run","requestId":"question",
+        "submissionId":"answer-submission","answers":{"choice":"Yes"}});
+    let delivery = json!({"kind":"record_chat_delivery","session_id":"chat",
+        "delivery_id":"answer-submission","body_hash":"0".repeat(64),"author":{"kind":"user"},
+        "attachment_count":0,"question_answer_run_id":"run","question_answer_request_id":"question"});
+
+    chats.refused(&chats.bob, "session_respond", response.clone());
+    let refused = chats.member_apply(alice, delivery.clone());
+    assert_eq!(refused["payload"]["code"], "unauthorized", "{refused}");
+    chats.admitted(alice, "session_respond", response, |proof| {
+        for (key, value) in [
+            ("session_id", json!("another-chat")),
+            ("question_answer_run_id", json!("another-run")),
+            ("question_answer_request_id", json!("other-question")),
+            ("delivery_id", json!("another-submission")),
+            ("question_answer_request_id", Value::Null),
+        ] {
+            let mut forged = delivery.clone();
+            forged[key] = value;
+            let refused = chats.host_apply(Some(proof), forged);
+            assert_eq!(refused["payload"]["code"], "unauthorized", "{refused}");
+            assert!(
+                refused.to_string().contains("live Host response"),
+                "{refused}"
+            );
+        }
+        let ordinary = chats.accept(proof, "answer-submission");
+        assert_eq!(ordinary["payload"]["code"], "unauthorized", "{ordinary}");
+        let accepted = chats.host_apply(Some(proof), delivery);
+        assert_eq!(accepted["status"], "ok", "{accepted}");
+    });
 }
 
 #[test]

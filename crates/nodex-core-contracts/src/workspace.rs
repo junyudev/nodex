@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 87;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 88;
 
 /// Retry-key admission shared by the application tools and native CLI.
 pub const RETRY_KEY_MAX_SCALARS: usize = 128;
@@ -2684,6 +2684,9 @@ pub enum ProjectWorkspaceIntent {
         author: crate::inbox::ProjectWorkspaceInboxSource,
         attachment_count: u32,
         question_answer_run_id: Option<String>,
+        /// Identifies the pending question on a Member's live response invocation.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        question_answer_request_id: Option<String>,
     },
     BindChatInbound {
         session_id: String,

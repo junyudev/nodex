@@ -37636,6 +37636,13 @@
                       "record_chat_delivery"
                     ]
                   },
+                  "question_answer_request_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Identifies the pending question on a Member's live response invocation."
+                  },
                   "question_answer_run_id": {
                     "type": [
                       "string",
@@ -52187,6 +52194,13 @@
                 "enum": [
                   "record_chat_delivery"
                 ]
+              },
+              "question_answer_request_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Identifies the pending question on a Member's live response invocation."
               },
               "question_answer_run_id": {
                 "type": [

@@ -1,7 +1,7 @@
 //! Bounded, generation-local relay to the Space's execution owner. No transcript is stored in Core.
 use super::*;
 use nodex_core::workspace::HostChatAction;
-use nodex_core_contracts::{RemotePrincipal, team::*};
+use nodex_core_contracts::{RemotePrincipal, team::*, workspace::SessionExecutionRequestKind};
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::{Notify, oneshot};
 
@@ -94,6 +94,20 @@ impl HostBridge {
                 && text(&pending.call.input, &["message", "messageId"]) == Some(message)
         })
     }
+    pub(crate) fn authorizes_question_answer(
+        &self,
+        token: &str,
+        answer: &QuestionAnswerDelivery<'_>,
+    ) -> bool {
+        let Ok(inner) = self.inner.lock() else {
+            return false;
+        };
+        Self::live_call(&inner, token).is_some_and(|pending| {
+            matches!(pending.call.operation, HostOperation::SessionRespond)
+                && answers_question(&pending.call.input)
+                && answer.matches(&pending.call.input)
+        })
+    }
     /// A Member's call that creates exactly this chat: a new chat, a fork or a side chat.
     pub(crate) fn authorizes_launch(
         &self,
@@ -164,6 +178,27 @@ fn text<'a>(input: &'a serde_json::Value, path: &[&str]) -> Option<&'a str> {
         .and_then(|value| value.as_str())
 }
 
+fn answers_question(input: &serde_json::Value) -> bool {
+    input.get("answers").is_some_and(|value| value.is_object())
+}
+
+/// Coordinates from the accepted delivery that must match a live response invocation.
+pub(crate) struct QuestionAnswerDelivery<'a> {
+    pub session: &'a str,
+    pub run: &'a str,
+    pub request: &'a str,
+    pub submission: &'a str,
+}
+
+impl QuestionAnswerDelivery<'_> {
+    pub(crate) fn matches(&self, input: &serde_json::Value) -> bool {
+        text(input, &["sessionId"]) == Some(self.session)
+            && text(input, &["runId"]) == Some(self.run)
+            && text(input, &["requestId"]) == Some(self.request)
+            && text(input, &["submissionId"]) == Some(self.submission)
+    }
+}
+
 /// Core decides from its own Store what a Member may do in a hosted chat; the call names only the
 /// chats. Core's pending request determines a response's recipient, so a caller cannot select an
 /// Actor or turn a question into an approval by changing the payload. Managing a chat and stopping
@@ -188,7 +223,13 @@ fn authorize_call(
                 Some(serde_json::Value::String(run)) => Some(run.as_str()),
                 _ => return Err(unauthorized("A hosted response requires its original Run")),
             };
-            workspace.authorize_host_response(principal, id("sessionId")?, run, id("requestId")?)
+            workspace.authorize_host_response(
+                principal,
+                id("sessionId")?,
+                run,
+                id("requestId")?,
+                answers_question(&call.input).then_some(SessionExecutionRequestKind::Question),
+            )
         }
         HostOperation::SessionStart => chat(HostChatAction::Start {
             session: session(&["sessionId"])?,

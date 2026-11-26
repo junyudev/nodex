@@ -3906,7 +3906,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       yield* recordDelivery(
         input.sessionId,
         { messageId: inboundMessage.id, text: inboundMessage.text },
-        { questionRunId: input.runId },
+        { question: { runId: input.runId, requestId: input.requestId } },
       );
     return yield* dispatch(
       connection,

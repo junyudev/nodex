@@ -18,6 +18,7 @@ fn bind_message(w: &TestWorkspace, session: &str, id: &str, text: &str, count: u
             author: ProjectWorkspaceInboxSource::User,
             attachment_count: count,
             question_answer_run_id: None,
+            question_answer_request_id: None,
         },
     );
     apply_host(
@@ -340,6 +341,7 @@ fn an_answered_question_and_an_unmanaged_caller_cannot_be_handed_back() {
             author: ProjectWorkspaceInboxSource::User,
             attachment_count: 0,
             question_answer_run_id: Some("run:test".into()),
+            question_answer_request_id: None,
         },
     );
     assert!(current(&w, "worker").question_answered);
@@ -531,6 +533,7 @@ fn a_reply_can_be_returned_as_its_own_inbound_without_losing_answer_provenance()
             author: ProjectWorkspaceInboxSource::User,
             attachment_count: 0,
             question_answer_run_id: Some("run:question".into()),
+            question_answer_request_id: None,
         },
     );
     apply_host(
@@ -579,6 +582,7 @@ fn handback_is_fenced_by_an_answer_recorded_before_the_inbound_binding() {
             author: ProjectWorkspaceInboxSource::User,
             attachment_count: 0,
             question_answer_run_id: Some("run:test".into()),
+            question_answer_request_id: None,
         },
     );
     bind_message(&w, "worker", "original-after-answer", "Question", 0);

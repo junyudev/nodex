@@ -136,6 +136,7 @@ impl ProjectWorkspaceModule {
         session: &str,
         run: Option<&str>,
         request: &str,
+        expected_kind: Option<nodex_core_contracts::workspace::SessionExecutionRequestKind>,
     ) -> Result<(), CoreError> {
         let Some(readers) = &self.readers else {
             return Err(unavailable("Project Workspace Module has no durable store"));
@@ -150,6 +151,7 @@ impl ProjectWorkspaceModule {
                     session,
                     run,
                     request,
+                    expected_kind,
                 )
             })
             .map_err(core_error)
