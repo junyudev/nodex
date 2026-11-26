@@ -129,7 +129,7 @@ function AgentRow({
           {status.action && status.action !== "sign-in" ? (
             <NodexButton
               ref={keepFocusInRow}
-              size="xs"
+              size="toolbar"
               variant={status.action === "cancel" ? "ghost" : "secondary"}
               // Cancelling keeps focus on Cancel, which becomes the next step once it settles.
               disabled={activity?.cancelling === true}
@@ -139,7 +139,12 @@ function AgentRow({
               {intl.formatMessage(ACP_STATUS_ACTION_LABELS[status.action])}
             </NodexButton>
           ) : status.action === "sign-in" && !expanded ? (
-            <NodexButton ref={keepFocusInRow} size="xs" variant="secondary" onClick={runAction}>
+            <NodexButton
+              ref={keepFocusInRow}
+              size="toolbar"
+              variant="secondary"
+              onClick={runAction}
+            >
               {intl.formatMessage(ACP_STATUS_ACTION_LABELS["sign-in"])}
             </NodexButton>
           ) : null}
@@ -305,7 +310,7 @@ export function AcpAgentsSettingsSection({
               defaultMessage="Saved changes haven't reached the Agent runtime yet. Nodex keeps trying."
             />
           </p>
-          <NodexButton size="xs" variant="secondary" onClick={owner.checkConfiguration}>
+          <NodexButton size="toolbar" variant="secondary" onClick={owner.checkConfiguration}>
             <FormattedMessage
               id="acpAgents.acpAgentsSettingsSection.tryAgain"
               defaultMessage="Try again"
@@ -322,7 +327,7 @@ export function AcpAgentsSettingsSection({
             />{" "}
             {snapshot.loadError}
           </p>
-          <NodexButton size="xs" variant="secondary" onClick={() => owner.refresh()}>
+          <NodexButton size="toolbar" variant="secondary" onClick={() => owner.refresh()}>
             <FormattedMessage
               id="acpAgents.acpAgentsSettingsSection.tryAgain"
               defaultMessage="Try again"
@@ -358,7 +363,12 @@ export function AcpAgentsSettingsSection({
                 "Install one from the ACP Registry, or run your own command that speaks ACP.",
             })}
           >
-            <NodexButton id={ACP_ADD_AGENT_ID} size="sm" variant="secondary" onClick={addAgent}>
+            <NodexButton
+              id={ACP_ADD_AGENT_ID}
+              size="toolbar"
+              variant="secondary"
+              onClick={addAgent}
+            >
               <FormattedMessage
                 id="acpAgents.acpAgentsSettingsSection.addAgent"
                 defaultMessage="Add agent"

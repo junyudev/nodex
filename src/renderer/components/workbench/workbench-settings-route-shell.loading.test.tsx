@@ -108,7 +108,7 @@ describe("SettingsRouteShell loading", () => {
     }
   });
 
-  test("keeps search, navigation, and Back to app available before the first page loads", async () => {
+  test("keeps search, navigation, and Escape available before the first page loads", async () => {
     const general = deferredPage("General content");
     const shortcuts = deferredPage("Keyboard shortcuts content");
     const appearance = deferredPage("Appearance content");
@@ -125,6 +125,7 @@ describe("SettingsRouteShell loading", () => {
     expect(appearance.load).not.toHaveBeenCalled();
 
     const search = view.getByRole("searchbox", { name: "Search settings" });
+    expect(search.getAttribute("placeholder")).toBe("Search");
     await act(async () => {
       fireEvent.input(search, { target: { value: "keyboard shortcuts" } });
       await Promise.resolve();
@@ -135,7 +136,10 @@ describe("SettingsRouteShell loading", () => {
     expect(appearance.load).not.toHaveBeenCalled();
     expect(view.getByRole("status").textContent).toBe("Loading…");
 
-    await click(view.getByRole("button", { name: "Back to app" }));
+    await act(async () => {
+      fireEvent.keyDown(view.getByTestId("settings-route-shell"), { key: "Escape" });
+      await Promise.resolve();
+    });
     expect(onBackToApp).toHaveBeenCalledOnce();
 
     await shortcuts.resolve();

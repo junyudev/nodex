@@ -12,7 +12,7 @@ import {
 } from "@/lib/codex-theme-variant";
 
 import "@blocknote/shadcn/style.css";
-import { applyRendererThemeForTest } from "@/test/renderer-theme";
+import { applyRendererThemeForTest, readRendererThemeColor } from "@/test/renderer-theme";
 
 import "@/globals.css";
 
@@ -206,7 +206,7 @@ test.each(paintCases)(
     const switchTrack = surfaces.getByRole("switch").firstElementChild;
     if (!switchTrack) throw new Error("Checked switch track is missing");
     expect(getComputedStyle(switchTrack).backgroundColor).toBe(
-      color(styles["--app-color-accent-blue"]!),
+      readRendererThemeColor("--switch-track-color-checked"),
     );
     const switchThumb = switchTrack.firstElementChild;
     if (!switchThumb) throw new Error("Checked switch thumb is missing");

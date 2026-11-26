@@ -494,9 +494,9 @@ export const NodexDropdownButtonTrigger = forwardRef<
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex min-w-0 items-center justify-between gap-1 border-[0.5px] outline-hidden disabled:cursor-not-allowed disabled:opacity-40",
+        "inline-flex min-w-0 items-center justify-between gap-1 border outline-hidden disabled:cursor-not-allowed disabled:opacity-40",
         chrome === "outline"
-          ? "border-token-border bg-(--color-background-primary-soft-alpha) hover:bg-(--color-background-primary-ghost-hover) aria-expanded:bg-(--color-background-primary-ghost-hover)"
+          ? "border-(--color-border) bg-(--color-background-neutral-soft-alpha) hover:bg-(--color-background-secondary-ghost-hover) aria-expanded:bg-(--color-background-secondary-ghost-hover)"
           : chrome === "raised"
             ? NODEX_RAISED_CONTROL_CHROME_CLASS_NAME
             : chrome === "filled"
@@ -504,7 +504,7 @@ export const NodexDropdownButtonTrigger = forwardRef<
               : "border-transparent bg-transparent hover:bg-(--color-background-primary-ghost-hover)",
         "focus-visible:ring-token-focus-border focus-visible:ring-2",
         muted ? "text-token-description-foreground" : "text-token-foreground",
-        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-token-description-foreground",
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&>svg]:text-tertiary",
         size === "xs"
           ? "h-6 rounded-md px-2 py-0 text-xs"
           : size === "sm"
@@ -512,7 +512,7 @@ export const NodexDropdownButtonTrigger = forwardRef<
             : size === "rule"
               ? "h-8 rounded-lg px-2 py-0 text-sm/5"
               : size === "settings"
-                ? "h-7 rounded-full px-2 py-0 text-xs leading-4"
+                ? "h-7 rounded-lg ps-3 pe-2.5 py-0 text-sm leading-[18px]"
                 : "h-7 rounded-lg px-2 py-0 text-sm/4.5",
         shape === "pill" && "rounded-full pl-1 pr-2",
         className,
@@ -525,7 +525,7 @@ export const NodexDropdownButtonTrigger = forwardRef<
         ) : null}
         {children}
       </span>
-      {showChevron ? <ChevronDownIcon className="icon-2xs" /> : null}
+      {showChevron ? <ChevronDownIcon className="size-3.5" /> : null}
     </button>
   );
 });

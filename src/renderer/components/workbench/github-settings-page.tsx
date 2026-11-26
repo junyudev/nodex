@@ -76,7 +76,7 @@ export function GitHubSettingsView({
                 })
           }
         >
-          <NodexButton size="sm" variant="secondary" disabled={pending} onClick={onConnect}>
+          <NodexButton size="toolbar" variant="secondary" disabled={pending} onClick={onConnect}>
             {snapshot.connection === "connected"
               ? source
                 ? intl.formatMessage({ id: "settings.github.refresh", defaultMessage: "Refresh" })
@@ -197,7 +197,7 @@ export function GitHubSettingsView({
             </span>
             {problem ? (
               <NodexButton
-                size="sm"
+                size="toolbar"
                 variant="ghost"
                 disabled={pending}
                 onClick={() => onRetry(source.id)}

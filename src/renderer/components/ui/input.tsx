@@ -9,29 +9,44 @@ const nodexFormInputClassName = cn(
   "disabled:cursor-not-allowed disabled:opacity-50",
 );
 
-export const Input = React.forwardRef<HTMLInputElement, React.ComponentPropsWithoutRef<"input">>(
-  function Input({ className, type, ...props }, ref) {
-    return (
-      <input
-        ref={ref}
-        type={type}
-        data-slot="input"
-        className={cn(nodexFormInputClassName, className)}
-        {...props}
-      />
-    );
-  },
-);
+export const NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME =
+  "rounded-lg border border-(--color-border) bg-(--color-background-neutral-soft-alpha)";
+
+type FormFieldVariant = { variant?: "settings" };
+
+export const Input = React.forwardRef<
+  HTMLInputElement,
+  React.ComponentPropsWithoutRef<"input"> & FormFieldVariant
+>(function Input({ className, type, variant, ...props }, ref) {
+  return (
+    <input
+      ref={ref}
+      type={type}
+      data-slot="input"
+      className={cn(
+        nodexFormInputClassName,
+        variant === "settings" && NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME,
+        className,
+      )}
+      {...props}
+    />
+  );
+});
 
 export const Textarea = React.forwardRef<
   HTMLTextAreaElement,
-  React.ComponentPropsWithoutRef<"textarea">
->(function Textarea({ className, ...props }, ref) {
+  React.ComponentPropsWithoutRef<"textarea"> & FormFieldVariant
+>(function Textarea({ className, variant, ...props }, ref) {
   return (
     <textarea
       ref={ref}
       data-slot="textarea"
-      className={cn(nodexFormInputClassName, "resize-y", className)}
+      className={cn(
+        nodexFormInputClassName,
+        "resize-y",
+        variant === "settings" && NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME,
+        className,
+      )}
       {...props}
     />
   );

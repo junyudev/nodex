@@ -1,4 +1,4 @@
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import { managePageFile, pageFilesTree } from "./support/page-files";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -177,7 +177,7 @@ test("copies portable File references by default and local blob paths when enabl
       await expect(localPathSwitch).toHaveAttribute("aria-checked", "false");
       await localPathSwitch.click();
       await expect(localPathSwitch).toHaveAttribute("aria-checked", "true");
-      await page.getByRole("button", { name: "Back to app" }).click();
+      await closeWorkbenchSettings(page);
 
       await imageBlock.click();
       await page.keyboard.press(primaryShortcut("c"));

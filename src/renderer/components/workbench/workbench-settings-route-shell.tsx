@@ -272,7 +272,6 @@ export function SettingsRouteShell({
           searchContext={settingsSearchContext}
           initialSearchQuery={initialSettingsSearchQuery}
           initialHighlightedSearchIndex={initialSettingsSearchHighlightIndex}
-          onBack={onBackToApp}
           onSelectSection={(sectionId, searchQuery) => {
             const anchor = settingsSearchAnchor(sectionId, searchQuery, intl);
             startTransition(() => {

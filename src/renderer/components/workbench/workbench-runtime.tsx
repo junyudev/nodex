@@ -6712,6 +6712,8 @@ export function WorkbenchRuntime({
                       "--height-titlebar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
                       "--sidebar-navigation-header-height": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
                       "--app-shell-navigation-rail-width": `${WORKBENCH_NAVIGATION_RAIL_WIDTH_PX}px`,
+                      // Settings takes the docked sidebar's place at the same width.
+                      "--app-shell-sidebar-width": `${sidebarWidth}px`,
                       "--spacing-token-safe-header-left": `${applicationMenuBarEnabled ? 8 : safeHeaderLeftWidth}px`,
                       "--spacing-token-safe-header-right": `${safeHeaderRightWidth}px`,
                       "--app-shell-bottom-panel-height": bottomPanelAnimatedHeightCss,

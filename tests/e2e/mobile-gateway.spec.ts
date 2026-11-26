@@ -14,7 +14,7 @@ import type { ScriptedAcpScenario } from "../../scripts/scenarios/runtime/script
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { invokeIpc } from "./support/editor-scenario";
 import { MobilePhone, type PhoneChannel } from "./support/mobile-phone";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 
 const REPLY = "The phone reached the desktop Agent.";
 const instanceId = "mobile-gateway-test";
@@ -214,7 +214,7 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       await expect(page.getByText("Test phone", { exact: true })).toBeVisible();
       await phone.close();
       phone = await identity.connect();
-      await page.getByRole("button", { name: "Back to app", exact: true }).click();
+      await closeWorkbenchSettings(page);
       return identity;
     });
     const connected = phone!;

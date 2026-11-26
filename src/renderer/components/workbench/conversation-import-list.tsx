@@ -127,7 +127,7 @@ export function ConversationImportRow({
   let action: ReactNode = null;
   if (imported) {
     action = canOpen ? (
-      <NodexButton size="xs" variant="secondary" disabled={locked} onClick={onOpen}>
+      <NodexButton size="toolbar" variant="secondary" disabled={locked} onClick={onOpen}>
         {state?.kind === "opening"
           ? intl.formatMessage({
               id: "workbench.conversationImportList.opening",
@@ -168,7 +168,7 @@ export function ConversationImportRow({
         )}
       >
         <NodexButton
-          size="xs"
+          size="toolbar"
           variant="ghost"
           className="relative z-[1]"
           aria-label={intl.formatMessage({
@@ -186,7 +186,7 @@ export function ConversationImportRow({
       </NodexTooltip>
     ) : (
       <NodexButton
-        size="xs"
+        size="toolbar"
         variant="secondary"
         className="relative z-[1]"
         disabled={locked}
@@ -229,7 +229,7 @@ export function ConversationImportRow({
       aria-labelledby={titleId}
       className={cn(
         // Inset so the tint sits evenly in the card whether or not a scrollbar holds its gutter.
-        "relative mx-1.5 flex min-w-0 flex-col gap-0.5 rounded-lg px-2.5 py-1.5",
+        "relative flex min-w-0 flex-col gap-0.5 border-b border-(--color-border) py-2 last:border-b-0",
         selected ? "bg-token-foreground/5" : selectable && "hover:bg-token-list-hover-background",
       )}
     >
@@ -579,7 +579,7 @@ export function ConversationImportFooter({
         id: "workbench.conversationImportList.importSelection",
         defaultMessage: "Import selection",
       })}
-      className="flex min-w-0 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5"
+      className="flex min-w-0 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 py-2"
     >
       <NodexCheckbox
         ariaLabel={intl.formatMessage({

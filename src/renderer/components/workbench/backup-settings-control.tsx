@@ -439,7 +439,7 @@ export function BackupSettingsControl({
   const isBackupBusy = busyAction !== null || cancelPending;
 
   return (
-    <div className="flex flex-col gap-[var(--padding-panel)]">
+    <div className="flex flex-col gap-10">
       <SectionBlock title={intl.formatMessage(settingsMessages.backupsRecovery)}>
         {recovery}
         <SettingRow
@@ -459,15 +459,15 @@ export function BackupSettingsControl({
             </span>
           </div>
         </SettingRow>
-        <div className="flex items-center justify-between gap-3 p-3">
+        <div className="flex items-center justify-between gap-3 py-2">
           <div className="text-sm text-token-text-secondary">
             {hasHistoryEnvOverride
               ? intl.formatMessage(settingsMessages.backupsValueLockedByEnvVar)
               : intl.formatMessage(settingsMessages.backupsAppliedByBackgroundMaintenance)}
           </div>
           <NodexButton
-            variant="primary"
-            size="sm"
+            variant="secondary"
+            size="toolbar"
             onClick={() => void historyForm.handleSubmit()}
             disabled={isBackupBusy}
           >
@@ -542,7 +542,7 @@ export function BackupSettingsControl({
             <span className="text-sm text-token-text-secondary">GiB</span>
           </div>
         </SettingRow>
-        <div className="flex items-center justify-between gap-3 p-3">
+        <div className="flex items-center justify-between gap-3 py-2">
           <div className="text-sm text-token-text-secondary">
             {hasBackupEnvOverrides
               ? intl.formatMessage(settingsMessages.backupsSomeValuesLockedByEnvVars)
@@ -551,7 +551,7 @@ export function BackupSettingsControl({
           <div className="flex items-center gap-2">
             <NodexButton
               variant="secondary"
-              size="sm"
+              size="toolbar"
               onClick={() => void startRefresh()}
               disabled={isBackupBusy}
             >
@@ -559,7 +559,7 @@ export function BackupSettingsControl({
             </NodexButton>
             <NodexButton
               variant="primary"
-              size="sm"
+              size="toolbar"
               onClick={() => void scheduleForm.handleSubmit()}
               disabled={isBackupBusy}
             >
@@ -572,7 +572,7 @@ export function BackupSettingsControl({
       <SectionBlock title={intl.formatMessage(settingsMessages.backupsSnapshots)}>
         {/* Trimming old history is shown while it runs; a settled store needs no report. */}
         {storageOptimization?.optimizing ? (
-          <div className="flex items-start justify-between gap-3 px-3 pt-3 text-xs text-token-text-secondary">
+          <div className="flex items-start justify-between gap-3 py-2 text-sm text-token-text-secondary">
             <div>
               <div className="text-token-text-primary">
                 {storageOptimization.optimizing
@@ -624,7 +624,7 @@ export function BackupSettingsControl({
           </div>
         ) : null}
         {backupCapacity ? (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-3 text-xs text-token-text-secondary">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 text-sm text-token-text-secondary">
             <span>
               {intl.formatMessage(
                 { id: "settings.backups.storedSize", defaultMessage: "{size} stored" },
@@ -659,10 +659,11 @@ export function BackupSettingsControl({
           </div>
         ) : null}
         <form
-          className="flex items-center gap-2 p-3"
+          className="flex items-center gap-2 py-2"
           onSubmit={(event) => handleFormSubmit(event, snapshotForm.handleSubmit)}
         >
           <Input
+            variant="settings"
             value={snapshotValues.label}
             placeholder={intl.formatMessage(settingsMessages.backupsOptionalSnapshotLabel)}
             onChange={(event) => snapshotForm.setFieldValue("label", event.target.value)}
@@ -671,7 +672,7 @@ export function BackupSettingsControl({
           <NodexButton
             type="submit"
             variant="secondary"
-            size="sm"
+            size="toolbar"
             disabled={
               isBackupBusy || backupJobPresentation?.active || backupCapacity?.canCreate === false
             }
@@ -683,7 +684,7 @@ export function BackupSettingsControl({
         </form>
         {backupJob && backupJobPresentation?.active ? (
           <div
-            className="semantic-text-secondary flex flex-col gap-1.5 px-3 pb-3 text-xs"
+            className="semantic-text-secondary flex flex-col gap-1.5 py-2 text-sm"
             aria-live="polite"
           >
             <div className="flex items-center gap-2">
@@ -762,19 +763,19 @@ export function BackupSettingsControl({
             onCheckedChange={setCreateSafetyBackup}
           />
         </SettingRow>
-        <div className="flex flex-col">
+        <div className="flex flex-col divide-y divide-(--color-border)">
           {backups.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-token-text-secondary">
+            <div className="py-2 text-sm text-token-text-secondary">
               {intl.formatMessage(settingsMessages.backupsNoSnapshotsYet)}
             </div>
           ) : (
             backups.map((backup) => (
-              <div key={backup.id} className="flex items-center justify-between gap-3 p-3">
+              <div key={backup.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm text-token-text-primary">
+                  <div className="truncate text-sm font-medium text-token-text-primary">
                     {backup.label?.trim() || backup.id}
                   </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-token-text-secondary">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-token-text-secondary">
                     <span>{formatBackupTimestamp(backup.createdAt, intl)}</span>
                     <span>{formatBackupSize(backup.totalBytes)}</span>
                     <span className="inline-flex items-center rounded-full bg-token-foreground/5 px-1.5 py-px text-xs text-token-text-secondary">
@@ -796,7 +797,7 @@ export function BackupSettingsControl({
                     <>
                       <NodexButton
                         variant="destructive"
-                        size="sm"
+                        size="toolbar"
                         onClick={() => void handleDeleteBackup(backup.id)}
                         disabled={isBackupBusy}
                       >
@@ -804,7 +805,7 @@ export function BackupSettingsControl({
                       </NodexButton>
                       <NodexButton
                         variant="ghost"
-                        size="sm"
+                        size="toolbar"
                         onClick={() => setConfirmDeleteId(null)}
                         disabled={isBackupBusy}
                       >
@@ -815,7 +816,7 @@ export function BackupSettingsControl({
                     <>
                       <NodexButton
                         variant="destructive"
-                        size="sm"
+                        size="toolbar"
                         onClick={() => void handleRestoreBackup(backup.id)}
                         disabled={isBackupBusy}
                       >
@@ -823,7 +824,7 @@ export function BackupSettingsControl({
                       </NodexButton>
                       <NodexButton
                         variant="ghost"
-                        size="sm"
+                        size="toolbar"
                         onClick={() => setConfirmRestoreId(null)}
                         disabled={isBackupBusy}
                       >
@@ -834,7 +835,7 @@ export function BackupSettingsControl({
                     <>
                       <NodexButton
                         variant="secondary"
-                        size="sm"
+                        size="toolbar"
                         onClick={() => void handleRestoreBackup(backup.id)}
                         disabled={isBackupBusy}
                       >

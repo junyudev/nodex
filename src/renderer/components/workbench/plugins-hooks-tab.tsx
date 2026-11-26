@@ -503,7 +503,7 @@ function HookRow({
                   : intl.formatMessage({ id: "settings.hooks.newHook", defaultMessage: "New hook" })
               }
             >
-              <NodexButton variant="outline" size="xs" onClick={() => onTrust(hook)}>
+              <NodexButton variant="secondary" size="toolbar" onClick={() => onTrust(hook)}>
                 <PermissionDefaultIcon className="icon-2xs" />
                 {intl.formatMessage(settingsMessages.hooksTrust)}
               </NodexButton>

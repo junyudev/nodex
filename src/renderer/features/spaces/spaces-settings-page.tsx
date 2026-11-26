@@ -88,7 +88,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         {value}
       </code>
       <NodexButton
-        size="xs"
+        size="toolbar"
         variant="ghost"
         onClick={() =>
           void navigator.clipboard.writeText(value).then(() =>
@@ -129,7 +129,7 @@ function OfferPanel({
   const intl = useIntl();
   const now = useNowSeconds(1000);
   return (
-    <div className="flex flex-col gap-2.5 px-4 py-3">
+    <div className="flex flex-col gap-2.5 py-2">
       {phoneUri ? (
         <div className="flex flex-col items-center gap-2 pb-1">
           <p className="text-sm text-token-text-secondary">
@@ -141,7 +141,7 @@ function OfferPanel({
           </p>
           <DeviceLinkCode uri={phoneUri} />
           <NodexButton
-            size="xs"
+            size="toolbar"
             variant="ghost"
             onClick={() =>
               void navigator.clipboard.writeText(phoneUri).then(() =>
@@ -177,7 +177,7 @@ function OfferPanel({
         <span className="text-xs text-token-text-secondary tabular-nums">
           {describeExpiry(expiresAt, now, intl)}
         </span>
-        <NodexButton size="xs" variant="ghost" onClick={onDone}>
+        <NodexButton size="toolbar" variant="ghost" onClick={onDone}>
           <FormattedMessage id="spaces.spacesSettingsPage.done" defaultMessage="Done" />
         </NodexButton>
       </div>
@@ -223,6 +223,7 @@ function useNameEditor({
         name
       ) : (
         <Input
+          variant="settings"
           aria-label={field}
           aria-invalid={reason ? true : undefined}
           autoFocus
@@ -240,7 +241,7 @@ function useNameEditor({
       draft === null ? (
         rename ? (
           <NodexButton
-            size="xs"
+            size="toolbar"
             variant="ghost"
             aria-label={rename.label}
             onClick={() => setDraft(current)}
@@ -250,11 +251,11 @@ function useNameEditor({
         ) : null
       ) : (
         <>
-          <NodexButton size="xs" variant="ghost" onClick={() => setDraft(null)}>
+          <NodexButton size="toolbar" variant="ghost" onClick={() => setDraft(null)}>
             <FormattedMessage id="spaces.spacesSettingsPage.cancel" defaultMessage="Cancel" />
           </NodexButton>
           <NodexButton
-            size="xs"
+            size="toolbar"
             variant="primary"
             disabled={reason !== null || mutation.isPending}
             onClick={submit}
@@ -498,7 +499,7 @@ function Devices({
           {/* This computer leaves a Space from Your Spaces, not by revoking itself. */}
           {device.id === thisDeviceId ? null : (
             <NodexButton
-              size="xs"
+              size="toolbar"
               variant="ghost"
               aria-label={intl.formatMessage(
                 { id: "spaces.spacesSettingsPage.revokeValue", defaultMessage: "Revoke {value1}" },
@@ -554,7 +555,7 @@ function Devices({
             defaultMessage: "Connect this computer to Wi-Fi or a tailnet, then link again.",
           })}
         >
-          <NodexButton size="xs" variant="ghost" onClick={() => setOffer(null)}>
+          <NodexButton size="toolbar" variant="ghost" onClick={() => setOffer(null)}>
             <FormattedMessage id="spaces.spacesSettingsPage.done" defaultMessage="Done" />
           </NodexButton>
         </NodexSettingsRow>
@@ -662,11 +663,11 @@ function People({ me, members }: { me: Member | null; members: readonly Member[]
           {owner && member.id !== me?.id ? (
             removing === member.id ? (
               <>
-                <NodexButton size="xs" variant="ghost" onClick={() => setRemoving(null)}>
+                <NodexButton size="toolbar" variant="ghost" onClick={() => setRemoving(null)}>
                   <FormattedMessage id="spaces.spacesSettingsPage.keep" defaultMessage="Keep" />
                 </NodexButton>
                 <NodexButton
-                  size="xs"
+                  size="toolbar"
                   variant="destructive"
                   disabled={remove.isPending}
                   onClick={() => remove.mutate(member.id)}
@@ -677,7 +678,7 @@ function People({ me, members }: { me: Member | null; members: readonly Member[]
               </>
             ) : (
               <NodexButton
-                size="xs"
+                size="toolbar"
                 variant="ghost"
                 aria-label={intl.formatMessage(
                   {
@@ -756,7 +757,7 @@ function AllSpaces() {
         >
           {space.spaceId !== bound.spaceId ? (
             <NodexButton
-              size="xs"
+              size="toolbar"
               variant="ghost"
               onClick={() =>
                 void switchSpace(space.spaceId).catch(
@@ -774,7 +775,7 @@ function AllSpaces() {
           ) : null}
           {space.kind === "team" ? (
             <NodexButton
-              size="xs"
+              size="toolbar"
               variant="ghost"
               onClick={() => {
                 void leaveSpace(space.spaceId)

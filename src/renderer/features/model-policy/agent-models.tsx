@@ -757,7 +757,6 @@ export function ModelFilterResults({ query }: { readonly query: string }) {
         <NodexSettingsSection
           key={provider.instanceId}
           title={provider.displayName ?? provider.instanceId}
-          titlePlacement="inside"
         >
           <div className="flex flex-col pb-2">
             <ListHeader count={modelsOnSummary(models.policy, provider, intl)}>

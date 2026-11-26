@@ -231,7 +231,7 @@ function InstructionLayers() {
   };
   const shown = layers[layer];
   return (
-    <div className="flex flex-col gap-2.5 px-4 pb-4">
+    <div className="flex flex-col gap-2.5 pb-2">
       <NodexSegmentedControl<InstructionLayer>
         ariaLabel={intl.formatMessage(settingsMessages.chatsWhatAgentsReceive)}
         value={layer}

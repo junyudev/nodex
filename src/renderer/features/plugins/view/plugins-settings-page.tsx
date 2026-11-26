@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useOpenSkill } from "@/features/skills/open-skill";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -12,8 +13,8 @@ import {
 } from "@/components/shared/icons/customize-action-icons";
 import { ChatBubblesIcon16 } from "@/components/shared/icons/plugin-detail-icons";
 import { skillFallbackIcon } from "@/components/shared/icons/skill-fallback-icons";
-import { NodexSwitch } from "@/components/ui/button";
-import { CardTile } from "@/components/ui/card-tile";
+import { NodexButton, NodexSwitch } from "@/components/ui/button";
+import { NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME } from "@/components/ui/input";
 import { PageEmptyState } from "@/components/ui/section-header";
 import {
   NodexSettingsPageSurface,
@@ -128,7 +129,12 @@ function SettingsSearchInput({
   readonly onChange: (value: string) => void;
 }) {
   return (
-    <div className="no-drag flex h-8 items-center gap-2 rounded-(--radius-button-toolbar) border border-(--color-border-primary-outline) bg-(--color-surface-elevated-secondary) px-2.5 py-0 text-base leading-[18px]">
+    <div
+      className={cn(
+        "no-drag flex h-8 items-center gap-2 px-2.5 py-0 text-sm leading-[18px]",
+        NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME,
+      )}
+    >
       <MagnifyingGlassIcon className="icon-sm text-(--color-text-secondary)" />
       <label className="sr-only" htmlFor="plugins-page-manage-search">
         {label}
@@ -140,7 +146,7 @@ function SettingsSearchInput({
         autoComplete="off"
         value={value}
         placeholder={label}
-        className="min-w-0 flex-1 bg-transparent text-base leading-[18px] text-token-foreground outline-none select-text placeholder:text-tertiary"
+        className="min-w-0 flex-1 bg-transparent text-sm leading-[18px] text-token-foreground outline-none select-text placeholder:text-tertiary"
         onChange={(event) => onChange(event.target.value)}
       />
     </div>
@@ -175,12 +181,17 @@ function PluginSettingsRow({
 
   const action =
     pending === "uninstalling" ? (
-      <ToolbarButton color="ghost" disabled className="disabled:opacity-100">
+      <NodexButton
+        size="toolbar"
+        variant="ghostSecondary"
+        disabled
+        className="disabled:opacity-100"
+      >
         {intl.formatMessage({
           id: "plugins.pluginsSettingsPage.uninstalling",
           defaultMessage: "Uninstalling",
         })}
-      </ToolbarButton>
+      </NodexButton>
     ) : (
       <NodexTooltip
         side="top"
@@ -424,28 +435,25 @@ function SkillSettingsRow({
 
   return (
     <>
-      <CardTile
-        presentation="card"
-        className="group justify-center"
-        contentClassName={enabled ? undefined : "opacity-60"}
-        iconContainer={false}
+      <SettingsNavigationRow
         icon={
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-(--color-border) text-(--color-text-secondary)">
             <SkillCubeIcon className="icon-sm" />
           </span>
         }
-        title={name}
-        description={description}
-        descriptionClassName="line-clamp-1"
+        label={<span className={!enabled ? "opacity-60" : undefined}>{name}</span>}
+        description={
+          <span className={cn("line-clamp-1", !enabled && "opacity-60")}>{description}</span>
+        }
         actions={
           <div className="flex items-center gap-2">
             <div className="text-sm text-(--color-text-secondary)">
               {skillScopeLabel(skill, undefined, intl)}
             </div>
-            <span onClick={(event) => event.stopPropagation()}>{skillSwitch}</span>
+            {skillSwitch}
           </div>
         }
-        onClick={() => {
+        onOpen={() => {
           void openSkill({
             ...context,
             name: skill.name,
@@ -670,7 +678,7 @@ export function PluginsSettingsPage({
       action={
         <div className="flex items-center gap-2">
           <ToolbarButton
-            color="outline"
+            color="secondary"
             onClick={() =>
               navigation.onOpenCustomize(
                 tab === "skills" ? buildSkillsPath() : buildPluginDirectoryPath(),
@@ -795,7 +803,7 @@ function SkillsList({
       </CompactEmptyState>
     );
   return (
-    <div className="grid grid-cols-1 gap-2">
+    <NodexSettingsSection>
       {skills.map((skill) => (
         <SkillSettingsRow
           key={skill.path}
@@ -804,7 +812,7 @@ function SkillsList({
           navigation={navigation}
         />
       ))}
-    </div>
+    </NodexSettingsSection>
   );
 }
 

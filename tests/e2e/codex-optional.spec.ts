@@ -9,7 +9,7 @@ import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import { openComposerModelPicker } from "./support/composer-model-picker";
 import { invokeIpc } from "./support/editor-scenario";
 
@@ -54,7 +54,7 @@ test("opens the Workbench and runs Claude before activating Codex", async ({}, t
     await expect(page.getByRole("region", { name: "Codex", exact: true })).toContainText(
       "Codex is not installed.",
     );
-    await page.getByRole("button", { name: "Back to app", exact: true }).click();
+    await closeWorkbenchSettings(page);
 
     await page.getByRole("button", { name: "Open My Project", exact: true }).click();
     await page.getByRole("button", { name: "New tab", exact: true }).click();
@@ -191,7 +191,7 @@ test("installs the official Codex Component on first use and reuses it after res
     await expect(stat(partial)).rejects.toMatchObject({ code: "ENOENT" });
     await capture(page, components, "09-codex-first-use-row");
 
-    await page.getByRole("button", { name: "Back to app", exact: true }).click();
+    await closeWorkbenchSettings(page);
     const pid = harness.application.process().pid;
     const navigation = page.getByRole("navigation", { name: "App navigation" });
     const openPlugins = () =>

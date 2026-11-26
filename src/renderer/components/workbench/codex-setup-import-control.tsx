@@ -156,7 +156,7 @@ export function CodexSetupImportControl({
         })}
       >
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={busy}
           onClick={() => void review("claude-code")}
@@ -169,7 +169,7 @@ export function CodexSetupImportControl({
           Claude Code
         </NodexButton>
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={busy}
           onClick={() => void review("codex")}
@@ -252,7 +252,12 @@ export function CodexSetupImportControl({
                   })}
             </p>
             <div className="ml-auto flex gap-2">
-              <NodexButton size="sm" variant="ghost" disabled={busy} onClick={() => setScan(null)}>
+              <NodexButton
+                size="toolbar"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => setScan(null)}
+              >
                 {scan.items.length === 0
                   ? intl.formatMessage({
                       id: "workbench.codexSetupImportControl.close",
@@ -265,7 +270,7 @@ export function CodexSetupImportControl({
               </NodexButton>
               {scan.items.length > 0 ? (
                 <NodexButton
-                  size="sm"
+                  size="toolbar"
                   variant="primary"
                   disabled={busy || selected.size === 0}
                   onClick={() => void copy()}
@@ -312,7 +317,7 @@ export function CodexSetupImportControl({
             </span>
           }
         >
-          <NodexButton size="sm" variant="ghost" onClick={() => setResult(null)}>
+          <NodexButton size="toolbar" variant="ghost" onClick={() => setResult(null)}>
             <FormattedMessage id="workbench.codexSetupImportControl.done" defaultMessage={"Done"} />
           </NodexButton>
         </NodexSettingsRow>

@@ -6,7 +6,11 @@ import { NODEX_ACCOUNT_ERROR_MESSAGES } from "../../../shared/nodex-account-copy
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
+import {
+  NodexSettingsPageSurface,
+  NodexSettingsRow,
+  NodexSettingsSection,
+} from "@/components/ui/settings";
 import { buildSettingsAnchorPath } from "@/components/workbench/workbench-settings-routes";
 import { NODEX_MODELS_ANCHOR } from "@/lib/agent-settings-navigation";
 import { cn } from "@/lib/utils";
@@ -132,139 +136,140 @@ function AccountSettingsContent({
     >
       <NodexSettingsSection>
         <div aria-busy={account.loading || view.signingIn}>
-          <div className="flex min-h-18 flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
-            <div className="flex min-w-32 flex-1 items-center gap-3">
-              <NodexAccountAvatar
-                identity={identity}
-                size="lg"
-                className={cn(view.signingIn && "animate-pulse motion-reduce:animate-none")}
-              />
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <NodexTooltip tooltipContent={identity?.label} disabled={!identity}>
-                  <span className="block truncate text-sm font-medium text-token-text-primary select-text">
-                    {title()}
+          <NodexSettingsRow
+            label={
+              <div className="flex min-w-0 items-center gap-3">
+                <NodexAccountAvatar
+                  identity={identity}
+                  size="lg"
+                  className={cn(view.signingIn && "animate-pulse motion-reduce:animate-none")}
+                />
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <NodexTooltip tooltipContent={identity?.label} disabled={!identity}>
+                    <span className="block truncate text-sm font-medium text-token-text-primary select-text">
+                      {title()}
+                    </span>
+                  </NodexTooltip>
+                  <span
+                    aria-live="polite"
+                    className="flex min-w-0 flex-col gap-1 text-sm font-normal text-token-text-secondary"
+                  >
+                    {detail ? (
+                      <span
+                        role={account.failed ? "alert" : undefined}
+                        className={cn(
+                          "flex min-w-0 items-center gap-1.5",
+                          account.failed && "text-danger",
+                        )}
+                      >
+                        {view.signingIn ? spinner : null}
+                        <NodexTooltip
+                          tooltipContent={identity?.detail}
+                          disabled={!identity?.detail}
+                        >
+                          <span className="truncate select-text">{detail}</span>
+                        </NodexTooltip>
+                      </span>
+                    ) : null}
+                    {view.reauthentication ? (
+                      <span role="status" className="text-token-warning-foreground">
+                        {intl.formatMessage(NODEX_ACCOUNT_ERROR_MESSAGES["invalid-grant"])}
+                      </span>
+                    ) : null}
+                    {view.offline ? (
+                      <span>
+                        <FormattedMessage
+                          id="account.accountSettingsPage.canTReachNodexAccount"
+                          defaultMessage="Can't reach Nodex Account. Check your connection."
+                        />
+                      </span>
+                    ) : null}
+                    {view.memoryOnly ? (
+                      <span>
+                        <FormattedMessage
+                          id="account.accountSettingsPage.secureStorageIsUnavailableSo"
+                          defaultMessage="Secure storage is unavailable, so this sign-in lasts until Nodex quits."
+                        />
+                      </span>
+                    ) : null}
                   </span>
-                </NodexTooltip>
-                <span
-                  aria-live="polite"
-                  className="flex min-w-0 flex-col gap-1 text-xs leading-4 text-token-text-secondary"
-                >
-                  {detail ? (
-                    <span
-                      role={account.failed ? "alert" : undefined}
-                      className={cn(
-                        "flex min-w-0 items-center gap-1.5",
-                        account.failed && "text-danger",
-                      )}
-                    >
-                      {view.signingIn ? spinner : null}
-                      <NodexTooltip tooltipContent={identity?.detail} disabled={!identity?.detail}>
-                        <span className="truncate select-text">{detail}</span>
-                      </NodexTooltip>
-                    </span>
-                  ) : null}
-                  {view.reauthentication ? (
-                    <span role="status" className="text-token-warning-foreground">
-                      {intl.formatMessage(NODEX_ACCOUNT_ERROR_MESSAGES["invalid-grant"])}
-                    </span>
-                  ) : null}
-                  {view.offline ? (
-                    <span>
-                      <FormattedMessage
-                        id="account.accountSettingsPage.canTReachNodexAccount"
-                        defaultMessage="Can't reach Nodex Account. Check your connection."
-                      />
-                    </span>
-                  ) : null}
-                  {view.memoryOnly ? (
-                    <span>
-                      <FormattedMessage
-                        id="account.accountSettingsPage.secureStorageIsUnavailableSo"
-                        defaultMessage="Secure storage is unavailable, so this sign-in lasts until Nodex quits."
-                      />
-                    </span>
-                  ) : null}
-                </span>
+                </div>
               </div>
-            </div>
-            <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
-              {account.failed ? (
-                <NodexButton
-                  variant="secondary"
-                  size="sm"
-                  disabled={account.retrying}
-                  onClick={account.retry}
-                >
-                  {account.retrying ? spinner : null}
-                  <FormattedMessage id="account.accountSettingsPage.retry" defaultMessage="Retry" />
-                </NodexButton>
-              ) : null}
-              {view.signedOut || view.reauthentication ? (
-                <NodexButton
-                  variant="primary"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => account.act("signIn")}
-                >
-                  {view.reauthentication
-                    ? intl.formatMessage({
-                        id: "account.accountSettingsPage.signInAgain",
-                        defaultMessage: "Sign in again",
-                      })
-                    : intl.formatMessage({
-                        id: "account.accountSettingsPage.signIn",
-                        defaultMessage: "Sign in",
-                      })}
-                </NodexButton>
-              ) : null}
-              {view.signingIn ? (
-                <NodexButton
-                  variant="secondary"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => account.act("cancelSignIn")}
-                >
-                  <FormattedMessage
-                    id="account.accountSettingsPage.cancel"
-                    defaultMessage="Cancel"
-                  />
-                </NodexButton>
-              ) : null}
-              {view.signedIn || view.reauthentication ? (
-                <NodexButton
-                  variant="secondary"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => account.act("signOut")}
-                >
-                  {account.pending === "signOut" ? spinner : null}
-                  <FormattedMessage
-                    id="account.accountSettingsPage.signOut"
-                    defaultMessage="Sign out"
-                  />
-                </NodexButton>
-              ) : null}
-              {view.offline || modelError ? (
-                <NodexButton
-                  variant="secondary"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => account.act("refresh")}
-                >
-                  {account.pending === "refresh" ? spinner : null}
-                  <FormattedMessage
-                    id="account.accountSettingsPage.checkAgain"
-                    defaultMessage="Check again"
-                  />
-                </NodexButton>
-              ) : null}
-            </div>
-          </div>
+            }
+          >
+            {account.failed ? (
+              <NodexButton
+                variant="secondary"
+                size="toolbar"
+                disabled={account.retrying}
+                onClick={account.retry}
+              >
+                {account.retrying ? spinner : null}
+                <FormattedMessage id="account.accountSettingsPage.retry" defaultMessage="Retry" />
+              </NodexButton>
+            ) : null}
+            {view.signedOut || view.reauthentication ? (
+              <NodexButton
+                variant="primary"
+                size="toolbar"
+                disabled={busy}
+                onClick={() => account.act("signIn")}
+              >
+                {view.reauthentication
+                  ? intl.formatMessage({
+                      id: "account.accountSettingsPage.signInAgain",
+                      defaultMessage: "Sign in again",
+                    })
+                  : intl.formatMessage({
+                      id: "account.accountSettingsPage.signIn",
+                      defaultMessage: "Sign in",
+                    })}
+              </NodexButton>
+            ) : null}
+            {view.signingIn ? (
+              <NodexButton
+                variant="secondary"
+                size="toolbar"
+                disabled={busy}
+                onClick={() => account.act("cancelSignIn")}
+              >
+                <FormattedMessage id="account.accountSettingsPage.cancel" defaultMessage="Cancel" />
+              </NodexButton>
+            ) : null}
+            {view.signedIn || view.reauthentication ? (
+              <NodexButton
+                variant="secondary"
+                size="toolbar"
+                disabled={busy}
+                onClick={() => account.act("signOut")}
+              >
+                {account.pending === "signOut" ? spinner : null}
+                <FormattedMessage
+                  id="account.accountSettingsPage.signOut"
+                  defaultMessage="Sign out"
+                />
+              </NodexButton>
+            ) : null}
+            {view.offline || modelError ? (
+              <NodexButton
+                variant="secondary"
+                size="toolbar"
+                disabled={busy}
+                onClick={() => account.act("refresh")}
+              >
+                {account.pending === "refresh" ? spinner : null}
+                <FormattedMessage
+                  id="account.accountSettingsPage.checkAgain"
+                  defaultMessage="Check again"
+                />
+              </NodexButton>
+            ) : null}
+          </NodexSettingsRow>
           {view.notice ? (
             <p
               role={view.notice.tone === "warning" ? "status" : "alert"}
               className={cn(
-                "px-4 pb-3 text-xs",
+                "pb-2 text-sm",
                 view.notice.tone === "warning" ? "text-token-warning-foreground" : "text-danger",
               )}
             >
@@ -302,7 +307,7 @@ function AccountCredit({
           defaultMessage: "Credits",
         })}
       >
-        <div className="flex flex-col gap-3 px-4 pt-3.5 pb-4">
+        <div className="flex flex-col gap-3 py-2">
           <span className="flex items-baseline gap-1.5">
             <span
               aria-label={intl.formatMessage({
@@ -328,17 +333,18 @@ function AccountCredit({
           <NodexCreditBar gauge={gauge} />
         </div>
         {modelNotice ? (
-          <p role="alert" className="px-4 pb-3 text-xs text-danger">
+          <p role="alert" className="pb-2 text-sm text-danger">
             {modelNotice}
           </p>
         ) : null}
       </NodexSettingsSection>
-      <section aria-labelledby="nodex-top-up-title" className="flex flex-col">
-        <div className="flex min-h-toolbar items-baseline justify-between gap-3 pb-1.5">
-          <h2 id="nodex-top-up-title" className="text-base font-medium text-token-text-primary">
-            <FormattedMessage id="account.accountSettingsPage.topUp" defaultMessage="Top up" />
-          </h2>
-          {status ? (
+      <NodexSettingsSection
+        title={intl.formatMessage({
+          id: "account.accountSettingsPage.topUp",
+          defaultMessage: "Top up",
+        })}
+        action={
+          status ? (
             <span className="text-xs text-token-description-foreground tabular-nums">
               {intl.formatMessage(
                 {
@@ -348,10 +354,11 @@ function AccountCredit({
                 { credits: formatNodexCredits(status.creditsPerUsd, intl.locale) },
               )}
             </span>
-          ) : null}
-        </div>
+          ) : null
+        }
+      >
         <NodexTopUpTiers account={account} />
-      </section>
+      </NodexSettingsSection>
       {status?.pricing ? (
         <NodexModelPrices
           pricing={status.pricing}

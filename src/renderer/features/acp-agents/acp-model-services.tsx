@@ -102,6 +102,7 @@ function ServiceForm({
           <span className="text-sm text-token-text-secondary">{apiType}</span>
         )}
         <Input
+          variant="settings"
           aria-label={intl.formatMessage(
             { id: "acpAgents.acpModelServices.valueBaseURL", defaultMessage: "{value1} base URL" },
             { value1: service.providerId },
@@ -117,6 +118,7 @@ function ServiceForm({
       {headers.map((row, index) => (
         <div key={row.id} className="flex items-center gap-2">
           <Input
+            variant="settings"
             aria-label={intl.formatMessage(
               {
                 id: "acpAgents.acpModelServices.headerNameValue",
@@ -138,6 +140,7 @@ function ServiceForm({
             }
           />
           <Input
+            variant="settings"
             aria-label={intl.formatMessage(
               {
                 id: "acpAgents.acpModelServices.headerValueValue",
@@ -159,7 +162,7 @@ function ServiceForm({
             }
           />
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="ghost"
             aria-label={intl.formatMessage(
               {
@@ -177,7 +180,7 @@ function ServiceForm({
       ))}
       <div className="flex flex-wrap items-center gap-2">
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="ghost"
           disabled={pending || headers.length >= 64}
           onClick={() =>
@@ -192,10 +195,10 @@ function ServiceForm({
             defaultMessage="Headers go to the Agent and are never shown again."
           />
         </span>
-        <NodexButton size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
+        <NodexButton size="toolbar" variant="ghost" disabled={pending} onClick={onCancel}>
           <FormattedMessage id="acpAgents.acpModelServices.cancel" defaultMessage="Cancel" />
         </NodexButton>
-        <NodexButton type="submit" size="sm" variant="secondary" disabled={pending}>
+        <NodexButton type="submit" size="toolbar" variant="secondary" disabled={pending}>
           {pending
             ? intl.formatMessage({
                 id: "acpAgents.acpModelServices.saving",
@@ -306,7 +309,7 @@ export function AcpModelServices({
           >
             {editing !== service.providerId ? (
               <NodexButton
-                size="sm"
+                size="toolbar"
                 variant="ghost"
                 disabled={pending !== null}
                 onClick={() => setEditing(service.providerId)}
@@ -324,7 +327,7 @@ export function AcpModelServices({
             ) : null}
             {service.current && !service.required ? (
               <NodexButton
-                size="sm"
+                size="toolbar"
                 variant="ghost"
                 disabled={pending !== null}
                 onClick={() =>

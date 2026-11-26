@@ -74,7 +74,7 @@ export function AgentEnvironmentEditor({
         })}
       >
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={disabled || rows.length >= policy.limit}
           onClick={() =>
@@ -97,6 +97,7 @@ export function AgentEnvironmentEditor({
           {rows.map((row, index) => (
             <div key={row.id} className="flex min-w-0 flex-wrap items-center gap-2">
               <Input
+                variant="settings"
                 className="h-8 min-w-0 flex-1 basis-48 font-mono text-xs"
                 aria-label={intl.formatMessage(
                   {
@@ -121,6 +122,7 @@ export function AgentEnvironmentEditor({
                 }
               />
               <Input
+                variant="settings"
                 className="h-8 min-w-0 flex-1 basis-48 font-mono text-xs"
                 aria-label={intl.formatMessage(
                   {
@@ -169,7 +171,7 @@ export function AgentEnvironmentEditor({
               </label>
               <NodexButton
                 variant="ghost"
-                size="sm"
+                size="toolbar"
                 aria-label={intl.formatMessage(
                   {
                     id: "workbench.agentEnvironmentEditor.removeVariable",

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import {
   chooseComposerEffort,
   chooseComposerModel,
@@ -185,7 +185,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     expect(readFileSync(harness.profile.settingsPath, "utf8")).not.toContain(
       "e2e-environment-token",
     );
-    await page.getByRole("button", { name: "Back to app" }).click();
+    await closeWorkbenchSettings(page);
     const sessionId = createUuidV7();
     const created = await invoke<{ ok: boolean }>(page, "project-sessions:create", {
       operationId: createBoundedOperationId("e2e.claude.create"),

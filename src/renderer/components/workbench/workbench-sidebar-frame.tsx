@@ -13,6 +13,10 @@ import { usePointerDrag } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 import { WorkbenchRailEdge } from "./workbench-app-rail";
 
+/** Row metrics every contextual sidebar's navigation shares: 30 px rows, 8 px insets, 10 px corners. */
+export const WORKBENCH_SIDEBAR_ROW_METRICS_CLASS =
+  "[--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]";
+
 export type SidebarResizePhase = "live" | "end" | "reset";
 export type SidebarResizeSurface = "inline" | "floating";
 

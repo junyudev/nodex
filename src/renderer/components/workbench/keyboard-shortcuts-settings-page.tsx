@@ -11,6 +11,7 @@ import {
 } from "@/lib/use-command-keymap-state";
 import { cn } from "@/lib/utils";
 import { captureGlobalDictationBareModifierHotkey } from "@/features/dictation/dictation-settings-runtime";
+import { Input } from "@/components/ui/input";
 import { NodexButton } from "../ui/button";
 import { HotkeySettingControl, type HotkeyCaptureMode } from "../ui/hotkey-setting-control";
 import {
@@ -270,7 +271,8 @@ export function KeyboardShortcutsSettingsPage() {
       contentClassName="electron:min-w-[calc(320px*var(--codex-window-zoom))]"
     >
       <div className="relative">
-        <input
+        <Input
+          variant="settings"
           ref={searchInputRef}
           aria-label={intl.formatMessage(settingsMessages.keyboardShortcutsSearchLabel)}
           placeholder={
@@ -282,7 +284,7 @@ export function KeyboardShortcutsSettingsPage() {
           readOnly={searchMode === "keystroke"}
           onChange={(event) => setSearchText(event.target.value)}
           onKeyDown={handleSearchKeyDown}
-          className="w-full rounded-md border border-token-border bg-transparent px-3 py-2 text-sm text-token-text-primary outline-none placeholder:text-token-text-tertiary pe-11"
+          className="pe-11 text-sm"
         />
         <button
           type="button"
@@ -304,20 +306,21 @@ export function KeyboardShortcutsSettingsPage() {
         </button>
       </div>
 
-      <div
-        className="flex flex-col divide-y-[0.5px] divide-token-border overflow-hidden rounded-lg border border-token-border"
-        style={{ background: "var(--color-background-panel, var(--color-token-bg-fog))" }}
-      >
+      <NodexSettingsSection>
         {keymapQuery.isLoading ? (
-          <div className="px-4 py-3 text-sm text-token-text-secondary">
+          <div className="py-2 text-sm text-token-text-secondary">
             {intl.formatMessage(settingsMessages.keyboardShortcutsLoadingShortcuts)}
           </div>
         ) : keymapQuery.isError ? (
-          <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-token-text-secondary">
+          <div className="flex items-center justify-between gap-3 py-2 text-sm text-token-text-secondary">
             <span>
               {intl.formatMessage(settingsMessages.keyboardShortcutsCouldNotLoadShortcuts)}
             </span>
-            <NodexButton variant="outline" size="xs" onClick={() => void keymapQuery.refetch()}>
+            <NodexButton
+              variant="secondary"
+              size="toolbar"
+              onClick={() => void keymapQuery.refetch()}
+            >
               {intl.formatMessage({
                 id: "settings.keyboardShortcuts.retry",
                 defaultMessage: "Retry",
@@ -325,7 +328,7 @@ export function KeyboardShortcutsSettingsPage() {
             </NodexButton>
           </div>
         ) : rows.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-token-text-secondary">
+          <div className="py-2 text-sm text-token-text-secondary">
             {intl.formatMessage(settingsMessages.keyboardShortcutsNoMatchingShortcuts)}
           </div>
         ) : (
@@ -344,7 +347,7 @@ export function KeyboardShortcutsSettingsPage() {
                 <th scope="col">{intl.formatMessage(settingsMessages.keyboardShortcutsActions)}</th>
               </tr>
             </thead>
-            <tbody className="divide-y-[0.5px] divide-token-border">
+            <tbody className="divide-y divide-(--color-border)">
               {rows.map((row) => (
                 <ShortcutTableRow
                   key={`${row.entry.id}:${row.binding?.key ?? "unassigned"}:${row.bindingIndex}`}
@@ -370,7 +373,7 @@ export function KeyboardShortcutsSettingsPage() {
             </tbody>
           </table>
         )}
-      </div>
+      </NodexSettingsSection>
 
       <NodexSettingsSection>
         <ExternalBrowserLinkShortcutSettingRow />
@@ -378,7 +381,7 @@ export function KeyboardShortcutsSettingsPage() {
 
       {state?.hasCustomBindings ? (
         <div className="flex items-center justify-end gap-2">
-          <NodexButton variant="outline" size="sm" onClick={() => setResetAllOpen(true)}>
+          <NodexButton variant="secondary" size="toolbar" onClick={() => setResetAllOpen(true)}>
             {intl.formatMessage(settingsMessages.keyboardShortcutsResetAllToDefaults)}
           </NodexButton>
         </div>
@@ -463,20 +466,16 @@ function ShortcutTableRow({
       ? formatAcceleratorLabel(binding.key, state.platform, intl.formatMessage)
       : "";
   const keybindingPadding =
-    isFirst && rowCount > 1
-      ? "px-4 pt-2 pb-0.5"
-      : !isFirst && rowCount > 1
-        ? "px-4 pt-0.5 pb-2"
-        : "px-4 py-2";
+    isFirst && rowCount > 1 ? "pt-2 pb-0.5" : !isFirst && rowCount > 1 ? "pt-0.5 pb-2" : "py-2";
 
   return (
     <tr className="group align-middle">
       {isFirst ? (
-        <td className="px-4 py-2" rowSpan={rowCount}>
-          <span className="block truncate text-token-text-primary">
+        <td className="py-2 pe-3" rowSpan={rowCount}>
+          <span className="block truncate font-medium text-token-text-primary">
             {intl.formatMessage(commandTitleMessage(entry))}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-token-text-secondary">
+          <span className="mt-0.5 block truncate text-sm text-token-text-secondary">
             {intl.formatMessage(commandDescriptionMessage(entry))}
           </span>
           {rowError ? (

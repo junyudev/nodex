@@ -1,4 +1,4 @@
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -194,8 +194,7 @@ const selectAppearance = async (page: Page, mode: "Light" | "Dark") => {
   if (mode === "Dark") await expect(page.locator("html")).toHaveClass(/dark/);
   else await expect(page.locator("html")).not.toHaveClass(/dark/);
   const checked = await choice.isChecked();
-  await page.getByRole("button", { name: "Back to app", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Back to app", exact: true })).toHaveCount(0);
+  await closeWorkbenchSettings(page);
   return checked;
 };
 
@@ -867,7 +866,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
 
           await openWorkbenchSettings(page);
           await expect(page.getByRole("link", { name: "General", exact: true })).toBeVisible();
-          await page.getByRole("button", { name: "Back to app", exact: true }).click();
+          await closeWorkbenchSettings(page);
           await expectSpacePage();
           claim(
             "Settings returns to the existing Space content",
@@ -946,7 +945,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               .getByRole("button", { name: "Home", exact: true })
               .getAttribute("aria-current"),
           );
-          await page.getByRole("button", { name: "Back to app", exact: true }).click();
+          await closeWorkbenchSettings(page);
           await expect(page.getByTestId("inbox-route")).toBeVisible();
           claim(
             "Settings returns to Home Inbox without entering Space",

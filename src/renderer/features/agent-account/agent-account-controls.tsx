@@ -94,7 +94,7 @@ export function AgentAccountBrowserActions({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={pending}
           onClick={() =>
@@ -166,6 +166,7 @@ function CredentialsForm({
         <label key={field.name} className="flex flex-col gap-1 text-xs text-token-text-secondary">
           {field.label}
           <Input
+            variant="settings"
             className="h-8 text-sm"
             type={field.secret ? "password" : "text"}
             aria-describedby={help ? helpId : undefined}
@@ -188,7 +189,7 @@ function CredentialsForm({
       <div>
         <NodexButton
           type="submit"
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={
             disabled ||
@@ -307,7 +308,7 @@ function ActiveInteraction({
             }
           />
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="secondary"
             onClick={() => void openExternalUrl(interaction.url)}
           >
@@ -389,7 +390,7 @@ export function AgentAccountControls({
           state?.cancellable || (cancellableStart && view?.request === "start") ? (
             <NodexButton
               ref={keepFocus}
-              size="sm"
+              size="toolbar"
               variant="ghost"
               disabled={view?.request === "cancel"}
               focusableWhenDisabled

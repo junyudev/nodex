@@ -13,7 +13,7 @@ export function SettingsNavigationRow({
   ariaLabel,
   onOpen,
 }: {
-  readonly icon: ReactNode;
+  readonly icon?: ReactNode;
   readonly label: ReactNode;
   readonly description?: ReactNode;
   readonly actions?: ReactNode;
@@ -21,21 +21,21 @@ export function SettingsNavigationRow({
   readonly onOpen: () => void;
 }) {
   return (
-    <div className="group grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 focus-within:bg-token-list-hover-background hover:bg-token-list-hover-background">
+    <div className="group grid min-h-10 w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 focus-within:bg-token-list-hover-background hover:bg-token-list-hover-background">
       <button
         type="button"
         aria-label={ariaLabel}
-        className="col-span-full row-start-1 grid min-w-0 flex-1 cursor-interaction grid-cols-subgrid items-center gap-2 rounded-[inherit] px-4 py-3 text-start focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border"
+        className="col-span-full row-start-1 grid min-w-0 flex-1 cursor-interaction grid-cols-subgrid items-center gap-2 rounded-lg py-2 text-start focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border"
         onClick={onOpen}
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="flex shrink-0">{icon}</span>
+          {icon ? <span className="flex shrink-0">{icon}</span> : null}
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <div className="min-w-0 text-sm font-medium break-words text-token-foreground">
               {label}
             </div>
             {description ? (
-              <div className="min-w-0 text-xs leading-4 text-wrap break-words text-(--color-text-secondary)">
+              <div className="min-w-0 text-sm text-wrap break-words text-(--color-text-secondary)">
                 {description}
               </div>
             ) : null}

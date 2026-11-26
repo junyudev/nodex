@@ -122,6 +122,35 @@ export interface SidebarInboxEntry {
  * so it starts where every other title starts; an 18px mark and 6px gap set
  * the text on the same line as the labels of the rows below.
  */
+/**
+ * A sidebar's title row: the destination's name at the size every sidebar shares, with its tools
+ * at the end. Settings and every workspace destination use it, so the title never moves between
+ * them.
+ */
+export function WorkbenchSidebarTitleRow({
+  title,
+  titleMark,
+  children,
+}: {
+  title: string;
+  titleMark?: ReactNode;
+  /** The title row's tools. */
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      data-workbench-sidebar-title-row=""
+      className="ms-2 flex h-(--sidebar-navigation-header-height) min-w-0 items-center pe-1"
+    >
+      <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[length:var(--text-heading-sm)] leading-6 font-semibold text-token-foreground select-none">
+        {titleMark}
+        <span className="min-w-0 truncate">{title}</span>
+      </h2>
+      {children ? <div className="flex shrink-0 items-center gap-1">{children}</div> : null}
+    </div>
+  );
+}
+
 /** A header Search that filters the sidebar in place instead of opening the command palette. */
 export interface WorkbenchSidebarInlineSearch {
   readonly label: string;
@@ -169,39 +198,30 @@ export function WorkbenchSidebarHeader({
           "after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-token-foreground/10 after:content-['']",
       )}
     >
-      <div
-        data-workbench-sidebar-title-row=""
-        className="ms-2 flex h-(--sidebar-navigation-header-height) min-w-0 items-center pe-1"
-      >
-        <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[length:var(--text-heading-sm)] leading-6 font-semibold text-token-foreground select-none">
-          {titleMark}
-          <span className="min-w-0 truncate">{title}</span>
-        </h2>
-        <div className="flex shrink-0 items-center gap-1">
-          {tools}
-          <NodexTooltip
-            tooltipContent={searchLabel}
-            shortcutLabel={searchShortcutLabel}
-            side="bottom"
+      <WorkbenchSidebarTitleRow title={title} titleMark={titleMark}>
+        {tools}
+        <NodexTooltip
+          tooltipContent={searchLabel}
+          shortcutLabel={searchShortcutLabel}
+          side="bottom"
+        >
+          <button
+            ref={inlineSearch?.buttonRef}
+            type="button"
+            className={cn(
+              SIDEBAR_HEADER_TOOL_BUTTON_CLASS,
+              inlineSearch?.expanded &&
+                "bg-token-charts-blue/10 text-token-charts-blue hover:bg-token-charts-blue/15 hover:text-token-charts-blue",
+            )}
+            aria-label={searchLabel}
+            aria-expanded={inlineSearch ? inlineSearch.expanded : undefined}
+            aria-controls={inlineSearch?.expanded ? inlineSearch.controlsId : undefined}
+            onClick={onSearch}
           >
-            <button
-              ref={inlineSearch?.buttonRef}
-              type="button"
-              className={cn(
-                SIDEBAR_HEADER_TOOL_BUTTON_CLASS,
-                inlineSearch?.expanded &&
-                  "bg-token-charts-blue/10 text-token-charts-blue hover:bg-token-charts-blue/15 hover:text-token-charts-blue",
-              )}
-              aria-label={searchLabel}
-              aria-expanded={inlineSearch ? inlineSearch.expanded : undefined}
-              aria-controls={inlineSearch?.expanded ? inlineSearch.controlsId : undefined}
-              onClick={onSearch}
-            >
-              <SettingsSearchIcon className="icon-xs" />
-            </button>
-          </NodexTooltip>
-        </div>
-      </div>
+            <SettingsSearchIcon className="icon-xs" />
+          </button>
+        </NodexTooltip>
+      </WorkbenchSidebarTitleRow>
       {inlineSearch?.expanded ? <div className="mb-1">{inlineSearch.field}</div> : null}
       {children == null ? null : <div className="flex flex-col gap-px">{children}</div>}
     </div>

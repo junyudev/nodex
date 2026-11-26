@@ -123,6 +123,7 @@ export function CodexExecutableSettingsControl({
       }
     >
       <Input
+        variant="settings"
         aria-label={intl.formatMessage(settingsMessages.codexExecutable)}
         className={NODEX_SETTINGS_FIELD_CLASS_NAME}
         value={draft}

@@ -12,7 +12,7 @@ import {
 } from "@/features/app-components/app-component-requirement";
 import { DictationPerformanceDetails } from "./dictation-performance-details";
 import { DictationDiagnosticsRecorder } from "./dictation-diagnostics-recorder";
-import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NodexButton } from "@/components/ui/button";
 import {
@@ -36,7 +36,6 @@ import {
   DeleteIcon,
   DownloadIcon,
   CopyIcon,
-  ChevronRightIcon,
   MoreActionsIcon,
   PlusIcon,
 } from "@/components/shared/icons";
@@ -313,7 +312,6 @@ export function VoiceSettingsPage({
   } | null>(null);
   const [shortcutErrors, setShortcutErrors] = useState<Record<string, string>>({});
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const advancedId = useId();
   const [dictionaryOpen, setDictionaryOpen] = useState(false);
   const [dictionaryDraft, setDictionaryDraft] = useState<readonly string[] | null>(null);
   const [historyAction, setHistoryAction] = useState<string | null>(null);
@@ -444,11 +442,7 @@ export function VoiceSettingsPage({
     }
   };
 
-  const renderShortcutSetting = (
-    entry: CommandKeymapEntry,
-    description: string,
-    descriptionExtra?: ReactNode,
-  ) => {
+  const renderShortcutSetting = (entry: CommandKeymapEntry, description: string) => {
     const label = intl.formatMessage(commandTitleMessage(entry));
     const error = shortcutErrors[entry.id];
     const accelerator = entry.keybindings[0]?.key ?? null;
@@ -459,7 +453,6 @@ export function VoiceSettingsPage({
           <div className="flex flex-col gap-1">
             <span>{description}</span>
             {error ? <span className="text-token-error-foreground">{error}</span> : null}
-            {descriptionExtra}
           </div>
         }
       >
@@ -497,28 +490,6 @@ export function VoiceSettingsPage({
       </NodexSettingsRow>
     );
   };
-
-  const advancedControl = singleTapShortcutEntry ? (
-    <NodexButton
-      size="xs"
-      variant="ghost"
-      aria-expanded={advancedOpen}
-      aria-controls={advancedId}
-      className="self-start gap-1 px-0 text-token-text-secondary hover:text-token-text-primary"
-      onClick={() => {
-        if (advancedOpen && shortcutCapture?.commandId === singleTapShortcutEntry.id) {
-          setShortcutCapture(null);
-        }
-        setAdvancedOpen(!advancedOpen);
-      }}
-    >
-      {intl.formatMessage({
-        id: "dictation.voiceSettingsPage.advanced",
-        defaultMessage: "Advanced",
-      })}
-      <ChevronRightIcon className={`icon-2xs ${advancedOpen ? "rotate-90" : ""}`} />
-    </NodexButton>
-  ) : null;
 
   const refreshMicrophones = async (): Promise<void> => {
     await requestMicrophoneAccess();
@@ -797,7 +768,7 @@ export function VoiceSettingsPage({
           >
             {languageQuery.isError && languageQuery.data === undefined ? (
               <NodexButton
-                size="xs"
+                size="toolbar"
                 variant="secondary"
                 onClick={() => void languageQuery.refetch()}
               >
@@ -807,7 +778,7 @@ export function VoiceSettingsPage({
                 })}
               </NodexButton>
             ) : languageQuery.data === undefined ? (
-              <NodexButton size="xs" variant="secondary" disabled>
+              <NodexButton size="toolbar" variant="secondary" disabled>
                 {intl.formatMessage({
                   id: "dictation.voiceSettingsPage.loading",
                   defaultMessage: "Loading…",
@@ -854,35 +825,44 @@ export function VoiceSettingsPage({
               />
             </NodexSettingsRow>
           ) : null}
-          {canConfigureGlobalDictation ? (
-            <div>
-              {primaryShortcutEntry
-                ? renderShortcutSetting(
-                    primaryShortcutEntry,
-                    intl.formatMessage({
-                      id: "dictation.voiceSettingsPage.holdShortcutDescription",
-                      defaultMessage: "Hold to dictate, or double-tap for hands-free",
-                    }),
-                    advancedControl,
-                  )
-                : advancedControl}
-              <div
-                id={advancedId}
-                hidden={!advancedOpen}
-                className="relative before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-[0.5px] before:bg-token-border before:content-['']"
-              >
-                {advancedOpen && singleTapShortcutEntry
-                  ? renderShortcutSetting(
-                      singleTapShortcutEntry,
-                      intl.formatMessage({
-                        id: "dictation.voiceSettingsPage.toggleShortcutDescription",
-                        defaultMessage: "Press once to start, and again to finish",
-                      }),
-                    )
-                  : null}
-              </div>
-            </div>
-          ) : null}
+          {canConfigureGlobalDictation && primaryShortcutEntry
+            ? renderShortcutSetting(
+                primaryShortcutEntry,
+                intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.holdShortcutDescription",
+                  defaultMessage: "Hold to dictate, or double-tap for hands-free",
+                }),
+              )
+            : null}
+        </NodexSettingsSection>
+      ) : null}
+
+      {canConfigureGlobalDictation && singleTapShortcutEntry ? (
+        <NodexSettingsSection
+          title={intl.formatMessage({
+            id: "dictation.voiceSettingsPage.advanced",
+            defaultMessage: "Advanced",
+          })}
+          disclosureHeading="quiet"
+          disclosure={{
+            open: advancedOpen,
+            onOpenChange: (open) => {
+              if (!open && shortcutCapture?.commandId === singleTapShortcutEntry.id) {
+                setShortcutCapture(null);
+              }
+              setAdvancedOpen(open);
+            },
+          }}
+        >
+          {advancedOpen
+            ? renderShortcutSetting(
+                singleTapShortcutEntry,
+                intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.toggleShortcutDescription",
+                  defaultMessage: "Press once to start, and again to finish",
+                }),
+              )
+            : null}
         </NodexSettingsSection>
       ) : null}
 
@@ -898,7 +878,7 @@ export function VoiceSettingsPage({
               defaultMessage: "Words to recognize in your speech",
             })}
           >
-            <NodexButton size="xs" variant="secondary" onClick={() => setDictionaryOpen(true)}>
+            <NodexButton size="toolbar" variant="secondary" onClick={() => setDictionaryOpen(true)}>
               {intl.formatMessage({
                 id: "dictation.voiceSettingsPage.manageDictionary",
                 defaultMessage: "Manage",
@@ -919,7 +899,7 @@ export function VoiceSettingsPage({
             })}
           >
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="secondary"
               disabled={
                 updateSettings.isPending || dictionaryEntries.length >= MAX_DICTIONARY_ENTRIES
@@ -947,6 +927,7 @@ export function VoiceSettingsPage({
           {dictionaryEntries.map((entry, index) => (
             <div key={index} className="flex w-full items-center gap-2 px-4 py-2">
               <Input
+                variant="settings"
                 data-dictation-dictionary-entry-index={index}
                 aria-label={intl.formatMessage(
                   {
@@ -1046,7 +1027,7 @@ export function VoiceSettingsPage({
               }
             >
               <NodexButton
-                size="xs"
+                size="toolbar"
                 variant="secondary"
                 disabled={historyAction !== null || !canTranscribeRecordings}
                 onClick={() => void importRecording()}
@@ -1106,7 +1087,7 @@ export function VoiceSettingsPage({
                     </NodexButton>
                   ) : recording.status !== "recording" && recording.sizeBytes > 0 ? (
                     <NodexButton
-                      size="xs"
+                      size="toolbar"
                       variant="secondary"
                       disabled={historyAction !== null || !canTranscribeRecordings}
                       onClick={() => void retryRecording(recording.id)}

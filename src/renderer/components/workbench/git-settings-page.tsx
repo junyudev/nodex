@@ -2,6 +2,7 @@ import { settingsMessages } from "./workbench-settings-search-catalog";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useState } from "react";
+import { Textarea } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { isCodexGitSettings } from "../../../shared/codex-git-settings";
 import type { CodexGitSettings } from "../../lib/types";
@@ -12,6 +13,7 @@ import {
   NodexSettingsPageSurface as SettingsPageSurface,
   NodexSettingsRow as SettingRow,
   NodexSettingsSection as SectionBlock,
+  NodexSettingsStackedRow,
 } from "../ui/settings";
 
 function GitInstructionSettingControl({
@@ -52,21 +54,19 @@ function GitInstructionSettingControl({
 
   // Saves when the field loses focus, like every other instruction field in Settings.
   return (
-    <SectionBlock title={label}>
-      <p className="m-0 px-3 pt-3 text-sm text-token-text-secondary">{description}</p>
-      <div className="p-3 pt-2">
-        <textarea
-          aria-label={ariaLabel}
-          className="mt-1.5 w-full resize-y rounded-md border border-token-input-border bg-token-input-background px-2.5 py-2 text-sm text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={saving}
-          onBlur={() => void save()}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={placeholder}
-          rows={6}
-          value={draft}
-        />
-      </div>
-    </SectionBlock>
+    <NodexSettingsStackedRow label={label} description={description}>
+      <Textarea
+        variant="settings"
+        aria-label={ariaLabel}
+        className="text-sm"
+        disabled={saving}
+        onBlur={() => void save()}
+        onChange={(event) => setDraft(event.target.value)}
+        placeholder={placeholder}
+        rows={6}
+        value={draft}
+      />
+    </NodexSettingsStackedRow>
   );
 }
 
@@ -201,46 +201,48 @@ export function GitSettingsPage({
           />
         </SettingRow>
       </SectionBlock>
-      <GitInstructionSettingControl
-        ariaLabel={intl.formatMessage(settingsMessages.gitCommitInstructionsLabel)}
-        description={intl.formatMessage(settingsMessages.gitCommitInstructionsDescription)}
-        label={intl.formatMessage(settingsMessages.gitCommitInstructionsLabel)}
-        onSave={(commitInstructions) =>
-          saveInstructions(
-            { commitInstructions },
-            intl.formatMessage({
-              id: "settings.git.savedCommitInstructions",
-              defaultMessage: "Saved commit instructions",
-            }),
-            intl.formatMessage({
-              id: "settings.git.failedToSaveCommitInstructions",
-              defaultMessage: "Failed to save commit instructions",
-            }),
-          )
-        }
-        placeholder={intl.formatMessage(settingsMessages.gitCommitInstructionsPlaceholder)}
-        value={settings.commitInstructions}
-      />
-      <GitInstructionSettingControl
-        ariaLabel={intl.formatMessage(settingsMessages.gitPullRequestInstructionsLabel)}
-        description={intl.formatMessage(settingsMessages.gitPullRequestInstructionsDescription)}
-        label={intl.formatMessage(settingsMessages.gitPullRequestInstructionsLabel)}
-        onSave={(pullRequestInstructions) =>
-          saveInstructions(
-            { pullRequestInstructions },
-            intl.formatMessage({
-              id: "settings.git.savedPullRequestInstructions",
-              defaultMessage: "Saved pull request instructions",
-            }),
-            intl.formatMessage({
-              id: "settings.git.failedToSavePullRequestInstructions",
-              defaultMessage: "Failed to save pull request instructions",
-            }),
-          )
-        }
-        placeholder={intl.formatMessage(settingsMessages.gitPullRequestInstructionsPlaceholder)}
-        value={settings.pullRequestInstructions}
-      />
+      <SectionBlock>
+        <GitInstructionSettingControl
+          ariaLabel={intl.formatMessage(settingsMessages.gitCommitInstructionsLabel)}
+          description={intl.formatMessage(settingsMessages.gitCommitInstructionsDescription)}
+          label={intl.formatMessage(settingsMessages.gitCommitInstructionsLabel)}
+          onSave={(commitInstructions) =>
+            saveInstructions(
+              { commitInstructions },
+              intl.formatMessage({
+                id: "settings.git.savedCommitInstructions",
+                defaultMessage: "Saved commit instructions",
+              }),
+              intl.formatMessage({
+                id: "settings.git.failedToSaveCommitInstructions",
+                defaultMessage: "Failed to save commit instructions",
+              }),
+            )
+          }
+          placeholder={intl.formatMessage(settingsMessages.gitCommitInstructionsPlaceholder)}
+          value={settings.commitInstructions}
+        />
+        <GitInstructionSettingControl
+          ariaLabel={intl.formatMessage(settingsMessages.gitPullRequestInstructionsLabel)}
+          description={intl.formatMessage(settingsMessages.gitPullRequestInstructionsDescription)}
+          label={intl.formatMessage(settingsMessages.gitPullRequestInstructionsLabel)}
+          onSave={(pullRequestInstructions) =>
+            saveInstructions(
+              { pullRequestInstructions },
+              intl.formatMessage({
+                id: "settings.git.savedPullRequestInstructions",
+                defaultMessage: "Saved pull request instructions",
+              }),
+              intl.formatMessage({
+                id: "settings.git.failedToSavePullRequestInstructions",
+                defaultMessage: "Failed to save pull request instructions",
+              }),
+            )
+          }
+          placeholder={intl.formatMessage(settingsMessages.gitPullRequestInstructionsPlaceholder)}
+          value={settings.pullRequestInstructions}
+        />
+      </SectionBlock>
     </SettingsPageSurface>
   );
 }

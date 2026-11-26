@@ -10,7 +10,7 @@ interface EvidenceClaim {
   actual: unknown;
 }
 
-const readFramePaint = async (section: Locator) =>
+const readSectionPaint = async (section: Locator) =>
   section.evaluate((element) => {
     const widths = (style: CSSStyleDeclaration) =>
       [
@@ -19,34 +19,23 @@ const readFramePaint = async (section: Locator) =>
         style.borderBottomWidth,
         style.borderLeftWidth,
       ].map((width) => Number.parseFloat(width));
-    const frames = (root: Element) =>
-      Array.from(root.querySelectorAll<HTMLElement>("*"))
-        .filter((node) => node.getBoundingClientRect().height > 0)
-        .filter((node) => widths(getComputedStyle(node)).every((width) => width > 0));
-    const general = document.getElementById("general");
-    const trigger = element.querySelector("button[aria-expanded]");
-    const content = trigger?.parentElement;
-    if (!general || !content) throw new Error("Missing General diagnostics surface");
-    const referenceFrame = frames(general)[0];
-    const paintedFrames = frames(element);
-    const frame = paintedFrames[0];
-    if (!referenceFrame || !frame) throw new Error("Missing Settings frame paint");
-    const frameBounds = frame.getBoundingClientRect();
-    const contentBounds = content.getBoundingClientRect();
-    const frameStyle = getComputedStyle(frame);
+    const reference = element.querySelector("h2")?.parentElement;
+    const headingRow = element.querySelector("button[aria-expanded]")?.closest("h2")?.parentElement;
+    if (!reference || !headingRow) throw new Error("Missing General diagnostics headings");
+    const framedSurfaces = Array.from(element.querySelectorAll<HTMLElement>("*"))
+      .filter((node) => node.getBoundingClientRect().height > 0)
+      .filter((node) => widths(getComputedStyle(node)).every((width) => width > 0));
+    const style = getComputedStyle(headingRow);
+    const sectionBounds = element.getBoundingClientRect();
+    const rowBounds = headingRow.getBoundingClientRect();
     return {
-      settingsBorder: getComputedStyle(referenceFrame).borderTopColor,
+      settingsBorder: getComputedStyle(reference).borderBottomColor,
       paint: {
-        framedSurfaces: paintedFrames.length,
-        frameBorderWidths: widths(frameStyle),
-        frameBorderColor: frameStyle.borderTopColor,
-        contentBorderWidths: widths(getComputedStyle(content)),
-        contentBackground: getComputedStyle(content).backgroundColor,
-        contentInsideFrame:
-          contentBounds.left >= frameBounds.left &&
-          contentBounds.right <= frameBounds.right &&
-          contentBounds.top >= frameBounds.top &&
-          contentBounds.bottom <= frameBounds.bottom,
+        framedSurfaces: framedSurfaces.length,
+        headingBorderWidths: widths(style),
+        headingBorderColor: style.borderBottomColor,
+        headingBackground: style.backgroundColor,
+        fullWidth: rowBounds.left === sectionBounds.left && rowBounds.right === sectionBounds.right,
       },
     };
   });
@@ -132,16 +121,15 @@ test("renders and toggles App server diagnostics in General settings", async ({}
         countVisible: await count.isVisible(),
       },
     );
-    const collapsedPaint = await readFramePaint(section);
+    const collapsedPaint = await readSectionPaint(section);
     claim(
-      "Collapsed diagnostics uses one complete muted Settings frame",
+      "Collapsed diagnostics uses the shared full-width heading divider",
       {
-        framedSurfaces: 1,
-        frameBorderWidths: [1, 1, 1, 1],
-        frameBorderColor: collapsedPaint.settingsBorder,
-        contentBorderWidths: [0, 0, 0, 0],
-        contentBackground: "rgba(0, 0, 0, 0)",
-        contentInsideFrame: true,
+        framedSurfaces: 0,
+        headingBorderWidths: [0, 0, 1, 0],
+        headingBorderColor: collapsedPaint.settingsBorder,
+        headingBackground: "rgba(0, 0, 0, 0)",
+        fullWidth: true,
       },
       collapsedPaint.paint,
     );

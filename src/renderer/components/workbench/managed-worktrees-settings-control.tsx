@@ -2,10 +2,11 @@ import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { toastFailure } from "@/lib/failure-toast";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshIcon } from "@/components/shared/icons";
+import { Input } from "@/components/ui/input";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
-import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
+import { NodexSettingsDropdownTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -116,23 +117,6 @@ function RefreshWorktreesButton({
   );
 }
 
-function WorktreeCardHeader({
-  action,
-  title,
-}: {
-  readonly action?: ReactNode;
-  readonly title: string;
-}) {
-  return (
-    <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
-      <NodexTooltip tooltipContent={title} side="top">
-        <h2 className="min-w-0 truncate text-sm font-medium text-token-text-primary">{title}</h2>
-      </NodexTooltip>
-      {action}
-    </div>
-  );
-}
-
 function WorktreeInventoryRow({
   deleting,
   onDelete,
@@ -146,14 +130,14 @@ function WorktreeInventoryRow({
 }) {
   const intl = useIntl();
   return (
-    <div className="flex flex-col gap-2 p-3">
+    <div className="flex flex-col gap-2 py-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium text-token-text-primary">
             {intl.formatMessage({ id: "settings.worktrees.worktree", defaultMessage: "Worktree" })}
           </div>
           <NodexTooltip tooltipContent={record.path} side="top">
-            <div className="mt-1 truncate text-xs text-token-text-secondary">{record.path}</div>
+            <div className="mt-1 truncate text-sm text-token-text-secondary">{record.path}</div>
           </NodexTooltip>
         </div>
         <NodexButton
@@ -162,10 +146,9 @@ function WorktreeInventoryRow({
             { path: record.path },
           )}
           aria-busy={deleting}
-          className="shrink-0 rounded-xl bg-token-charts-red/10 text-token-charts-red enabled:hover:bg-token-charts-red/20 enabled:active:bg-token-charts-red/30"
           disabled={deleting}
-          size="sm"
-          variant="ghost"
+          size="toolbar"
+          variant="destructive"
           onClick={onDelete}
         >
           {intl.formatMessage({ id: "settings.worktrees.delete", defaultMessage: "Delete" })}
@@ -399,17 +382,16 @@ export function ManagedWorktreesSettingControl({
               setRecords([]);
             }}
             triggerButton={
-              <NodexDropdownButtonTrigger
+              <NodexSettingsDropdownTrigger
                 aria-label={intl.formatMessage({
                   id: "settings.worktrees.executionHost",
                   defaultMessage: "Execution host",
                 })}
                 className="w-56"
-                size="sm"
               >
                 {hostOptions.find((host) => host.value === selectedHostId)?.label ??
                   intl.formatMessage({ id: "settings.worktrees.local", defaultMessage: "Local" })}
-              </NodexDropdownButtonTrigger>
+              </NodexSettingsDropdownTrigger>
             }
           />
         </NodexSettingsRow>
@@ -432,12 +414,13 @@ export function ManagedWorktreesSettingControl({
                 })
           }
         >
-          <input
+          <Input
+            variant="settings"
             aria-label={intl.formatMessage({
               id: "settings.worktrees.worktreeRoot",
               defaultMessage: "Worktree root",
             })}
-            className="w-56 rounded-md border border-token-input-border bg-token-input-background px-2.5 py-1.5 text-base text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-8 w-56 max-w-full text-sm"
             disabled={controlsDisabled}
             placeholder={intl.formatMessage({
               id: "settings.worktrees.default",
@@ -510,12 +493,13 @@ export function ManagedWorktreesSettingControl({
           }
         >
           <div className="ms-6">
-            <input
+            <Input
+              variant="settings"
               aria-label={intl.formatMessage({
                 id: "settings.worktrees.autoDeleteLimit",
                 defaultMessage: "Auto-delete limit",
               })}
-              className="w-24 rounded-md border border-token-input-border bg-token-input-background px-2.5 py-1.5 text-base text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-8 w-24 max-w-full text-sm"
               disabled={controlsDisabled || !resolvedSettings.autoDeleteEnabled}
               inputMode="numeric"
               min={1}
@@ -547,26 +531,24 @@ export function ManagedWorktreesSettingControl({
           })}
         </div>
       ) : loadError ? (
-        <NodexSettingsSection>
-          <WorktreeCardHeader
-            title={intl.formatMessage({
-              id: "settings.worktrees.unableToLoadWorktrees",
-              defaultMessage: "Unable to load worktrees",
-            })}
-            action={<RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />}
-          />
-          <div className="p-3 text-sm text-danger">{loadError}</div>
+        <NodexSettingsSection
+          title={intl.formatMessage({
+            id: "settings.worktrees.unableToLoadWorktrees",
+            defaultMessage: "Unable to load worktrees",
+          })}
+          action={<RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />}
+        >
+          <div className="py-2 text-sm text-danger">{loadError}</div>
         </NodexSettingsSection>
       ) : groupedRecords.length === 0 ? (
-        <NodexSettingsSection>
-          <WorktreeCardHeader
-            title={intl.formatMessage({
-              id: "settings.worktrees.noWorktreesYet",
-              defaultMessage: "No worktrees yet",
-            })}
-            action={<RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />}
-          />
-          <div className="semantic-text-secondary p-3 text-sm">
+        <NodexSettingsSection
+          title={intl.formatMessage({
+            id: "settings.worktrees.noWorktreesYet",
+            defaultMessage: "No worktrees yet",
+          })}
+          action={<RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />}
+        >
+          <div className="semantic-text-secondary py-2 text-sm">
             {intl.formatMessage({
               id: "settings.worktrees.worktreesCreatedByNodexWillAppear",
               defaultMessage: "Worktrees created by Nodex will appear here",
@@ -575,60 +557,49 @@ export function ManagedWorktreesSettingControl({
         </NodexSettingsSection>
       ) : (
         groupedRecords.map((group, groupIndex) => (
-          <section key={group.key} className="flex min-w-0 flex-col gap-1.5">
-            <div className="flex min-h-toolbar items-center justify-between gap-4 pb-1.5">
-              <div className="font-medium text-token-text-primary text-base">
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <NodexTooltip
-                    tooltipContent={group.repositoryPath ?? unknownRepositoryLabel}
-                    side="top"
-                  >
-                    <h2 className="min-w-0 truncate text-sm text-token-text-primary">
-                      {group.repositoryPath ?? unknownRepositoryLabel}
-                    </h2>
-                  </NodexTooltip>
-                </div>
-              </div>
-              {groupIndex === 0 ? (
+          <NodexSettingsSection
+            key={group.key}
+            title={group.repositoryPath ?? unknownRepositoryLabel}
+            action={
+              groupIndex === 0 ? (
                 <RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />
-              ) : null}
-            </div>
-            <NodexSettingsSection>
-              {group.records.map((record) => {
-                const key = `${record.hostId}\0${record.path}`;
-                return (
-                  <WorktreeInventoryRow
-                    key={key}
-                    deleting={deletingKey === key}
-                    record={record}
-                    onOpenThread={onOpenThread}
-                    onDelete={() => {
-                      if (deletingKey !== null) return;
-                      setDeletingKey(key);
-                      void service
-                        .delete(record.hostId, record.path)
-                        .then(() => {
-                          setRecords((current) =>
-                            current.filter(
-                              (item) => item.hostId !== record.hostId || item.path !== record.path,
-                            ),
-                          );
-                        })
-                        .catch(() =>
-                          toast.danger(
-                            intl.formatMessage({
-                              id: "settings.worktrees.failedToDeleteWorktree",
-                              defaultMessage: "Failed to delete worktree",
-                            }),
+              ) : undefined
+            }
+          >
+            {group.records.map((record) => {
+              const key = `${record.hostId}\0${record.path}`;
+              return (
+                <WorktreeInventoryRow
+                  key={key}
+                  deleting={deletingKey === key}
+                  record={record}
+                  onOpenThread={onOpenThread}
+                  onDelete={() => {
+                    if (deletingKey !== null) return;
+                    setDeletingKey(key);
+                    void service
+                      .delete(record.hostId, record.path)
+                      .then(() => {
+                        setRecords((current) =>
+                          current.filter(
+                            (item) => item.hostId !== record.hostId || item.path !== record.path,
                           ),
-                        )
-                        .finally(() => setDeletingKey(null));
-                    }}
-                  />
-                );
-              })}
-            </NodexSettingsSection>
-          </section>
+                        );
+                      })
+                      .catch(() =>
+                        toast.danger(
+                          intl.formatMessage({
+                            id: "settings.worktrees.failedToDeleteWorktree",
+                            defaultMessage: "Failed to delete worktree",
+                          }),
+                        ),
+                      )
+                      .finally(() => setDeletingKey(null));
+                  }}
+                />
+              );
+            })}
+          </NodexSettingsSection>
         ))
       )}
 

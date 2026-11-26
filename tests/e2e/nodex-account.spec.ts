@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { composerModelLabel, openComposerModelPicker } from "./support/composer-model-picker";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import {
   ElectronScenarioHarness,
   openNodexWindow,
@@ -194,7 +194,7 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     const artifacts = process.env.NODEX_REVIEW_ARTIFACTS;
     if (artifacts) {
       await mkdir(artifacts, { recursive: true });
-      await page.getByRole("button", { name: "Back to app", exact: true }).click();
+      await closeWorkbenchSettings(page);
       const setupNotice = page.getByRole("alert").filter({ hasText: "Global dictation is ready." });
       // oxlint-disable-next-line nodex/no-explicit-test-timeout -- The optional first-launch notice may never appear before recording.
       await setupNotice.waitFor({ state: "visible", timeout: 8_000 }).catch(() => undefined);
@@ -234,7 +234,7 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     await refreshNodexAccount(page);
     await expect(page.getByLabel("Remaining credits")).toHaveText("0");
     await page.screenshot({ path: test.info().outputPath("account-credit.png") });
-    await page.getByRole("button", { name: "Back to app", exact: true }).click();
+    await closeWorkbenchSettings(page);
     await page
       .getByRole("button", { name: /^Start new chat in /u })
       .first()
@@ -332,7 +332,7 @@ test("usage meter choices follow the Profile across windows and restart", async 
     const handoffs = await captureNodexBrowserHandoff(harness.application);
     await openNodexAccount(first);
     await completeLogin(harness, oauth, handoffs);
-    await first.getByRole("button", { name: "Back to app", exact: true }).click();
+    await closeWorkbenchSettings(first);
     const rail = first.locator("[data-workbench-rail-account-controls]");
     await expect(rail.locator("[data-nodex-credit-meter]")).toBeVisible();
     await expect(rail.locator('[data-usage-meter="codex"]')).toBeVisible();

@@ -111,6 +111,7 @@ function KeyRow({
           }}
         >
           <Input
+            variant="settings"
             aria-label={intl.formatMessage(
               {
                 id: "providerKeys.providerKeysSettingsSection.newApiKey",
@@ -126,11 +127,16 @@ function KeyRow({
             value={key}
             onChange={(event) => setKey(event.target.value)}
           />
-          <NodexButton size="sm" variant="secondary" type="submit" disabled={!key.trim() || busy}>
+          <NodexButton
+            size="toolbar"
+            variant="secondary"
+            type="submit"
+            disabled={!key.trim() || busy}
+          >
             {intl.formatMessage(busy ? messages.checking : messages.save)}
           </NodexButton>
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="ghostSecondary"
             disabled={busy}
             onClick={() => {
@@ -142,7 +148,7 @@ function KeyRow({
           </NodexButton>
         </form>
       ) : (
-        <NodexButton size="sm" variant="secondary" onClick={() => setReplacing(true)}>
+        <NodexButton size="toolbar" variant="secondary" onClick={() => setReplacing(true)}>
           <FormattedMessage
             id="providerKeys.providerKeysSettingsSection.replace"
             defaultMessage="Replace"
@@ -192,7 +198,7 @@ function ModelsRow({
       >
         {connection.preset === "custom" && editing === null ? (
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="ghostSecondary"
             disabled={busy}
             onClick={() => setEditing(connection.models.map(({ id }) => id).join("\n"))}
@@ -204,7 +210,7 @@ function ModelsRow({
           </NodexButton>
         ) : null}
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={busy || editing !== null}
           onClick={() => void run(() => keys.refreshModels(connection.id))}
@@ -229,6 +235,7 @@ function ModelsRow({
           }}
         >
           <Textarea
+            variant="settings"
             aria-label={intl.formatMessage(
               {
                 id: "providerKeys.providerKeysSettingsSection.modelIds",
@@ -244,11 +251,11 @@ function ModelsRow({
             onChange={(event) => setEditing(event.target.value)}
           />
           <div className="flex justify-end gap-2">
-            <NodexButton size="sm" variant="ghostSecondary" onClick={() => setEditing(null)}>
+            <NodexButton size="toolbar" variant="ghostSecondary" onClick={() => setEditing(null)}>
               <FormattedMessage {...messages.cancel} />
             </NodexButton>
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="secondary"
               type="submit"
               disabled={!typed.length || busy}
@@ -295,6 +302,7 @@ function ConnectionDetail({
         })}
       >
         <Input
+          variant="settings"
           aria-label={intl.formatMessage(
             {
               id: "providerKeys.providerKeysSettingsSection.connectionName",
@@ -352,7 +360,7 @@ function ConnectionDetail({
               />
             </span>
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="destructive"
               disabled={removing}
               onClick={() => {
@@ -368,7 +376,7 @@ function ConnectionDetail({
               <FormattedMessage {...messages.remove} />
             </NodexButton>
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="ghost"
               autoFocus
               disabled={removing}
@@ -382,7 +390,7 @@ function ConnectionDetail({
           </>
         ) : (
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="ghost"
             className="text-danger"
             onClick={() => setConfirming(true)}

@@ -39,7 +39,12 @@ function WindowsStartupControl({ open }: { readonly open: boolean }) {
       })}
       description={status}
     >
-      <NodexButton variant="secondary" size="xs" disabled={startup.busy} onClick={startup.open}>
+      <NodexButton
+        variant="secondary"
+        size="toolbar"
+        disabled={startup.busy}
+        onClick={startup.open}
+      >
         {intl.formatMessage({
           id: "settings.windowsStartup.openStartupApps",
           defaultMessage: "Open Startup Apps",

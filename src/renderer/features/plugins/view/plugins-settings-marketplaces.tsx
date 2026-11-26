@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { CheckmarkIcon, TrashIcon } from "@/components/shared/icons/customize-action-icons";
 import { MarketplaceGlyphIcon } from "@/components/shared/icons/plugin-detail-icons";
-import { CardTile } from "@/components/ui/card-tile";
+import { NodexSettingsRow, NodexSettingsSection } from "@/components/ui/settings";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -59,7 +59,7 @@ function MarketplaceLoadErrorsBanner({
   if (errors.length === 0) return null;
   const remaining = errors.length - LOAD_ERRORS_SHOWN;
   return (
-    <div className="rounded-md border border-(--color-border) p-3">
+    <div className="py-2">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">
@@ -90,7 +90,7 @@ function MarketplaceLoadErrorsBanner({
             ) : null}
           </div>
         </div>
-        <ToolbarButton color="outline" disabled={retrying} onClick={onRetry}>
+        <ToolbarButton color="secondary" disabled={retrying} onClick={onRetry}>
           {intl.formatMessage({
             id: "plugins.pluginsSettingsMarketplaces.retry",
             defaultMessage: "Retry",
@@ -410,7 +410,7 @@ export function MarketplacesTab({
           description={query.error.message}
           actions={
             <ToolbarButton
-              color="outline"
+              color="secondary"
               disabled={refreshing || query.isFetching}
               onClick={() => void retry()}
             >
@@ -443,16 +443,18 @@ export function MarketplacesTab({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-2">
+        <NodexSettingsSection>
           {marketplaces.map((marketplace) => (
-            <CardTile
+            <NodexSettingsRow
               key={`${marketplace.name}:${marketplace.path ?? "remote"}`}
-              presentation="card"
-              className="group justify-center border-none"
-              icon={<MarketplaceGlyphIcon className="icon-sm text-(--color-text-secondary)" />}
-              title={marketplaceLabel(marketplace, intl)}
+              label={
+                <span className="flex min-w-0 items-center gap-2">
+                  <MarketplaceGlyphIcon className="icon-sm shrink-0 text-token-text-secondary" />
+                  <span className="truncate">{marketplaceLabel(marketplace, intl)}</span>
+                </span>
+              }
               description={
-                <>
+                <span className="flex min-w-0 flex-col gap-0.5">
                   <span>
                     {intl.formatMessage(
                       {
@@ -465,53 +467,51 @@ export function MarketplacesTab({
                   {marketplace.path == null ? null : (
                     <span className="truncate">{marketplace.path}</span>
                   )}
-                </>
+                </span>
               }
-              descriptionClassName="flex min-w-0 flex-col gap-0.5 leading-snug"
-              actions={
-                <div className="flex items-center gap-2">
-                  <NodexTooltip
-                    tooltipContent={marketplaceUpgradeTooltip(marketplace, intl)}
-                    side="top"
+            >
+              <div className="flex items-center gap-2">
+                <NodexTooltip
+                  tooltipContent={marketplaceUpgradeTooltip(marketplace, intl)}
+                  side="top"
+                >
+                  <ToolbarButton
+                    color="secondary"
+                    aria-label={intl.formatMessage({
+                      id: "plugins.pluginsSettingsMarketplaces.upgradeMarketplace",
+                      defaultMessage: "Upgrade marketplace",
+                    })}
+                    disabled={!marketplace.canUpgrade || upgrading != null}
+                    loading={upgrading === marketplace.name}
+                    onClick={() => void upgrade(marketplace)}
                   >
-                    <ToolbarButton
-                      color="outline"
-                      aria-label={intl.formatMessage({
-                        id: "plugins.pluginsSettingsMarketplaces.upgradeMarketplace",
-                        defaultMessage: "Upgrade marketplace",
-                      })}
-                      disabled={!marketplace.canUpgrade || upgrading != null}
-                      loading={upgrading === marketplace.name}
-                      onClick={() => void upgrade(marketplace)}
-                    >
-                      {intl.formatMessage({
-                        id: "plugins.pluginsSettingsMarketplaces.upgrade",
-                        defaultMessage: "Upgrade",
-                      })}
-                    </ToolbarButton>
-                  </NodexTooltip>
-                  <NodexTooltip
-                    tooltipContent={marketplaceRemoveTooltip(marketplace, intl)}
-                    side="top"
+                    {intl.formatMessage({
+                      id: "plugins.pluginsSettingsMarketplaces.upgrade",
+                      defaultMessage: "Upgrade",
+                    })}
+                  </ToolbarButton>
+                </NodexTooltip>
+                <NodexTooltip
+                  tooltipContent={marketplaceRemoveTooltip(marketplace, intl)}
+                  side="top"
+                >
+                  <ToolbarButton
+                    color="ghost"
+                    size="icon"
+                    aria-label={intl.formatMessage({
+                      id: "plugins.pluginsSettingsMarketplaces.removeMarketplace",
+                      defaultMessage: "Remove marketplace",
+                    })}
+                    disabled={!marketplace.canRemove || upgrading != null}
+                    onClick={() => setRemoving(marketplace)}
                   >
-                    <ToolbarButton
-                      color="ghost"
-                      size="icon"
-                      aria-label={intl.formatMessage({
-                        id: "plugins.pluginsSettingsMarketplaces.removeMarketplace",
-                        defaultMessage: "Remove marketplace",
-                      })}
-                      disabled={!marketplace.canRemove || upgrading != null}
-                      onClick={() => setRemoving(marketplace)}
-                    >
-                      <TrashIcon className="icon-xs" />
-                    </ToolbarButton>
-                  </NodexTooltip>
-                </div>
-              }
-            />
+                    <TrashIcon className="icon-xs" />
+                  </ToolbarButton>
+                </NodexTooltip>
+              </div>
+            </NodexSettingsRow>
           ))}
-        </div>
+        </NodexSettingsSection>
       )}
       {removing == null ? null : (
         <RemoveMarketplaceDialog

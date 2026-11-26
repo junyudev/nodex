@@ -359,7 +359,7 @@ function ReadFailure({
       <span role="alert" className="min-w-0 flex-1">
         {label}: {message}
       </span>
-      <NodexButton size="sm" variant="ghost" disabled={disabled} onClick={onRetry}>
+      <NodexButton size="toolbar" variant="ghost" disabled={disabled} onClick={onRetry}>
         {intl.formatMessage({
           id: "settings.conversationImport.tryAgain",
           defaultMessage: "Try again",
@@ -1013,7 +1013,7 @@ function ConversationImportSection({
         <span role="alert" className="text-danger">
           {lookup.message}
         </span>
-        <NodexButton size="xs" variant="ghost" onClick={() => void lookUp(query)}>
+        <NodexButton size="toolbar" variant="ghost" onClick={() => void lookUp(query)}>
           {intl.formatMessage({
             id: "settings.conversationImport.tryAgain",
             defaultMessage: "Try again",
@@ -1056,7 +1056,7 @@ function ConversationImportSection({
           defaultMessage: "No conversations match.",
         })}
       </span>
-      <NodexButton size="xs" variant="ghost" onClick={clearFilters}>
+      <NodexButton size="toolbar" variant="ghost" onClick={clearFilters}>
         {intl.formatMessage({
           id: "settings.conversationImport.clearFilters",
           defaultMessage: "Clear filters",
@@ -1080,9 +1080,9 @@ function ConversationImportSection({
         id: "settings.conversationImport.chats",
         defaultMessage: "Chats",
       })}
-      cardClassName="h-[min(44rem,max(22rem,calc(100dvh-13rem)))]"
+      groupClassName="h-[min(44rem,max(22rem,calc(100dvh-13rem)))]"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 py-2">
         <PageSearchInput
           id={searchId}
           label={intl.formatMessage({
@@ -1192,7 +1192,7 @@ function ConversationImportSection({
       </div>
 
       {placements.isError ? (
-        <div className="px-4">
+        <div>
           <ReadFailure
             label={intl.formatMessage({
               id: "settings.conversationImport.placements",
@@ -1245,13 +1245,13 @@ function ConversationImportSection({
           {[...browse.errors.values()].map(({ source, message }) => (
             <div
               key={nativeConversationSourceKey(source)}
-              className="flex min-w-0 items-center gap-2 px-4 py-1.5 text-xs text-danger"
+              className="flex min-w-0 items-center gap-2 py-1.5 text-xs text-danger"
             >
               <span role="alert" className="min-w-0 flex-1">
                 {conversationSourceLabel(source)}: {message}
               </span>
               <NodexButton
-                size="xs"
+                size="toolbar"
                 variant="ghost"
                 disabled={importing}
                 onClick={() => retrySource(source)}
@@ -1299,7 +1299,7 @@ function ConversationImportSection({
             </div>
             {selected.length > 0 && !locked ? (
               <NodexButton
-                size="xs"
+                size="toolbar"
                 variant="ghost"
                 className="shrink-0 text-token-text-secondary"
                 onClick={() =>
@@ -1318,7 +1318,7 @@ function ConversationImportSection({
         }
       >
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="primary"
           disabled={
             locked || selected.length === 0 || needingFolder.length > 0 || awaitingPlacement
@@ -1337,7 +1337,7 @@ const folderName = (cwd: string) => cwd.split(/[\\/]/u).findLast(Boolean) ?? cwd
 
 function ConversationImportNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm text-token-text-secondary">
+    <div className="flex flex-1 items-center justify-center gap-2 py-3 text-sm text-token-text-secondary">
       {children}
     </div>
   );

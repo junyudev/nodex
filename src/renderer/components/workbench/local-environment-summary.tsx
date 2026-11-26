@@ -48,7 +48,7 @@ function PlatformSelector({
       {LIFECYCLE_PLATFORM_OPTIONS.map((option) => (
         <NodexButton
           key={option.value}
-          size="composer"
+          size="toolbar"
           variant={value === option.value ? "secondary" : "ghost"}
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
@@ -218,14 +218,14 @@ function ActionsSummary({ environment }: { environment: WorktreeEnvironmentDefin
           />
         </p>
       ) : (
-        <div className="divide-y-[0.5px] divide-token-border overflow-hidden rounded-lg border-[0.5px] border-token-border">
+        <div className="divide-y divide-(--color-border)">
           {environment.actions.map((action, index) => {
             const expanded = expandedActions.has(index);
             const multiline = action.command.includes("\n");
             const commandId = `local-environment-command-${index}`;
             return (
               <div key={`${action.name}-${index}`} className="flex flex-col">
-                <div className="flex min-h-12 items-center gap-3 px-3 py-2.5">
+                <div className="flex min-h-12 items-center gap-3 py-2">
                   <LocalEnvironmentActionIcon
                     icon={action.icon}
                     className="shrink-0 text-token-text-secondary"

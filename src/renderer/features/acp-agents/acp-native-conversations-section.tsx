@@ -146,7 +146,7 @@ function SessionRow({
           </time>
         ) : null}
         {imported ? (
-          <NodexButton size="sm" variant="secondary" disabled={busy} onClick={onOpen}>
+          <NodexButton size="toolbar" variant="secondary" disabled={busy} onClick={onOpen}>
             {state?.kind === "opening"
               ? intl.formatMessage({
                   id: "acpAgents.acpNativeConversationsSection.opening",
@@ -175,7 +175,7 @@ function SessionRow({
               />
             ) : null}
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="secondary"
               disabled={busy || state?.kind === "confirm-resume"}
               onClick={onImport}
@@ -205,13 +205,13 @@ function SessionRow({
               { agent: agentName },
             )}
           </span>
-          <NodexButton size="xs" variant="ghost" onClick={onDismiss}>
+          <NodexButton size="toolbar" variant="ghost" onClick={onDismiss}>
             <FormattedMessage
               id="acpAgents.acpNativeConversationsSection.cancel"
               defaultMessage="Cancel"
             />
           </NodexButton>
-          <NodexButton size="xs" variant="secondary" onClick={onConfirmResume}>
+          <NodexButton size="toolbar" variant="secondary" onClick={onConfirmResume}>
             <FormattedMessage
               id="acpAgents.acpNativeConversationsSection.import"
               defaultMessage="Import"
@@ -229,13 +229,13 @@ function SessionRow({
               { agent: agentName },
             )}
           </span>
-          <NodexButton size="xs" variant="ghost" onClick={onDismiss}>
+          <NodexButton size="toolbar" variant="ghost" onClick={onDismiss}>
             <FormattedMessage
               id="acpAgents.acpNativeConversationsSection.keep"
               defaultMessage="Keep"
             />
           </NodexButton>
-          <NodexButton size="xs" variant="destructive" onClick={onConfirmDelete}>
+          <NodexButton size="toolbar" variant="destructive" onClick={onConfirmDelete}>
             <FormattedMessage
               id="acpAgents.acpNativeConversationsSection.delete"
               defaultMessage="Delete"
@@ -448,7 +448,7 @@ function SessionList({
             <span className="flex-1" />
           )}
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="ghost"
             disabled={listing.loading}
             onClick={() => {
@@ -605,7 +605,7 @@ export function AcpNativeConversationsSection({
               }
             >
               <NodexButton
-                size="sm"
+                size="toolbar"
                 variant="secondary"
                 disabled={connecting}
                 onClick={() => {

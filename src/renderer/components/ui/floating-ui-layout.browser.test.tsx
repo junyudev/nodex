@@ -541,10 +541,10 @@ describe("shared floating ui", () => {
       const shortcut = tooltip.querySelector("kbd");
       if (!shortcut) throw new Error("Expected a tooltip shortcut chip.");
       const style = getComputedStyle(tooltip);
-      expect(style.paddingLeft).toBe("8px");
-      expect(style.paddingRight).toBe("8px");
-      expect(style.paddingTop).toBe("4px");
-      expect(style.paddingBottom).toBe("4px");
+      expect(style.paddingLeft).toBe("12px");
+      expect(style.paddingRight).toBe("12px");
+      expect(style.paddingTop).toBe("5px");
+      expect(style.paddingBottom).toBe("5px");
       expect(shortcut.tagName).toBe("KBD");
       expect(shortcut.getBoundingClientRect().height).toBe(18);
     });

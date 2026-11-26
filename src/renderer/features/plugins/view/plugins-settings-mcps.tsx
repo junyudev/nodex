@@ -8,8 +8,12 @@ import {
   GearIcon20,
   PlusMdIcon,
 } from "@/components/shared/icons/plugin-detail-icons";
-import { NodexSwitch } from "@/components/ui/button";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import { NodexButton, NodexSwitch } from "@/components/ui/button";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexSettingsDropdownTrigger,
+} from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
 import { NodexSettingsRow, NodexSettingsSection } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
@@ -104,8 +108,7 @@ function McpServerRow({
             align="end"
             disabled={authenticating}
             triggerButton={
-              <ToolbarButton
-                color="outline"
+              <NodexSettingsDropdownTrigger
                 disabled={authenticating}
                 aria-label={intl.formatMessage(
                   {
@@ -118,7 +121,7 @@ function McpServerRow({
                 {typeof registrationLabel.short === "string"
                   ? registrationLabel.short
                   : intl.formatMessage(registrationLabel.short)}
-              </ToolbarButton>
+              </NodexSettingsDropdownTrigger>
             }
           >
             {(Object.keys(REGISTRATION_LABELS) as ClientRegistration[]).map((option) => (
@@ -127,8 +130,9 @@ function McpServerRow({
               </NodexDropdownItem>
             ))}
           </NodexDropdownMenu>
-          <ToolbarButton
-            color="outline"
+          <NodexButton
+            size="toolbar"
+            variant="secondary"
             disabled={starting}
             onClick={() => onAuthenticate(registration)}
           >
@@ -138,7 +142,7 @@ function McpServerRow({
                   id: "plugins.pluginsSettingsMcps.authenticate",
                   defaultMessage: "Authenticate",
                 })}
-          </ToolbarButton>
+          </NodexButton>
         </>
       ) : null}
       {onEdit == null ? null : (
@@ -466,10 +470,10 @@ function McpServerEditor({
             )}
           </div>
           {isExisting ? (
-            <ToolbarButton
-              color="outline"
+            <NodexButton
+              size="toolbar"
+              variant="destructive"
               disabled={submitting}
-              className="border-(--color-text-danger) bg-transparent text-(--color-text-danger)"
               onClick={() => void uninstall()}
             >
               <TrashIcon className="icon-xs" />
@@ -477,7 +481,7 @@ function McpServerEditor({
                 id: "plugins.pluginsSettingsMcps.uninstall",
                 defaultMessage: "Uninstall",
               })}
-            </ToolbarButton>
+            </NodexButton>
           ) : null}
         </header>
         <div className={cn("relative flex flex-col gap-1.5", submitting && "pointer-events-none")}>

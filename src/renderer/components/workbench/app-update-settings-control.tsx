@@ -229,13 +229,13 @@ export function AppUpdateSettingsControlView({
         }
       >
         {updatesAvailable && status.status === "downloaded" ? (
-          <NodexButton variant="primary" size="xs" disabled={busy} onClick={onInstall}>
+          <NodexButton variant="primary" size="toolbar" disabled={busy} onClick={onInstall}>
             {intl.formatMessage(settingsMessages.appUpdatesRestartToUpdate)}
           </NodexButton>
         ) : updatesAvailable && status.supported ? (
           <NodexButton
             variant="secondary"
-            size="xs"
+            size="toolbar"
             disabled={busy || updateAlreadyActive}
             onClick={onCheckNow}
           >
