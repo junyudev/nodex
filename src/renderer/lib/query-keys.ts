@@ -220,6 +220,8 @@ export const queryKeys = {
     counts: () => spaceQueryKey(["inbox", "counts"] as const),
     window: (scope: string) => spaceQueryKey(["inbox", "window", scope] as const),
     snoozed: (scope: string) => spaceQueryKey(["inbox", "snoozed", scope] as const),
+    /** What the Inbox knows about one Page, read for the Page itself. */
+    pageIntake: (pageId: string) => spaceQueryKey(["inbox", "page-intake", pageId] as const),
     settings: () => spaceQueryKey(["inbox", "settings"] as const),
     activity: (scope: string, filter: string) =>
       spaceQueryKey(["inbox", "activity", scope, filter] as const),

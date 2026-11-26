@@ -64,11 +64,11 @@ import {
   inboxTriageModel,
   isChatAction,
   type InboxOutcome,
-  type InboxRowEdit,
   type InboxRowOffers,
 } from "./inbox-presentation";
 import { automationChatAgent, useInboxAutomationDecisionTask } from "./inbox-automation-decision";
 import { useInboxOutcome } from "./use-inbox-outcome";
+import { useInboxRowEdit } from "./inbox-row-edits";
 import {
   InboxDispatchEditor,
   draftForInboxItem,
@@ -297,17 +297,20 @@ function SuggestionWhy({
   proposal,
   runsOn,
   worktree,
+  provenance,
 }: {
   readonly proposal: InboxProposal;
   readonly runsOn: InboxAgentPresentation | null;
   /** Where a new chat in a Project works; null when the place does not apply. */
   readonly worktree: boolean | null;
+  /** Why and by whom, unless the suggestion already says so where it is shown. */
+  readonly provenance: boolean;
 }) {
   const location = useInboxChatLocationText();
   return (
     <>
       {isChatAction(proposal.action) ? <span>{proposal.summary}</span> : null}
-      {proposal.rationale ? (
+      {provenance && proposal.rationale ? (
         <span className="text-token-description-foreground">{proposal.rationale}</span>
       ) : null}
       {runsOn ? (
@@ -326,13 +329,13 @@ function SuggestionWhy({
           <span className="min-w-0">{location.description(worktree)}</span>
         </span>
       ) : null}
-      {proposal.producedBy ? (
+      {provenance && proposal.producedBy ? (
         <span className="text-token-description-foreground">
           <FormattedMessage id="inbox.inboxTriage.suggestedBy" defaultMessage="Suggested by" />{" "}
           {proposal.producedBy}
         </span>
       ) : null}
-      {proposal.origin === "automation" ? (
+      {provenance && proposal.origin === "automation" ? (
         <span className="text-token-description-foreground">
           <FormattedMessage
             id="inbox.inboxTriage.fromYourAutomation"
@@ -341,6 +344,69 @@ function SuggestionWhy({
         </span>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Why a suggestion was made and by whom, said in full where it has room: its rationale, then the
+ * Agent that wrote it and the run that shows how Nodex decided.
+ */
+export function SuggestionProvenance({
+  proposal,
+  decidedBy = null,
+  onOpenSession,
+}: {
+  readonly proposal: Pick<
+    InboxProposal,
+    "rationale" | "producedBy" | "origin" | "decisionSessionId"
+  >;
+  /** Who decided it, once a person did. */
+  readonly decidedBy?: string | null;
+  readonly onOpenSession?: (sessionId: string) => void;
+}) {
+  const decisionSessionId = proposal.decisionSessionId;
+  const author =
+    proposal.origin === "automation" ? (
+      <FormattedMessage
+        id="inbox.inboxTriage.fromYourAutomation"
+        defaultMessage="From your automation"
+      />
+    ) : proposal.origin === "agent" && proposal.producedBy ? (
+      <span>
+        <FormattedMessage id="inbox.inboxTriage.suggestedBy" defaultMessage="Suggested by" />{" "}
+        {proposal.producedBy}
+      </span>
+    ) : null;
+  const decided =
+    decisionSessionId && onOpenSession ? (
+      <button
+        type="button"
+        className="cursor-interaction hover:text-token-foreground hover:underline"
+        onClick={() => onOpenSession(decisionSessionId)}
+      >
+        <FormattedMessage
+          id="inbox.inboxTriage.howNodexDecided"
+          defaultMessage="How Nodex decided"
+        />
+      </button>
+    ) : null;
+  const facts = [author, decidedBy, decided].filter((fact) => fact !== null);
+  if (!proposal.rationale && facts.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-1 text-xs leading-5 text-token-description-foreground">
+      {proposal.rationale ? <p className="whitespace-pre-wrap">{proposal.rationale}</p> : null}
+      {facts.length > 0 ? (
+        <p className="flex min-w-0 flex-wrap items-center gap-x-1.5">
+          {/* A separator wraps with the fact after it, so no line ends on one. */}
+          {facts.map((fact, index) => (
+            <span key={index} className="flex min-w-0 items-center gap-x-1.5">
+              {index > 0 ? <span aria-hidden="true">·</span> : null}
+              {fact}
+            </span>
+          ))}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -421,8 +487,11 @@ function SuggestionStrip({
   onToggleAddition,
   skillReview,
   planSteps,
+  provenance = null,
 }: {
   readonly proposal: InboxProposal;
+  /** Why it was suggested and by whom, where the suggestion has room to say so. */
+  readonly provenance?: ReactNode;
   /** The cards a plan would create, laid out by the caller that knows Projects and Agents. */
   readonly planSteps?: ReactNode;
   /** For an automation's run, how it will go; its instructions are the message above. */
@@ -440,13 +509,21 @@ function SuggestionStrip({
     : "text-token-foreground";
   const action = proposal.action;
   if (action.type === "execute_decision") {
-    return (
+    const line = (
       <p
         data-testid="inbox-suggestion"
         className="min-w-0 truncate text-[13px] leading-5 text-token-description-foreground"
       >
         {decisionLine ?? proposal.summary}
       </p>
+    );
+    return provenance ? (
+      <div className="flex min-w-0 flex-col gap-2">
+        {line}
+        {provenance}
+      </div>
+    ) : (
+      line
     );
   }
   return (
@@ -488,6 +565,7 @@ function SuggestionStrip({
           })}
         </ul>
       ) : null}
+      {provenance}
     </div>
   );
 }
@@ -535,8 +613,14 @@ export function InboxTriage({
   onOpenAutomation,
   decided = null,
   onReply,
+  surface = "stream",
 }: {
   readonly item: InboxItem;
+  /**
+   * Where the suggestion shows: beneath its message in the stream, or on the message's own Page,
+   * which has room to say why it was made and by whom rather than leaving that to a hover.
+   */
+  readonly surface?: "stream" | "page";
   /** Answers a Nodex post from the composer. */
   readonly onReply?: () => void;
   /**
@@ -571,10 +655,11 @@ export function InboxTriage({
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
   const intl = useIntl();
-  // What the row changed on this suggestion before deciding; another suggestion starts afresh.
   const hostAvailable = useSpaceHostAvailable();
   const now = new Date(useInboxClock());
-  const [rowEdit, setRowEdit] = useState<InboxRowEdit | null>(null);
+  // What the reader changed on this suggestion before deciding, in whichever view; another
+  // suggestion starts afresh.
+  const [rowEdit, setRowEdit] = useInboxRowEdit(item.proposal?.proposalId ?? null);
   const task = useInboxAutomationDecisionTask(item);
   const taskAgent = task ? automationChatAgent(task) : null;
   const automationDecision: InboxDispatchAutomationDecision | null = item.automationDecision
@@ -989,6 +1074,11 @@ export function InboxTriage({
                     />
                   ) : null
                 }
+                provenance={
+                  surface === "page" ? (
+                    <SuggestionProvenance proposal={proposal} onOpenSession={onOpenSession} />
+                  ) : null
+                }
               />
             </Settle>
           ),
@@ -1044,6 +1134,7 @@ export function InboxTriage({
                 why={
                   <SuggestionWhy
                     proposal={proposal}
+                    provenance={surface === "stream"}
                     runsOn={
                       choosesModel ? describeInboxAgent(agents, chatAgent, undefined, intl) : null
                     }

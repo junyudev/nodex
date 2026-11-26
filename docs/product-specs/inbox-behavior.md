@@ -220,6 +220,26 @@ hydrate only after the bounded fact window is selected.
   than withdrawing it, and never asks for new advice by itself; see
   [Suggestions](#suggestions). A write that leaves the message as it was, such
   as a rename, a move, or opening the Page, changes nothing.
+- The Page shows what Nodex made of its message beneath the body, since the
+  body is the message, and above `Referenced by`. While the message waits in
+  the reader's Inbox, that is its strip and row exactly as the stream offers
+  them, under `Suggestion` while it is advice. Every decision works there, so
+  a message opened from the Board is decided where it is read. The Page says in
+  full what the stream leaves to a hover: the rationale, `Suggested by`, and
+  `How Nodex decided`, which opens the Decision run. A grouped suggestion shows
+  on each member's Page. What the reader changes on a suggestion before
+  deciding, an addition dropped or a model chosen, is the same in the stream
+  and on the Page. Edits that make the suggestion outdated show beneath the
+  body as they are typed. The Page's own menu deletes it, so the message menu
+  there has no `Delete`.
+- Once a decision sends the message to a chat, the Page keeps one line saying
+  where it went, as the card said when it left, with its time and `Open chat`.
+  Opening it shows exactly what the chat received: the prompt, the additions
+  that were kept and the skills, then why Nodex suggested it and who confirmed
+  it. Additions the reader dropped are not shown. Returning the message to the
+  Inbox retires the line. Other decisions, a plan included, leave nothing beyond
+  the Page's Status and place. A Member sees neither for a message that waits in someone else's
+  Inbox.
 
 ## Editing a message
 

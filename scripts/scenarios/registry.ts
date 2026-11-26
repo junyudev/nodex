@@ -28,6 +28,7 @@ import { libraryFilesScenario } from "./scenarios/library-files";
 import { libraryLocationsScenario } from "./scenarios/library-locations";
 import { pageFileProvenanceScenario } from "./scenarios/page-file-provenance";
 import { inboxTriageScenario } from "./scenarios/inbox-triage";
+import { inboxPageSuggestionsScenario } from "./scenarios/inbox-page-suggestions";
 import { inboxSuggestionSpendScenario } from "./scenarios/inbox-suggestion-spend";
 import { automationsAskInInboxScenario } from "./scenarios/automations-ask-in-inbox";
 import { spaceContentScenario } from "./scenarios/space-content";
@@ -64,6 +65,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [libraryLocationsScenario.id, libraryLocationsScenario],
   [pageFileProvenanceScenario.id, pageFileProvenanceScenario],
   [inboxTriageScenario.id, inboxTriageScenario],
+  [inboxPageSuggestionsScenario.id, inboxPageSuggestionsScenario],
   [automationsAskInInboxScenario.id, automationsAskInInboxScenario],
   [inboxSuggestionSpendScenario.id, inboxSuggestionSpendScenario],
   [spaceContentScenario.id, spaceContentScenario],

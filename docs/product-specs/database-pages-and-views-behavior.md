@@ -860,7 +860,9 @@ by a Data Source and the corresponding schema/value coordinates are valid.
 Losing or changing membership removes only that capability; Page identity,
 Document, content, and local editing surface remain stable.
 
-Opening a Page keeps one composition: toolbar, title, Properties, then body.
+Opening a Page keeps one composition: toolbar, title, Properties, body, then
+what the Inbox made of it when the Page is a message (see
+[Intake Pages](#intake-pages)), then `Referenced by`.
 Page Detail renders Properties as soon as it is readable; the Document gates
 only the title and body editors. Until then the title shows its known text in
 the editor's exact typography and position, and the body area stays quiet,
@@ -1185,3 +1187,7 @@ decision. The Status row reads `Needs your decision` for the Owner and
 `Waiting for Alice’s decision` for others. A Status edit that leaves Triage
 handles the message and records the decision in Activity. A location-only move
 keeps Status and moves any waiting decision to the Page’s current Project.
+
+The body is the message, so what Nodex made of it sits beneath the body, as its
+strip sits beneath the message in the Inbox; see
+[Inbox: Messages are Pages](inbox-behavior.md#messages-are-pages).

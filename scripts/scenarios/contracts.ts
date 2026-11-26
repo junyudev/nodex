@@ -176,6 +176,13 @@ export interface ScenarioRoutingSuggestionSeed {
   readonly automaticDispatch?: boolean;
 }
 
+export interface ScenarioInboxConfirmationSeed {
+  readonly proposalId: string;
+  readonly selection: AgentSelection;
+  readonly confirmedBy: "user" | "nodex";
+  readonly action?: InboxDispatchAction;
+}
+
 export interface ScenarioInboxDispatchSeed {
   readonly pageIds: readonly string[];
   readonly action: InboxDispatchAction;
@@ -255,7 +262,11 @@ export interface ScenarioSeedPort {
   /** Begins Host routing and settles the same request as inbox_suggest. */
   settleRoutingSuggestion(input: ScenarioRoutingSuggestionSeed): Promise<string>;
   setInboxRoutingConsent(startMyRequests: boolean): Promise<void>;
-  confirmInboxRequestByNodex(proposalId: string, selection: AgentSelection): Promise<void>;
+  /**
+   * Confirms a settled suggestion as the user would, or as Nodex does under the user's standing
+   * consent. `action` is the suggestion as the reader left it, such as with an addition dropped.
+   */
+  confirmInboxSuggestion(input: ScenarioInboxConfirmationSeed): Promise<void>;
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;
   createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void>;

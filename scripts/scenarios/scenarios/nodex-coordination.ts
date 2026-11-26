@@ -344,7 +344,11 @@ const materialize = async (
     explicitRequest: true,
     automaticDispatch: true,
   });
-  await port.confirmInboxRequestByNodex(startedProposal, WORK_AGENT.selection);
+  await port.confirmInboxSuggestion({
+    proposalId: startedProposal,
+    selection: WORK_AGENT.selection,
+    confirmedBy: "nodex",
+  });
   await port.completeInboxDispatch(startedProposal, createUuidV7());
 
   const question = await port.sendInboxMessage("What is still waiting on me?");

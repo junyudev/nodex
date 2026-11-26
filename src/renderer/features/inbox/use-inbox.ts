@@ -12,6 +12,7 @@ import type {
   InboxCounts,
   InboxItem,
   InboxScope,
+  PageIntake,
   UpdateInboxSettingsInput,
 } from "../../../shared/inbox";
 import { inboxScopeKey } from "../../../shared/inbox";
@@ -24,6 +25,7 @@ import {
   readInboxWindow,
   readInboxSnoozeWindow,
   readInboxActivity,
+  readPageIntake,
   updateInboxSettings,
 } from "@/lib/inbox-runtime";
 import { queryKeys } from "@/lib/query-keys";
@@ -66,6 +68,19 @@ export function useInboxSummary(scope: InboxScope) {
   return useQuery({
     queryKey: queryKeys.inbox.summary(inboxScopeKey(scope)),
     queryFn: () => readInboxSummary({ scope }),
+    staleTime: 5_000,
+  });
+}
+
+/**
+ * What the Inbox knows about one Page: its message while it waits, or what its decision sent to a
+ * chat. It refreshes with every other Inbox read, so editing the Page's body updates its
+ * suggestion as the reader types.
+ */
+export function usePageIntake(pageId: string) {
+  return useQuery<PageIntake | null>({
+    queryKey: queryKeys.inbox.pageIntake(pageId),
+    queryFn: () => readPageIntake(pageId),
     staleTime: 5_000,
   });
 }

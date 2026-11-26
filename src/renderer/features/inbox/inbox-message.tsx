@@ -52,6 +52,7 @@ import {
   inboxPageStatusMark,
   type InboxRowOffers,
 } from "./inbox-presentation";
+import type { InboxActions } from "./use-inbox-actions";
 
 export interface InboxMessageMenuHandlers {
   readonly onDispatch: () => void;
@@ -62,7 +63,43 @@ export interface InboxMessageMenuHandlers {
   readonly onHold: (hold: InboxHold) => void;
   readonly onSetKind: (kind: InboxEntryKind) => void;
   readonly onSetImportant: (important: boolean) => void;
-  readonly onDelete: () => void;
+  /** Absent where the message's Page offers its own Delete. */
+  readonly onDelete?: () => void;
+}
+
+/** The menu's handlers for one message, the same wherever the message is decided. */
+export function inboxMessageMenuHandlers(
+  item: InboxItem,
+  actions: InboxActions,
+  {
+    onDispatch,
+    suggestionsOffered,
+    onDelete,
+  }: {
+    readonly onDispatch: () => void;
+    readonly suggestionsOffered: boolean;
+    readonly onDelete?: () => void;
+  },
+): InboxMessageMenuHandlers {
+  const proposal = item.proposal;
+  return {
+    onDispatch,
+    onSuggestAgain: suggestionsOffered
+      ? () =>
+          void actions.requestSuggestion(
+            proposal?.pageIds ?? [item.pageId],
+            proposal?.basis ?? [item.basis],
+          )
+      : undefined,
+    onSetDone: (done) => void actions.setState([item.pageId], done ? "done" : "open"),
+    onHold: (hold) =>
+      void (hold === "notes"
+        ? actions.saveToNotes([item.pageId], [item.basis])
+        : actions.keep([item.pageId])),
+    onSetKind: (kind) => void actions.setKind(item.pageId, kind),
+    onSetImportant: (marked) => void actions.setImportant(item.pageId, marked),
+    ...(onDelete ? { onDelete } : {}),
+  };
 }
 
 /**
@@ -185,14 +222,18 @@ export function InboxMessageMenu({
           );
         })}
       </NodexDropdownSummarySubmenuItem>
-      <NodexDropdownSeparator />
-      <NodexDropdownItem
-        className="text-token-error-foreground"
-        leftSlot={<DeleteIcon className="icon-xs" />}
-        onSelect={handlers.onDelete}
-      >
-        <FormattedMessage id="inbox.inboxMessage.delete" defaultMessage="Delete" />
-      </NodexDropdownItem>
+      {handlers.onDelete ? (
+        <>
+          <NodexDropdownSeparator />
+          <NodexDropdownItem
+            className="text-token-error-foreground"
+            leftSlot={<DeleteIcon className="icon-xs" />}
+            onSelect={handlers.onDelete}
+          >
+            <FormattedMessage id="inbox.inboxMessage.delete" defaultMessage="Delete" />
+          </NodexDropdownItem>
+        </>
+      ) : null}
     </NodexDropdownMenu>
   );
 }

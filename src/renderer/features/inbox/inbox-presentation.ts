@@ -8,6 +8,7 @@ import type {
   InboxDispatchAction,
   InboxEntryKind,
   InboxAutomationDecision,
+  InboxHandoff,
   InboxImportantMessage,
   InboxItem,
   InboxPageStatus,
@@ -517,6 +518,77 @@ const chatLabel = (
       );
 };
 
+/** Where a chat decision sent the message, or is sending it. */
+const chatOutcomeLabel = (
+  proposal: Pick<InboxProposal, "answeredQuestion" | "chat" | "targetProjectName" | "confirmedBy">,
+  type: "new_chat" | "send_to_chat",
+  delivered: boolean,
+  intl: IntlShape,
+) => {
+  const chat = proposal.chat
+    ? presentSessionTitle(proposal.chat, intl)
+    : intl.formatMessage({ id: "inbox.inboxPresentation.chatFallback", defaultMessage: "chat" });
+  return proposal.answeredQuestion
+    ? intl.formatMessage(
+        {
+          id: "inbox.inboxPresentation.answeringQuestion",
+          defaultMessage:
+            "{completed, select, true {Answered} other {Answering}} “{chat}”’s question",
+        },
+        { completed: String(delivered), chat },
+      )
+    : chatLabel(
+        type,
+        delivered,
+        chat,
+        proposal.targetProjectName,
+        proposal.confirmedBy === "nodex",
+        intl,
+      );
+};
+
+export interface InboxHandoffPresentation {
+  /** Where the message went, as the Inbox said it when the message left. */
+  readonly label: string;
+  /** The chat it went to, when it went to one. */
+  readonly sessionId: string | null;
+  /** Who decided, when the label does not already say: a person confirming or writing it. */
+  readonly decidedBy: string | null;
+}
+
+/** What a handled message's decision sent, read on the message's Page afterwards. */
+export function describeInboxHandoff(
+  handoff: InboxHandoff,
+  intl = getIntl(),
+): InboxHandoffPresentation {
+  const { proposal } = handoff;
+  const action = proposal.action;
+  // Nodex names itself in the label; a person names themselves here.
+  const decidedBy =
+    proposal.confirmedBy === "nodex"
+      ? null
+      : proposal.origin === "user"
+        ? intl.formatMessage(
+            {
+              id: "inbox.inboxPresentation.handledManuallyBy",
+              defaultMessage: "Handled manually {actor}",
+            },
+            { actor: handoff.actorLabel },
+          )
+        : intl.formatMessage(
+            { id: "inbox.inboxPresentation.confirmedBy", defaultMessage: "Confirmed {actor}" },
+            { actor: handoff.actorLabel },
+          );
+  if (isChatAction(action))
+    return {
+      label: chatOutcomeLabel(proposal, action.type, true, intl),
+      sessionId:
+        proposal.chat?.sessionId ?? (action.type === "send_to_chat" ? action.sessionId : null),
+      decidedBy,
+    };
+  return { label: proposal.summary, sessionId: proposal.chat?.sessionId ?? null, decidedBy };
+}
+
 const doneStatus = (intl: IntlShape): InboxChatStatusPresentation => ({
   label: intl.formatMessage({ id: "inbox.inboxPresentation.done", defaultMessage: "Done" }),
   tone: "quiet",
@@ -603,36 +675,12 @@ export function describeInboxOutcome(
       ? { kind: "session", sessionId: chat.sessionId }
       : null;
     const done = item.pageStatus?.id === "done";
-    const label = proposal.answeredQuestion
-      ? intl.formatMessage(
-          {
-            id: "inbox.inboxPresentation.answeringQuestion",
-            defaultMessage:
-              "{completed, select, true {Answered} other {Answering}} “{chat}”’s question",
-          },
-          {
-            completed: String(proposal.state === "completed"),
-            chat: chat
-              ? presentSessionTitle(chat, intl)
-              : intl.formatMessage({
-                  id: "inbox.inboxPresentation.chatFallback",
-                  defaultMessage: "chat",
-                }),
-          },
-        )
-      : chatLabel(
-          proposal.action.type,
-          proposal.state === "completed",
-          chat
-            ? presentSessionTitle(chat, intl)
-            : intl.formatMessage({
-                id: "inbox.inboxPresentation.chatFallback",
-                defaultMessage: "chat",
-              }),
-          proposal.targetProjectName,
-          proposal.confirmedBy === "nodex",
-          intl,
-        );
+    const label = chatOutcomeLabel(
+      proposal,
+      proposal.action.type,
+      proposal.state === "completed",
+      intl,
+    );
     if (proposal.state === "dispatching") {
       return {
         icon: "pending",

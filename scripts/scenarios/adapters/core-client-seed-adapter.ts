@@ -554,31 +554,35 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     });
   }
 
-  async confirmInboxRequestByNodex(
-    proposalId: string,
-    selection: Parameters<ScenarioSeedPort["confirmInboxRequestByNodex"]>[1],
-  ) {
+  async confirmInboxSuggestion({
+    proposalId,
+    selection,
+    confirmedBy,
+    action,
+  }: Parameters<ScenarioSeedPort["confirmInboxSuggestion"]>[0]) {
     await runScenarioInbox(
       this.#runtime,
-      Effect.fn("Scenario.confirmInboxRequestByNodex")(function* (inbox) {
+      Effect.fn("Scenario.confirmInboxSuggestion")(function* (inbox) {
         const window = yield* inbox.window({ scope: LIBRARY_INBOX, filter: "inbox", first: 200 });
         const proposal = window.items
           .flatMap((item) => (item.proposal ? [item.proposal] : []))
           .find((proposal) => proposal.proposalId === proposalId);
-        if (!proposal) throw new Error("Scenario automatic proposal is missing");
+        if (!proposal) throw new Error("Scenario suggestion is missing");
         const prepared = yield* inbox.prepareConfirmation({
           kind: "proposal",
           storeEpoch: window.storeEpoch,
           proposalId,
           expectedRevision: proposal.revision,
           basis: proposal.basis,
-          action: proposal.action,
+          action: action ?? proposal.action,
         });
         if (prepared.kind !== "proposal") throw new Error("Expected a proposal confirmation");
         const { kind: _kind, ...confirmation } = prepared;
-        yield* inbox.confirm(confirmation, "nodex");
+        yield* inbox.confirm(confirmation, confirmedBy);
       }),
-      { ...DEFAULT_INBOX_SETTINGS, dispatchMode: "act_on_requests" },
+      confirmedBy === "nodex"
+        ? { ...DEFAULT_INBOX_SETTINGS, dispatchMode: "act_on_requests" }
+        : DEFAULT_INBOX_SETTINGS,
       [
         {
           instanceId: selection.instanceId,

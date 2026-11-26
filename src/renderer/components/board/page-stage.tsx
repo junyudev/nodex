@@ -29,6 +29,7 @@ import {
   PageTitlePlaceholder,
 } from "./page-stage/frame";
 import { PageStagePropertiesSection } from "./page-stage/properties-section";
+import { PageIntakeSection } from "@/features/inbox/page-intake-section";
 import { PageStageRawContent } from "./page-stage/raw-content";
 import { PageStageToolbar } from "./page-stage/toolbar";
 import { PageStageReferencedBy } from "./page-stage/referenced-by-section";
@@ -350,6 +351,8 @@ interface PageStageContentProps {
   readonly controller: PageStageController;
   readonly title: ReactNode;
   readonly description: ReactNode;
+  /** What the Inbox made of the Page, when it is a message: beneath the body, which is the message. */
+  readonly intake?: ReactNode;
   readonly referencedBy?: ReactNode;
   readonly syncStatus?: ReactNode;
 }
@@ -358,6 +361,7 @@ function PageStageContent({
   controller,
   title,
   description,
+  intake,
   referencedBy,
   syncStatus,
 }: PageStageContentProps) {
@@ -369,6 +373,7 @@ function PageStageContent({
       body={
         <>
           {description}
+          {intake}
           {referencedBy}
         </>
       }
@@ -632,6 +637,12 @@ export function PageStage(props: PageStageProps) {
           bodyNavigationRef={bodyNavigationRef}
           editorCommands={editorCommands}
           onEditorCommandsChange={setEditorCommands}
+        />
+      }
+      intake={
+        <PageIntakeSection
+          pageId={page.id}
+          onOpenPage={(pageId) => void props.onOpenPage?.({ pageId })}
         />
       }
       referencedBy={
