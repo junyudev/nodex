@@ -2,10 +2,10 @@ import { isUtf8 } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { readChangeSections } from "../../src/shared/change-media";
 import {
   CHANGES_DIRECTORY,
   formatReleaseNotes,
-  readUnreleasedChanges,
   type RepositoryFile,
 } from "../../src/shared/changelog";
 
@@ -51,7 +51,7 @@ export function readChangeFilesAtRef(cwd: string, ref: string): readonly Reposit
 
 export function renderReleaseNotesAtRef(cwd: string, ref: string, headline: string): string {
   return formatReleaseNotes(
-    { headline, sections: readUnreleasedChanges(readChangeFilesAtRef(cwd, ref)) },
+    { headline, sections: readChangeSections(readChangeFilesAtRef(cwd, ref)) },
     `Release source ${ref}`,
   );
 }

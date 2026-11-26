@@ -3,12 +3,12 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { readChangeSections } from "../../src/shared/change-media";
 import {
   assertReleaseHeadline,
   formatReleaseNotes,
   formatReleaseSections,
   parseReleaseNotes,
-  readUnreleasedChanges,
   type PublishedRelease,
   type ReleaseNotesSection,
   type RepositoryFile,
@@ -186,7 +186,7 @@ function resolvePromotionCandidate(cwd: string, repo: string, requestedTag?: str
   const sourceSha = tagTarget(repo, nightly.tag_name);
   if (!sourceSha) throw new Error("The Nightly tag has no source commit.");
   assertOnMain(cwd, sourceSha, fetchMain(cwd));
-  const sections = readUnreleasedChanges(readChangeFilesAtRef(cwd, sourceSha));
+  const sections = readChangeSections(readChangeFilesAtRef(cwd, sourceSha));
   if (sections.length === 0) {
     throw new Error(
       `${nightly.tag_name} has no release entries in changes/. Select a Nightly built from source with change files.`,
@@ -477,7 +477,7 @@ export function advancePublishedRelease(cwd: string, repo: string, tag: string):
     throw new Error(`Stable tag ${tag} does not match source version ${source.packageVersion}.`);
   }
   const sourceChanges = source.files.changes;
-  const notes = notesFromGitHub(release, readUnreleasedChanges(sourceChanges));
+  const notes = notesFromGitHub(release, readChangeSections(sourceChanges));
   const date = new Date(release.published_at).toISOString().slice(0, 10);
   advanceMain({ cwd, sourceSha, release: { ...notes, version, date }, sourceChanges });
 }

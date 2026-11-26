@@ -1,7 +1,7 @@
+import { readChangeSections } from "../../../src/shared/change-media";
 import {
   CHANGELOG_SECTION_TITLES,
   parseChangelog,
-  readUnreleasedChanges,
   type ReleaseNotesSection,
   type RepositoryFile,
 } from "../../../src/shared/changelog";
@@ -99,7 +99,7 @@ export function releasesToShow(
   content: string,
   changeFiles: readonly RepositoryFile[],
 ): ChangelogRelease[] {
-  const unreleased = toCategories(readUnreleasedChanges(changeFiles));
+  const unreleased = toCategories(readChangeSections(changeFiles));
   const published = parseChangelog(content).map(({ version, date, headline, sections }) => ({
     version,
     date,

@@ -583,7 +583,7 @@ Apple signing, updater, Agent runtime, Browser runtime, or provenance changes.
    describes. To choose a non-patch version, run
    `vp run release:version -- <x.y.z>` and commit the three version sources
    through the ordinary source workflow. `vp run release:check` validates the
-   version sources, `CHANGELOG.md` and every change file.
+   version sources, `CHANGELOG.md` and every change file, including media references.
 2. Wait for **Nightly Release** to succeed and test the published Nightly.
 3. Read what the Nightly would publish, write the release's headline, and
    dispatch **Release** with both. A blank tag selects the newest published

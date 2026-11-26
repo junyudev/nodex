@@ -324,8 +324,7 @@ test("advances only shipped and unchanged files, prepends the release and is ide
   const source = git("rev-parse", "HEAD");
   const release = publishedRelease(source);
   const sourceChanges = readChangeFilesAtRef(fixture, source);
-  // A byte-level edit stays pending even if it renders as the same entry.
-  const edited = "Added concurrent verification.\r\n";
+  const edited = "Added more concurrent verification.\r\n";
   writeFileSync(join(fixture, secondPath), edited);
   writeFileSync(join(fixture, newPath), shippedEntry);
   commit("Keep concurrent notes on main");
@@ -348,6 +347,36 @@ test("advances only shipped and unchanged files, prepends the release and is ide
   ).toThrow("different release notes or date");
 
   const base = git("rev-parse", "HEAD");
+  commit("Advance version", source);
+  expect(isVersionAdvance(fixture, base, "HEAD")).toBe(true);
+});
+
+test("advance removes shipped media entries and media-only edits while keeping changed text", () => {
+  const withMedia = (entry: string, hashDigit: string) =>
+    `---\nmedia:\n  - caption: A working release\n    light: ${hashDigit.repeat(64)}.png\n---\n\n${entry}`;
+  writeFileSync(join(fixture, shippedPath), withMedia(shippedEntry, "a"));
+  writeFileSync(join(fixture, secondPath), withMedia("Shipped entry with a later reshoot.\n", "b"));
+  writeFileSync(join(fixture, newPath), withMedia("Shipped entry with a later text edit.\n", "c"));
+  commit("Add media to the Nightly changes");
+  const source = git("rev-parse", "HEAD");
+  const release = publishedRelease(source);
+  const sourceChanges = readChangeFilesAtRef(fixture, source);
+  expect(renderReleaseNotesAtRef(fixture, source, release.headline)).toBe(
+    "Verified releases\n\n### Added\n\n- Added a verified release flow.\n- Shipped entry with a later reshoot.\n- Shipped entry with a later text edit.\n",
+  );
+
+  writeFileSync(join(fixture, secondPath), withMedia("Shipped entry with a later reshoot.\n", "d"));
+  const edited = withMedia("An entry with new text after the Nightly.\n", "c");
+  writeFileSync(join(fixture, newPath), edited);
+  commit("Reshoot one change and update another entry");
+  const base = git("rev-parse", "HEAD");
+
+  expect(advanceReleaseSource(fixture, release, sourceChanges)).toBe(true);
+  const snapshot = inspectReleaseSource(fixture);
+  expect(parseChangelog(snapshot.changelog)).toEqual([release, previousRelease]);
+  expect(snapshot.files.changes.filter(({ path }) => path !== "changes/README.md")).toEqual([
+    { path: newPath, content: edited },
+  ]);
   commit("Advance version", source);
   expect(isVersionAdvance(fixture, base, "HEAD")).toBe(true);
 });

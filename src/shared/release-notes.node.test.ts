@@ -1,4 +1,5 @@
 import { expect, test, describe } from "vite-plus/test";
+import { readUnreleasedChangesWithMedia } from "./change-media";
 import { CHANGELOG_PAGE_URL, decodeChangelogFeed } from "./changelog-feed";
 import { changelogInlineTokens } from "./changelog-inline";
 import {
@@ -116,6 +117,136 @@ describe("changelog", () => {
           change("changed/2026-11-24-wrapped.md", "\r\nOne sentence\r\n  that wraps.  \r\n\r\n"),
         ]),
       ).toEqual([{ kind: "changed", entries: ["One sentence that wraps."] }]);
+    });
+
+    const light = `${"a".repeat(64)}.png`;
+    const dark = `${"b".repeat(64)}.mp4`;
+    const frontMatter = (yaml: string) => `---\n${yaml}\n---\n\nAn entry.\n`;
+
+    test("reads media and entry metadata in release order, with the same text as release notes", () => {
+      const fixed = change("fixed/2026-11-24-no-media.md", "Fixed an issue.\n");
+      const changed = change(
+        "changed/2026-11-26-feature.md",
+        frontMatter(
+          `media:\n  - caption: See both themes\n    light: ${light}\n    dark: ${dark}\n  - caption: See the result\n    dark: ${"c".repeat(64)}.png`,
+        ).replaceAll("\n", "\r\n"),
+      );
+      const files = [fixed, changed];
+      expect(readUnreleasedChangesWithMedia(files)).toEqual([
+        {
+          kind: "changed",
+          date: "2026-11-26",
+          slug: "feature",
+          path: changed.path,
+          entry: "An entry.",
+          media: [
+            { caption: "See both themes", light, dark },
+            { caption: "See the result", dark: `${"c".repeat(64)}.png` },
+          ],
+        },
+        {
+          kind: "fixed",
+          date: "2026-11-24",
+          slug: "no-media",
+          path: fixed.path,
+          entry: "Fixed an issue.",
+          media: [],
+        },
+      ]);
+      expect(readUnreleasedChanges(files)).toEqual([
+        { kind: "changed", entries: ["An entry."] },
+        { kind: "fixed", entries: ["Fixed an issue."] },
+      ]);
+    });
+
+    test("requires unique slugs across kinds and dates", () => {
+      const files = [change("added/2026-11-24-setup.md"), change("fixed/2026-11-26-setup.md")];
+      const duplicate =
+        /changes\/fixed\/2026-11-26-setup\.md.*same slug "setup".*changes\/added\/2026-11-24-setup\.md.*changes\/README\.md/u;
+      expect(() => readUnreleasedChanges(files)).toThrow(duplicate);
+      expect(() => readUnreleasedChangesWithMedia(files)).toThrow(duplicate);
+    });
+
+    test("opens and closes front matter on exact delimiter lines", () => {
+      expect(
+        readUnreleasedChanges([change("fixed/2026-11-24-entry.md", "--- \nAn entry.\n")]),
+      ).toEqual([{ kind: "fixed", entries: ["--- An entry."] }]);
+      const file = change("fixed/2026-11-24-entry.md", "---\nmedia: []\n--- \nAn entry.\n");
+      expect(() => readUnreleasedChangesWithMedia([file])).toThrow(
+        /changes\/fixed\/2026-11-24-entry\.md.*needs a closing ---.*changes\/README\.md/u,
+      );
+    });
+
+    test.each([
+      ["empty front matter", "", "only front matter key"],
+      ["unknown front matter key", "media: []\ntitle: Other", "only front matter key"],
+      ["an empty list", "media: []", "at least one item"],
+      ["a map instead of a list", "media: {}", "at least one item"],
+      ["malformed YAML", "media: [", "valid YAML"],
+      ["duplicate YAML keys", "media: []\nmedia: []", "unique keys"],
+      [
+        "unknown item key",
+        `media: [{ caption: Sample, light: ${light}, alt: Something }]`,
+        "only caption, light and dark",
+      ],
+      ["missing caption", `media: [{ light: ${light} }]`, "media caption"],
+      ["no themes", "media: [{ caption: Sample }]", "light or dark file"],
+      [
+        "an explicit null theme",
+        `media: [{ caption: Sample, light: ${light}, dark: null }]`,
+        "dark media file",
+      ],
+      [
+        "an uppercase hash",
+        `media: [{ caption: Sample, light: ${light.toUpperCase()} }]`,
+        "light media file",
+      ],
+      [
+        "a non-media extension",
+        `media: [{ caption: Sample, light: ${"a".repeat(64)}.gif }]`,
+        "light media file",
+      ],
+      [
+        "a duplicate in two themes",
+        `media: [{ caption: Sample, light: ${light}, dark: ${light} }]`,
+        "more than once",
+      ],
+      [
+        "a duplicate in two items",
+        `media: [{ caption: Sample, light: ${light} }, { caption: Other, dark: ${light} }]`,
+        "more than once",
+      ],
+    ])("rejects %s in release media", (_, yaml, message) => {
+      const file = change("added/2026-11-26-feature.md", frontMatter(yaml));
+      expect(() => readUnreleasedChangesWithMedia([file])).toThrow(
+        new RegExp(`^${file.path} .*?${message}.*? See changes/README\\.md\\.$`, "u"),
+      );
+    });
+
+    test.each([
+      " ",
+      " Caption",
+      "Caption ",
+      "a".repeat(121),
+      "First\nSecond",
+      "**Strong**",
+      "`code`",
+      "[A link]",
+      "<b>HTML</b>",
+    ])("rejects a caption that is not one line of plain text: %j", (caption) => {
+      const file = change(
+        "added/2026-11-26-feature.md",
+        frontMatter(`media: [{ caption: ${JSON.stringify(caption)}, light: ${light} }]`),
+      );
+      expect(() => readUnreleasedChangesWithMedia([file])).toThrow("media caption");
+    });
+
+    test("still requires one paragraph after front matter", () => {
+      const file = change(
+        "added/2026-11-26-feature.md",
+        `${frontMatter(`media: [{ caption: Sample, light: ${light} }]`)}\nAnother paragraph.\n`,
+      );
+      expect(() => readUnreleasedChangesWithMedia([file])).toThrow("must hold one paragraph");
     });
 
     test.each([
