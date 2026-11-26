@@ -523,6 +523,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: SNOOZE_MILLIS_STORE_REVISION,
         apply: migrate_v220_to_v221,
     },
+    MigrationStep {
+        from_revision: 221,
+        to_revision: 222,
+        apply: migrate_v221_to_v222,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2950,6 +2955,23 @@ fn migrate_v220_to_v221(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             json!({"normalized_snooze_timestamps": normalized}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v221_to_v222(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let now = timestamp_from_unix_ms(context.completed_at_unix_ms)?;
+    let (databases, canvases) =
+        crate::workspace::repair_legacy_project_resource_names(connection, &now)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"renamed_primary_databases": databases, "renamed_primary_canvases": canvases}).to_string()],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())

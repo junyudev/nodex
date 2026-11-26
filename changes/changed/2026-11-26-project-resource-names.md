@@ -1,0 +1,1 @@
+Renaming a Project now renames its primary Database and Canvas while they still use their default names. Older primary Databases named “Cards” and primary Canvases named “Canvas” now use their Project’s name.

@@ -58,6 +58,7 @@ mod managed_worktree_lifecycle;
 mod managed_worktree_window;
 pub(crate) mod member_attention;
 mod mutation;
+pub(crate) use mutation::repair_legacy_project_resource_names;
 mod page_chat;
 mod page_create;
 #[cfg(test)]

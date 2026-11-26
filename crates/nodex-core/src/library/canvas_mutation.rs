@@ -88,9 +88,12 @@ pub(super) fn duplicate(
     {
         return Err(conflict("Source Canvas content changed"));
     }
-    let name = display_name
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("{} copy", source.display_name));
+    let name = display_name.map(str::to_owned).unwrap_or_else(|| {
+        format!(
+            "{} copy",
+            source.display_name.as_deref().unwrap_or("Canvas")
+        )
+    });
     create_internal(
         connection,
         context,
@@ -244,34 +247,7 @@ pub(super) fn rename(
             context,
         },
         |scope| {
-            let changed = connection.execute(
-                "UPDATE blocks SET metadata_revision = metadata_revision + 1, updated_at = ?1 \
-         WHERE id = ?2 AND type = 'canvas' AND lifecycle = 'active' \
-           AND metadata_revision = ?3",
-                params![now, canvas_id, expected_metadata_revision],
-            )?;
-            if changed != 1 {
-                return Err(conflict("Canvas metadata changed"));
-            }
-            connection.execute(
-                "INSERT INTO block_properties(\
-           block_id, library_id, property_key, value_type, value_json, revision, updated_at\
-         ) VALUES (?1, ?2, 'document.display_name', 'string', ?3, 1, ?4) \
-         ON CONFLICT(block_id, property_key) DO UPDATE SET \
-           value_type = 'string', value_json = excluded.value_json, \
-           revision = block_properties.revision + 1, updated_at = excluded.updated_at",
-                params![
-                    canvas_id,
-                    canvas.library_id,
-                    serde_json::to_string(display_name)
-                        .map_err(|_| internal("Canvas display name JSON"))?,
-                    now,
-                ],
-            )?;
-            connection.execute(
-                "UPDATE canvas_owners SET updated_at = ?1 WHERE block_id = ?2 AND library_id = ?3",
-                params![now, canvas_id, library_id],
-            )?;
+            write_canvas_name(connection, &canvas, display_name, &now)?;
             seal_canvas_mutation(
                 scope,
                 context,
@@ -296,6 +272,75 @@ pub(super) fn rename(
         },
     )?;
     library_commit_result(connection, commit_result)
+}
+
+/// Renames the active primary Canvas only while its stored name matches.
+pub(crate) fn rename_primary_canvas_if_named(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    current_name: &str,
+    next_name: &str,
+    now: &str,
+) -> Result<Option<crate::document::PrimaryCanvasIdentity>, StoreError> {
+    if current_name == next_name {
+        return Ok(None);
+    }
+    let canvas_id = crate::document::primary_canvas_block_id(project_id);
+    let Some(canvas) =
+        find_canvas_authority(connection, library_id, &canvas_id)?.filter(|canvas| {
+            canvas.lifecycle == "active" && canvas.display_name.as_deref() == Some(current_name)
+        })
+    else {
+        return Ok(None);
+    };
+    write_canvas_name(connection, &canvas, next_name, now)?;
+    Ok(Some(crate::document::PrimaryCanvasIdentity {
+        block_id: canvas_id,
+        document_id: canvas.document_id,
+    }))
+}
+
+fn write_canvas_name(
+    connection: &Connection,
+    canvas: &CanvasAuthority,
+    display_name: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    let changed = connection.execute(
+        "UPDATE blocks SET metadata_revision = metadata_revision + 1, updated_at = ?1
+         WHERE id = ?2 AND library_id = ?3 AND type = 'canvas' AND lifecycle = 'active'
+           AND metadata_revision = ?4",
+        params![
+            now,
+            canvas.canvas_id,
+            canvas.library_id,
+            canvas.metadata_revision
+        ],
+    )?;
+    if changed != 1 {
+        return Err(conflict("Canvas metadata changed"));
+    }
+    connection.execute(
+        "INSERT INTO block_properties(
+           block_id, library_id, property_key, value_type, value_json, revision, updated_at
+         ) VALUES (?1, ?2, 'document.display_name', 'string', ?3, 1, ?4)
+         ON CONFLICT(block_id, property_key) DO UPDATE SET
+           value_type = 'string', value_json = excluded.value_json,
+           revision = block_properties.revision + 1, updated_at = excluded.updated_at",
+        params![
+            canvas.canvas_id,
+            canvas.library_id,
+            serde_json::to_string(display_name)
+                .map_err(|_| internal("Canvas display name JSON"))?,
+            now,
+        ],
+    )?;
+    connection.execute(
+        "UPDATE canvas_owners SET updated_at = ?1 WHERE block_id = ?2 AND library_id = ?3",
+        params![now, canvas.canvas_id, canvas.library_id],
+    )?;
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -624,7 +669,7 @@ struct CanvasAuthority {
     document_id: String,
     document_generation: i64,
     document_head_seq: i64,
-    display_name: String,
+    display_name: Option<String>,
     is_primary: bool,
 }
 
@@ -633,7 +678,16 @@ fn read_canvas_authority(
     library_id: &str,
     canvas_id: &str,
 ) -> Result<CanvasAuthority, StoreError> {
-    connection
+    find_canvas_authority(connection, library_id, canvas_id)?
+        .ok_or_else(|| not_found("Canvas is unavailable"))
+}
+
+fn find_canvas_authority(
+    connection: &Connection,
+    library_id: &str,
+    canvas_id: &str,
+) -> Result<Option<CanvasAuthority>, StoreError> {
+    let canvas = connection
         .query_row(
             "SELECT block.library_id, block.lifecycle, containing.document_id, \
                     block.placement_revision, \
@@ -660,8 +714,7 @@ fn read_canvas_authority(
                 let value_json = row.get::<_, Option<String>>(8)?;
                 let display_name = value_json
                     .as_deref()
-                    .and_then(|value| serde_json::from_str::<String>(value).ok())
-                    .unwrap_or_else(|| "Canvas".to_owned());
+                    .and_then(|value| serde_json::from_str::<String>(value).ok());
                 Ok(CanvasAuthority {
                     canvas_id: canvas_id.to_owned(),
                     library_id: row.get(0)?,
@@ -677,8 +730,8 @@ fn read_canvas_authority(
                 })
             },
         )
-        .optional()?
-        .ok_or_else(|| not_found("Canvas is unavailable"))
+        .optional()?;
+    Ok(canvas)
 }
 
 fn require_canvas_access(
