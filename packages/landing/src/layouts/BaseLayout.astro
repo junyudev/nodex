@@ -18,6 +18,8 @@ interface Props {
   locale?: Locale;
   localizedPage?: LocalizedPage;
   imageAlt?: string;
+  /** A page's own picture for link previews, in place of its social card. */
+  image?: { url: string; width: number; height: number; alt: string };
 }
 
 const {
@@ -29,11 +31,17 @@ const {
   locale = "en",
   localizedPage,
   imageAlt,
+  image,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const card = SOCIAL_CARDS[socialCard];
-const cardUrl = new URL(card.file, Astro.site).href;
+const preview = image ?? {
+  url: new URL(card.file, Astro.site).href,
+  width: SOCIAL_CARD_VIEWPORT.width * SOCIAL_CARD_SCALE,
+  height: SOCIAL_CARD_VIEWPORT.height * SOCIAL_CARD_SCALE,
+  alt: imageAlt ?? card.alt,
+};
 ---
 
 <!doctype html>
@@ -57,16 +65,16 @@ const cardUrl = new URL(card.file, Astro.site).href;
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={cardUrl} />
+    <meta property="og:image" content={preview.url} />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content={SOCIAL_CARD_VIEWPORT.width * SOCIAL_CARD_SCALE} />
-    <meta property="og:image:height" content={SOCIAL_CARD_VIEWPORT.height * SOCIAL_CARD_SCALE} />
-    <meta property="og:image:alt" content={imageAlt ?? card.alt} />
+    <meta property="og:image:width" content={preview.width} />
+    <meta property="og:image:height" content={preview.height} />
+    <meta property="og:image:alt" content={preview.alt} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={ogTitle} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={cardUrl} />
-    <meta name="twitter:image:alt" content={imageAlt ?? card.alt} />
+    <meta name="twitter:image" content={preview.url} />
+    <meta name="twitter:image:alt" content={preview.alt} />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="preload" href="/fonts/geist-sans.woff2" as="font" type="font/woff2" crossorigin />
