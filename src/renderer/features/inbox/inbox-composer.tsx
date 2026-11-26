@@ -85,9 +85,12 @@ export function InboxComposer({
 
   const focusedTokenRef = useRef<{ token: number | undefined } | null>(null);
   useLayoutEffect(() => {
-    if (focusedTokenRef.current?.token === focusToken && focusedTokenRef.current !== null) return;
-    focusedTokenRef.current = { token: focusToken };
-    textareaRef.current?.focus();
+    if (!focusToken || focusedTokenRef.current?.token === focusToken) return;
+    const input = textareaRef.current;
+    input?.focus();
+    if (input && input.ownerDocument.activeElement === input) {
+      focusedTokenRef.current = { token: focusToken };
+    }
   }, [focusToken]);
 
   // An opened title takes the keyboard as it appears, before another keystroke reaches the text.
@@ -144,6 +147,7 @@ export function InboxComposer({
   return (
     <form
       data-testid="inbox-composer"
+      data-inbox-composer
       onSubmit={(event) => void submit(event)}
       data-file-drop-active={input.dropActive ? "true" : "false"}
       {...input.dropTarget}

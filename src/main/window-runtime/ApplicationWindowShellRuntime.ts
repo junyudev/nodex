@@ -70,6 +70,7 @@ export interface ApplicationWindowShellRuntimeService {
   readonly create: (
     session: WindowSessionRecord,
     presentation?: "background" | "foreground" | "hidden",
+    focus?: "composer",
   ) => BrowserWindow;
   readonly failAll: (cause: unknown) => void;
   readonly failActivation: (webContentsId: number, cause: unknown) => void;
@@ -305,6 +306,7 @@ export const live = (
           const create: ApplicationWindowShellRuntimeService["create"] = (
             session,
             presentation = "foreground",
+            focus,
           ) => {
             const windowCreatedAt = performance.now();
             const savedBounds = isWindowSessionBoundsVisible(
@@ -470,6 +472,8 @@ export const live = (
             const spaceRendererUrl = new URL(rendererUrl);
             if (session.activeSpaceId)
               spaceRendererUrl.searchParams.set("spaceId", session.activeSpaceId);
+            if (focus && session.layout.location.kind === "session")
+              spaceRendererUrl.searchParams.set("focusChat", session.layout.location.sessionId);
             logger.info("Canonical application window constructed", {
               sessionId: session.id,
               webContentsId,

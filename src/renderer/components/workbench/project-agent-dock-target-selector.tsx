@@ -1,3 +1,4 @@
+import { returnWorkbenchFocus } from "@/lib/workbench-focus-landing";
 import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -206,14 +207,15 @@ export function ProjectAgentDockTargetSelector({
 
   const closeAndRestoreFocus = () => {
     setOpen(false);
-    requestAnimationFrame(() => triggerRef.current?.focus());
+    returnWorkbenchFocus(triggerRef.current);
   };
 
   const accept = (row: ProjectAgentDockTargetRow | null) => {
     if (!row) return;
     onSelect(row);
     onQueryChange("");
-    closeAndRestoreFocus();
+    if (row.selected) closeAndRestoreFocus();
+    else setOpen(false);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -289,6 +291,7 @@ export function ProjectAgentDockTargetSelector({
         align="start"
         side="top"
         sideOffset={6}
+        data-workbench-focus-overlay
         className="w-[320px] max-w-[calc(100vw-24px)] overflow-hidden p-1"
         initialFocus={false}
         finalFocus={false}

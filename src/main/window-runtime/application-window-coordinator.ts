@@ -14,7 +14,10 @@ import type { ShutdownWindow, WindowCleanupReport } from "./WindowShutdown";
 
 export interface ApplicationWindowCoordinatorOptions {
   readonly closeAll: (windows: readonly ShutdownWindow[]) => Effect.Effect<WindowCleanupReport>;
-  readonly create: (session: WindowSessionRecord) => BrowserWindow;
+  readonly create: (
+    session: WindowSessionRecord,
+    focus?: WindowSessionNewWindowRequest["focus"],
+  ) => BrowserWindow;
   readonly focusedWindow: () => BrowserWindow | null;
   readonly reportFailure: (input: {
     readonly cause: unknown;
@@ -175,7 +178,8 @@ export const createApplicationWindowCoordinator = (
         openNew(sourceWebContentsId);
         return;
       }
-      show(options.create(options.windows.cloneSessionForWindow(sourceWebContentsId, request)));
+      const session = options.windows.cloneSessionForWindow(sourceWebContentsId, request);
+      show(request.focus ? options.create(session, request.focus) : options.create(session));
     },
     prepareQuit: Effect.suspend(() => {
       accepting = false;

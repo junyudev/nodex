@@ -502,6 +502,23 @@ export function getWorkbenchActiveSessionId(
   return location.kind === "session" ? location.sessionId : null;
 }
 
+/** Two locations name the same place, however and whenever each object was built. */
+export function sameWorkbenchLocation(left: WorkbenchLocation, right: WorkbenchLocation): boolean {
+  return samePlainValue(left, right);
+}
+
+function samePlainValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (typeof left !== "object" || typeof right !== "object" || !left || !right) return false;
+  const definedKeys = (value: object) =>
+    Object.keys(value).filter((key) => (value as Record<string, unknown>)[key] !== undefined);
+  const leftKeys = definedKeys(left);
+  if (leftKeys.length !== definedKeys(right).length) return false;
+  return leftKeys.every((key) =>
+    samePlainValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]),
+  );
+}
+
 export function getRestorableWorkbenchLocation(
   location: WorkbenchLocation,
 ): WorkbenchLayoutSnapshot["location"] {

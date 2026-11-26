@@ -778,6 +778,11 @@ function RequestCardStack({
         return (
           <div
             key={`${entry.surface}:${buildCodexCanonicalRequestIdentityKey(entry.request.requestId)}`}
+            data-workbench-pending-request={
+              entry === (model.composerShell.activeRequest ?? model.composerShell.backgroundRequest)
+                ? ""
+                : undefined
+            }
             className="flex flex-col"
           >
             <CodexPendingRequestCard

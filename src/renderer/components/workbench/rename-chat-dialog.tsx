@@ -1,3 +1,5 @@
+import { beginWorkbenchFocus, returnWorkbenchFocus } from "@/lib/workbench-focus-landing";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import {
@@ -16,6 +18,7 @@ export interface RenameChatDialogProps {
   initialValue: string;
   requireNonEmpty?: boolean;
   onClose: () => void;
+  returnToComposer?: boolean;
   onSave: (title: string) => void;
 }
 
@@ -23,12 +26,22 @@ function RenameChatDialogContent({
   initialValue,
   requireNonEmpty = false,
   onClose,
+  returnToComposer = false,
   onSave,
 }: RenameChatDialogProps) {
   const intl = useIntl();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [title, setTitle] = useState(initialValue);
   const saveDisabled = requireNonEmpty && title.trim().length === 0;
+
+  const { landOnScene } = useWorkbenchWindowOwner();
+  const originRef = useRef<HTMLElement | null>(null);
+  const close = () => {
+    const focus = beginWorkbenchFocus();
+    onClose();
+    if (returnToComposer) landOnScene("composer", focus);
+    else returnWorkbenchFocus(originRef.current, focus, () => landOnScene("composer", focus));
+  };
 
   const focusAndSelectInput = () => {
     const input = inputRef.current;
@@ -44,12 +57,14 @@ function RenameChatDialogContent({
     <NodexDialog
       open
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) close();
       }}
     >
       <NodexDialogContent
         size="narrow"
+        finalFocus={false}
         initialFocus={() => {
+          originRef.current = beginWorkbenchFocus().origin;
           window.requestAnimationFrame(focusAndSelectInput);
           return inputRef.current;
         }}
@@ -59,7 +74,7 @@ function RenameChatDialogContent({
             event.preventDefault();
             if (saveDisabled) return;
             onSave(title);
-            onClose();
+            close();
           }}
         >
           <NodexDialogHeader>
@@ -95,7 +110,7 @@ function RenameChatDialogContent({
             />
           </NodexDialogBody>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onClose}>
+            <NodexDialogAction onClick={close}>
               <FormattedMessage id="workbench.renameChatDialog.cancel" defaultMessage={"Cancel"} />
             </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={saveDisabled}>

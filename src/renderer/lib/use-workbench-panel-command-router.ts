@@ -1,3 +1,6 @@
+import { beginWorkbenchFocus, panelTabFocusTarget } from "./workbench-focus-landing";
+import { useWorkbenchWindowOwner } from "./use-workbench-window-state";
+import { readWorkbenchAgentContext } from "./workbench-agent-context";
 import { getIntl } from "@/lib/i18n";
 import { handleContentSearchNavigationShortcut } from "@/features/content-search/content-search-keyboard";
 import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
@@ -199,6 +202,8 @@ export function useWorkbenchPanelCommandRouter({
   focusedPanelGroupRef,
   panelTabShortcutStateRef,
 }: WorkbenchPanelCommandRouterInput) {
+  const windowOwner = useWorkbenchWindowOwner();
+  const { landOnScene, focusLanding } = windowOwner;
   const panelControllerRef = useRef(controller);
   useLayoutEffect(() => {
     panelControllerRef.current = controller;
@@ -300,7 +305,7 @@ export function useWorkbenchPanelCommandRouter({
       : null;
 
     if (targetPanelOpen && activeTab?.kind === "terminal") {
-      returnFocusFromPanel(targetPanelId);
+      returnFocusFromPanel(targetPanelId, (attempt) => landOnScene("composer", attempt));
       await setActivePanelCollapsed(targetPanelId, true);
       return;
     }
@@ -335,6 +340,7 @@ export function useWorkbenchPanelCommandRouter({
     bottomPanelOpen,
     createManualTab,
     focusedPanelGroupRef,
+    landOnScene,
     setActivePanelCollapsed,
     setActivePanelTab,
     sidePanelOpen,
@@ -659,11 +665,19 @@ export function useWorkbenchPanelCommandRouter({
           tabId: nextTabId,
           leafId: targetScope.leafId,
         };
-        void state.selectTab(target);
+        const focus = beginWorkbenchFocus();
+        const location = windowOwner.read().windowState.location;
+        void Promise.resolve(state.selectTab(target)).then(() => {
+          if (windowOwner.read().windowState.location !== location) return;
+          focusLanding.request(
+            panelTabFocusTarget(state.ownerKey, target.panelId, target.leafId, target.tabId),
+            focus,
+          );
+        });
       }
       return true;
     },
-    [panelTabShortcutStateRef, resolvePanelShortcutScope],
+    [focusLanding, panelTabShortcutStateRef, resolvePanelShortcutScope, windowOwner],
   );
 
   const closeFocusedPanelTab = useCallback(
@@ -691,15 +705,29 @@ export function useWorkbenchPanelCommandRouter({
       const activeTabId = panelTabs.activeTabIdsByLeafId[targetScope.leafId] ?? null;
       const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
       if (activeTab?.closable === true) {
-        void state.closeTab({
-          panelId: targetScope.panelId,
-          tabId: activeTab.id,
-          leafId: targetScope.leafId,
+        const focus = beginWorkbenchFocus();
+        const location = windowOwner.read().windowState.location;
+        const { panelId, leafId, ownerKey } = targetScope;
+        const previous = windowOwner.read();
+        void Promise.resolve(state.closeTab({ panelId, tabId: activeTab.id, leafId })).then(() => {
+          const next = windowOwner.read();
+          if (next === previous || next.windowState.location !== location) return;
+          const owner = next.windowState.scenesByOwnerKey[ownerKey]?.owner;
+          const group =
+            owner &&
+            readWorkbenchAgentContext(next, owner)?.groups.find(
+              (candidate) =>
+                candidate.panelId === panelId && candidate.groupId === leafId && candidate.visible,
+            );
+          const tabId = group && group.selectedTabId;
+          if (tabId)
+            focusLanding.request(panelTabFocusTarget(ownerKey, panelId, leafId, tabId), focus);
+          else landOnScene("composer", focus);
         });
       }
       return true;
     },
-    [panelTabShortcutStateRef, resolvePanelShortcutScope],
+    [focusLanding, landOnScene, panelTabShortcutStateRef, resolvePanelShortcutScope, windowOwner],
   );
 
   const focusActiveBrowserAddress = useCallback((): boolean => {

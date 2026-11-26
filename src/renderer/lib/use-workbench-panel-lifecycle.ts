@@ -1,3 +1,5 @@
+import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
+import { beginWorkbenchFocus, panelTabFocusTarget } from "./workbench-focus-landing";
 import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
@@ -13,7 +15,7 @@ import {
   materializeWorkbenchImageEditorSurfaceConfig,
   trackImageEditorPinOutcome,
 } from "@/lib/content-image";
-import { requestTerminalFocus, returnFocusFromPanel, terminalHoldsFocus } from "./terminal-focus";
+import { requestTerminalFocus, terminalHoldsFocus } from "./terminal-focus";
 import { terminalSessionStore } from "./terminal-session-store";
 import { makeWorkbenchSessionPanelSlotKey } from "./workbench-panel-slot-key";
 import { resolveSameLeafInsertionIndex } from "@/components/workbench/panel-tab-dnd";
@@ -200,8 +202,10 @@ export function useWorkbenchPanelLifecycle({
     );
     if (!tab) return;
     const heldFocus = terminalHoldsFocus(terminalSessionId);
+    const focus = heldFocus ? beginWorkbenchFocus() : null;
+    const location = windowOwner.read().windowState.location;
     await closeTab(tab.tabId);
-    if (!heldFocus) return;
+    if (!focus || focus.moved() || windowOwner.read().windowState.location !== location) return;
     // The cursor was in the shell that ended, so it moves on rather than dropping to the page.
     const presentation = readPresentation();
     const selectedTabId = presentation?.groups.find(
@@ -209,7 +213,17 @@ export function useWorkbenchPanelLifecycle({
     )?.selectedTabId;
     const next = presentation?.tabs.find((candidate) => candidate.tabId === selectedTabId);
     if (next?.surface?.kind === "terminal") requestTerminalFocus(next.surface);
-    else if (tab.panelId) returnFocusFromPanel(tab.panelId);
+    else if (next && presentation && tab.panelId && tab.groupId)
+      windowOwner.focusLanding.request(
+        panelTabFocusTarget(
+          makeWorkbenchSceneKey(presentation.sceneOwner),
+          tab.panelId,
+          tab.groupId,
+          next.tabId,
+        ),
+        focus,
+      );
+    else windowOwner.landOnScene("composer", focus);
   });
   useEffect(() => {
     terminalSessionStore.ensureEventSubscriptions();

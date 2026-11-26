@@ -21,6 +21,7 @@ import { useLayoutEffect, useCallback, useEffect, useRef } from "react";
 import { recordWorkspaceSearchFile } from "./workspace-search-recent-files";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { sideChatRequestTitle } from "../../shared/side-chat-title";
+import { beginWorkbenchFocus, type WorkbenchFocusAttempt } from "./workbench-focus-landing";
 import { nativeSideChatTabId } from "../../shared/side-chat-tab";
 import {
   captureCodexTurnPresentation,
@@ -338,6 +339,7 @@ export function useWorkbenchPanelOpeners({
   onPageDeepLinkHandled,
 }: WorkbenchPanelOpenersInput) {
   const workbenchOwner = useWorkbenchWindowOwner();
+  const { focusLanding } = workbenchOwner;
   const panelControllerRef = useRef(controller);
   useLayoutEffect(() => {
     panelControllerRef.current = controller;
@@ -749,6 +751,8 @@ export function useWorkbenchPanelOpeners({
         );
         return;
       }
+      const focus = beginWorkbenchFocus();
+      const sourceLocation = workbenchOwner.read().windowState.location;
       const submittedPresentation = workbenchCodexControl.captureSubmissionPresentation();
       const panelId = input.targetPanelId ?? "right";
       const leafId = input.targetLeafId ?? resolveSessionPanelActiveLeafId(activeSession, panelId);
@@ -811,18 +815,28 @@ export function useWorkbenchPanelOpeners({
               stateKey: tab.stateKey + 1,
             }),
           });
+          const chat = {
+            kind: "remote-thread",
+            hostId: sourceHostId,
+            threadId: result.threadId,
+          } as const;
           if (input.kind === "draft" && (draftPrompt.length > 0 || input.promptInput)) {
-            composerDraftIntents.set(
-              { kind: "remote-thread", hostId: sourceHostId, threadId: result.threadId },
-              {
-                prompt: draftPrompt,
-                promptInput:
-                  panelControllerRef.current.sideChatTabsBySession[activeSession.id]?.find(
-                    (tab) => tab.id === loadingTabId || tab.id === readyTabId,
-                  )?.draftPromptInput ?? input.promptInput,
-                attachmentMode: request.kind === "selection" ? "append" : undefined,
-                focusNonce: Date.now(),
-              },
+            composerDraftIntents.set(chat, {
+              prompt: draftPrompt,
+              promptInput:
+                panelControllerRef.current.sideChatTabsBySession[activeSession.id]?.find(
+                  (tab) => tab.id === loadingTabId || tab.id === readyTabId,
+                )?.draftPromptInput ?? input.promptInput,
+              attachmentMode: request.kind === "selection" ? "append" : undefined,
+              focusNonce: Date.now(),
+            });
+          } else if (
+            (input.kind === "draft" || (!input.prompt?.trim() && !input.promptInput)) &&
+            workbenchOwner.read().windowState.location === sourceLocation
+          ) {
+            focusLanding.request(
+              { kind: "side-chat", sessionId: activeSession.id, tabId: readyTabId, chat },
+              focus,
             );
           }
         },
@@ -863,6 +877,8 @@ export function useWorkbenchPanelOpeners({
       setActivePanelTab,
       sideChatTabsBySession,
       startSideChatCreation,
+      focusLanding,
+      workbenchOwner,
       workbenchCodexControl,
     ],
   );
@@ -872,8 +888,20 @@ export function useWorkbenchPanelOpeners({
    * named explicitly because callers reach it across navigation, after this render's Session.
    */
   const openExistingSideChat = useCallback(
-    async (target: ExistingSideChatTarget, sourceSession: ProjectSession): Promise<boolean> => {
+    async (
+      target: ExistingSideChatTarget,
+      sourceSession: ProjectSession,
+      focus?: WorkbenchFocusAttempt,
+    ): Promise<boolean> => {
       if (sessionExecutionThreadId(sourceSession) !== target.parentThreadId) return false;
+      const sourceLocation = workbenchOwner.read().windowState.location;
+      const land = (tabId: string, chat: import("./composer-draft-intents").ComposerChatKey) => {
+        if (!focus || workbenchOwner.read().windowState.location !== sourceLocation) return;
+        focusLanding.request(
+          { kind: "side-chat", sessionId: sourceSession.id, tabId, chat },
+          focus,
+        );
+      };
       if (target.kind === "runtime") {
         const open = sourceSession.tabs.find(
           (tab) => tab.kind === "side_chat" && tab.config.sessionId === target.sessionId,
@@ -885,15 +913,20 @@ export function useWorkbenchPanelOpeners({
           if (!session?.executionRef) return false;
           title = session.displayTitle.trim() || getSideChatTabTitle(1);
         }
-        return (
-          (await openSideChatSurface({
-            sourceSessionId: sourceSession.id,
-            sideChatSessionId: target.sessionId,
-            title: title ?? getSideChatTabTitle(1),
-          })) !== null
-        );
+        const tabId = await openSideChatSurface({
+          sourceSessionId: sourceSession.id,
+          sideChatSessionId: target.sessionId,
+          title: title ?? getSideChatTabTitle(1),
+        });
+        if (tabId) land(tabId, { kind: "session", sessionId: target.sessionId });
+        return tabId !== null;
       }
       const tabId = nativeSideChatTabId(target.threadId);
+      const chat = {
+        kind: "remote-thread" as const,
+        hostId: sourceSession.thread?.executionHostId ?? "local",
+        threadId: target.threadId,
+      };
       const findTab = () =>
         panelControllerRef.current.sideChatTabsBySession[sourceSession.id]?.find(
           (tab) => tab.id === tabId,
@@ -918,6 +951,7 @@ export function useWorkbenchPanelOpeners({
           durableTabIds: new Set(leaf?.tabIds ?? []),
         });
         revealPanel(existingTab.panelId);
+        land(tabId, chat);
         return true;
       }
 
@@ -940,9 +974,10 @@ export function useWorkbenchPanelOpeners({
         stateKey: Date.now(),
       });
       revealPanel(panelId);
+      land(tabId, chat);
       return true;
     },
-    [openSideChatSurface],
+    [focusLanding, openSideChatSurface, workbenchOwner],
   );
 
   const openMcpAppSidePanel = useCallback(

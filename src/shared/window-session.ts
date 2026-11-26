@@ -47,6 +47,7 @@ export interface WindowSessionBootstrap {
 }
 
 export interface WindowSessionNewWindowRequest {
+  focus?: "composer";
   activeProjectSessionId?: string | null;
   activeProjectId?: string | null;
   browserUrl?: string;

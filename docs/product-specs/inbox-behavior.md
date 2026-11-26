@@ -1054,18 +1054,23 @@ creates a second message, and does not count against the Agent budget again.
 
 - The sidebar's `Inbox` row sits directly above `New chat` and opens the
   Inbox for the sidebar's current scope. Tabs opened beside it stay open.
-  A Project row opens that Project on its Inbox Home.
+  A Project row preserves the Project's active surface. When it opens on Inbox
+  Home, the Inbox composer receives focus.
 - `⌘/Ctrl+Shift+D` goes to the Inbox where the user is: in a Project or one of
   its chats it shows that Project's Inbox Home, and anywhere else it opens the
   Library Inbox. Either way it focuses the composer. The command palette
-  exposes the same command as `Open Inbox`.
+  exposes the same command as `Open Inbox`. Each request names one Inbox and
+  ends when that composer receives focus. Workbench startup and background
+  changes leave the keyboard where it is. A notification for an Inbox entry
+  reveals and focuses that entry.
 - `C` (or `⌘/Ctrl+Shift+C`), `Capture to Inbox` in the command palette, writes
   a message to that same Inbox without leaving. It opens that Inbox's own
   composer over the current place, with the same draft, title and images. The
   Inbox it lands in is named above it, with `Add title` opposite for a sender
   who wants to name the message rather than leave it to Nodex. `Enter` sends
   and closes it with `Sent to <Inbox>` and an `Open` action; `Escape` closes it
-  and keeps the draft. A message that cannot be saved waits in that Inbox to be
+  and keeps the draft. Both return focus to the control the person was using
+  before Capture. A message that cannot be saved waits in that Inbox to be
   retried or recovered. When the Inbox's composer is already on screen, `C`
   focuses it instead. Text selected on an app surface starts the message.
   `⌘/Ctrl+Shift+C` also starts the message with selected Page text. A

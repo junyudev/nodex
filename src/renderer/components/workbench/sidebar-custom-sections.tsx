@@ -1,3 +1,4 @@
+import { beginWorkbenchFocus, type WorkbenchFocusAttempt } from "@/lib/workbench-focus-landing";
 import { defineMessage, FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -5,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
@@ -535,8 +537,9 @@ export function SidebarCustomSections({
   /** Show more steps each Section keeps revealed, keyed by its `custom:` list. */
   readonly listExtraPages: SidebarListExtraPagesState;
   readonly onListExtraPagesChange: (listId: `custom:${string}`, extraPages: number) => void;
-  readonly onSelectSession: (session: ProjectSession) => void;
+  readonly onSelectSession: (session: ProjectSession, focus?: WorkbenchFocusAttempt) => void;
 }) {
+  const archiveHandoff = useRef(false);
   const [archiveSection, setArchiveSection] = useState<SidebarSectionSummary | null>(null);
   const intl = useIntl();
   const [renameSection, setRenameSection] = useState<SidebarSectionSummary | null>(null);
@@ -644,7 +647,10 @@ export function SidebarCustomSections({
                           <SectionActions
                             section={section}
                             onRename={() => setRenameSection(section)}
-                            onArchiveAll={() => setArchiveSection(section)}
+                            onArchiveAll={() => {
+                              archiveHandoff.current = false;
+                              setArchiveSection(section);
+                            }}
                             archiveDisabled={itemQuery?.isPending ?? true}
                             onDelete={() => {
                               void workspaceSidebarCommands
@@ -748,7 +754,7 @@ export function SidebarCustomSections({
       ) : null}
       {archiveSection ? (
         <NodexDialog open onOpenChange={(open) => !open && setArchiveSection(null)}>
-          <NodexDialogContent size="compact">
+          <NodexDialogContent size="compact" finalFocus={() => !archiveHandoff.current}>
             <NodexDialogForm
               onSubmit={(event) => {
                 event.preventDefault();
@@ -770,13 +776,16 @@ export function SidebarCustomSections({
                           session.id === activeSessionId && !directSessionIds.has(session.id),
                       ),
                     ));
+                const focus = beginWorkbenchFocus();
+                archiveHandoff.current = false;
                 void workspaceSidebarCommands
                   .archiveSessions(archiveSection.sectionId, {
                     createReplacement: activeWillBeArchived,
                   })
                   .then(async (replacement) => {
-                    if (replacement) onSelectSession(replacement);
+                    archiveHandoff.current = Boolean(replacement);
                     setArchiveSection(null);
+                    if (replacement) onSelectSession(replacement, focus);
                     await refresh();
                     await onThreadsChanged?.();
                   })

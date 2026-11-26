@@ -3695,6 +3695,9 @@ export function ReviewDiffPanel({
           await nextReviewAnimationFrame(options?.signal);
         }
       },
+      returnFocus() {
+        reviewContentRootRef.current?.focus({ preventScroll: true });
+      },
       clear() {
         clearContentSearchMarks(reviewContentRootRef.current, {
           includeShadowRoots: true,
@@ -4203,7 +4206,7 @@ export function ReviewDiffPanel({
             />
           </div>
         ) : null}
-        <div ref={reviewContentRootRef} className="flex flex-col extension:gap-2">
+        <div ref={reviewContentRootRef} tabIndex={-1} className="flex flex-col extension:gap-2">
           {reviewRows}
         </div>
       </ReviewDiffVirtualizer>

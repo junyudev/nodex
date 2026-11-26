@@ -1,3 +1,9 @@
+import {
+  readWorkbenchFocusedElement,
+  workbenchPanelContainsFocus,
+} from "./workbench-focus-landing";
+import { returnFocusFromPanel } from "./terminal-focus";
+import type { WorkbenchWindowOwner } from "./workbench-window-owner";
 import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
 import { usePointerDrag } from "./pointer-drag";
@@ -62,6 +68,7 @@ interface WorkbenchChromeCommandsInput {
   readonly lifecycle: PanelLifecycle;
   readonly navigateBack: () => void;
   readonly navigateForward: () => void;
+  readonly landOnScene: WorkbenchWindowOwner["landOnScene"];
   readonly workbenchRootRef: RefObject<HTMLDivElement | null>;
   readonly shellMainContentWidth: MotionValue<number>;
   readonly shellBodyHeight: MotionValue<number>;
@@ -84,6 +91,7 @@ export function useWorkbenchChromeCommands({
   lifecycle,
   navigateBack,
   navigateForward,
+  landOnScene,
   workbenchRootRef,
   shellMainContentWidth,
   shellBodyHeight,
@@ -105,11 +113,13 @@ export function useWorkbenchChromeCommands({
 
   const hideActiveRightPanel = useCallback(async () => {
     if (!activePanelOwner) return;
+    if (workbenchPanelContainsFocus("right", readWorkbenchFocusedElement()))
+      returnFocusFromPanel("right", (attempt) => landOnScene("composer", attempt));
     await updateActivePanel("right", {
       collapsed: true,
       size: { ...activePanelOwner.panels.right.size, fullWidth: false },
     });
-  }, [activePanelOwner, updateActivePanel]);
+  }, [activePanelOwner, landOnScene, updateActivePanel]);
 
   const showActiveBottomPanel = useCallback(async () => {
     if (!activePanelOwner) return;

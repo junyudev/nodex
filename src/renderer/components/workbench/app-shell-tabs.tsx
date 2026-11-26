@@ -662,6 +662,7 @@ export function AppShellTabs({
         tab={tab}
         panelId={panelId}
         controllerId={panelTabDnd?.panelId ?? controllerId}
+        panelTabOwner={dndSessionId}
         dataTabId={dataTabId}
         bodyOverlay={bodyOverlay}
         onPointerDownCapture={pinPreviewTabFromPanelEvent}
@@ -814,6 +815,7 @@ function AppShellTabPanel({
   tab,
   panelId,
   controllerId,
+  panelTabOwner,
   dataTabId,
   bodyOverlay,
   onPointerDownCapture,
@@ -823,6 +825,7 @@ function AppShellTabPanel({
   tab: AppShellTabItem;
   panelId: string;
   controllerId: string;
+  panelTabOwner?: string;
   dataTabId: string;
   bodyOverlay?: ReactNode;
   onPointerDownCapture?: ComponentPropsWithoutRef<"div">["onPointerDownCapture"];
@@ -837,6 +840,7 @@ function AppShellTabPanel({
       id={panelId}
       aria-label={makeAppShellTabAccessibleLabel(tab, title)}
       data-app-shell-tab-panel-controller={controllerId}
+      data-panel-tab-owner={panelTabOwner}
       data-tab-id={dataTabId}
       data-app-shell-tabpanel-preview={tab.preview ? "true" : undefined}
       className="relative h-full min-h-0"
@@ -1174,6 +1178,7 @@ function AppShellTab({
       data-app-shell-tab-controller={controllerId}
       data-tab-id={dataTabId}
       data-panel-tab-id={tab.id}
+      data-panel-tab-owner={dndSessionId}
       data-app-shell-tab-preview={tab.preview ? "true" : undefined}
       data-app-shell-tab-locked-width={lockedWidthPx ?? undefined}
       className={cn(

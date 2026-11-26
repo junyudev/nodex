@@ -76,6 +76,7 @@ export interface WorkbenchSessionCatalogWindowPort {
     update:
       | WorkbenchSceneSnapshot
       | ((previous: WorkbenchSceneSnapshot | undefined) => WorkbenchSceneSnapshot),
+    options?: { readonly recordHistory?: boolean },
   ) => void;
   readonly selectSession: (
     session: WorkbenchSessionCatalogEntry,
@@ -639,7 +640,7 @@ export function useWorkbenchSessionCatalog({
       if (!persisted) continue;
       const eligible = enforceWorkbenchSessionReviewEligibility(persisted, false);
       if (eligible === persisted) continue;
-      window.setScene(owner, eligible);
+      window.setScene(owner, eligible, { recordHistory: false });
     }
   }, [known, window]);
   const selectedSummaryPresentation = activeSessionId
@@ -674,7 +675,9 @@ export function useWorkbenchSessionCatalog({
     } as const;
     const sceneKey = makeWorkbenchSceneKey(owner);
     if (window.scenesByOwnerKey[sceneKey]) return;
-    window.setScene(owner, materializeInitialWorkbenchScene(owner));
+    // Materializing a selected Session is part of its arrival. It must not create a duplicate
+    // history entry that Back can repeatedly restore and the catalog immediately recreate.
+    window.setScene(owner, materializeInitialWorkbenchScene(owner), { recordHistory: false });
   }, [active, window]);
 
   const seed = useCallback(

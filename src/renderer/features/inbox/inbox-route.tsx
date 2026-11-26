@@ -160,7 +160,6 @@ export interface InboxRouteProps {
   readonly scope: InboxScope;
   readonly windowSessionId: string;
   readonly projects: readonly Project[];
-  readonly focusComposerToken?: number;
   readonly onOpenSession: (sessionId: string) => void;
   /** Opens a Project's own Inbox, from a row of it in the all-Projects Inbox. */
   readonly onOpenProject?: (projectId: string) => void;
@@ -460,7 +459,6 @@ export function InboxRoute({
   scope,
   windowSessionId,
   projects,
-  focusComposerToken,
   onOpenSession,
   onOpenProject,
   onOpenAutomation,
@@ -905,6 +903,7 @@ export function InboxRoute({
     <div
       data-testid="inbox-route"
       data-inbox-scope={inboxProjectId ? "project" : "library"}
+      data-workbench-inbox-focus={visible ? scopeKey : undefined}
       className="flex h-full min-h-0 w-full flex-col"
     >
       {header}
@@ -1275,7 +1274,7 @@ export function InboxRoute({
           disabled={!capture.ready || capture.savingDraft}
           readOnly={!capture.canEdit || capture.savingDraft}
           onSend={capture.submit}
-          focusToken={(focusComposerToken ?? 0) + replyFocusToken}
+          focusToken={replyFocusToken}
           placeholder={
             projectName
               ? intl.formatMessage(
