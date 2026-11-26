@@ -1,11 +1,12 @@
 import type { IntlShape } from "@/lib/i18n";
-import type { PageSearchMatch } from "@/lib/types";
 import { useMemo } from "react";
-import { pageSearchReveal, type PageSearchReveal } from "@/lib/page-search-reveal";
 import { useInteractivePageSearch } from "@/lib/interactive-page-search";
 import { useInfiniteLibraryCatalog } from "@/lib/use-library-navigation";
-import { MAX_LIBRARY_QUERY_LENGTH, type LibraryRouteTarget } from "../../../shared/library-module";
+import { MAX_LIBRARY_QUERY_LENGTH } from "../../../shared/library-module";
 import { useLibraryCreateCommands } from "../library/library-new-menu";
+import { buildSpaceContentItems, type SpaceContentItem } from "./space-content-items";
+
+export type { SpaceContentItem } from "./space-content-items";
 
 export type SpaceContentKind = "page" | "database" | "canvas";
 
@@ -36,17 +37,6 @@ export const DEFAULT_SPACE_CONTENT_DATA_SOURCE: SpaceContentDataSource = {
   useCreateCommands: (input) => useLibraryCreateCommands(input),
 };
 
-export interface SpaceContentItem {
-  readonly target: LibraryRouteTarget;
-  readonly title: string;
-  readonly locationLabel: string;
-  readonly locationIsLibraryRoot?: boolean;
-  readonly reveal?: PageSearchReveal;
-  readonly searchMatches?: readonly PageSearchMatch[];
-  /** Present for catalog entries; content-search matches carry no edit time. */
-  readonly updatedAt?: string;
-}
-
 export const ALL_SPACE_CONTENT_KINDS: readonly SpaceContentKind[] = ["page", "database", "canvas"];
 
 export function presentSpaceContentLocation(item: SpaceContentItem, intl: IntlShape): string {
@@ -63,16 +53,18 @@ export function boundSpaceContentQuery(value: string): string {
 }
 
 /**
- * Space content in last-edited order. A query matches titles through the Library
- * catalog and, when Pages are included, Page content through interactive search.
+ * Recent Space content in last-edited order. Typed queries put interactive Page
+ * matches in relevance order, followed by Library catalog title matches.
  */
 export function useSpaceContentResults({
   query,
+  preferredProjectId,
   kinds = ALL_SPACE_CONTENT_KINDS,
   dataSource = DEFAULT_SPACE_CONTENT_DATA_SOURCE,
   enabled = true,
 }: {
   readonly query: string;
+  readonly preferredProjectId?: string | null;
   readonly kinds?: readonly SpaceContentKind[];
   readonly dataSource?: SpaceContentDataSource;
   /** False keeps a mounted consumer idle: nothing is read until it is needed. */
@@ -94,6 +86,7 @@ export function useSpaceContentResults({
   const preview = useInteractivePageSearch({
     enabled: searchesPageContent,
     query: searchesPageContent ? liveQuery : "",
+    preferredProjectId: liveQuery ? preferredProjectId : undefined,
     limit: 40,
     complete: searchesPageContent,
   });
@@ -103,19 +96,7 @@ export function useSpaceContentResults({
   );
   const items = useMemo<readonly SpaceContentItem[]>(() => {
     if (!searchesPageContent) return catalogItems;
-    const previewPageIds = new Set(preview.rows.map((row) => row.pageId));
-    return [
-      ...preview.rows.map((row) => ({
-        target: { kind: "page" as const, pageId: row.pageId },
-        title: row.title,
-        locationLabel: row.locationLabel,
-        reveal: pageSearchReveal(row.matches),
-        searchMatches: row.matches,
-      })),
-      ...catalogItems.filter(
-        (item) => item.target.kind !== "page" || !previewPageIds.has(item.target.pageId),
-      ),
-    ];
-  }, [catalogItems, preview.rows, searchesPageContent]);
+    return buildSpaceContentItems({ query: liveQuery, pageResults: preview.rows, catalogItems });
+  }, [catalogItems, liveQuery, preview.rows, searchesPageContent]);
   return { liveQuery, items, catalog };
 }

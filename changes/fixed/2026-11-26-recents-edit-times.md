@@ -1,0 +1,1 @@
+Recent pages show when they were last edited again. **Recents** in a New tab and the Space home list once more show each page's edit time and order pages, databases and canvases together by when they changed, instead of listing every page first.
