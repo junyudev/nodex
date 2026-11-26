@@ -16,6 +16,28 @@ compatibility layers, or third-party products.
   or the assistant in labels, descriptions, placeholders, toasts, dialogs,
   exported headings or notifications.
 
+## The name
+
+Nodex is named for what every Agent becomes in it: a node. Whichever provider
+runs a chat, it can hand work to an Agent of any other provider and take work
+from any other chat, so Nodex sits in every node rather than at the center of
+the graph Aerial view draws. Two lines carry the idea:
+
+- **Every agent, a node. Every node, Nodex.**
+  (每个智能体都是一个节点，每个节点都是 Nodex。) The site closes its Aerial view
+  section on it, the READMEs close theirs, and the About panel shows it. Its
+  first half signs every social card and opens the home page's description.
+- **Agent nodes, crossed.** (智能体节点，彼此交汇。) The site's wordmark can draw
+  its x as two delegation lines crossing, in the colors Aerial view gives
+  Claude Code and Codex; the footer says this line beside it.
+
+Say what the name means in these places and let Aerial view show it everywhere
+else. Agents read the same idea where their Nodex tools guidance begins. Node
+is not a product noun: the interface keeps naming chats, subagents, Agents and
+Pages. Copy that presents Nodex as a coordinator or orchestrator running the
+Agents contradicts the name; describe the Agents working with one another.
+Chinese copy uses each surface's own word for Agent.
+
 ## External names
 
 Keep an external product name when the name tells the user which outside

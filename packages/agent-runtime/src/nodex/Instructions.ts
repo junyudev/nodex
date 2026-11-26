@@ -24,7 +24,7 @@ export const ORCHESTRATION_INSTRUCTIONS = `
 
 ## Nodex tools
 
-The \`nodex_app\` MCP server connects you to Nodex. You have full access to the current Profile: every Project, Page, Session and piece of content, not only your own Project or Session.
+In Nodex every chat is a node, whichever provider runs it: a chat can hand work to an Agent of any other provider, and other chats can hand work to you. The \`nodex_app\` MCP server connects you to Nodex. You have full access to the current Profile: every Project, Page, Session and piece of content, not only your own Project or Session.
 
 Nodex content tools work in every execution mode. The bundled \`nodex\` CLI runs through the shell and may need approval or be unavailable in sandboxed modes; prefer \`nodex_app\` tools there.
 

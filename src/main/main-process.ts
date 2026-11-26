@@ -1,7 +1,7 @@
 import markdownWasmPath from "../shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm?asset";
 import { app, BrowserWindow, dialog } from "electron";
 import { appBuildOrdinal } from "../shared/app-version";
-import { getMainIntl } from "./i18n/main-intl";
+import { getMainIntl, onMainLocaleChange } from "./i18n/main-intl";
 import { readPackagedAppBuildVersion } from "./packaged-app-build-version";
 import { mkdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
@@ -318,9 +318,20 @@ async function handleApplicationFailure(
 }
 
 function launchMainApplication(): void {
-  const ordinal = appBuildOrdinal(appBuildVersion);
-  if (process.platform === "darwin" && ordinal !== null) {
-    app.setAboutPanelOptions({ applicationVersion: appVersion, version: String(ordinal) });
+  if (process.platform === "darwin") {
+    const ordinal = appBuildOrdinal(appBuildVersion);
+    // The About panel says what the name means, in the app's language.
+    const describeAboutPanel = () =>
+      app.setAboutPanelOptions({
+        applicationVersion: appVersion,
+        ...(ordinal === null ? {} : { version: String(ordinal) }),
+        credits: getMainIntl().formatMessage({
+          id: "main.about.credits",
+          defaultMessage: "Every agent, a node. Every node, Nodex.",
+        }),
+      });
+    describeAboutPanel();
+    onMainLocaleChange(describeAboutPanel);
   }
   const startupEvents = runtimeQueue.takePendingEvents();
   const foundation = MainFoundationLive.make({
