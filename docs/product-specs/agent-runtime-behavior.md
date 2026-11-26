@@ -303,9 +303,10 @@ completion while its native process remains live. Cancelled or retired execution
 instead of borrowing replacement credentials. Cancelling source-less native execution
 retires its connection and credential before another prompt is admitted.
 
-Stateless native MCP calls bind to the registered native call and its physical
-incarnation. An explicit HTTP MCP session ID must identify that same live incarnation;
-an unknown or retired ID cannot fall back to native call metadata.
+For providers with causal metadata, the Runtime verifies the exact native MCP call
+against its live registration. The Host rechecks its Run and attempt independently
+of native Turn history. An explicit HTTP MCP session ID must identify that same live
+incarnation. An unknown or retired ID cannot fall back to native call metadata.
 MCP initialization may bind the credential's sole registered incarnation before the
 first Run is prepared. It never assigns a Run or resolves an ambiguous connection.
 

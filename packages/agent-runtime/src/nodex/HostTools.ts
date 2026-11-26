@@ -4,12 +4,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { McpSchema, McpServer } from "effect/ai";
-import { ThreadId } from "@nodex/runtime-contracts";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as Invocation from "../mcp/McpInvocationContext.ts";
-import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import { HostBridge } from "./HostBridge.ts";
-import { hostToolAuthorityRefusal } from "./HostToolAuthority.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
 import { toolInputSchemaProblem } from "./ToolInputSchema.ts";
 
@@ -28,7 +25,6 @@ export const layer = (configuration: AgentRuntimeConfiguration) =>
       if (configuration.host === undefined || configuration.host.tools.length === 0) return;
       const server = yield* McpServer.McpServer;
       const bridge = yield* HostBridge;
-      const projections = yield* Projections.ProjectionStoreV2;
       for (const descriptor of configuration.host.tools) {
         const tool = yield* decodeTool(descriptor);
         // Some providers silently drop a tool whose arguments are not one object.
@@ -58,33 +54,19 @@ export const layer = (configuration: AgentRuntimeConfiguration) =>
                 const admission = yield* ExecutionHost.McpTurnAdmission;
                 const prepared = admission?.actor;
                 if (
+                  admission === undefined ||
                   prepared === undefined ||
                   prepared.providerInstanceId !== invocation.value.thread.providerInstanceId
                 )
                   return refusal("No execution identity was captured for this caller.");
-                yield* admission!.assertCurrent();
-                const state = yield* projections.getHostToolAuthorityContext(
-                  ThreadId.make(prepared.threadId),
-                  prepared.runId,
-                  prepared.providerThreadId,
-                );
-                if (!(yield* bridge.nativeSessionLive(prepared)))
-                  return refusal("Native execution has ended.");
-                const denied = hostToolAuthorityRefusal(state, prepared, prepared.nativeGeneration);
-                if (denied !== undefined) return refusal(denied);
+                yield* admission.assertCurrent();
                 const request = yield* McpSchema.McpRequestContext;
-                const nativeTurn = state.providerTurns.findLast(
-                  (turn) => turn.runAttemptId === prepared.attemptId,
-                );
                 const result = yield* bridge
                   .callTool(
                     {
                       ...prepared,
-                      ...(nativeTurn?.nativeTurnRef?.nativeId == null
-                        ? {}
-                        : { nativeTurnId: nativeTurn.nativeTurnRef.nativeId }),
                       mcpClientId: request.clientId,
-                      ...(admission?.requestId === undefined
+                      ...(admission.requestId === undefined
                         ? {}
                         : { mcpRequestId: admission.requestId }),
                       ...(request.requestMetadata === undefined
@@ -101,16 +83,7 @@ export const layer = (configuration: AgentRuntimeConfiguration) =>
                   )
                   .pipe(ExecutionHost.withMcpTurnLifetime);
                 // Recheck after the host returns so a stale completion cannot be presented as a new Run's success.
-                yield* admission!.assertCurrent();
-                const latest = yield* projections.getHostToolAuthorityContext(
-                  ThreadId.make(prepared.threadId),
-                  prepared.runId,
-                  prepared.providerThreadId,
-                );
-                if (!(yield* bridge.nativeSessionLive(prepared)))
-                  return refusal("Native execution has ended.");
-                const stale = hostToolAuthorityRefusal(latest, prepared, prepared.nativeGeneration);
-                if (stale !== undefined) return refusal(stale);
+                yield* admission.assertCurrent();
                 return yield* decodeResult(result);
               }).pipe(Effect.catchCause((cause) => Effect.succeed(refusal(String(cause))))),
             ),

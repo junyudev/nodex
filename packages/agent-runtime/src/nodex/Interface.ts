@@ -159,6 +159,7 @@ export type AgentThreadAuthority = AgentHostTurnIdentity & {
   readonly rootThreadId: string;
   readonly status: OrchestrationV2Run["status"];
   readonly archived: boolean;
+  /** Native Turn observed in history. Live tool calls are verified from their source registration. */
   readonly nativeTurnId: string | null;
   readonly branch: string | null;
   readonly worktreePath: string | null;
@@ -1113,7 +1114,6 @@ export type AgentHostNativeSessionIdentity = AgentWire<HostNativeSessionIdentity
 };
 export type AgentHostExecutionIdentity = AgentHostTurnIdentity | AgentHostNativeSessionIdentity;
 export type AgentHostToolIdentity = AgentHostExecutionIdentity & {
-  readonly nativeTurnId?: string;
   readonly nativeCallId?: string;
   readonly nativeCallKey?: string;
   readonly mcpClientId?: number;

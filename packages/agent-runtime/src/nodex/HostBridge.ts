@@ -714,26 +714,14 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
           ),
         ),
       ),
-    callTool: Effect.fn("AgentRuntime.callHostTool")(function* (
-      identity: AgentHostToolIdentity,
-      tool: string,
-      input: unknown,
-    ) {
-      // A native tool call can arrive before the matching Turn is visible in projections.
-      // The registered source supplies the exact Turn only when the call ran in that Run itself.
-      const captured =
-        identity.nativeTurnId === undefined && identity.nativeCallKey !== undefined
-          ? (yield* Ref.get(nativeCalls)).get(identity.nativeCallKey)
-          : undefined;
-      const nativeTurnId = captured?.nativeSubagent ? undefined : captured?.sourceNativeTurnId;
-      return yield* exchange({
+    callTool: (identity: AgentHostToolIdentity, tool: string, input: unknown) =>
+      exchange({
         type: "host.request",
         operation: "tool.call",
-        identity: nativeTurnId === undefined ? identity : { ...identity, nativeTurnId },
+        identity,
         tool,
         input,
-      });
-    }),
+      }),
   };
 });
 
