@@ -35,6 +35,7 @@ import type {
   ScenarioBoardObservation,
   ScenarioDocumentCheckpointSeed,
   ScenarioDocumentReplacement,
+  ScenarioHostedDatabaseSeed,
   ScenarioLibraryFileSeed,
   ScenarioPageObservation,
   ScenarioPageFileEntrySeed,
@@ -726,6 +727,39 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     requireSuccess(result, `Create standalone ${input.title}`);
   }
 
+  async createHostedDatabase({
+    projectId,
+    parentPageId,
+    operationId,
+    ...database
+  }: ScenarioHostedDatabaseSeed): Promise<void> {
+    const parent = requireSuccess(
+      await createCoreDocumentSyncAdapter(this.#runtime.clientForProject(projectId)).prepareOwner({
+        ownerBlockId: parentPageId,
+        operationId: createUuidV7(),
+        clientSessionId: "scenario:hosted-database",
+      }),
+      "Prepare Database host Page",
+    );
+    requireSuccess(
+      await this.#library(projectId).apply({
+        operationId,
+        storeEpoch: parent.storeEpoch,
+        operation: {
+          kind: "create_database",
+          ...database,
+          parent: {
+            kind: "page",
+            pageId: parentPageId,
+            expectedDocumentGeneration: parent.generation,
+            expectedDocumentHeadSeq: parent.headSeq,
+          },
+        },
+      }),
+      `Create ${database.name}`,
+    );
+  }
+
   async createStandaloneCanvas(
     input: Parameters<ScenarioSeedPort["createStandaloneCanvas"]>[0],
   ): Promise<void> {
@@ -981,6 +1015,8 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       pageId: detail.page.pageId,
       title: detail.page.title,
       descriptionPreview: detail.page.preview,
+      parent: detail.page.parent,
+      parentRevision: detail.page.parentRevision,
       documentReadiness: detail.document.readiness,
       pageWork: parsePageWork(
         detail.intrinsicProperties.find((item) => item.key === "work")?.value ?? null,
