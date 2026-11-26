@@ -1,0 +1,7 @@
+version = 1
+id = "legacy-only"
+name = "Legacy task"
+prompt = "Inspect the fixture."
+status = "PAUSED"
+rrule = "FREQ=DAILY;BYHOUR=7;BYMINUTE=30"
+cwds = []

@@ -1,0 +1,35 @@
+{
+  "scheduledTasks": [
+    {
+      "id": "daily",
+      "displayName": "Review incoming work",
+      "filePath": "fixture placeholder",
+      "enabled": true,
+      "createdAt": 100,
+      "model": "fixture-model",
+      "cwd": "/work/project",
+      "userSelectedFolders": ["/work/project", "/shared/references"],
+      "useWorktree": true,
+      "cronExpression": "15 9 * * MON-FRI"
+    },
+    {
+      "id": "one-shot",
+      "filePath": "fixture placeholder",
+      "enabled": false,
+      "createdAt": 50,
+      "fireAt": 10000
+    },
+    {
+      "id": "manual",
+      "filePath": "fixture placeholder",
+      "enabled": true,
+      "createdAt": 40
+    },
+    {
+      "id": "unreadable-skill",
+      "filePath": "fixture placeholder",
+      "enabled": true,
+      "createdAt": 30
+    }
+  ]
+}
