@@ -1,0 +1,1 @@
+Imported chats go to the Project for their working folder. Nodex creates Projects for eligible folders as needed. Use **Sort chats into projects** in the Chats sidebar menu to organize chats you already have.

@@ -13,7 +13,7 @@ import {
 /**
  * What this window knows about one source's import beyond the latest catalog read. `sending` and
  * `unsettled` hold an accepted request that has not been proven unadmitted, so the only way forward
- * is to send that exact request again. `imported` publishes a copy before catalogs catch up.
+ * is to send that exact request again and let Main recover its admitted placement. `imported` publishes a copy before catalogs catch up.
  */
 export type NativeConversationImportEntry =
   | {

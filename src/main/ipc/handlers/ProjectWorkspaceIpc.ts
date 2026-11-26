@@ -1,6 +1,11 @@
 import { getMainIntl } from "../../i18n/main-intl";
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
-import { turnSessionFolderIntoProject } from "../../project-application/SessionFolderProjects";
+import { folderPlacementPlaces } from "../../project-application/FolderPlacement";
+import {
+  previewChatSort,
+  sortChatsIntoProjects,
+  turnSessionFolderIntoProject,
+} from "../../project-application/SessionFolderProjects";
 import { SessionFolders } from "../../agent-backend/SessionFolders";
 import { AgentChatWorktrees } from "../../codex-application/AgentChatWorktrees";
 import { sessionFolderFromCore } from "../../core-client/project-workspace-adapter";
@@ -98,6 +103,13 @@ export const live: Layer.Layer<
         Effect.map((location) => location?.cwd ?? null),
       );
     const projects = yield* ProjectWorkspace;
+    const folderProjects = {
+      projects,
+      folders,
+      places: folderPlacementPlaces(config),
+      move: agentRuntime.moveSession,
+      readExecutionCwd,
+    };
     const windows = yield* WindowRuntime;
     const folderLanes = yield* RcMap.make({ lookup: (_sessionId: string) => Semaphore.make(1) });
     const withFolderSelection = <A, E>(sessionId: string, effect: Effect.Effect<A, E>) =>
@@ -612,18 +624,26 @@ export const live: Layer.Layer<
           withFolderSelection(
             sessionId,
             turnSessionFolderIntoProject({
+              ...folderProjects,
               sessionId,
               name: typeof input?.name === "string" ? input.name : undefined,
-              folders,
-              projects,
-              move: agentRuntime.moveSession,
-              readExecutionCwd,
             }),
           ),
         ),
         Effect.tap(() => sectionSync.request("local-mutation")),
       ),
     );
+    yield* invokeEffectQuery("session-folder:preview-sort", () => previewChatSort(folderProjects));
+    yield* invokeEffectPlainCommand("session-folder:sort", (_, planId) => {
+      if (typeof planId !== "string" || !/^[a-f0-9]{64}$/u.test(planId))
+        return Effect.fail(
+          new ProjectWorkspaceIpcError({
+            operation: "session-folder:sort",
+            cause: new Error("A chat sort preview is required"),
+          }),
+        );
+      return syncSectionsAfter(sortChatsIntoProjects(folderProjects, planId));
+    });
     yield* handleLocalCommitCommand("project-sessions:delete", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(

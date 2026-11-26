@@ -123,9 +123,11 @@ Either way a person with nothing to run lands on a Composer that asks them to co
 
 ## Where should agents work?
 
-The second page offers the folders an Agent has already worked in, read from Codex and Claude Code
-history. Folders in one repository and its linked worktrees count as one, named `owner/name` when its
-remote is recognizable, with the owner quieter than the name. Scratch space, downloads, Agents' own
+The second page offers the folders an Agent has already worked in, read from Codex, Claude Code and
+Antigravity history through the first enabled Antigravity profile. Nodex refreshes discovery each
+time the Projects step opens. Folders in one
+repository and its linked worktrees count as one, named `owner/name` when its remote is
+recognizable, with the owner quieter than the name. Scratch space, downloads, Agents' own
 homes and folders that no longer exist aren't offered, and neither are folders that are already
 Projects. The scan reads at most 500 conversations from each history, and a history it can't read
 simply contributes nothing. It offers at most 50 folders, keeping Git repositories ahead of other
@@ -140,14 +142,15 @@ a folder chosen there scrolls into view, already selected.
 Repositories active in the last 30 days with at least three chats are selected to begin with. The
 person can change that, add any folder with `Choose a folder`, or `Start an empty project`, which
 makes a new folder under the default projects directory and initializes Git. `Add project` creates
-an ordinary Project for each selected row, and the page does not create anything before that.
+or reuses a Project for each selected folder using the same placement as conversation import.
+The page creates Projects only after confirmation.
 `Just chat for now` continues with no Project.
 
 `Also bring recent chats` is off to begin with and appears only when there are chats to bring. It
 copies the selected folders' chats from the last 30 days, at most 20 from each, through the ordinary
-[native conversation import](native-conversation-connection-behavior.md). Copies are made in the
-background: progress replaces the dots while setup shows, each chat appears in the sidebar as it
-finishes, and a toast reports the total. A chat that fails can be retried in Settings → Import.
+[native conversation import](native-conversation-connection-behavior.md), which places each chat
+by its working folder. Copies are made in the background. Progress replaces the dots while setup
+shows, each chat appears in the sidebar as it finishes, and a toast reports the total. A chat that fails can be retried in Settings → Import.
 
 ## Landing
 

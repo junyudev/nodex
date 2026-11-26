@@ -12,7 +12,8 @@ import {
   createNativeConversationImportLedger,
   type NativeConversationImportLedger,
 } from "../../lib/native-conversation-import-ledger";
-import { openNodexMenu, render, settleAsyncRender } from "../../test/dom";
+import { settleAsyncRender } from "../../test/dom";
+import { renderWithQuery as render } from "../../test/query";
 import {
   ConversationImportSettingsPage,
   type ConversationImportRuntime,
@@ -82,7 +83,7 @@ const imported = (input: NativeConversationImportInput): NativeConversationImpor
   kind: "imported",
   sessionId: `session-${input.requestId}`,
   threadId: `thread-${input.nativeSessionId}`,
-  projectId: input.projectId,
+  projectId: null,
 });
 
 const makeRuntime = (overrides: Partial<ConversationImportRuntime> = {}) =>
@@ -98,6 +99,7 @@ const makeRuntime = (overrides: Partial<ConversationImportRuntime> = {}) =>
     importConversation: vi.fn<ConversationImportRuntime["importConversation"]>(async (input) =>
       imported(input),
     ),
+    previewPlacements: async (folders) => folders.map(() => ({ kind: "chats" as const })),
     pickDirectory: vi.fn<ConversationImportRuntime["pickDirectory"]>(async () => "/repo/moved"),
     pathContext: async () => ({ homeDirectory: "/home/me", separator: "/" }),
     ...overrides,
@@ -145,10 +147,6 @@ const footer = () => screen.getByRole("group", { name: "Import selection" });
 const footerButton = (name: string) =>
   within(footer()).getByRole("button", { name }) as HTMLButtonElement;
 const footerStatus = () => within(footer()).getByRole("status").textContent;
-const chooseDestination = async (name: string) => {
-  await openNodexMenu(footerButton("Import destination"));
-  await click(await screen.findByRole("option", { name }));
-};
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (cause: Error) => void;
@@ -160,7 +158,14 @@ const deferred = <T,>() => {
 };
 
 it("browses every source newest first and batch-imports with one replacement per missing folder", async () => {
-  const runtime = makeRuntime();
+  const runtime = makeRuntime({
+    previewPlacements: async (folders) =>
+      folders.map((folder) =>
+        folder === "/repo/moved"
+          ? { kind: "new-project", projectId: "moved-project", root: folder, name: "Moved" }
+          : { kind: "project", projectId: "work-project", name: "Work project" },
+      ),
+  });
   const onOpenThread = vi.fn();
   await renderPage(runtime, { onOpenThread });
   await row("Tidy logs");
@@ -180,7 +185,11 @@ it("browses every source newest first and batch-imports with one replacement per
   await within(await row("Tidy logs")).findByRole("button", { name: "Change folder" });
   expect(within(await row("Tidy logs")).getByText("/repo/moved")).toBeTruthy();
   expect(runtime.pickDirectory).toHaveBeenCalledTimes(1);
-  expect(footerStatus()).toBe("3 selected");
+  await within(await row("Fix authentication")).findByText("Work project");
+  const moved = await row("Tidy logs");
+  await within(moved).findByText("Moved");
+  expect(within(moved).getByText("New")).toBeTruthy();
+  expect(footerStatus()).toBe("3 selected · creates 1 project");
 
   await click(footerButton("Import 3"));
   await waitFor(() => expect(footerStatus()).toBe("Imported 3 conversations"));
@@ -202,7 +211,7 @@ it("browses every source newest first and batch-imports with one replacement per
     expect(within(await row(title)).getByRole("button", { name: "Open" })).toBeTruthy();
 });
 
-it("finishes an unknown outcome with its original request even after the destination changes", async () => {
+it("finishes an unknown outcome with its original request and releases a refused retry", async () => {
   const importConversation = vi
     .fn<ConversationImportRuntime["importConversation"]>()
     .mockRejectedValueOnce(new Error("Agent Runtime is restarting."))
@@ -214,30 +223,30 @@ it("finishes an unknown outcome with its original request even after the destina
   const onOpenThread = vi.fn();
   await renderPage(makeRuntime({ importConversation }), { onOpenThread });
   await type(BILLING);
+  await waitFor(() => expect(footerButton("Import and open").disabled).toBe(false));
   await click(footerButton("Import and open"));
 
   const billing = await row("Migrate billing");
   expect((await within(billing).findByRole("alert")).textContent).toBe(
     "Agent Runtime is restarting.",
   );
-  expect(within(billing).getByText("Import again to finish it in Projectless.")).toBeTruthy();
+  expect(within(billing).getByText("Import again to finish this copy.")).toBeTruthy();
 
-  await chooseDestination("Nodex");
+  await waitFor(() => expect(footerButton("Import and open").disabled).toBe(false));
   await click(footerButton("Import and open"));
   await waitFor(() => expect(importConversation).toHaveBeenCalledTimes(2));
   const [first, retry] = importConversation.mock.calls.map(([input]) => input);
   expect(retry).toEqual(first);
-  expect(first!.projectId).toBeNull();
 
-  // Proven unadmitted: nothing exists, so the current destination now applies to a new request.
+  // A proved refusal allows a fresh request.
   expect((await within(billing).findByRole("alert")).textContent).toBe(
     "This folder is no longer available. Refresh and choose another one.",
   );
   expect(within(billing).queryByText(/Import again to finish/u)).toBeNull();
+  await waitFor(() => expect(footerButton("Import and open").disabled).toBe(false));
   await click(footerButton("Import and open"));
   await waitFor(() => expect(onOpenThread).toHaveBeenCalledTimes(1));
   const fresh = importConversation.mock.calls[2]![0];
-  expect(fresh.projectId).toBe("project-nodex");
   expect(fresh.requestId).not.toBe(first!.requestId);
 });
 
@@ -257,6 +266,7 @@ it("keeps one submission per conversation when the page is left and reopened mid
   const first = await renderPage(runtime);
   await type(BILLING);
   await row("Migrate billing");
+  await waitFor(() => expect(footerButton("Import").disabled).toBe(false));
   await click(footerButton("Import"));
   first.unmount();
 
@@ -283,7 +293,7 @@ it("keeps one submission per conversation when the page is left and reopened mid
   second.unmount();
 });
 
-it("keeps the active destination and Claude sources when Projects fail to load", async () => {
+it("imports Claude by folder when the ACP Project list cannot load", async () => {
   const projects = vi
     .fn<ConversationImportRuntime["projects"]>()
     .mockRejectedValueOnce(new Error("Core is restarting."))
@@ -294,11 +304,10 @@ it("keeps the active destination and Claude sources when Projects fail to load",
 
   await row("Fix authentication");
   await click(within(await row("Fix authentication")).getByRole("checkbox"));
-  expect(footerButton("Import destination").textContent).toBe("Current Project");
   await click(footerButton("Import"));
   await waitFor(() =>
     expect(runtime.importConversation).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: "project-elsewhere", instanceConfigId: "work" }),
+      expect.objectContaining({ cwd: "/repo/work", instanceConfigId: "work" }),
     ),
   );
 
@@ -334,6 +343,7 @@ it("finishes an import after Settings closes without taking the user to it", asy
   await settleAsyncRender();
   await type(BILLING);
   await row("Migrate billing");
+  await waitFor(() => expect(footerButton("Import and open").disabled).toBe(false));
   await click(footerButton("Import and open"));
   expect(
     (screen.getByRole("button", { name: "Refresh conversations" }) as HTMLButtonElement).disabled,

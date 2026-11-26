@@ -1334,6 +1334,14 @@ export interface IpcApi
   "session-folder:ensure": { args: [sessionId: string]; result: SessionFolder };
   "session-folder:choose": { args: [sessionId: string, path: string]; result: SessionFolder };
   "session-folder:reset": { args: [sessionId: string]; result: void };
+  "session-folder:preview-sort": {
+    args: [];
+    result: import("./folder-placement").SortChatsPreview;
+  };
+  "session-folder:sort": {
+    args: [planId: string];
+    result: import("./folder-placement").SortChatsResult;
+  };
   "session-folder:turn-into-project": {
     args: [sessionId: string, input: { name?: string }];
     result: { projectId: string };
@@ -2725,6 +2733,14 @@ export interface IpcApi
   "native-sessions:preview-import": {
     args: [input: NativeConversationImportPreviewInput];
     result: NativeConversationImportPreviewResult;
+  };
+  "native-sessions:preview-placement": {
+    args: [folders: readonly string[]];
+    result: readonly import("./folder-placement").FolderPlacement[];
+  };
+  "projects:ensure-folder": {
+    args: [folder: string];
+    result: Exclude<import("./folder-placement").FolderPlacement, { kind: "new-project" }>;
   };
   "native-sessions:import": {
     args: [input: NativeConversationImportInput];

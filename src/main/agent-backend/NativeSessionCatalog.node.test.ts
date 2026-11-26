@@ -67,7 +67,6 @@ describe("NativeSessionCatalog", () => {
     acceptedAt: 20_000,
     nativeSessionId: SESSION_ID,
     expectedHome: home,
-    projectId: null,
     cwd,
   });
   const temporaryRoot = Effect.acquireRelease(

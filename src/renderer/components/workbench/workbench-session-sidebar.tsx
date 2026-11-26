@@ -151,6 +151,7 @@ import {
 import { pageTurnPhrase, type PageTurnHolder } from "@/lib/page-turn-phrase";
 import { reviewKey, useAcceptedReviews } from "@/lib/page-accept-undo";
 import { sidebarSectionChatIds } from "@/lib/sidebar-section-navigation";
+import { SidebarChatsSectionMenu } from "./sidebar-chats-section-menu";
 import { SidebarArrangeToggle, SidebarLaneViewMenu, SidebarScopeChip } from "./sidebar-view-menu";
 import {
   SidebarCustomSections,
@@ -2322,16 +2323,19 @@ function SidebarThreadOrganizerSections({
           collapsed={chatsSectionCollapsed}
           onToggle={onToggleChatsSectionCollapsed}
           actions={
-            <CodexSidebarActionButton
-              label={intl.formatMessage({
-                id: "workbench.workbenchSessionSidebar.newProjectlessChat",
-                defaultMessage: "New projectless chat",
-              })}
-              data-app-action-sidebar-projectless-new-chat=""
-              onClick={() => void onStartNewChatInProject(null)}
-            >
-              <NewChatIcon />
-            </CodexSidebarActionButton>
+            <>
+              <SidebarChatsSectionMenu />
+              <CodexSidebarActionButton
+                label={intl.formatMessage({
+                  id: "workbench.workbenchSessionSidebar.newProjectlessChat",
+                  defaultMessage: "New projectless chat",
+                })}
+                data-app-action-sidebar-projectless-new-chat=""
+                onClick={() => void onStartNewChatInProject(null)}
+              >
+                <NewChatIcon />
+              </CodexSidebarActionButton>
+            </>
           }
         >
           <SidebarThreadContainerRowsContent

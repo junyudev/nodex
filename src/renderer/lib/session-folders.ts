@@ -1,5 +1,5 @@
 import { getIntl } from "@/lib/i18n";
-import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
+import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
 const ensureFolder = defineRendererCommand({
   key: "session_folder.ensure",
@@ -59,3 +59,16 @@ export const pickSessionFolder = () =>
       defaultMessage: "Choose Chat folder",
     }),
   });
+
+const sortChats = defineRendererCommand({
+  key: "session_folder.sort_chats",
+  channel: "session-folder:sort",
+  authority: "main",
+  owner: "SessionFolders",
+  protocol: { kind: "returned_value" },
+});
+
+export const previewSortChatsIntoProjects = () =>
+  invokeRendererQuery("session-folder:preview-sort");
+
+export const sortChatsIntoProjects = (planId: string) => invokePlainCommand(sortChats, planId);

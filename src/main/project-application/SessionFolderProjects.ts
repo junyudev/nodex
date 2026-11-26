@@ -1,48 +1,59 @@
-import { basename } from "node:path";
+import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
-import { v5 } from "uuid";
-import {
-  areWorkspacePathsEquivalent,
-  normalizeCodexPathIdentity,
-} from "../../shared/codex-workspace-paths";
+import type {
+  FolderPlacement,
+  SortChatsDestination,
+  SortChatsPreview,
+  SortChatsResult,
+} from "../../shared/folder-placement";
+import type { ProjectSessionSummaryWindow } from "../../shared/types";
 import type { SessionFolders } from "../agent-backend/SessionFolders";
 import { SessionFolderError } from "../agent-backend/SessionFolders";
 import type { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import { resolveChosenChatDirectory } from "../codex/codex-projectless-workspace";
 import { createOperationId } from "../core-runtime/operation-identity";
 import type { ProjectWorkspace } from "./ProjectWorkspace";
+import {
+  ensurePlacedProject,
+  projectForFolder,
+  readFolderPlacements,
+  resolveAndEnsureFolderProject,
+} from "./FolderPlacement";
 
-const projectForFolder = (directory: string) =>
-  v5(`nodex:chat-folder:${normalizeCodexPathIdentity(directory)}`, v5.URL);
-const failure = (message: string, cause?: unknown) => new SessionFolderError({ message, cause });
+interface FolderProjects {
+  readonly folders: Pick<SessionFolders["Service"], "existing">;
+  readonly projects: Pick<
+    ProjectWorkspace["Service"],
+    "getProjectSession" | "getProject" | "listProjectWindow" | "createProject"
+  >;
+  readonly places: Parameters<typeof readFolderPlacements>[1];
+  readonly move: AgentRuntimeApplication["Service"]["moveSession"];
+  readonly readExecutionCwd: NonNullable<
+    Parameters<SessionFolders["Service"]["existing"]>[1]
+  >["readExecutionCwd"];
+}
+
+const failure = (message: string) => new SessionFolderError({ message, cause: undefined });
 
 /** Uses the same Project and Session commands as ordinary creation and placement. */
 export const turnSessionFolderIntoProject = Effect.fn("SessionFolderProjects.turnIntoProject")(
-  function* (input: {
-    readonly sessionId: string;
-    readonly name?: string;
-    readonly folders: Pick<SessionFolders["Service"], "existing">;
-    readonly projects: Pick<
-      ProjectWorkspace["Service"],
-      "getProjectSession" | "getProject" | "listProjectWindow" | "createProject"
-    >;
-    readonly move: AgentRuntimeApplication["Service"]["moveSession"];
-    readonly readExecutionCwd: NonNullable<
-      Parameters<SessionFolders["Service"]["existing"]>[1]
-    >["readExecutionCwd"];
-  }) {
-    const { sessionId, projects, folders } = input;
+  function* (input: FolderProjects & { readonly sessionId: string; readonly name?: string }) {
+    const { sessionId, projects, places, folders, name, readExecutionCwd } = input;
     const session = yield* projects.getProjectSession(sessionId);
     if (!session) return yield* failure("Chat is unavailable");
 
     if (session.projectId !== null) {
-      // The earlier move may have committed before its caller observed the result.
+      // A committed move may still need to reconcile the execution placement on retry.
       const project = yield* projects.getProject(session.projectId);
-      const primary = project?.primaryWorkspaceRoot;
+      const root = project?.primaryWorkspaceRoot;
+      const folder = yield* folders.existing(sessionId, { readExecutionCwd });
+      const [placement] = folder
+        ? yield* readFolderPlacements(projects, places, [folder.path], true)
+        : [];
       if (
         project?.lifecycle !== "active" ||
-        !primary ||
-        projectForFolder(primary) !== session.projectId
+        (placement?.kind === "project"
+          ? placement.projectId !== session.projectId
+          : !root || projectForFolder(root) !== session.projectId)
       )
         return yield* failure("This chat already belongs to a Project");
       yield* input.move({
@@ -53,63 +64,126 @@ export const turnSessionFolderIntoProject = Effect.fn("SessionFolderProjects.tur
       return { projectId: session.projectId };
     }
 
-    const folder = yield* folders.existing(sessionId, { readExecutionCwd: input.readExecutionCwd });
+    const folder = yield* folders.existing(sessionId, { readExecutionCwd });
     if (!folder) return yield* failure("This chat has no folder");
-    const directory = yield* Effect.tryPromise({
-      try: () => resolveChosenChatDirectory(folder.path),
-      catch: (cause) => failure("The Chat folder is unavailable", cause),
+    const placement = yield* resolveAndEnsureFolderProject({
+      projects,
+      places,
+      folder: folder.path,
+      explicit: true,
+      name,
     });
-    const projectId = projectForFolder(directory);
-    const name = input.name?.trim() || basename(directory);
-    if (!name) return yield* failure("Enter a name for the Project");
-    const usesDirectory = (root: string) => areWorkspacePathsEquivalent(root, directory);
-    let after: string | null = null;
-    do {
-      const page: import("../../shared/types").ProjectWindow = yield* projects.listProjectWindow({
-        after,
-        includeArchived: true,
-      });
-      const owner = page.items.find(
-        (project) =>
-          project.id !== projectId &&
-          project.sources.some(
-            (source) => source.kind === "directory" && usesDirectory(source.path),
-          ),
-      );
-      if (owner) return yield* failure(`The Chat folder is already a source for ${owner.name}`);
-      after = page.nextCursor;
-    } while (after !== null);
-
-    const existing = yield* projects.getProject(projectId);
-    const project =
-      existing ??
-      (yield* projects
-        .createProject({
-          operationId: createOperationId("session-folder.create-project"),
-          payload: { projectId, input: { name, sources: [directory] } },
-        })
-        .pipe(
-          Effect.map(({ value }) => value),
-          Effect.catch((cause) =>
-            projects
-              .getProject(projectId)
-              .pipe(
-                Effect.flatMap((found) => (found ? Effect.succeed(found) : Effect.fail(cause))),
-              ),
-          ),
-        ));
-    if (
-      project.lifecycle !== "active" ||
-      !project.primaryWorkspaceRoot ||
-      !usesDirectory(project.primaryWorkspaceRoot)
-    )
-      return yield* failure("The Project created for this Chat folder is unavailable");
+    if (placement.kind !== "project")
+      return yield* failure("The Project for this Chat folder is unavailable");
 
     yield* input.move({
       sessionId,
-      projectId,
+      projectId: placement.projectId,
       operationId: createOperationId("session-folder.move-to-project"),
+      onlyProjectless: true,
     });
-    return { projectId };
+    return { projectId: placement.projectId };
   },
 );
+
+type SortInput = FolderProjects & {
+  readonly projects: FolderProjects["projects"] &
+    Pick<ProjectWorkspace["Service"], "listProjectSessionSummaryWindow">;
+};
+
+const planChatSort = Effect.fn("SessionFolderProjects.planChatSort")(function* (input: SortInput) {
+  const { projects, folders, places, readExecutionCwd } = input;
+  const chats: { sessionId: string; folder: string }[] = [];
+  let after: string | null = null;
+  do {
+    const page: ProjectSessionSummaryWindow = yield* projects.listProjectSessionSummaryWindow(
+      null,
+      { after },
+    );
+    const located = yield* Effect.forEach(
+      page.items,
+      (session) =>
+        folders.existing(session.id, { readExecutionCwd }).pipe(
+          Effect.map((folder) => (folder ? { sessionId: session.id, folder: folder.path } : null)),
+          Effect.orElseSucceed(() => null),
+        ),
+      { concurrency: 8 },
+    );
+    chats.push(...located.flatMap((chat) => (chat ? [chat] : [])));
+    after = page.nextCursor;
+  } while (after !== null);
+  const placements = yield* readFolderPlacements(
+    projects,
+    places,
+    chats.map(({ folder }) => folder),
+  );
+  return chats.flatMap((chat, index) => {
+    const placement = placements[index];
+    return placement && placement.kind !== "missing" ? [{ ...chat, placement }] : [];
+  });
+});
+
+const chatSortPlanId = (plan: Effect.Success<ReturnType<typeof planChatSort>>) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(plan.toSorted((left, right) => left.sessionId.localeCompare(right.sessionId))),
+    )
+    .digest("hex");
+
+export const previewChatSort = Effect.fn("SessionFolderProjects.previewChatSort")(function* (
+  input: SortInput,
+): Effect.fn.Return<SortChatsPreview, Effect.Error<ReturnType<typeof planChatSort>>> {
+  const plan = yield* planChatSort(input);
+  const counts = new Map<string | null, SortChatsDestination>();
+  for (const { placement } of plan) {
+    const key = placement.kind === "chats" ? null : placement.projectId;
+    counts.set(key, { placement, count: (counts.get(key)?.count ?? 0) + 1 });
+  }
+  return { planId: chatSortPlanId(plan), destinations: [...counts.values()] };
+});
+
+export const sortChatsIntoProjects = Effect.fn("SessionFolderProjects.sortChats")(function* (
+  input: SortInput,
+  planId: string,
+): Effect.fn.Return<
+  SortChatsResult,
+  Effect.Error<ReturnType<typeof planChatSort>> | SessionFolderError
+> {
+  const plan = yield* planChatSort(input);
+  if (chatSortPlanId(plan) !== planId)
+    return yield* failure("Chat placement changed. Review the updated preview and try again.");
+
+  const projects = new Map<string, FolderPlacement | null>();
+  const targets = plan.flatMap(({ sessionId, placement }) =>
+    placement.kind === "chats" ? [] : [{ sessionId, placement }],
+  );
+  for (const { placement } of targets) {
+    if (projects.has(placement.projectId)) continue;
+    const project =
+      placement.kind === "project"
+        ? placement
+        : yield* ensurePlacedProject(input.projects, placement).pipe(
+            Effect.orElseSucceed(() => null),
+          );
+    projects.set(placement.projectId, project);
+  }
+  let moved = 0;
+  for (const { sessionId, placement } of targets) {
+    if (projects.get(placement.projectId)?.kind !== "project") continue;
+    const movedChat = yield* input
+      .move({
+        sessionId,
+        projectId: placement.projectId,
+        operationId: createOperationId("session-folder.sort-chat"),
+        onlyProjectless: true,
+      })
+      .pipe(
+        Effect.match({
+          onSuccess: () => true,
+          onFailure: (cause) => cause.committedOperationId !== undefined,
+        }),
+      );
+    if (movedChat) moved += 1;
+  }
+  return { moved, skipped: targets.length - moved };
+});

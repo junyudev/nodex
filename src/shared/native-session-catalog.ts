@@ -63,13 +63,12 @@ export interface NativeConversationImportPreviewResult {
   readonly matches: readonly NativeConversationImportPreview[];
 }
 
-/** A retry retains its request identity and all selected import parameters. */
+/** A retry retains its request identity and its source and working directory. */
 export type NativeConversationImportInput = NativeSessionSource & {
   readonly requestId: string;
   readonly acceptedAt: number;
   readonly nativeSessionId: string;
   readonly expectedHome: string;
-  readonly projectId: string | null;
   readonly cwd: string;
 };
 

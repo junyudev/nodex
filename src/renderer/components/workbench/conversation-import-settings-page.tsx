@@ -1,5 +1,7 @@
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { useIntl } from "@/lib/i18n";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import type { FolderPlacement } from "../../../shared/folder-placement";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
@@ -55,6 +57,7 @@ import {
   listNativeSessions,
   pickNativeConversationImportDirectory,
   previewNativeConversationImport,
+  previewNativeFolderPlacements,
   readNativeSessionPathContext,
   readNativeSessionProjects,
 } from "../../lib/native-session-catalog";
@@ -64,7 +67,6 @@ import { NodexButton, NodexIconButton } from "../ui/button";
 import { PageSearchInput } from "../ui/page-search-input";
 import { NodexSettingsPageSurface, NodexSettingsSection } from "../ui/settings";
 import {
-  ConversationImportDestinationPicker,
   ConversationImportFilterPicker,
   ConversationImportFooter,
   ConversationImportRow,
@@ -102,6 +104,7 @@ export interface ConversationImportRuntime {
   readonly importConversation: (
     input: NativeConversationImportInput,
   ) => Promise<NativeConversationImportOutcome>;
+  readonly previewPlacements: (folders: readonly string[]) => Promise<readonly FolderPlacement[]>;
   readonly pickDirectory: () => Promise<string | null>;
   readonly pathContext: () => Promise<LocalPathPresentationContext>;
 }
@@ -111,6 +114,7 @@ const defaultRuntime: ConversationImportRuntime = {
   projects: readNativeSessionProjects,
   list: listNativeSessions,
   preview: previewNativeConversationImport,
+  previewPlacements: previewNativeFolderPlacements,
   importConversation: importNativeConversation,
   pickDirectory: pickNativeConversationImportDirectory,
   pathContext: readNativeSessionPathContext,
@@ -241,9 +245,6 @@ export function ConversationImportSettingsPage({
       loaded.find((project) => project.id === projectId) ??
       settingsProjects.find((project) => project.id === projectId)
     )?.name ?? null;
-  const destinationName = (projectId: string | null) =>
-    projectId === null ? "Projectless" : (projectName(projectId) ?? "the chosen Project");
-
   const destinations = (selected: string | null): ConversationImportDestinations => ({
     options: [
       {
@@ -311,10 +312,6 @@ export function ConversationImportSettingsPage({
         ledger={ledger}
         sources={sources}
         pathContext={pathContext}
-        // The active Project is the default even before, or without, the Project list naming it.
-        defaultProjectId={activeProjectId}
-        destinationName={destinationName}
-        destinations={destinations}
         onOpenThread={onOpenThread}
       />
       <AcpNativeConversationsSection
@@ -406,9 +403,6 @@ function ConversationImportSection({
   ledger,
   sources,
   pathContext,
-  defaultProjectId,
-  destinationName,
-  destinations,
   onOpenThread,
 }: {
   open: boolean;
@@ -416,9 +410,6 @@ function ConversationImportSection({
   ledger: NativeConversationImportLedger;
   sources: readonly NativeConversationSource[];
   pathContext: LocalPathPresentationContext | null;
-  defaultProjectId: string | null;
-  destinationName: (projectId: string | null) => string;
-  destinations: (selected: string | null) => ConversationImportDestinations;
   onOpenThread?: SettingsOpenThread;
 }) {
   const intl = useIntl();
@@ -449,8 +440,6 @@ function ConversationImportSection({
   const [rowStates, setRowStates] = useState<ReadonlyMap<string, ConversationImportRowState>>(
     new Map(),
   );
-  const [projectChoice, setProjectChoice] = useState<string | null | undefined>(undefined);
-  const projectId = projectChoice === undefined ? defaultProjectId : projectChoice;
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [choosingFolder, setChoosingFolder] = useState(false);
@@ -532,9 +521,41 @@ function ConversationImportSection({
 
   const selected = rows.filter((row) => isSelectable(row) && selection.has(row.key));
   const selectedOutOfView = selected.filter((row) => !visibleKeys.has(row.key)).length;
-  const needingFolder = selected.filter(
-    (row) => !pendingFor(row.key) && !nativeConversationImportCwd(row, replacements),
+  const cwdFor = (row: NativeConversationCandidate) =>
+    nativeConversationImportCwd(row, replacements);
+  const folders = [
+    ...new Set(
+      rows.flatMap((row) => {
+        const cwd = !row.imported && !pendingFor(row.key) && cwdFor(row);
+        return cwd ? [cwd] : [];
+      }),
+    ),
+  ].sort();
+  const placements = useQuery({
+    queryKey: ["native-conversation-import", "placement", folders],
+    queryFn: async () => {
+      const results = await runtime.previewPlacements(folders);
+      return new Map(folders.map((cwd, index) => [cwd, results[index]]));
+    },
+    enabled: open && folders.length > 0,
+    placeholderData: keepPreviousData,
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+  });
+  const placementFor = (row: NativeConversationCandidate) =>
+    placements.data?.get(cwdFor(row) ?? "");
+  const newImports = selected.filter((row) => !pendingFor(row.key));
+  const needingFolder = newImports.filter(
+    (row) => !cwdFor(row) || placementFor(row)?.kind === "missing",
   );
+  const awaitingPlacement = newImports.some((row) => cwdFor(row) && !placementFor(row));
+  const newProjectCount = new Set(
+    newImports.flatMap((row) => {
+      const placement = placementFor(row);
+      return placement?.kind === "new-project" ? [placement.projectId] : [];
+    }),
+  ).size;
   const visibleSelectable = visible.filter(isSelectable);
   const visibleSelected = visibleSelectable.filter((row) => selection.has(row.key)).length;
   const reading = browse.loading.size > 0;
@@ -819,14 +840,13 @@ function ConversationImportSection({
   };
 
   const importSelected = async () => {
-    if (locked || selected.length === 0 || needingFolder.length > 0) return;
-    // New imports take the current controls; an unfinished one is finished with its own request.
+    if (locked || selected.length === 0 || needingFolder.length > 0 || awaitingPlacement) return;
+    // An unfinished import keeps its accepted folder, including when a fresh preview changes.
     const targets = selected.map((row) => ({
       row,
       selection: nativeConversationImportSelection(
         row,
-        projectId,
-        nativeConversationImportCwd(row, replacements) ?? pendingFor(row.key)!.request.cwd,
+        pendingFor(row.key)?.request.cwd ?? cwdFor(row)!,
       ),
     }));
     const ownVisit = visit.current;
@@ -843,7 +863,6 @@ function ConversationImportSection({
         imported += 1;
         setSelection((current) => withoutEntry(current, row.key));
       } else if (settlement.kind === "not_admitted") {
-        // Nothing was created, so the folder or destination may be changed before trying anew.
         setRowStates((current) =>
           withEntry(current, row.key, { kind: "failed", message: settlement.message }),
         );
@@ -852,6 +871,8 @@ function ConversationImportSection({
     }
     setProgress(null);
     setSummary({ imported, failed: targets.length - imported });
+    // A Project created by this batch can now own other listed folders.
+    if (folders.length > 0) void placements.refetch();
     // One conversation is opened right away, but only for someone still looking at this page.
     if (targets.length === 1 && lastCopy && visit.current === ownVisit)
       await openCopy(lastCopy.key, lastCopy.copy);
@@ -917,6 +938,16 @@ function ConversationImportSection({
                       "{count, plural, one {# needs a folder} other {# need a folder}}",
                   },
                   { count: needingFolder.length },
+                )
+              : null,
+            newProjectCount > 0
+              ? intl.formatMessage(
+                  {
+                    id: "settings.conversationImport.projectsToCreate",
+                    defaultMessage:
+                      "{count, plural, one {creates # project} other {creates # projects}}",
+                  },
+                  { count: newProjectCount },
                 )
               : null,
             selectedOutOfView > 0
@@ -1112,10 +1143,25 @@ function ConversationImportSection({
             defaultMessage: "Refresh conversations",
           })}
           disabled={reading || importing}
-          onClick={browseAll}
+          onClick={() => {
+            browseAll();
+            if (folders.length > 0) void placements.refetch();
+          }}
         />
       </div>
 
+      {placements.isError ? (
+        <div className="px-4">
+          <ReadFailure
+            label={intl.formatMessage({
+              id: "settings.conversationImport.placements",
+              defaultMessage: "Chat placement",
+            })}
+            message={errorMessage(placements.error)}
+            onRetry={() => void placements.refetch()}
+          />
+        </div>
+      ) : null}
       <div className="relative min-h-0 flex-1">
         <ConversationImportRows
           key={JSON.stringify([reference, filters])}
@@ -1129,12 +1175,12 @@ function ConversationImportSection({
                 query={reference ? "" : deferredQuery}
                 pathContext={pathContext}
                 selected={selection.has(row.key)}
-                cwd={nativeConversationImportCwd(row, replacements)}
+                cwd={placementFor(row)?.kind === "missing" ? null : cwdFor(row)}
+                placement={pending ? null : (placementFor(row) ?? null)}
                 pending={
                   pending
                     ? {
                         cwd: pending.request.cwd,
-                        destination: destinationName(pending.request.projectId),
                         unsettled: pending.status === "unsettled" ? pending.message : null,
                       }
                     : null
@@ -1230,22 +1276,12 @@ function ConversationImportSection({
           </>
         }
       >
-        <span className="text-xs text-token-description-foreground">
-          {intl.formatMessage(settingsMessages.conversationImportDestination)}
-        </span>
-        <ConversationImportDestinationPicker
-          destinations={destinations(projectId)}
-          value={projectId}
-          onValueChange={(next) => {
-            setProjectChoice(next);
-            setSummary(null);
-          }}
-          disabled={locked}
-        />
         <NodexButton
           size="sm"
           variant="primary"
-          disabled={locked || selected.length === 0 || needingFolder.length > 0}
+          disabled={
+            locked || selected.length === 0 || needingFolder.length > 0 || awaitingPlacement
+          }
           onClick={() => void importSelected()}
         >
           {importLabel}

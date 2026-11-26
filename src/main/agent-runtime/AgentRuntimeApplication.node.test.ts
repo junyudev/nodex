@@ -112,7 +112,8 @@ const pageCheckout = {
   retain: Effect.void,
   attach: () => Effect.void,
 };
-const codexImport: NativeConversationImportInput & {
+type FixtureNativeImport = NativeConversationImportInput & { readonly projectId: string | null };
+const codexImport: FixtureNativeImport & {
   readonly title: string;
   readonly model: string | null;
 } = {
@@ -142,23 +143,29 @@ const unwrapImported = (
   const { kind: _kind, ...result } = outcome;
   return Effect.succeed(result);
 };
+const submitFixtureNativeImport = (
+  owner: AgentRuntimeApplication["Service"],
+  { projectId, ...input }: FixtureNativeImport,
+  prepare: Parameters<AgentRuntimeApplication["Service"]["submitNativeImport"]>[1],
+) => owner.submitNativeImport(input, prepare, Effect.succeed(projectId));
 const importConversation = (
   owner: AgentRuntimeApplication["Service"],
-  input: NativeConversationImportInput & { readonly title: string; readonly model: string | null },
+  input: FixtureNativeImport & { readonly title: string; readonly model: string | null },
 ) =>
-  owner
-    .submitNativeImport(input, Effect.succeed({ title: input.title, model: input.model }))
-    .pipe(Effect.flatMap(unwrapImported));
+  submitFixtureNativeImport(
+    owner,
+    input,
+    Effect.succeed({ title: input.title, model: input.model }),
+  ).pipe(Effect.flatMap(unwrapImported));
 const recoverCompletedImport = (
   owner: AgentRuntimeApplication["Service"],
-  input: NativeConversationImportInput,
+  input: FixtureNativeImport,
 ) =>
-  owner
-    .submitNativeImport(
-      input,
-      Effect.fail(new Error("Completed recovery must not read the source")),
-    )
-    .pipe(Effect.flatMap(unwrapImported));
+  submitFixtureNativeImport(
+    owner,
+    input,
+    Effect.fail(new Error("Completed recovery must not read the source")),
+  ).pipe(Effect.flatMap(unwrapImported));
 
 const snapshot = (
   threadId: string,
@@ -2377,31 +2384,23 @@ it.effect("retries an uncertain Runtime import with the same command and one des
 it.effect.each([
   { nativeSessionId: "01a0ae8c-a700-7571-a2bd-e305e9c63892" },
   { expectedHome: "/native/another-codex" },
-  { projectId: "another-project" },
   { cwd: "/another/imported-directory" },
   { backendKind: "claude" as const, instanceConfigId: "personal" },
-])(
-  "refuses to reuse an import request with different source or destination parameters %#",
-  (patch) =>
-    Effect.gen(function* () {
-      const fixture = setup();
-      const owner = yield* fixture.owner;
-      yield* importConversation(owner, codexImport);
-      const failure = yield* importConversation(owner, {
-        ...codexImport,
-        ...patch,
-      } as NativeConversationImportInput & { title: string; model: string | null }).pipe(
-        Effect.flip,
-      );
-      assert.equal(failure.message, "This import request already belongs to another conversation");
-      assert.equal(fixture.bindings.size, 1);
-      assert.equal(fixture.applied.length, 1);
-      assert.equal(fixture.imports.size, 1);
-      assert.equal(
-        fixture.calls.filter((call) => call.method === "thread.import-native").length,
-        1,
-      );
-    }),
+])("refuses to reuse an import request with a different source or working folder %#", (patch) =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    yield* importConversation(owner, codexImport);
+    const failure = yield* importConversation(owner, {
+      ...codexImport,
+      ...patch,
+    } as FixtureNativeImport & { title: string; model: string | null }).pipe(Effect.flip);
+    assert.equal(failure.message, "This import request already belongs to another conversation");
+    assert.equal(fixture.bindings.size, 1);
+    assert.equal(fixture.applied.length, 1);
+    assert.equal(fixture.imports.size, 1);
+    assert.equal(fixture.calls.filter((call) => call.method === "thread.import-native").length, 1);
+  }),
 );
 
 it.effect("an interrupted import cannot be opened as an empty chat and remains retryable", () =>
@@ -5978,7 +5977,8 @@ it.effect(
     Effect.gen(function* () {
       const fixture = setup();
       const owner = yield* fixture.owner;
-      const first = yield* owner.submitNativeImport(
+      const first = yield* submitFixtureNativeImport(
+        owner,
         codexImport,
         Effect.fail(importPreparationRefusal()),
       );
@@ -5993,7 +5993,7 @@ it.effect(
         requestId: "019d0000-0000-7000-8000-000000000003",
         cwd: "/corrected/workspace",
       };
-      const result = yield* owner.submitNativeImport(corrected, preparedImport);
+      const result = yield* submitFixtureNativeImport(owner, corrected, preparedImport);
       assert.equal(result.kind, "imported");
       assert.equal([...fixture.imports.values()][0]?.cwd, corrected.cwd);
       assert.equal(fixture.bindings.size, 1);
@@ -6017,7 +6017,7 @@ it.effect("source/model/Project validation is definitive only before the binding
       change(fixture);
       const owner = yield* fixture.owner;
       assert.equal(
-        (yield* owner.submitNativeImport(codexImport, preparedImport)).kind,
+        (yield* submitFixtureNativeImport(owner, codexImport, preparedImport)).kind,
         "not_admitted",
       );
       assert.equal(fixture.bindings.size, 0);
@@ -6025,14 +6025,17 @@ it.effect("source/model/Project validation is definitive only before the binding
     const fixture = setup();
     const owner = yield* fixture.owner;
     assert.equal(
-      (yield* owner
-        .submitNativeImport(codexImport, Effect.fail(new Error("Source transport disconnected")))
-        .pipe(Effect.result))._tag,
+      (yield* submitFixtureNativeImport(
+        owner,
+        codexImport,
+        Effect.fail(new Error("Source transport disconnected")),
+      ).pipe(Effect.result))._tag,
       "Failure",
     );
     fixture.state.failCore = true;
     assert.equal(
-      (yield* owner.submitNativeImport(codexImport, preparedImport).pipe(Effect.result))._tag,
+      (yield* submitFixtureNativeImport(owner, codexImport, preparedImport).pipe(Effect.result))
+        ._tag,
       "Failure",
     );
     assert.equal(fixture.bindings.size, 0);
@@ -6047,27 +6050,41 @@ it.effect(
       const owner = yield* fixture.owner;
       fixture.state.failCodexImportBeforeCommit = true;
       assert.equal(
-        (yield* owner.submitNativeImport(codexImport, preparedImport).pipe(Effect.result))._tag,
+        (yield* submitFixtureNativeImport(owner, codexImport, preparedImport).pipe(Effect.result))
+          ._tag,
         "Failure",
       );
       assert.equal(fixture.bindings.size, 1);
       assert.equal(
-        (yield* owner
-          .submitNativeImport(codexImport, Effect.fail(importPreparationRefusal()))
-          .pipe(Effect.result))._tag,
+        (yield* submitFixtureNativeImport(
+          owner,
+          codexImport,
+          Effect.fail(importPreparationRefusal()),
+        ).pipe(Effect.result))._tag,
         "Failure",
       );
       fixture.state.failCodexImportBeforeCommit = false;
-      const completed = yield* owner.submitNativeImport(codexImport, preparedImport);
+      const completed = yield* owner.submitNativeImport(
+        codexImport,
+        preparedImport,
+        Effect.die("Retry must retain the admitted Project without resolving placement again"),
+      );
       assert.equal(completed.kind, "imported");
+      assert.equal(completed.kind === "imported" && completed.projectId, codexImport.projectId);
       assert.deepEqual(
-        yield* owner.submitNativeImport(codexImport, Effect.fail(importPreparationRefusal())),
+        yield* submitFixtureNativeImport(
+          owner,
+          codexImport,
+          Effect.fail(importPreparationRefusal()),
+        ),
         completed,
       );
       assert.equal(
-        (yield* owner
-          .submitNativeImport({ ...codexImport, cwd: "/changed" }, preparedImport)
-          .pipe(Effect.result))._tag,
+        (yield* submitFixtureNativeImport(
+          owner,
+          { ...codexImport, cwd: "/changed" },
+          preparedImport,
+        ).pipe(Effect.result))._tag,
         "Failure",
       );
       assert.equal(fixture.imports.size, 1);
@@ -6084,26 +6101,24 @@ it.effect(
         const started = yield* Deferred.make<void>();
         const release = yield* Deferred.make<void>();
         let secondPrepared = false;
-        const first = yield* owner
-          .submitNativeImport(
-            codexImport,
-            Effect.gen(function* () {
-              yield* Deferred.succeed(started, undefined);
-              yield* Deferred.await(release);
-              return yield* importPreparationRefusal();
-            }),
-          )
-          .pipe(Effect.forkChild);
+        const first = yield* submitFixtureNativeImport(
+          owner,
+          codexImport,
+          Effect.gen(function* () {
+            yield* Deferred.succeed(started, undefined);
+            yield* Deferred.await(release);
+            return yield* importPreparationRefusal();
+          }),
+        ).pipe(Effect.forkChild);
         yield* Deferred.await(started);
-        const second = yield* owner
-          .submitNativeImport(
-            codexImport,
-            Effect.sync(() => {
-              secondPrepared = true;
-              return { title: codexImport.title, model: codexImport.model };
-            }),
-          )
-          .pipe(Effect.forkChild);
+        const second = yield* submitFixtureNativeImport(
+          owner,
+          codexImport,
+          Effect.sync(() => {
+            secondPrepared = true;
+            return { title: codexImport.title, model: codexImport.model };
+          }),
+        ).pipe(Effect.forkChild);
         yield* Effect.yieldNow;
         assert.equal(secondPrepared, false);
         assert.equal(fixture.bindings.size, 0);
@@ -9188,7 +9203,8 @@ it.effect("asks to sign in to an Antigravity profile that offers no models yet",
     ] as unknown as AgentRuntimeOperations["providers.read"]["output"]);
     fixture.state.nativeImportSourceHome = home;
     const owner = yield* fixture.owner;
-    const outcome = yield* owner.submitNativeImport(
+    const outcome = yield* submitFixtureNativeImport(
+      owner,
       {
         ...codexImport,
         backendKind: "antigravity",
@@ -9239,13 +9255,14 @@ it.effect.each([true, false])(
         cwd: "/verified/source",
         updatedAt: 123_456,
       });
-      const rejected = yield* owner.submitNativeImport(
+      const rejected = yield* submitFixtureNativeImport(
+        owner,
         { ...input, expectedHome: "/previous/home" },
         prepared,
       );
       assert.equal(rejected.kind, "not_admitted");
       assert.equal(fixture.imports.size, 0);
-      const admitted = yield* owner.submitNativeImport(input, prepared);
+      const admitted = yield* submitFixtureNativeImport(owner, input, prepared);
       assert.equal(admitted.kind, "imported");
       const copied = [...fixture.imports.values()][0];
       assert.equal(copied?.sourceNativeThreadId, input.nativeSessionId);
@@ -9269,7 +9286,8 @@ it.effect.each([true, false])(
       const legacy = { ...input, requestId: "12947d2e-5d5d-4ea8-8507-5d092b7c7e08" };
       const query = { home, sessionId: legacy.nativeSessionId, sourceCwd: "/verified/source" };
       assert.deepEqual(
-        yield* owner.submitNativeImport(
+        yield* submitFixtureNativeImport(
+          owner,
           legacy,
           owner
             .verifyAntigravityHistory({ ...query, instanceConfigId })
@@ -9287,15 +9305,14 @@ it.effect.each([true, false])(
       assert.isFalse(fixture.bindings.has(legacy.requestId));
 
       fixture.state.nativeImportRejection = replayFailure;
-      const rejectedReplay = yield* owner
-        .submitNativeImport(
-          {
-            ...input,
-            requestId: "019d0000-0000-7000-8000-000000000003",
-          },
-          prepared,
-        )
-        .pipe(Effect.flip);
+      const rejectedReplay = yield* submitFixtureNativeImport(
+        owner,
+        {
+          ...input,
+          requestId: "019d0000-0000-7000-8000-000000000003",
+        },
+        prepared,
+      ).pipe(Effect.flip);
       assert.equal((rejectedReplay as Error).message, message);
       assert.equal(fixture.imports.size, 1);
     }),
