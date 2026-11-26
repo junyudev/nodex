@@ -32,7 +32,7 @@ cask "nodex" do
   url "${releaseBase}/Nodex-latest-arm64.dmg"
 
   name "Nodex"
-  desc "Block-based Agent Orchestrator"
+  desc "Cross-agent workspace and notebook"
   homepage "https://nodex.jyu.app/"
 
   livecheck do
