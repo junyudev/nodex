@@ -270,6 +270,7 @@ fn remote_inbox_admission_keeps_person_actions_separate_from_host_and_agent_comm
             &context,
             &[
                 delivery(json!({"kind":"user"})),
+                decode(json!({"kind":"stop_inbox_suggestion","page_id":"page"})),
                 decode(
                     json!({"kind":"reply_to_page_turn","page_id":"page","episode":"episode","body":"Reply"}),
                 ),
