@@ -18,6 +18,10 @@ Session connection lifetime separately from Run admission. Run remains absent;
 there is no synthetic Run or latest-foreground lookup. A retired incarnation
 cannot be rebound or reactivated, including by replaying an earlier admission.
 
+The Runtime supervisor owns process startup, recovery, and reverse callbacks.
+They run in the Host's authority context even when a Member's request starts a
+generation. The Member's original request retains its own authority.
+
 Agent shell routing belongs to the launching Desktop's Profile. Its environment
 composer replaces inherited Nodex routing and exported CLI functions, unwraps
 outer Nodex startup wrappers to the recorded user files, and restores its own
