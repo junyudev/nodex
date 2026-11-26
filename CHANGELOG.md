@@ -2,6 +2,40 @@
 
 The notes of every Nodex release, newest first. Changes that have not been released yet are files in [`changes/`](changes/).
 
+## [0.5.15] - 2026-11-26
+
+Aerial view and tables that fit their content
+
+### Added
+
+- See every Agent at work from above. **Aerial view** shows each chat that is working, waiting on you or queued, with the whole tree of subagents it delegated to and how each stands, so you can watch many chats at once. Open it from **Aerial view** in the Inbox header to keep it beside your Inbox, or from a chat's Subagents map; in a Project, opening a chat from it shows the chat in the Agent Dock so the overview stays in view.
+- Agents can use your signed-in Dia and Arc profiles on macOS through the ChatGPT extension. For account work, Nodex checks connected browser profiles and your system default, and the Agent explains when it needs to use the in-app Browser instead.
+
+### Changed
+
+- Nodex no longer keeps a hidden conversation of its own: each Inbox suggestion and each event Automation assessment now runs on its own, with only what that decision needs, so suggestions arrive faster and cost far less. In Activity, **How Nodex decided** opens the run behind any of its decisions. Work that finished a turn waiting on you now shows **Needs your reply** in the Inbox and on its card, and reviews, problems and replies notify you directly. **Open Nodex** and **Start Nodex fresh** are gone, as are Nodex's notes on work and the **Managed by Nodex** chat option.
+- Tables in Pages and chat now size their columns to what they hold. Short values stay on one line, prose columns take the room the page has instead of wrapping at a fixed width, and many-column tables no longer overflow the page just for having columns; a table that does outgrow the page fades at the edge you can scroll toward. Dragging a column edge keeps every column where it is and moves only that edge; double-click an edge to let that column follow its content again. A table's block menu adds **Fit to page width** and **Fit columns to content**. Tables also take a quieter look: a rounded frame with row rules, column rules that appear while you work the table, and slightly smaller type with aligned figures.
+- Your Notes are one click away from every Inbox. **Open Notes** now sits beside **Open Board** from the start, not only after your first save, and **Saved to Notes** offers **Open** to see where the note landed. A Project's Notes page is named after its Project, such as `nodex Notes`, so Notes from different Projects no longer look alike.
+- Gemini, OpenCode and other ACP Agents now set their thinking level on the same effort track as Codex and Claude, and the model menu names each level the same way for every Agent. OpenCode's reasoning level is now offered wherever its models are chosen, including the Inbox.
+- Subpages open with a click. A subpage now reads as a link to its page, with the page's icon and title; rest the pointer on the icon to expand it in place instead. An embedded page shows its content from the start and stays collapsed once you collapse it.
+
+### Fixed
+
+- Agents can reliably capture built-in Browser screenshots as the panel opens or while the tab is in the background. When a tab cannot produce a frame, the screenshot includes a reason and can be retried.
+- On macOS, desktop tool scripts and their child commands now follow the chat’s execution permissions. They get a private scratch directory, and a Full access chat can pass a secret directly from a browser into a command without displaying it or using the clipboard.
+- Drags no longer stay stuck to the pointer when you let go over a Browser page. Releasing the mouse over a web page used to go unnoticed, so a panel edge, a sidebar reorder, a text or terminal selection, or an image resize kept following the pointer after the button was up. While you hold the button, web pages now leave the pointer to Nodex, so every drag ends where you let go. A sidebar reorder also clears its drop line when the chat you drag moves elsewhere mid-drag, and a Project or Library item released beside the sidebar stays where it was.
+- Plugin skills in Claude Code and ACP chats can now use the scripts, references and assets their plugin ships, as they do in Codex. The Browser and Computer Use skills appear once in a chat, not twice.
+- Adding an ACP Agent no longer stops conversations from opening. ACP Agents you already added keep their settings and work again.
+- Conversations open again on Windows after you connect an API key, such as DeepSeek or Kimi, or use Nodex credits. Every conversation could fail with “Agent operation could not be completed” until the connection was turned off. The connection now runs with your usual environment, apart from other providers' credentials.
+- Dropping a file into chat after canceling a Browser image drag now attaches the file you dropped. The Composer highlights a Browser image drop only while you drag that image over it.
+- Managed chats can follow the PR they open from their own branch. GitHub updates reach the chat and pull request milestones move the Page’s Status.
+- Followed pull requests send a single CI summary to active work once all checks and commit statuses on the current commit finish. The summary names failed checks and links to their results, while individual check updates remain available in Activity.
+- Profiles with snoozed Inbox messages open successfully after upgrading, and those messages keep their scheduled return times.
+- A problem with one Agent no longer stops the others. Nodex marks that Agent unavailable with the reason and restores it once the problem is fixed, while other Agents and conversations keep working. If Agent execution cannot start at all, opening a conversation now says so.
+- Pages, Views and chats mentioned in a chat now open when you click them, wherever they appear. An Agent's reply, your own messages, tool activity, plans and Inbox messages show each reference under its current name with a preview on hover. A Page opens beside the chat, ⌘-click or middle-click opens it in the background, and a chat reference takes you to that chat, with Back to return. Agents now link the Pages and chats they mention, and a link to a Block scrolls to it.
+- Page history stays available after changes made outside a Project. If the timeline cannot load, you can still read the current Page in the preview and retry the timeline.
+- Start a new chat or return to an existing chat in your personal Space from the Windows notification area.
+
 ## [0.5.14] - 2026-11-25
 
 See every Agent at work in one tab

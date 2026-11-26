@@ -1,1 +1,0 @@
-On macOS, desktop tool scripts and their child commands now follow the chat’s execution permissions. They get a private scratch directory, and a Full access chat can pass a secret directly from a browser into a command without displaying it or using the clipboard.

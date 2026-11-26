@@ -1,1 +1,0 @@
-Subpages open with a click. A subpage now reads as a link to its page, with the page's icon and title; rest the pointer on the icon to expand it in place instead. An embedded page shows its content from the start and stays collapsed once you collapse it.
