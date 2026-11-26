@@ -1,6 +1,7 @@
 import { NODEX_FAILURE_CODES } from "@nodex/agent-runtime/failure-cause";
 import { withoutAgentShell } from "./agent-shell-environment";
 import {
+  AGENT_RUNTIME_STARTUP_FAILURE_REASONS,
   AGENT_RUNTIME_SHUTDOWN_TIMEOUT_MS,
   AGENT_RUNTIME_FORCE_KILL_AFTER_MS,
   reapAgentRuntimeServers,
@@ -57,6 +58,11 @@ const runtimeHomeBusyFrame = z.object({
   type: z.literal(RUNTIME_HOME_BUSY),
   pid: z.number().int().positive().nullable(),
   startedAt: z.iso.datetime().nullable(),
+});
+
+const startupFailureFrame = z.object({
+  type: z.literal("startup-failed"),
+  reason: z.enum(AGENT_RUNTIME_STARTUP_FAILURE_REASONS),
 });
 
 const MAXIMUM_FRAME_BYTES = 16 * 1024 * 1024;
@@ -559,6 +565,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           new AgentRuntimeProcessError({
             reason: "start",
             message: "Agent Runtime could not start",
+            code: "process-spawn-failed",
             cause,
           }),
       ),
@@ -635,6 +642,19 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         new AgentRuntimeProcessError({ reason: "start", code: RUNTIME_HOME_BUSY, message }),
       );
       return;
+    }
+    if (!receivedReady) {
+      const failure = startupFailureFrame.safeParse(value);
+      if (failure.success) {
+        yield* close(
+          new AgentRuntimeProcessError({
+            reason: "start",
+            code: failure.data.reason,
+            message: "Agent Runtime failed before readiness",
+          }),
+        );
+        return;
+      }
     }
     const decoded = notificationSchema.safeParse(value);
     if (!decoded.success)
@@ -773,6 +793,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         new AgentRuntimeProcessError({
           reason: "closed",
           message: "Could not write to Agent Runtime",
+          code: "transport-failed",
           cause,
         }),
       ),

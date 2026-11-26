@@ -18,6 +18,7 @@ import { startRuntimeWatchdog } from "../platform/node/RuntimeWatchdog.ts";
 import * as ServerConfig from "../config.ts";
 import * as NodePathLayer from "@effect/platform-node/NodePath";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
+import type { AgentRuntimeStartupFailureFrame } from "./ProcessLifecycle.ts";
 
 /** The failure's own tag, so the host can tell engine errors apart without parsing text. */
 const errorIdentity = (
@@ -78,11 +79,23 @@ export async function runAgentRuntimeProcess(): Promise<void> {
       ),
     });
     const lines = jsonLines(process.stdin);
+    const write = (value: unknown): Promise<void> =>
+      new Promise((resolve, reject) => {
+        process.stdout.write(encodeJsonLine(value), (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    const reportStartupFailure = (reason: AgentRuntimeStartupFailureFrame["reason"]) =>
+      write({ type: "startup-failed", reason } satisfies AgentRuntimeStartupFailureFrame).catch(
+        () => undefined,
+      );
     let bootstrap: Awaited<ReturnType<typeof readAgentRuntimeBootstrap>>;
     try {
       bootstrap = await readAgentRuntimeBootstrap(lines);
     } catch (error) {
       process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      await reportStartupFailure("bootstrap-rejected");
       process.exitCode = 1;
       process.stdin.destroy();
       return;
@@ -92,13 +105,6 @@ export async function runAgentRuntimeProcess(): Promise<void> {
       cwd: argument("--cwd") ?? process.cwd(),
       ...bootstrap,
     };
-    const write = (value: unknown): Promise<void> =>
-      new Promise((resolve, reject) => {
-        process.stdout.write(encodeJsonLine(value), (error) => {
-          if (error) reject(error);
-          else resolve();
-        });
-      });
     const notify = (notification: AgentRuntimeNotification) =>
       Effect.tryPromise(() => write(notification)).pipe(Effect.orDie);
     const runtime = ManagedRuntime.make(
@@ -106,6 +112,7 @@ export async function runAgentRuntimeProcess(): Promise<void> {
         Layer.provideMerge(Logger.layer([Logger.withConsoleError(Logger.formatLogFmt)])),
       ),
     );
+    let ready = false;
     let closing = false;
     let disposal: Promise<void> | undefined;
     const dispose = () => {
@@ -135,6 +142,7 @@ export async function runAgentRuntimeProcess(): Promise<void> {
       const service = await runtime.runPromise(AgentRuntime);
       const bridge = await runtime.runPromise(HostBridge);
       await write({ type: "ready", identity: service.identity });
+      ready = true;
       const observing = new Map<string, Promise<unknown>>();
       const isObservation = (method: string | undefined) =>
         method === "events.observe" || method === "execution.observe";
@@ -294,6 +302,8 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           pid: owner?.pid ?? null,
           startedAt: owner?.startedAt ?? null,
         }).catch(() => undefined);
+      } else if (!ready && !closing) {
+        await reportStartupFailure("initialization-failed");
       }
       process.exitCode = 1;
     } finally {

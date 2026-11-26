@@ -23,9 +23,17 @@ import {
   type AgentRuntimeProcessOptions,
 } from "../platform/node/AgentRuntimeProcess";
 
+import {
+  AGENT_RUNTIME_START_OPERATION,
+  agentRuntimeStartReasons,
+  type AgentRuntimeStartFailure,
+  type HostDiagnostics,
+} from "../../host/HostDiagnostics";
+
 type HostHandler = AgentRuntimeProcessOptions["host"];
 
 export interface AgentRuntimeSupervisorOptions<Requirements> {
+  readonly reportStartFailure?: HostDiagnostics["Service"]["reportAgentRuntimeStartFailure"];
   readonly acquire: (
     host: HostHandler,
   ) => Effect.Effect<AgentRuntimeProcessConnection, unknown, Scope.Scope | Requirements>;
@@ -84,6 +92,22 @@ export const agentRuntimeUnavailableMessage = (
   if (error.operation === "start") return START_FAILED_MESSAGE;
   if (error.operation === "recovery-exhausted") return EXHAUSTED_MESSAGE;
   return undefined;
+};
+
+const classifyStartFailure = (error: unknown, activating: boolean): AgentRuntimeStartFailure => {
+  if (Cause.isTimeoutError(error)) return "startup-timeout";
+  if (activating) return "host-activation-failed";
+  if (!(error instanceof AgentRuntimeProcessError)) return "host-preparation-failed";
+  switch (error.code) {
+    case "runtime-entrypoint-missing":
+    case "process-spawn-failed":
+    case "bootstrap-rejected":
+    case "initialization-failed":
+    case "transport-failed":
+      return error.code;
+    default:
+      return error.reason === "closed" ? "exited-before-ready" : "transport-failed";
+  }
 };
 
 interface Usage {
@@ -277,6 +301,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
         const ended = yield* Deferred.make<void>();
         yield* Scope.addFinalizer(generationScope, Deferred.succeed(ended, undefined));
         const hostReady = yield* Deferred.make<HostHandler, Error>();
+        let activating = false;
         const start = clearQuiescence.pipe(
           Effect.andThen(
             Effect.suspend(() =>
@@ -286,12 +311,13 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
             ),
           ),
           Effect.map((raw) => ({ raw, connection: usageOf(raw) })),
-          Effect.flatMap(({ raw, connection }) =>
-            options.activate(connection).pipe(
+          Effect.flatMap(({ raw, connection }) => {
+            activating = true;
+            return options.activate(connection).pipe(
               Effect.tap((host) => Deferred.succeed(hostReady, host)),
               Effect.as({ raw, connection }),
-            ),
-          ),
+            );
+          }),
           Effect.timeout(START_TIMEOUT),
           Effect.raceFirst(
             Deferred.await(closing).pipe(
@@ -305,21 +331,37 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
         );
         const acquired = yield* restore(start).pipe(Effect.exit);
         if (Exit.isFailure(acquired)) {
-          yield* Deferred.fail(hostReady, new Error("Agent Runtime Host is unavailable"));
-          yield* Scope.close(generationScope, acquired);
-          if (Cause.hasInterruptsOnly(acquired.cause)) {
-            yield* Ref.set(state, current);
-            yield* publish({ status: "idle" });
-            return yield* Effect.interrupt;
-          }
-          const error = Option.getOrNull(Cause.findErrorOption(acquired.cause));
+          const interrupted = Cause.hasInterruptsOnly(acquired.cause);
+          const error = Option.getOrUndefined(Cause.findErrorOption(acquired.cause));
           const profileBusyMessage =
             error instanceof AgentRuntimeProcessError && error.code === RUNTIME_HOME_BUSY
               ? error.message
               : undefined;
-          yield* Effect.logError("Agent execution process could not start").pipe(
-            Effect.annotateLogs({ recovering, cause: Cause.pretty(acquired.cause) }),
-          );
+          const shuttingDown =
+            error instanceof AgentRuntimeSupervisorError && error.operation === "closed";
+          if (!interrupted && !shuttingDown && profileBusyMessage === undefined) {
+            // One exit is observed under the gate per attempted generation, even before a child
+            // has an identity. Requests, including rejected IPC reads, do not report it again.
+            const failure = classifyStartFailure(error, activating);
+            yield* Effect.logError("Agent execution process could not start").pipe(
+              Effect.annotateLogs({
+                operation: AGENT_RUNTIME_START_OPERATION,
+                failure,
+                reason: agentRuntimeStartReasons[failure],
+                recovering,
+              }),
+            );
+            yield* Effect.suspend(() => options.reportStartFailure?.(failure) ?? Effect.void).pipe(
+              Effect.ignoreCause,
+            );
+          }
+          yield* Deferred.fail(hostReady, new Error("Agent Runtime Host is unavailable"));
+          yield* Scope.close(generationScope, acquired);
+          if (interrupted) {
+            yield* Ref.set(state, current);
+            yield* publish({ status: "idle" });
+            return yield* Effect.interrupt;
+          }
           yield* Ref.update(state, (latest) => ({
             ...latest,
             unhealthy: profileBusyMessage === undefined,

@@ -131,7 +131,11 @@ import {
   claudeCodeReadiness,
   ensureClaudeCode,
 } from "../main/app-components/ClaudeCodeComponent";
-import { acquireAgentRuntimeProcess } from "../main/platform/node/AgentRuntimeProcess";
+import {
+  acquireAgentRuntimeProcess,
+  AgentRuntimeProcessError,
+} from "../main/platform/node/AgentRuntimeProcess";
+import { HostDiagnostics } from "./HostDiagnostics";
 import { codexAccountHistoryEnvironment } from "../main/platform/node/CodexAccountHome";
 import { canonicalNativeSessionHome } from "../main/platform/node/NativeSessionCatalogPaths";
 import { shellQuote } from "../main/platform/node/NodexCliShell";
@@ -807,6 +811,7 @@ const supervisor = Layer.effectContext(
     });
     const quiescence = yield* makeQuiescence(join(config.nodexHome, "agent-runtime"));
     const analytics = yield* ProductAnalytics;
+    const diagnostics = Option.getOrUndefined(yield* Effect.serviceOption(HostDiagnostics));
     const runtime = yield* makeSupervisor<
       Exclude<
         | Effect.Services<ReturnType<typeof makeHost>>
@@ -814,6 +819,7 @@ const supervisor = Layer.effectContext(
         Scope.Scope
       >
     >({
+      reportStartFailure: diagnostics?.reportAgentRuntimeStartFailure,
       acquire: (host) =>
         Effect.gen(function* () {
           const { configuration, environment, executable } = yield* readConfiguration;
@@ -821,11 +827,11 @@ const supervisor = Layer.effectContext(
           const entryPath = agentRuntimeEntrypoint(config);
           // A development build can lack the bundle; say so instead of a bare process exit.
           if (!(yield* fs.exists(entryPath)))
-            return yield* Effect.fail(
-              new Error(
-                `Agent execution is not built: ${entryPath} is missing (vp run build:agent-runtime)`,
-              ),
-            );
+            return yield* new AgentRuntimeProcessError({
+              reason: "start",
+              code: "runtime-entrypoint-missing",
+              message: `Agent execution is not built: ${entryPath} is missing (vp run build:agent-runtime)`,
+            });
           const connection = yield* acquireAgentRuntimeProcess({
             executable,
             entryPath,

@@ -22,6 +22,8 @@ import { NativeConversationDelivery } from "../../host/NativeConversationDeliver
 import { live as nativeManagedChatFacts } from "../codex-application/NativeManagedChatFacts";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import { HostToolExecutor } from "../../host/HostToolExecutor";
+import { HostDiagnostics } from "../../host/HostDiagnostics";
+import { captureAgentRuntimeStartFailure } from "../observability/sentry-main";
 import { make as makeHostTools } from "../agent-runtime/AgentRuntimeHostTools";
 import * as HostKernel from "../../host/HostKernel";
 import { SpacePageFileHosts } from "../page-files/SpacePageFileHosts";
@@ -140,6 +142,12 @@ const conversationGraph = ConversationApplicationLive.live.pipe(
   Layer.provideMerge(databaseNotificationsLive),
 );
 const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
+  Layer.provide(
+    Layer.succeed(HostDiagnostics, {
+      reportAgentRuntimeStartFailure: (failure) =>
+        Effect.sync(() => captureAgentRuntimeStartFailure(failure)),
+    }),
+  ),
   Layer.provide(HostDesktopToolsLive.live),
   Layer.provide(imageFittingLayer),
   Layer.provideMerge(
