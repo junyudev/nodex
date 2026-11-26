@@ -21,6 +21,7 @@ interface CssRuleContext {
 }
 
 interface FilterCssOptions {
+  readonly skipContainerRules?: boolean;
   readonly declarationPredicate?: (declaration: Declaration) => boolean;
   readonly keepKeyframes?: ReadonlySet<string>;
   readonly keepPropertyRules?: ReadonlySet<string>;
@@ -211,6 +212,7 @@ export const filterCss = (css: string, options: FilterCssOptions): string => {
     analyzeDependencies: false,
     visitor: {
       Rule(rule) {
+        if (rule.type === "container" && options.skipContainerRules) return [];
         if (rule.type === "layer-block") {
           layerNames.push((rule.value.name ?? []).join("."));
           return;

@@ -56,6 +56,15 @@ describe("semantic theme contract in the renderer build", () => {
     expect(getComputedStyle(mountRole("text-secondary")).color).not.toBe("rgb(10, 120, 40)");
   });
 
+  test("keeps editor interaction paint neutral with a blue semantic accent", () => {
+    const editorHighlight = mountRole("bg-accent");
+
+    expect(readRendererThemeColor("--color-accent")).toBe("rgb(58, 131, 247)");
+    expect(getComputedStyle(editorHighlight).backgroundColor).toBe(
+      readRendererThemeColor("--color-background-primary-ghost-hover"),
+    );
+  });
+
   test.each([
     { windowType: "electron", scheme: "light" },
     { windowType: "electron", scheme: "dark" },
@@ -170,13 +179,13 @@ describe("semantic theme contract in the renderer build", () => {
     setWindowTheme("electron", "dark");
     const rootStyle = getComputedStyle(document.documentElement);
 
-    expect(rootStyle.getPropertyValue("--app-color-text-foreground").trim()).toBe("#fcfcfc");
-    expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(252, 252, 252)");
+    expect(rootStyle.getPropertyValue("--app-color-text-foreground").trim()).toBe("#ffffff");
+    expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(255, 255, 255)");
     expect(rootStyle.getPropertyValue("--app-color-text-foreground-secondary").trim()).toBe(
-      "rgba(252, 252, 252, 0.71)",
+      "rgba(255, 255, 255, 0.71)",
     );
     expect(rootStyle.getPropertyValue("--app-color-text-foreground-tertiary").trim()).toBe(
-      "rgba(252, 252, 252, 0.498)",
+      "rgba(255, 255, 255, 0.498)",
     );
   });
 
@@ -184,13 +193,13 @@ describe("semantic theme contract in the renderer build", () => {
     {
       outer: "light",
       inner: "dark",
-      danger: "rgb(255, 103, 100)",
-      surface: "rgb(17, 17, 17)",
+      danger: "rgb(224, 46, 42)",
+      surface: "rgb(24, 24, 24)",
     },
     {
       outer: "dark",
       inner: "light",
-      danger: "rgb(224, 46, 42)",
+      danger: "rgb(145, 30, 27)",
       surface: "rgb(255, 255, 255)",
     },
   ] as const)(
@@ -258,8 +267,8 @@ describe("semantic theme contract in the renderer build", () => {
     for (const scheme of ["dark", "light", "dark"] as const) {
       setWindowTheme("electron", scheme);
       const isDark = scheme === "dark";
-      const surface = isDark ? "rgb(17, 17, 17)" : "rgb(255, 255, 255)";
-      const ink = isDark ? "rgb(252, 252, 252)" : "rgb(13, 13, 13)";
+      const surface = isDark ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)";
+      const ink = isDark ? "rgb(255, 255, 255)" : "rgb(26, 28, 31)";
 
       expect(getComputedStyle(main).backgroundColor).toBe(surface);
       expect(getComputedStyle(main).color).toBe(ink);
@@ -301,26 +310,53 @@ describe("semantic theme contract in the renderer build", () => {
     },
   );
 
-  test("resolves production shimmer and sidebar surfaces in both electron schemes", () => {
-    for (const scheme of ["light", "dark"] as const) {
+  test.each(["light", "dark"] as const)(
+    "paints the %s Page frame and loading shimmer",
+    (scheme) => {
       setWindowTheme("electron", scheme);
       const shimmer = mountRole("loading-shimmer-pure-text");
-      const sidebar = mountRole("app-shell-left-panel");
-      const shimmerStyle = getComputedStyle(shimmer);
-      const sidebarStyle = getComputedStyle(sidebar);
+      const frame = mountRole("");
+      frame.setAttribute("data-app-shell-frame", "");
+      frame.dataset.appShellPageSurface = "true";
+      const backing = mountRole("");
+      backing.style.backgroundColor =
+        scheme === "light"
+          ? "color-mix(in oklab, var(--color-surface-secondary) 85%, transparent)"
+          : "color-mix(in oklab, var(--color-surface-tertiary) 80%, transparent)";
 
-      expect(shimmerStyle.backgroundImage).not.toBe("none");
-      expect(shimmerStyle.webkitTextFillColor).toBe("rgba(0, 0, 0, 0)");
-      expect(
-        sidebarStyle.backgroundColor,
-        JSON.stringify({
-          token: sidebarStyle.getPropertyValue("--color-token-editor-background"),
-          vscode: sidebarStyle.getPropertyValue("--vscode-editor-background"),
-          surface: sidebarStyle.getPropertyValue("--color-surface-tertiary"),
-        }),
-      ).not.toBe("rgba(0, 0, 0, 0)");
-      shimmer.remove();
-      sidebar.remove();
+      expect(getComputedStyle(shimmer).backgroundImage).not.toBe("none");
+      expect(getComputedStyle(shimmer).webkitTextFillColor).toBe("rgba(0, 0, 0, 0)");
+      expect(getComputedStyle(backing).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+      expect(getComputedStyle(frame).backgroundColor).toBe(
+        getComputedStyle(backing).backgroundColor,
+      );
+    },
+  );
+
+  test("keeps extension secondary surfaces rooted in their own appearance scale", () => {
+    const root = document.documentElement;
+    root.dataset.codexWindowType = "extension";
+    root.dataset.theme = "light";
+
+    const light = mountRole("");
+    const dark = document.createElement("div");
+    dark.dataset.theme = "dark";
+    light.append(dark);
+
+    for (const [scope, tone] of [
+      [light, "--gray-50"],
+      [dark, "--gray-100"],
+    ] as const) {
+      const secondary = document.createElement("span");
+      const expected = document.createElement("span");
+      secondary.style.backgroundColor = "var(--color-surface-secondary)";
+      expected.style.backgroundColor = `var(${tone})`;
+      scope.append(secondary, expected);
+
+      expect(getComputedStyle(expected).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+      expect(getComputedStyle(secondary).backgroundColor).toBe(
+        getComputedStyle(expected).backgroundColor,
+      );
     }
   });
 

@@ -1,7 +1,7 @@
 /*
- * Generated semantic theme contract (refVersion 26.1027.61615).
+ * Generated semantic theme contract (refVersion 26.1120.50957).
  * Do not edit by hand. Run:
- *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1027.61615
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1120.50957
  */
 
 @layer components {
@@ -14,7 +14,6 @@
     .horizontal-scroll-fade-mask {
       -webkit-mask: linear-gradient(to right in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--left-fade) calc(100% - var(--right-fade)), oklch(60% 0 0 / 0));
       -webkit-mask: linear-gradient(to right in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--left-fade) calc(100% - var(--right-fade)), oklch(60% 0 0 / 0));
-      -webkit-mask: linear-gradient(to right in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--left-fade) calc(100% - var(--right-fade)), oklch(60% 0 0 / 0));
       mask: linear-gradient(to right in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--left-fade) calc(100% - var(--right-fade)), oklch(60% 0 0 / 0));
       animation-name: edge-fade-horizontal;
       animation-timing-function: linear;
@@ -22,37 +21,29 @@
       animation-timeline: scroll(self x);
     }
 
-    .vertical-scroll-fade-mask {
-      -webkit-mask: linear-gradient(to bottom in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
-      -webkit-mask: linear-gradient(to bottom in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
-      -webkit-mask: linear-gradient(to bottom in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
-      mask: linear-gradient(to bottom in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
+    .vertical-scroll-fade-mask, .vertical-scroll-fade-mask-top, .vertical-scroll-fade-mask-bottom {
+      --edge-fade-fixed-top: initial;
       animation-name: edge-fade;
       animation-timing-function: linear;
       animation-fill-mode: both;
       animation-timeline: scroll(self y);
     }
 
-    .vertical-scroll-fade-mask-top {
-      -webkit-mask: linear-gradient(to bottom in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
+    .vertical-scroll-fade-mask, .vertical-scroll-fade-mask-top {
       -webkit-mask: linear-gradient(to bottom in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
       -webkit-mask: linear-gradient(to bottom in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
       mask: linear-gradient(to bottom in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
-      animation-name: edge-fade-top;
-      animation-timing-function: linear;
-      animation-fill-mode: both;
-      animation-timeline: scroll(self y);
+    }
+
+    .vertical-scroll-fade-mask-top {
+      --edge-fade-fixed-top: var(--edge-fade-distance, 1rem);
     }
 
     .vertical-scroll-fade-mask-bottom {
-      -webkit-mask: linear-gradient(to bottom in oklch, oklch(85% 0 0), oklch(85% 0 0) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
+      --edge-fade-fixed-top: 0px;
       -webkit-mask: linear-gradient(to bottom in oklch, oklch(85% 0 0), oklch(85% 0 0) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
       -webkit-mask: linear-gradient(to bottom in oklch, oklch(85% 0 0), oklch(85% 0 0) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
       mask: linear-gradient(to bottom in oklch, oklch(85% 0 0), oklch(85% 0 0) calc(100% - var(--bottom-fade)), oklch(60% 0 0 / 0));
-      animation-name: edge-fade-bottom;
-      animation-timing-function: linear;
-      animation-fill-mode: both;
-      animation-timeline: scroll(self y);
     }
   }
 
@@ -184,10 +175,6 @@
     scrollbar-gutter: stable;
   }
 
-  .border-control-thumb-on-accent {
-    border-color: var(--color-control-thumb-on-accent);
-  }
-
   .border-default {
     border-color: var(--color-border);
   }
@@ -198,10 +185,6 @@
 
   .bg-composer-primary {
     background-color: var(--color-background-composer-primary);
-  }
-
-  .bg-control-thumb-on-accent {
-    background-color: var(--color-control-thumb-on-accent);
   }
 
   .bg-info-solid {
@@ -307,7 +290,6 @@
 
   .draggable {
     -webkit-app-region: drag;
-    -webkit-user-select: none;
     user-select: none;
   }
 
@@ -394,36 +376,12 @@
 
 @keyframes edge-fade {
   0%, 1% {
-    --top-fade: 0;
+    --top-fade: var(--edge-fade-fixed-top, 0px);
     --bottom-fade: var(--edge-fade-distance, 1rem);
   }
 
   99%, to {
-    --top-fade: var(--edge-fade-distance, 1rem);
-    --bottom-fade: 0;
-  }
-}
-
-@keyframes edge-fade-top {
-  0%, 1% {
-    --top-fade: var(--edge-fade-distance, 1rem);
-    --bottom-fade: var(--edge-fade-distance, 1rem);
-  }
-
-  99%, to {
-    --top-fade: var(--edge-fade-distance, 1rem);
-    --bottom-fade: 0;
-  }
-}
-
-@keyframes edge-fade-bottom {
-  0%, 1% {
-    --top-fade: 0;
-    --bottom-fade: var(--edge-fade-distance, 1rem);
-  }
-
-  99%, to {
-    --top-fade: 0;
+    --top-fade: var(--edge-fade-fixed-top, var(--edge-fade-distance, 1rem));
     --bottom-fade: 0;
   }
 }

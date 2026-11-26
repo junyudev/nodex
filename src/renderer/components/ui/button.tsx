@@ -194,7 +194,10 @@ export function NodexSwitchTrack({
     >
       <span
         className={cn(
-          "rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm transition-transform duration-200 ease-out",
+          "rounded-full border border-current bg-current shadow-sm transition-transform duration-200 ease-out",
+          checked
+            ? "text-(color:--switch-thumb-color-checked)"
+            : "text-(color:--switch-thumb-color)",
           size === "compact" ? "size-3" : "size-4",
           checked
             ? size === "compact"

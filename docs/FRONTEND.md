@@ -539,7 +539,7 @@ The resolved default palette is owned by
 `src/renderer/lib/codex-theme-variant.ts`, which supplies the startup shell and
 writes both runtime palettes with independent accents into one document
 stylesheet before React mounts and whenever appearance preferences change.
-Each `data-theme` scope receives its matching palette, including nested regions.
+Each `data-theme` scope sets its CSS color scheme and receives its matching palette, including nested regions.
 That stylesheet sits in the `theme` cascade layer, so product CSS must not
 redeclare a property the palette publishes; an unlayered alias would silently
 replace the runtime value. Static palette fallbacks do not determine the
@@ -549,6 +549,13 @@ Browser product-surface tests use `src/renderer/test/renderer-theme.ts` to initi
 and reset this document state. Switch appearance through that fixture and compare
 paint with the active semantic role; a local `.dark` class cannot replace the
 runtime palette projection.
+
+The semantic `--color-accent` is the active accent hue. The shared editor's
+`bg-accent` utility uses its neutral interaction fill. Switch thumbs consume
+`--switch-thumb-color` and `--switch-thumb-color-checked`. The Electron Page
+frame uses `--app-shell-page-window-fill` for its backdrop, with a separate
+docked sidebar overlay. Shared Dropdown and Context Menu surfaces consume the
+translucent `--menu-background-color` role.
 
 Shared activity primitives require an explicit semantic lifecycle status. The
 primitive owns the status color for its icon and summary; feature call sites

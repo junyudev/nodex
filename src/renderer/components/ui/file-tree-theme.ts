@@ -28,6 +28,8 @@ function hostVariables({
 }): string {
   return `
 :host {
+  /* Palette light-dark() values follow the surrounding Nodex appearance, not the system's. */
+  color-scheme: inherit;
   --trees-bg-override: ${background};
   --trees-bg-muted-override: var(--color-background-primary-ghost-hover);
   --trees-border-color-override: var(--color-border);

@@ -231,7 +231,7 @@ export function ConfigureLocalEnvironmentPopover({
                           "size-3 rounded-full transition-transform",
                           isWorktree
                             ? "translate-x-3 bg-token-main-surface-primary"
-                            : "bg-control-thumb-on-accent",
+                            : "bg-(--switch-thumb-color)",
                         )}
                       />
                     </span>

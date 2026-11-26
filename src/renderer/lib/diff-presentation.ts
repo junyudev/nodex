@@ -52,6 +52,11 @@ const NODEX_DIFF_HOST_STYLE_BY_THEME: Record<DiffThemeType, DiffHostStyle> = {
 };
 
 export const NODEX_DIFF_UNSAFE_CSS = `
+/* Palette light-dark() values follow the surrounding Nodex appearance, not the system's. */
+:host {
+  color-scheme: inherit;
+}
+
 ${NODEX_DIFF_HEADER_AND_ROOT_SELECTOR} {
   --codex-diffs-surface: var(
     --codex-diffs-surface-override,

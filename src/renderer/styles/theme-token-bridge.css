@@ -21,7 +21,6 @@
   --color-border: var(--app-color-border, var(--border));
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -34,6 +33,8 @@
   --color-card: var(--card);
   --color-token-editor-background: var(--color-surface);
   --color-token-image-remove-brush: #6192f6;
+  /* The semantic contract scopes link ink to app windows; its utility needs a theme root. */
+  --color-token-text-link-foreground: var(--app-color-text-accent);
   --color-token-link: var(--color-token-text-link-foreground);
   --color-token-terminal-background: var(--color-token-main-surface-primary);
   --color-token-background: var(--color-surface-elevated);

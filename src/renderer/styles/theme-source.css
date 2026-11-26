@@ -7,6 +7,17 @@
  * Shared palette and semantic roles come from the generated theme contract.
  */
 
+@layer theme {
+  /* Palette light-dark() values resolve with the same scopes as the dark: variant. */
+  :where([data-theme="light"]) {
+    color-scheme: light;
+  }
+
+  :where([data-theme="dark"], .dark) {
+    color-scheme: dark;
+  }
+}
+
 @theme static {
   --color-red-50: #ffd9d9;
   --color-red-300: #ff6764;

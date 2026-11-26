@@ -6,7 +6,7 @@ This module owns the build-time contract between extracted theme facts and Nodex
 
 Use a temporary, read-only stylesheet from any location. The module does not copy, cache, modify, or identify that input. Only a neutral `refVersion`, the profile identity, and output hashes are committed.
 
-Start with the stylesheet linked from the reference application's startup `index.html` and confirm it contains the global theme declarations. Asset filenames may be hashed. Use the global stylesheet on its own, since component chunks can also contain theme-like variables.
+Locate the global stylesheet from the reference application's startup asset graph. An async stylesheet can own the theme even when `index.html` links a different entry stylesheet. Confirm the file contains the global theme declarations and audit it on its own.
 
 The extractor recognizes global `:root`/`:host` and `:where` theme scopes, preserves window and appearance overrides, and includes the transitive palette and typography providers needed by exported roles. `data-theme="light"` or `data-theme="dark"` selects the stylesheet's appearance variables, including inherited theme containers. Negated window selectors must retain their original coverage; an extension-only declaration cannot provide an Electron role.
 
@@ -48,7 +48,8 @@ This checks provenance, artifact hashes, required semantic utilities, and the sc
 - Generated files are outputs, never hand-edited. The generated contract owns and registers `--color-ring` for Tailwind focus utilities. Product aliases may consume the shared focus role.
 - `theme-token-bridge.css` owns product compatibility aliases while consumers migrate.
 - `theme-source.css` owns product foundation values such as radius scale and feature-specific aliases. Shared elevation tiers come from the generated foundation; legacy shadow names alias those tiers. Generated values may consume product foundations but must not silently replace them.
-- `--app-color-*` values feed the shared semantic roles. Extension `--vscode-*` inputs remain scoped to the extension; product aliases needed by Electron must resolve through its semantic providers.
+- `--app-color-*` values feed the shared semantic roles. The extension owns its secondary surface through its neutral gray scale, and its app-color background aliases that surface. Extension `--vscode-*` inputs remain scoped to the extension.
+- The Page frame consumes the Electron page-window fill. Surface extraction covers base window paint and skips container-conditioned variants such as wallpaper tint.
 - Components should express shared text, status, border, background, icon, and motion roles with semantic utilities. Feature-native visual concepts remain feature-owned.
 
 Required roles declare their actual consumer targets. A task-only role may be Electron-only; a geometry foundation used by every shell must cover every supported target. Do not widen a runtime-provider exemption to silence a missing CSS provider. Add an explicit fallback or repair the scoped bridge instead.
