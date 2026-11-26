@@ -263,6 +263,10 @@ vp run dev --home "$task_home" --enable agentation
 vp run dev --home "$task_home" --enable query-devtools
 ```
 
+The production build checks its authored inputs before and after bundling.
+TypeScript's generated `.tsbuildinfo` files are excluded from the input
+fingerprint, so a concurrent typecheck can update them safely.
+
 Development homes, including seeds and Profile snapshots, leave the user's
 browser registration alone by default. To test Chrome control against your own
 browser, launch with `vp run dev --home <absolute-task-home> --register-browser-host`.
