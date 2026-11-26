@@ -1,5 +1,6 @@
 import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
 import { exportCanvasRecovery } from "@/lib/canvas-content-issues";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -430,6 +431,7 @@ function CanvasEditor({
       fileResolver,
       releaseDocumentSession: documentSession.release,
       maintainIfIdle: async () => {
+        if (isRemoteSpace()) return;
         const request = {
           routingContext: descriptor.routingContext,
           documentId: descriptor.documentId,
