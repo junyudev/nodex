@@ -1,3 +1,5 @@
+import { HostInvocation } from "../../host/HostInvocation";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -123,7 +125,14 @@ interface Usage {
 export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirements>(
   options: AgentRuntimeSupervisorOptions<Requirements>,
 ) {
-  const dependencies = yield* Effect.context<Requirements>();
+  const hostContext = (yield* Effect.context<Requirements>()).pipe(
+    Context.add(HostInvocation, null),
+    Context.add(CoreApplicationAgent, null),
+    Context.add(CoreRequestClass, "background"),
+  );
+  // Lifecycle work belongs to the Host, even when a Member or Agent wakes the process.
+  const asHost = <A, E>(effect: Effect.Effect<A, E, Requirements>) =>
+    Effect.updateContext(effect, (_caller: Context.Context<never>) => hostContext);
   const ownerScope = yield* Scope.fork(yield* Effect.scope);
   const gate = yield* Semaphore.make(1);
   const closing = yield* Deferred.make<void>();
@@ -147,8 +156,6 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
   });
   const usage = yield* SubscriptionRef.make<Usage>({ busy: 0, writes: 0, epoch: 0 });
   const publish = (next: AgentRuntimeConnectionState) => SubscriptionRef.set(connectionState, next);
-  const provide = <A, E>(effect: Effect.Effect<A, E, Requirements>) =>
-    effect.pipe(Effect.provide(dependencies));
 
   const use = (write: number) => (delta: number) =>
     SubscriptionRef.update(usage, (current) => ({
@@ -195,14 +202,14 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
       ),
     );
   const clearQuiescence = options.quiescence
-    ? provide(options.quiescence.clear).pipe(ignoreEvidence("clear"))
+    ? asHost(options.quiescence.clear).pipe(ignoreEvidence("clear"))
     : Effect.void;
   const recordQuiescence = options.quiescence
-    ? provide(options.quiescence.record).pipe(ignoreEvidence("record"))
+    ? asHost(options.quiescence.record).pipe(ignoreEvidence("record"))
     : Effect.void;
   const isQuiescent = (connection: AgentRuntimeProcessConnection) =>
     options.idle
-      ? provide(options.idle.quiescent(connection)).pipe(
+      ? asHost(options.idle.quiescent(connection)).pipe(
           Effect.timeoutOption(QUIESCENCE_TIMEOUT),
           Effect.map((result) => Option.getOrElse(result, () => false)),
           Effect.catchCause(() => Effect.succeed(false)),
@@ -265,7 +272,6 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
       }
     });
     return Effect.raceFirst(watch, Deferred.await(ended)).pipe(
-      Effect.provideService(CoreRequestClass, "background"),
       Effect.forkIn(ownerScope),
       Effect.asVoid,
     );
@@ -306,7 +312,9 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
           Effect.andThen(
             Effect.suspend(() =>
               options.acquire((request) =>
-                tracked(Deferred.await(hostReady).pipe(Effect.flatMap((host) => host(request)))),
+                asHost(
+                  tracked(Deferred.await(hostReady).pipe(Effect.flatMap((host) => host(request)))),
+                ),
               ),
             ),
           ),
@@ -324,10 +332,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
               Effect.andThen(Effect.fail(new AgentRuntimeSupervisorError({ operation: "closed" }))),
             ),
           ),
-          // Runtime observation and reverse requests belong to the process, even on a demand start.
-          Effect.provideService(CoreRequestClass, "background"),
           Effect.provideService(Scope.Scope, generationScope),
-          Effect.provide(dependencies),
         );
         const acquired = yield* restore(start).pipe(Effect.exit);
         if (Exit.isFailure(acquired)) {
@@ -439,12 +444,11 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
                 )
               : Effect.void,
           ),
-          Effect.provideService(CoreRequestClass, "background"),
           Effect.forkIn(ownerScope),
         );
         return connection;
       }),
-    ),
+    ).pipe(asHost),
   );
   const acquire = (recovering: boolean) => gate.withPermit(acquireUnderGate(recovering));
 
@@ -453,22 +457,24 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
    * the replacement a second window's restart already started, keeps serving its Agents.
    */
   const restart = (generation: string) =>
-    gate.withPermit(
-      Effect.gen(function* () {
-        const current = yield* Ref.get(state);
-        const status = yield* SubscriptionRef.get(connectionState);
-        if (
-          current.closed ||
-          !current.current ||
-          status.status !== "unresponsive" ||
-          status.generation !== generation
-        )
-          return;
-        yield* Ref.set(state, { ...current, current: null, unhealthy: false });
-        yield* Scope.close(current.current.scope, Exit.void);
-        yield* acquireUnderGate(false);
-      }),
-    );
+    gate
+      .withPermit(
+        Effect.gen(function* () {
+          const current = yield* Ref.get(state);
+          const status = yield* SubscriptionRef.get(connectionState);
+          if (
+            current.closed ||
+            !current.current ||
+            status.status !== "unresponsive" ||
+            status.generation !== generation
+          )
+            return;
+          yield* Ref.set(state, { ...current, current: null, unhealthy: false });
+          yield* Scope.close(current.current.scope, Exit.void);
+          yield* acquireUnderGate(false);
+        }),
+      )
+      .pipe(asHost);
 
   const close = Deferred.succeed(closing, undefined).pipe(
     Effect.andThen(
@@ -493,13 +499,14 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
           Effect.andThen(publish({ status: "idle" })),
         ),
     ),
+    asHost,
   );
   yield* Effect.addFinalizer(() => close);
   const get = () => touch.pipe(Effect.andThen(acquire(false)));
   const getUnlessQuiet = Effect.gen(function* () {
     if ((yield* Ref.get(state)).current) return yield* get();
     const required = options.quiescence
-      ? yield* provide(options.quiescence.startRequired).pipe(
+      ? yield* asHost(options.quiescence.startRequired).pipe(
           Effect.catchCause(() => Effect.succeed(true)),
         )
       : true;
@@ -519,7 +526,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
             return yield* new AgentRuntimeSupervisorError({ operation: "closed" });
           // Recovery observes the cleared identity after the gate opens and never restarts it.
           yield* Ref.set(state, { ...current, current: null });
-          if (current.current) yield* Scope.close(current.current.scope, Exit.void);
+          if (current.current) yield* asHost(Scope.close(current.current.scope, Exit.void));
           yield* publish({ status: "idle" });
           // Content or provider configuration may change while stopped; recheck execution on restart.
           yield* clearQuiescence;
@@ -531,7 +538,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
       )
       .pipe(
         Effect.tap(() =>
-          options.retireOnSuccess ? Scope.close(ownerScope, Exit.void) : Effect.void,
+          options.retireOnSuccess ? asHost(Scope.close(ownerScope, Exit.void)) : Effect.void,
         ),
       );
   const request = Effect.fn("AgentRuntimeSupervisor.request")(function* <

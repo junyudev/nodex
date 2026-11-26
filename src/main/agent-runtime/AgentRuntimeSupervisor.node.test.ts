@@ -21,6 +21,7 @@ import {
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import type { AgentRuntimeLiveness } from "../platform/node/agent-runtime-liveness";
 import type { AgentRuntimeConnectionState } from "../../shared/agent-runtime-api";
+import { HostInvocation } from "../../host/HostInvocation";
 import { make } from "./AgentRuntimeSupervisor";
 
 const fixture = Effect.gen(function* () {
@@ -355,6 +356,56 @@ it.live(
       yield* Deferred.await(f.generations[0]!.released);
       assert.isTrue(Exit.isFailure(yield* supervisor.get().pipe(Effect.exit)));
     }).pipe(Effect.scoped),
+);
+
+it.effect("a Member can cold-start execution without lending their authority to the Host", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const callback = yield* Deferred.make<Parameters<typeof startProcess>[1]>();
+    const reconciled = yield* Deferred.make<string, Error>();
+    const hostOnly = (value: string) =>
+      HostInvocation.pipe(
+        Effect.flatMap((proof) =>
+          proof === null
+            ? Effect.succeed(value)
+            : Effect.fail(new Error("Host operation refused under Member authority")),
+        ),
+      );
+    const supervisor = yield* make({
+      acquire: (host) =>
+        hostOnly("held sessions").pipe(
+          Effect.andThen(Deferred.succeed(callback, host)),
+          Effect.andThen(f.acquire),
+        ),
+      activate: () =>
+        Effect.gen(function* () {
+          yield* hostOnly("cleanup completed").pipe(Deferred.into(reconciled), Effect.forkScoped);
+          return () => hostOnly("tool authorized");
+        }),
+    });
+    yield* Effect.gen(function* () {
+      const connection = yield* supervisor.get();
+      assert.strictEqual(yield* Deferred.await(reconciled), "cleanup completed");
+      const execute = yield* Deferred.await(callback);
+      assert.strictEqual(
+        yield* execute({
+          type: "host.request",
+          id: "prepare",
+          operation: "thread.prepare",
+          identity: {
+            runtimeId: connection.identity.runtimeId,
+            runtimeGeneration: connection.identity.runtimeGeneration,
+            threadId: "thread:member",
+            providerInstanceId: "codex",
+            nativeDriver: "codex",
+          },
+          cwd: null,
+        }),
+        "tool authorized",
+      );
+      assert.strictEqual(yield* HostInvocation, "proof:member");
+    }).pipe(Effect.provideService(HostInvocation, "proof:member"));
+  }).pipe(Effect.scoped),
 );
 
 it.live("releases failed generation authority before acquiring its replacement", () =>
