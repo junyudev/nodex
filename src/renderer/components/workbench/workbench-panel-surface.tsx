@@ -38,10 +38,14 @@ import type { WorkbenchSurfaceUpdatePatch } from "@/lib/workbench-scene-presenta
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
 import {
-  PageStageSessionTab,
+  WorkbenchPageSurface,
   type OpenPageTabHandler,
-  type PageStageHistoryModalContext,
+  type WorkbenchBesideChat,
 } from "./workbench-page-stage-panel";
+import {
+  matchesPageStageHistory,
+  type PageStageHistoryModalContext,
+} from "@/lib/workbench-page-history";
 import { TerminalPanel } from "./workbench-terminal-panel";
 import { SessionWorkingFolder } from "./session-working-folder";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
@@ -106,7 +110,9 @@ export function WorkbenchTabProjectionPanel({
   windowSessionId: string;
   browserViewScopeId: string;
   projects: Project[];
-  relatedChatCandidates: ComponentProps<typeof PageStageSessionTab>["relatedChatCandidates"];
+  relatedChatCandidates: NonNullable<
+    ComponentProps<typeof WorkbenchPageSurface>["pageChats"]
+  >["candidates"];
   activeSearchQuery: string;
   searchByProject: Record<string, string>;
   presentedPageIds: ReadonlySet<string>;
@@ -148,6 +154,7 @@ export function WorkbenchTabProjectionPanel({
       readonly placement?: import("@/lib/workbench-panel-placement").WorkbenchSurfaceRelativePlacement;
       readonly targetPanelId: PanelId;
       readonly titleSnapshot?: string;
+      readonly blockId?: string;
       readonly mode?: "durable" | "preview";
     },
   ) => Promise<boolean>;
@@ -161,7 +168,7 @@ export function WorkbenchTabProjectionPanel({
     mode?: "preview" | "durable";
   }) => Promise<unknown>;
   onEnsureDefaultDraftSessionForProject: (
-    projectId: string,
+    projectId: string | null,
     options?: { select?: boolean },
   ) => Promise<WorkbenchSessionRenderProjection>;
   onRefreshSessions: (projectId: string | null) => Promise<WorkbenchSessionRenderProjection[]>;
@@ -199,52 +206,55 @@ export function WorkbenchTabProjectionPanel({
       projectId,
       activeSession.thread ? projectSessionThreadLinkToSummary(activeSession.thread) : null,
     );
-  // A Library Page has no Project of its own; beside a Project chat it sends through that chat.
-  const besideLibraryChatTarget = activeSession.projectId
-    ? sessionSendTarget(activeSession.projectId)
-    : null;
-  const besideLibraryChat =
-    activeSession.projectId && besideLibraryChatTarget && besideLibraryChatTarget.kind !== "none"
-      ? {
+  const besideTarget = resolveSessionPageSendTarget(
+    activeSession,
+    activeSession.projectId,
+    activeSession.thread ? projectSessionThreadLinkToSummary(activeSession.thread) : null,
+  );
+  const besideChat: WorkbenchBesideChat | null =
+    besideTarget.kind === "none"
+      ? null
+      : {
           sessionId: activeSession.id,
           projectId: activeSession.projectId,
-          sessionThread:
-            besideLibraryChatTarget.kind === "thread" ? besideLibraryChatTarget.thread : null,
-          canStartThreadInSession: besideLibraryChatTarget.kind === "launch",
+          sessionThread: besideTarget.kind === "thread" ? besideTarget.thread : null,
+          canStartThreadInSession: besideTarget.kind === "launch",
           sessionTitle,
-          commands: {
-            onEnsureDefaultDraftSessionForProject,
-            onRefreshSessions,
-            onResolveChatSessionForThread,
-            onHandOffPageToChat,
-            onAddToChatComposer: (promptInput: CodexPromptInput) =>
-              onAddToChatComposer({
-                sessionId: activeSession.id,
-                promptInput,
-              }),
-          },
-        }
-      : null;
+          onAddToChatComposer: (promptInput) =>
+            onAddToChatComposer({ sessionId: activeSession.id, promptInput }),
+        };
+  const presentContentHere = (
+    target: LibraryRouteTarget,
+    options?: {
+      readonly placement?: import("@/lib/workbench-panel-placement").WorkbenchSurfaceRelativePlacement;
+      readonly titleSnapshot?: string;
+      readonly blockId?: string;
+      readonly mode?: "durable" | "preview";
+    },
+  ) => {
+    void onOpenLibraryTarget(target, {
+      owner: sceneOwner,
+      sourceSurfaceId: tab.id,
+      targetPanelId: tab.panelId,
+      placement: { kind: "same-group", sourceSurfaceId: tab.id },
+      ...options,
+    });
+  };
   const canonicalSurface = readWorkbenchAgentContext(workbenchOwner.read(), sceneOwner)?.tabs.find(
     (item) => item.tabId === tab.id,
   )?.surface;
   if (
-    (tab.kind === "db_view" || tab.kind === "page_stage" || tab.kind === "canvas_stage") &&
+    (tab.kind === "db_view" || tab.kind === "canvas_stage") &&
     tab.config.routingContext.kind === "library"
   ) {
     if (
       !canonicalSurface ||
-      (canonicalSurface.kind !== "db_view" &&
-        canonicalSurface.kind !== "page_stage" &&
-        canonicalSurface.kind !== "canvas_stage")
+      (canonicalSurface.kind !== "db_view" && canonicalSurface.kind !== "canvas_stage")
     )
       return null;
     return (
       <WorkbenchLibraryResourceSurface
-        onLeavePage={onLeavePageStage}
-        onOpenPageInNewWindow={onOpenPageInNewWindow}
         surface={{ ...canonicalSurface, state: tab.state, stateKey: tab.stateKey }}
-        onOpenPageFile={onOpenPageFile}
         owner={workbenchOwner}
         sceneOwner={sceneOwner}
         windowSessionId={windowSessionId}
@@ -256,24 +266,7 @@ export function WorkbenchTabProjectionPanel({
         onTitleChange={(title) => {
           onUpdateTab(tab.id, { title });
         }}
-        onOpenTarget={(target, options) => {
-          void onOpenLibraryTarget(target, {
-            owner: sceneOwner,
-            sourceSurfaceId: tab.id,
-            targetPanelId: tab.panelId,
-            ...options,
-          });
-        }}
-        {...(onOpenRelatedChat
-          ? {
-              pageChats: {
-                candidates: relatedChatCandidates,
-                openChat: onOpenRelatedChat,
-                linkPage: onLinkPageToChat,
-              },
-            }
-          : {})}
-        besideChat={besideLibraryChat}
+        onOpenTarget={presentContentHere}
       />
     );
   }
@@ -379,25 +372,14 @@ export function WorkbenchTabProjectionPanel({
         onUpdateConfig={(patch) =>
           updateWorkbenchPageFileConfig(workbenchOwner, sceneOwner, tab.id, patch)
         }
-        onOpenPage={({ routingContext, pageId, title }) => {
-          if (routingContext.kind === "project") {
-            void onOpenPageTab(routingContext.projectId, pageId, title, {
-              openMode: "durable",
-              placement: { kind: "same-group", sourceSurfaceId: tab.id },
-            });
-            return;
-          }
-          void onOpenLibraryTarget(
+        onOpenPage={({ pageId, title }) =>
+          presentContentHere(
             { kind: "page", pageId },
             {
-              owner: sceneOwner,
-              sourceSurfaceId: tab.id,
-              targetPanelId: tab.panelId,
               titleSnapshot: title,
-              mode: "durable",
             },
-          );
-        }}
+          )
+        }
       />
     );
 
@@ -433,68 +415,61 @@ export function WorkbenchTabProjectionPanel({
   }
 
   if (tab.kind === "page_stage") {
-    if (tab.config.routingContext.kind !== "project") return null;
-    const pageAccessProjectId = tab.config.routingContext.projectId;
-    const pageTab = tab;
-    const sendTarget = sessionSendTarget(pageAccessProjectId);
     return (
-      <PageStageSessionTab
-        onOpenPageInNewWindow={onOpenPageInNewWindow}
-        tab={pageTab}
-        project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
+      <WorkbenchPageSurface
+        config={tab.config}
+        surfaceId={tab.id}
+        sceneOwner={sceneOwner}
+        sceneProjectId={activeSession.projectId}
+        projects={projects}
+        preview={tab.preview === true}
+        isActivePanelTab={isActivePanelTab}
         closeRef={pageStageCloseRef}
         persistRef={pageStagePersistRef}
         sessionSnapshotRef={pageStageSessionSnapshotRef}
-        sessionId={activeSession.id}
-        sessionThread={sendTarget.kind === "thread" ? sendTarget.thread : null}
-        canStartThreadInSession={sendTarget.kind === "launch"}
-        {...(sendTarget.kind !== "none"
-          ? {
-              onAddToChatComposer: (promptInput: CodexPromptInput) =>
-                onAddToChatComposer({
-                  sessionId: activeSession.id,
-                  promptInput,
-                }),
-            }
-          : {})}
-        sessionTitle={sessionTitle}
         onLeavePage={onLeavePageStage}
         onClose={() => void onCloseTab(tab.id)}
-        onOpenTerminal={async () => {
-          await onCreateTerminalTab("bottom", activeSession.panels.bottom.layout.activeLeafId);
-        }}
-        onEnsureDefaultDraftSessionForProject={onEnsureDefaultDraftSessionForProject}
-        onRefreshSessions={onRefreshSessions}
-        onOpenPageTab={onOpenPageTab}
+        onOpenPageInNewWindow={onOpenPageInNewWindow}
         onOpenPageFile={onOpenPageFile}
-        onOpenCanvasStage={onOpenCanvasStage}
-        onOpenDatabase={(databaseId) => {
-          void onOpenLibraryTarget(
-            { kind: "database", databaseId },
-            {
-              owner: sceneOwner,
-              sourceSurfaceId: tab.id,
-              targetPanelId: tab.panelId,
-              placement: { kind: "same-group", sourceSurfaceId: tab.id },
-            },
-          );
-        }}
-        onOpenThread={onOpenThread}
-        onOpenRelatedChat={onOpenRelatedChat}
+        onOpenPage={(pageId, titleSnapshot, placement, blockId) =>
+          presentContentHere({ kind: "page", pageId }, { titleSnapshot, placement, blockId })
+        }
+        onOpenDatabase={(databaseId) => presentContentHere({ kind: "database", databaseId })}
+        onOpenCanvas={(canvasId, titleSnapshot) =>
+          presentContentHere({ kind: "canvas", canvasId }, { titleSnapshot })
+        }
+        onOpenTerminalPanel={
+          activeSession.projectId
+            ? () => {
+                void onCreateTerminalTab("bottom", activeSession.panels.bottom.layout.activeLeafId);
+              }
+            : undefined
+        }
+        onOpenCodexThread={onOpenThread}
         onOpenPageInNewChat={onOpenPageInNewChat}
-        onLinkPageToChat={onLinkPageToChat}
-        onHandOffPageToChat={onHandOffPageToChat}
-        relatedChatCandidates={relatedChatCandidates}
-        onResolveChatSessionForThread={onResolveChatSessionForThread}
-        historyPanelActive={Boolean(
-          pageStageHistoryModal &&
-          pageStageHistoryModal.sessionId === activeSession.id &&
-          pageStageHistoryModal.tabId === pageTab.id &&
-          pageStageHistoryModal.projectId === pageAccessProjectId &&
-          pageStageHistoryModal.pageId === pageTab.config.pageId,
+        pageChats={
+          onOpenRelatedChat
+            ? {
+                candidates: relatedChatCandidates,
+                openChat: onOpenRelatedChat,
+                linkPage: onLinkPageToChat,
+              }
+            : undefined
+        }
+        chatCommands={{
+          onEnsureDefaultDraftSessionForProject,
+          onRefreshSessions,
+          onResolveChatSessionForThread,
+          onHandOffPageToChat,
+        }}
+        besideChat={besideChat}
+        historyPanelActive={matchesPageStageHistory(
+          pageStageHistoryModal,
+          sceneOwner,
+          tab.id,
+          tab.config.pageId,
         )}
         onToggleHistoryPanel={onTogglePageStageHistoryModal}
-        isActivePanelTab={isActivePanelTab}
       />
     );
   }

@@ -26,10 +26,10 @@ export interface PageChatSendPortInput {
   readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly onEnsureDefaultDraftSessionForProject: (
-    projectId: string,
+    projectId: string | null,
     options?: { select?: boolean },
   ) => Promise<WorkbenchSessionRenderProjection>;
-  readonly onRefreshSessions: (projectId: string) => Promise<unknown>;
+  readonly onRefreshSessions: (projectId: string | null) => Promise<unknown>;
   readonly onResolveChatSessionForThread: (threadId: string) => Promise<{
     readonly id: string;
     readonly projectId: string | null;
@@ -62,7 +62,7 @@ export function usePageChatSendPort({
 
   const startNewSessionThread = useCallback(
     async (input: {
-      projectId: string;
+      projectId: string | null;
       targetSessionId?: string;
       prompt: string;
       promptInput?: CodexPromptInput;
@@ -152,7 +152,6 @@ export function usePageChatSendPort({
       promptInput,
       submittedPresentation: origin,
     }: {
-      projectId: string;
       threadId: string;
       prompt: string;
       promptInput?: CodexPromptInput;
@@ -173,11 +172,11 @@ export function usePageChatSendPort({
               "This imported conversation has no execution owner. Open a new chat to send.",
           }),
         );
-      const target = { sessionId: targetSession.id, threadId };
+      const target = { sessionId: targetSession.id, threadId: targetSession.executionRef.threadId };
       await agentRuntimeRuntime.inspect(target);
       const presentationTicket = await captureCodexTurnPresentation(
         workbenchOwner,
-        { kind: "thread", threadId },
+        { kind: "thread", threadId: target.threadId },
         submittedPresentation,
       );
       await onHandOffPageToChat({ pageId, sessionId: targetSession.id });

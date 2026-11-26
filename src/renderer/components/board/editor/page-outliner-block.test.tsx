@@ -225,7 +225,6 @@ describe("PageOutlinerBlock", () => {
     });
 
     expect(openPage).toHaveBeenCalledExactlyOnceWith({
-      routingContext: { kind: "project", projectId: "project-a" },
       pageId: "nested-page",
       titleSnapshot: "Nested Page",
     });

@@ -29,7 +29,8 @@ export interface PageMetadataBoardMutationEnvelope {
 }
 
 const DEFAULT_DEPENDENCIES: PageMetadataBoardRuntimeDependencies = {
-  commit: commitPageDetailMetadataPatchWithReceipt,
+  commit: ({ projectId, ...input }) =>
+    commitPageDetailMetadataPatchWithReceipt({ ...input, executionProjectId: projectId }),
   readBoardProjection: async (projectId, pageId, minimumCommitCursor) =>
     (await invoke(
       "database-row:get",

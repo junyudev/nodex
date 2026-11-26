@@ -324,12 +324,11 @@ export function usePageStageProperties(input: {
     if (!onOpenPage) return undefined;
     return (pageId: string, title: string) => {
       void onOpenPage({
-        routingContext: contentRoutingContext,
         pageId,
         titleSnapshot: title,
       });
     };
-  }, [contentRoutingContext, onOpenPage]);
+  }, [onOpenPage]);
   const refreshRelationValue = useCallback(async () => {
     await onRefreshProperties?.();
   }, [onRefreshProperties]);

@@ -109,12 +109,13 @@ export function resolveNfmEditorBlockActionCapabilities(
   hasSourcePageContext: boolean,
   executionProjectId: string | null,
   chatSendProjectId: string | null = executionProjectId,
+  hasChatSendPort = false,
 ): {
   readonly canMoveBlocks: boolean;
   readonly canSendBlocksToThread: boolean;
 } {
   return {
     canMoveBlocks: hasSourcePageContext && executionProjectId !== null,
-    canSendBlocksToThread: hasSourcePageContext && chatSendProjectId !== null,
+    canSendBlocksToThread: hasSourcePageContext && (chatSendProjectId !== null || hasChatSendPort),
   };
 }

@@ -593,7 +593,6 @@ describe("workbench panel tab shortcut", () => {
       stateKey: 0,
       state: null,
       config: {
-        routingContext: { kind: "library" },
         pageId: id,
       },
     };

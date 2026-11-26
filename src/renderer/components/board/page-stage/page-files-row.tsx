@@ -209,7 +209,6 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
       return;
     }
     void controller.openPageFile({
-      routingContext,
       pageId,
       fileId: item.file.file_id,
       logicalPath: item.logical_path ?? null,

@@ -852,7 +852,6 @@ describe("CodexTurnPresentation", () => {
             kind: "page_stage" as const,
             titleSnapshot: "Original page",
             config: {
-              routingContext: { kind: "project" as const, projectId: "project-a" },
               pageId: "page-a",
             },
           },

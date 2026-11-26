@@ -17,6 +17,7 @@ import { getWorkbenchWindowOwner } from "./workbench-window-owner";
 import { createWorkbenchSceneCommands } from "./workbench-scene-commands";
 import { createWorkbenchSceneCommandLifecycle } from "./workbench-scene-command-lifecycle";
 import { readWorkbenchAgentContext } from "./workbench-agent-context";
+import { workbenchPageEditorKey } from "./workbench-page-editor-key";
 import type { WorkbenchCommandTab } from "./workbench-scene-commands";
 
 const runtime = vi.hoisted(() => ({
@@ -35,7 +36,6 @@ vi.mock("../features/workspace-files/workspace-text-document-controller", () => 
 }));
 vi.mock("./document-session-registry", () => ({
   documentSessionRegistry: { get: runtime.getEditor, dispose: runtime.disposeEditor },
-  makeEditorSurfaceKey: (ownerId: string, tabId: string) => `${ownerId}\u0000${tabId}`,
 }));
 vi.mock("./canvas-scene-surface-runtime", () => ({
   canvasSceneSurfaceRegistry: {
@@ -146,11 +146,12 @@ test.each([true, false])(
 
 describe("Workbench Scene content and runtime close boundary", () => {
   test("requires a completed Page flush and checkpoint before descriptor removal and lease disposal", async () => {
-    const subject = fixture({ kind: "library" }, [
+    const owner = { kind: "library" } as const;
+    const subject = fixture(owner, [
       {
         ...common("page-tab"),
         kind: "page_stage",
-        config: { routingContext: { kind: "library" }, pageId: "page-a" },
+        config: { pageId: "page-a" },
       },
     ]);
     runtime.persistPage.mockResolvedValueOnce({
@@ -169,10 +170,9 @@ describe("Workbench Scene content and runtime close boundary", () => {
       persisted: true,
       error: null,
     });
-    expect(runtime.getEditor).toHaveBeenCalledWith("test-space\u0000library-page:page-tab");
-    expect(runtime.disposeEditor).toHaveBeenCalledExactlyOnceWith(
-      "test-space\u0000library-page:page-tab",
-    );
+    const editorKey = workbenchPageEditorKey(owner, "page-tab");
+    expect(runtime.getEditor).toHaveBeenCalledWith(editorKey);
+    expect(runtime.disposeEditor).toHaveBeenCalledExactlyOnceWith(editorKey);
   });
 
   test("preserves a File conflict and a Canvas whose pending changes cannot be committed", async () => {

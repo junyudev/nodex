@@ -53,7 +53,7 @@ import {
   type WorkbenchPanelSplitSide,
 } from "./workbench-panel-layout";
 
-export const WORKBENCH_SCENE_VERSION = 10 as const;
+export const WORKBENCH_SCENE_VERSION = 11 as const;
 export const WORKBENCH_SCENE_MAX_PANEL_SURFACES = 2_048;
 
 export type WorkbenchSceneOwner =
@@ -216,13 +216,11 @@ export interface WorkbenchDbViewSurfaceConfig {
 }
 
 export interface WorkbenchPageStageSurfaceConfig {
-  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly titleSnapshot?: string;
 }
 
 export interface WorkbenchPageFileSurfaceConfig {
-  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   /** The File currently shown; follows renames, and retargets when the Page entry at `logicalPath` is replaced. */
   readonly fileId: string;
@@ -348,7 +346,7 @@ type WorkbenchLegacyResourceSurfaceDescriptor =
       };
     })
   | (Omit<Extract<WorkbenchSurfaceDescriptor, { readonly kind: "page_stage" }>, "config"> & {
-      readonly config: Omit<WorkbenchPageStageSurfaceConfig, "routingContext"> & {
+      readonly config: WorkbenchPageStageSurfaceConfig & {
         readonly projectId: string;
       };
     })
@@ -660,11 +658,8 @@ export function isLibrarySceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor
       surface.config.projectId === null &&
       Boolean(surface.config.path || surface.config.workspaceRoot)
     );
-  if (
-    surface.kind === "page_stage" ||
-    surface.kind === "page_file" ||
-    surface.kind === "canvas_stage"
-  ) {
+  if (surface.kind === "page_stage" || surface.kind === "page_file") return true;
+  if (surface.kind === "canvas_stage") {
     return surface.config.routingContext.kind === "library";
   }
   return (
@@ -1036,6 +1031,10 @@ function migrateWorkbenchSurfaceV3ToV4(
         routingContext: { kind: "project", projectId },
       },
     };
+  }
+  if (surface.kind === "page_stage") {
+    const { pageId, titleSnapshot } = surface.config;
+    return { ...surface, config: { pageId, titleSnapshot } };
   }
   const { projectId, ...config } = surface.config;
   return {
@@ -1506,7 +1505,7 @@ export function getWorkbenchSurfaceReuseKey(
           : `db:${accessKey}:view:${surface.config.target.databaseViewId}`;
     }
     case "page_stage":
-      return `page:${contentRoutingContextKey(surface.config.routingContext)}:${surface.config.pageId}`;
+      return `page:${surface.config.pageId}`;
     case "skill":
       return JSON.stringify(["skill", surface.config.hostId, surface.config.skillId]);
     case "page_file":

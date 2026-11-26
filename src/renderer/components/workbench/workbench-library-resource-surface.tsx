@@ -1,5 +1,4 @@
 import { useIntl } from "@/lib/i18n";
-import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import type { LibraryRouteTarget } from "../../../shared/library-module";
 import type {
@@ -7,20 +6,11 @@ import type {
   WorkbenchSurfaceDescriptor,
 } from "../../../shared/workbench-scene";
 import { makeWorkbenchSceneKey } from "../../../shared/workbench-scene";
-import { workbenchPageEditorKey } from "@/lib/workbench-page-editor-key";
 import type { WorkbenchWindowOwner } from "@/lib/workbench-window-owner";
-import type { PageChatCommands } from "@/lib/use-page-linked-chats";
-import {
-  WorkbenchLibraryPageSurface,
-  type WorkbenchBesideChat,
-} from "./workbench-library-page-surface";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
 
-type ResourceSurface = Extract<
-  WorkbenchSurfaceDescriptor,
-  { kind: "page_stage" | "db_view" | "canvas_stage" }
->;
+type ResourceSurface = Extract<WorkbenchSurfaceDescriptor, { kind: "db_view" | "canvas_stage" }>;
 
 /** Library routing stays attached to the resource while its Scene supplies only placement and lifetime. */
 export function WorkbenchLibraryResourceSurface({
@@ -31,13 +21,8 @@ export function WorkbenchLibraryResourceSurface({
   active,
   presentedPageIds,
   onClose,
-  onLeavePage,
-  onOpenPageFile,
-  onOpenPageInNewWindow,
   onTitleChange,
   onOpenTarget,
-  pageChats,
-  besideChat = null,
 }: {
   readonly surface: ResourceSurface;
   readonly owner: WorkbenchWindowOwner;
@@ -46,7 +31,6 @@ export function WorkbenchLibraryResourceSurface({
   readonly active: boolean;
   readonly presentedPageIds?: ReadonlySet<string>;
   readonly onClose: () => void;
-  readonly onLeavePage?: import("../board/page-stage/types").PageStageProps["onLeavePage"];
   readonly onTitleChange: (title: string) => void;
   readonly onOpenTarget: (
     target: LibraryRouteTarget,
@@ -56,39 +40,10 @@ export function WorkbenchLibraryResourceSurface({
       readonly placement?: WorkbenchSurfaceRelativePlacement;
     },
   ) => void;
-  readonly onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
-  readonly onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
-  readonly pageChats?: PageChatCommands;
-  /** The chat a Session Scene shows its Pages beside. */
-  readonly besideChat?: WorkbenchBesideChat | null;
 }) {
   const intl = useIntl();
   if (surface.config.routingContext.kind !== "library")
     throw new Error("Library resource body requires Library routing context");
-  if (surface.kind === "page_stage")
-    return (
-      <WorkbenchLibraryPageSurface
-        onLeavePage={onLeavePage}
-        surfaceId={surface.id}
-        sceneOwner={sceneOwner}
-        editorSessionKey={workbenchPageEditorKey(sceneOwner, surface.id)}
-        pageId={surface.config.pageId}
-        isActivePanelTab={active}
-        onClose={onClose}
-        onOpenPageFile={onOpenPageFile}
-        onOpenPageInNewWindow={onOpenPageInNewWindow}
-        onOpenDatabase={(databaseId) => onOpenTarget({ kind: "database", databaseId })}
-        onOpenPage={(pageId, titleSnapshot, placement) =>
-          onOpenTarget({ kind: "page", pageId }, { titleSnapshot, placement })
-        }
-        onOpenCanvas={(canvasId, titleSnapshot) =>
-          onOpenTarget({ kind: "canvas", canvasId }, { titleSnapshot })
-        }
-        {...(pageChats ? { pageChats } : {})}
-        currentSessionId={sceneOwner.kind === "session" ? sceneOwner.sessionId : null}
-        besideChat={besideChat}
-      />
-    );
   if (surface.kind === "canvas_stage")
     return (
       <WorkbenchCanvasStagePanel

@@ -329,8 +329,8 @@ export type WorkbenchHomeLocation = Exclude<
 /** Rail destinations. Insights shares Home's sidebar; the others own a contextual sidebar. */
 export type WorkbenchPrimaryDestination = "home" | "space" | "automations" | "plugins" | "insights";
 
-export interface WorkbenchLayoutSnapshotV9 {
-  readonly version: 9;
+export interface WorkbenchLayoutSnapshotV10 {
+  readonly version: 10;
   readonly location: Exclude<WorkbenchLocationV9, { readonly kind: "pending-worktree" }>;
   readonly homeLocation: WorkbenchHomeLocation;
   readonly databaseSearchByProject: Record<string, string>;
@@ -338,7 +338,7 @@ export interface WorkbenchLayoutSnapshotV9 {
 }
 
 export type WorkbenchLocation = WorkbenchLocationV9;
-export type WorkbenchLayoutSnapshot = WorkbenchLayoutSnapshotV9;
+export type WorkbenchLayoutSnapshot = WorkbenchLayoutSnapshotV10;
 
 function createDefaultDockTree(): WorkbenchLayoutSnapshotV3["dock"]["tree"] {
   return {
@@ -426,7 +426,7 @@ export function createDefaultWorkbenchLayoutSnapshotV7(): WorkbenchLayoutSnapsho
 
 export function createDefaultWorkbenchLayoutSnapshot(): WorkbenchLayoutSnapshot {
   return {
-    version: 9,
+    version: 10,
     location: { kind: "empty" },
     homeLocation: { kind: "empty" },
     databaseSearchByProject: {},

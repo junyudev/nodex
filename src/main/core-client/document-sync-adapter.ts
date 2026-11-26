@@ -588,14 +588,11 @@ const documentMutationKind = (
 
 const assertHistoryScope = (
   summary: DocumentVersionSummary,
-  request: { readonly projectId: string; readonly documentId: string },
+  request: { readonly documentId: string },
 ): DocumentVersionSummary => {
-  if (summary.projectId === request.projectId && summary.documentId === request.documentId) {
-    return summary;
-  }
-  throw new DocumentHistoryContractError(
-    "Core Document version escaped its Project or Document boundary",
-  );
+  // A revision's Project is author provenance. Core resolves access through the Document.
+  if (summary.documentId === request.documentId) return summary;
+  throw new DocumentHistoryContractError("Core Document version escaped its Document boundary");
 };
 
 export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocumentSyncAdapter => {

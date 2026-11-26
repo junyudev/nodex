@@ -1042,7 +1042,6 @@ describe("workbench session view", () => {
       stateKey: 0,
       state: null,
       config: {
-        routingContext: { kind: "library" },
         pageId: "page",
         fileId: "file",
         logicalPath: null,

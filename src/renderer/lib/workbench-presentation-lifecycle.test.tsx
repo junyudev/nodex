@@ -139,7 +139,7 @@ describe("Workbench rendered presentation lifetime", () => {
           id: "page-tab",
           kind: "page_stage",
           titleSnapshot: "Page",
-          config: { routingContext: { kind: "library" }, pageId: "page-a" },
+          config: { pageId: "page-a" },
           state: null,
           stateKey: 0,
         },

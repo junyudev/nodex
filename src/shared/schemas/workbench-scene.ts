@@ -163,7 +163,6 @@ export const WorkbenchDbViewSurfaceConfigSchema = z
 
 export const WorkbenchPageStageSurfaceConfigSchema = z
   .object({
-    routingContext: ContentRoutingContextSchema,
     pageId: idSchema,
     titleSnapshot: z.string().max(2_000).optional(),
   })
@@ -650,9 +649,7 @@ function validateWorkbenchSceneV4(scene: WorkbenchSceneSnapshotV4, context: z.Re
   const root = scene.owner.root;
   const primaryMatchesRoot =
     root.kind === "page"
-      ? scene.primary.kind === "page_stage" &&
-        scene.primary.config.routingContext.kind === "library" &&
-        scene.primary.config.pageId === root.pageId
+      ? scene.primary.kind === "page_stage" && scene.primary.config.pageId === root.pageId
       : root.kind === "database"
         ? scene.primary.kind === "db_view" &&
           scene.primary.config.routingContext.kind === "library" &&
@@ -714,7 +711,7 @@ function validateWorkbenchSceneV4(scene: WorkbenchSceneSnapshotV4, context: z.Re
 }
 
 export const WorkbenchSceneSnapshotV4InputSchema = z.preprocess(
-  stripDatabaseLayoutsFromScene,
+  stripLegacySurfaceFieldsFromScene,
   z
     .object({
       version: z.literal(4),
@@ -726,18 +723,24 @@ export const WorkbenchSceneSnapshotV4InputSchema = z.preprocess(
     .superRefine(validateWorkbenchSceneV4),
 ) satisfies z.ZodType<WorkbenchSceneSnapshotV4>;
 
-function stripDatabaseLayoutFromSurface(value: unknown): unknown {
+function stripLegacySurfaceFields(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const surface = value as Record<string, unknown>;
-  if (surface.kind !== "db_view") return value;
-  const config = surface.config;
-  if (!config || typeof config !== "object" || Array.isArray(config)) return value;
-  const { view: legacyLayout, ...durableConfig } = config as Record<string, unknown>;
-  void legacyLayout;
-  return { ...surface, config: durableConfig };
+  if (!isRawRecord(surface.config)) return value;
+  if (surface.kind === "db_view") {
+    const { view: legacyLayout, ...config } = surface.config;
+    void legacyLayout;
+    return { ...surface, config };
+  }
+  if (surface.kind === "page_stage" || surface.kind === "page_file") {
+    const { routingContext: legacyRoute, ...config } = surface.config;
+    void legacyRoute;
+    return { ...surface, config };
+  }
+  return value;
 }
 
-function stripDatabaseLayoutsFromScene(value: unknown): unknown {
+function stripLegacySurfaceFieldsFromScene(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const scene = value as Record<string, unknown>;
   const surfaces = scene.panelSurfacesById;
@@ -746,13 +749,13 @@ function stripDatabaseLayoutsFromScene(value: unknown): unknown {
       ? Object.fromEntries(
           Object.entries(surfaces).map(([surfaceId, surface]) => [
             surfaceId,
-            stripDatabaseLayoutFromSurface(surface),
+            stripLegacySurfaceFields(surface),
           ]),
         )
       : surfaces;
   return {
     ...scene,
-    primary: stripDatabaseLayoutFromSurface(scene.primary),
+    primary: stripLegacySurfaceFields(scene.primary),
     panelSurfacesById,
   };
 }
@@ -777,7 +780,8 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
   if (ownerKind === "session") return record.kind !== "conversation" && record.kind !== "inbox";
   if (ownerKind !== "library" && ownerKind !== "inbox") return true;
 
-  if (record.kind === "skill") return true;
+  if (record.kind === "skill" || record.kind === "page_stage" || record.kind === "page_file")
+    return true;
   const config = record.config;
   if (!config || typeof config !== "object" || Array.isArray(config)) return false;
   const configRecord = config as Record<string, unknown>;
@@ -790,8 +794,7 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
     return false;
   }
   if ((routingContext as Record<string, unknown>).kind !== "library") return false;
-  if (record.kind === "page_stage" || record.kind === "page_file" || record.kind === "canvas_stage")
-    return true;
+  if (record.kind === "canvas_stage") return true;
   if (record.kind !== "db_view") return false;
   const target = configRecord.target;
   return (
@@ -889,26 +892,26 @@ function migrateWorkbenchSceneSnapshot(value: unknown): unknown {
       ? (value as Record<string, unknown>)
       : null;
   if (record?.version === WORKBENCH_SCENE_VERSION) {
-    return stripOwnerInvalidPanelSurfacesFromScene(stripDatabaseLayoutsFromScene(value));
+    return stripOwnerInvalidPanelSurfacesFromScene(value);
   }
-  if (record?.version === 9) {
+  if (record?.version === 9 || record?.version === 10) {
     return stripOwnerInvalidPanelSurfacesFromScene(
-      stripDatabaseLayoutsFromScene({ ...record, version: WORKBENCH_SCENE_VERSION }),
+      stripLegacySurfaceFieldsFromScene({ ...record, version: WORKBENCH_SCENE_VERSION }),
     );
   }
   if (record?.version === 8) {
     return stripOwnerInvalidPanelSurfacesFromScene(
-      migrateRawSceneToV9(stripDatabaseLayoutsFromScene(value)),
+      migrateRawSceneToV9(stripLegacySurfaceFieldsFromScene(value)),
     );
   }
   if (record?.version === 5 || record?.version === 6 || record?.version === 7) {
     return adoptRawProjectInboxHome(
       stripOwnerInvalidPanelSurfacesFromScene(
-        migrateRawSceneToV9(stripDatabaseLayoutsFromScene(value)),
+        migrateRawSceneToV9(stripLegacySurfaceFieldsFromScene(value)),
       ),
     );
   }
-  const v4Candidate = record?.version === 4 ? stripDatabaseLayoutsFromScene(value) : value;
+  const v4Candidate = record?.version === 4 ? stripLegacySurfaceFieldsFromScene(value) : value;
   const previousCurrent = WorkbenchSceneSnapshotV4InputSchema.safeParse(v4Candidate);
   if (previousCurrent.success) {
     return migrateWorkbenchSceneV4ToV5(previousCurrent.data);

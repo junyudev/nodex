@@ -57,7 +57,7 @@ export async function readCalendarOccurrenceWindow(...args: IpcArgs<"calendar:oc
 }
 
 export async function completePageOccurrence(
-  projectId: string,
+  projectId: string | null,
   input: PageOccurrenceCompleteInput,
   sessionId?: string,
 ) {
@@ -65,7 +65,7 @@ export async function completePageOccurrence(
 }
 
 export async function skipPageOccurrence(
-  projectId: string,
+  projectId: string | null,
   input: PageOccurrenceActionInput,
   sessionId?: string,
 ) {

@@ -650,34 +650,34 @@ describe("application-window-coordinator", () => {
       });
     });
 
-    test.each([
-      { browserUrl: "https://example.com/path" },
-      { page: { routingContext: { kind: "library" as const }, pageId: "page-1" } },
-    ])("opens a targeted window instead of reopening a closed session (%j)", (request) => {
-      const cloned = session("window-target");
-      const created = browserWindow(9);
-      const create = vi.fn(() => created);
-      const acquireSessionForNewWindow = vi.fn();
-      const cloneSessionForWindow = vi.fn(() => cloned);
-      const coordinator = createApplicationWindowCoordinator({
-        closeAll: () => Effect.succeed(cleanReport),
-        create,
-        focusedWindow: () => null,
-        reportFailure: vi.fn(),
-        windows: {
-          acquireSessionForNewWindow,
-          cloneSessionForWindow,
-          hasClosedSessionAvailable: () => true,
-        } as unknown as WindowRuntimeService,
-      });
-      coordinator.openForRequest(3, request);
+    test.each([{ browserUrl: "https://example.com/path" }, { page: { pageId: "page-1" } }])(
+      "opens a targeted window instead of reopening a closed session (%j)",
+      (request) => {
+        const cloned = session("window-target");
+        const created = browserWindow(9);
+        const create = vi.fn(() => created);
+        const acquireSessionForNewWindow = vi.fn();
+        const cloneSessionForWindow = vi.fn(() => cloned);
+        const coordinator = createApplicationWindowCoordinator({
+          closeAll: () => Effect.succeed(cleanReport),
+          create,
+          focusedWindow: () => null,
+          reportFailure: vi.fn(),
+          windows: {
+            acquireSessionForNewWindow,
+            cloneSessionForWindow,
+            hasClosedSessionAvailable: () => true,
+          } as unknown as WindowRuntimeService,
+        });
+        coordinator.openForRequest(3, request);
 
-      expect(acquireSessionForNewWindow).not.toHaveBeenCalled();
-      expect(cloneSessionForWindow).toHaveBeenCalledExactlyOnceWith(3, request);
-      expect(create).toHaveBeenCalledExactlyOnceWith(cloned);
-      expect(created.show).toHaveBeenCalledOnce();
-      expect(created.focus).toHaveBeenCalledOnce();
-    });
+        expect(acquireSessionForNewWindow).not.toHaveBeenCalled();
+        expect(cloneSessionForWindow).toHaveBeenCalledExactlyOnceWith(3, request);
+        expect(create).toHaveBeenCalledExactlyOnceWith(cloned);
+        expect(created.show).toHaveBeenCalledOnce();
+        expect(created.focus).toHaveBeenCalledOnce();
+      },
+    );
 
     it.effect("clones explicit Project context and owns quit preparation", () =>
       Effect.gen(function* () {

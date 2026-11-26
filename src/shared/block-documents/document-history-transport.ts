@@ -239,7 +239,7 @@ export const parseGetDocumentVersion = (value: unknown): GetDocumentVersion => {
   const record = readRecord(value, label);
   assertExactKeys(record, label, ["projectId", "documentId", "versionId"]);
   return {
-    projectId: readString(record, "projectId", label),
+    projectId: record.projectId === null ? null : readString(record, "projectId", label),
     documentId: readString(record, "documentId", label),
     versionId: readString(record, "versionId", label),
   };
@@ -426,7 +426,7 @@ export const parseDocumentVersionSummary = (value: unknown): DocumentVersionSumm
   return {
     versionId,
     documentId: readString(summary, "documentId", label),
-    projectId: readString(summary, "projectId", label),
+    projectId: summary.projectId === null ? null : readString(summary, "projectId", label),
     generation: readInteger(summary, "generation", label, 1),
     baseHeadSeq: readInteger(summary, "baseHeadSeq", label, 0),
     schemaKey: readString(summary, "schemaKey", label),

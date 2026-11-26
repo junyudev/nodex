@@ -43,10 +43,7 @@ function deferred<Value>() {
 function fixture(sceneOwner: WorkbenchSceneOwner = { kind: "library" }) {
   const store = createMaitaiStore();
   disposers.push(() => disposeMaitaiStore(store));
-  const routingContext =
-    sceneOwner.kind === "library"
-      ? { kind: "library" as const }
-      : { kind: "project" as const, projectId: "project-a" };
+  const routingContext = { kind: "library" } as const;
   const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(sceneOwner), {
     panelId: "right",
     surface: {
@@ -55,7 +52,7 @@ function fixture(sceneOwner: WorkbenchSceneOwner = { kind: "library" }) {
       titleSnapshot: "Page",
       state: null,
       stateKey: 0,
-      config: { routingContext, pageId: "page-a" },
+      config: { pageId: "page-a" },
     },
   });
   const owner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {
@@ -240,7 +237,7 @@ describe("Workbench Page content barrier", () => {
     subject.owner.setScene(
       subject.sceneOwner,
       updateWorkbenchSceneSurface(subject.scene, "page-tab", {
-        config: { routingContext: { kind: "library" }, pageId: "page-other" },
+        config: { pageId: "page-other" },
       }),
     );
     expect(subject.content.validate(first.token, () => true)).toEqual({

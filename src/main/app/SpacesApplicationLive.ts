@@ -130,7 +130,7 @@ export const live = Layer.effectDiscard(
 
     yield* Layer.build(
       ApplicationWindowIpc.live({
-        validatePageTarget: (event, page) =>
+        validatePageTarget: (event, page, destination) =>
           Effect.gen(function* () {
             const space = yield* contextFor(event);
             const remote =
@@ -140,18 +140,17 @@ export const live = Layer.effectDiscard(
                     yield* Effect.scoped(desktops.contextEffect(space.spaceId)),
                     RemoteSpaceDesktop.RemoteSpaceDesktop,
                   );
-            const routingContext = page.routingContext;
-            if (routingContext.kind === "project") {
+            if (destination?.kind === "project") {
               const projects = remote?.projects ?? personalProjects;
-              const project = yield* projects.getProject(routingContext.projectId);
+              const project = yield* projects.getProject(destination.projectId);
               if (project?.lifecycle !== "active")
                 return yield* Effect.fail(
-                  new Error("The Page's Project is unavailable in this Space"),
+                  new Error("The destination Project is unavailable in this Space"),
                 );
             }
             const library = remote?.library ?? personalLibrary;
             const target = yield* library.resolvePageTarget({
-              routingContext,
+              routingContext: { kind: "library" },
               targetPageId: page.pageId,
             });
             if (target?.status !== "available")

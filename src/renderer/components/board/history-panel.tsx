@@ -44,11 +44,16 @@ import { ReadonlyMarkdownBlockNotePreview } from "./editor/readonly-nfm-blocknot
 import { mergePageHistoryEntries } from "./page-history-view-model";
 import {
   getDocumentVersion,
-  getOwnedDocumentDescriptor,
+  prepareLibraryOwnedBlockDocument,
   listPageHistory,
   restoreDocumentVersion,
 } from "./history-panel-deps";
 
+import {
+  validateLibraryOwnedBlockDocumentDescriptor,
+  unwrapLibraryOwnedBlockDocumentPreparationResult,
+  type ReadyPageBlockDocumentDescriptor,
+} from "@/lib/owned-block-document";
 import type { LibraryFileAuthority } from "@/lib/library-file-resources";
 
 type HistoryFilter = "revisions" | "activity";
@@ -69,8 +74,7 @@ const HISTORY_FILTERS: ReadonlyArray<{
 
 export interface HistoryPanelProps {
   fileAuthority: LibraryFileAuthority | null;
-  projectId: string;
-  pageId: string | null;
+  descriptor: ReadyPageBlockDocumentDescriptor;
   pageTitle?: string;
   pageMarkdown?: string;
   projectWorkspacePath?: string | null;
@@ -86,13 +90,22 @@ const matchesFilter = (entry: PageHistoryEntry, filter: HistoryFilter): boolean 
 
 export function HistoryPanel(props: HistoryPanelProps) {
   if (!props.open) return null;
-  return <OpenHistoryPanel key={JSON.stringify([props.projectId, props.pageId])} {...props} />;
+  return (
+    <OpenHistoryPanel
+      key={JSON.stringify([
+        props.descriptor.libraryId,
+        props.descriptor.documentId,
+        props.descriptor.storeEpoch,
+        props.descriptor.generation,
+      ])}
+      {...props}
+    />
+  );
 }
 
 function OpenHistoryPanel({
   fileAuthority,
-  projectId,
-  pageId,
+  descriptor: openedDocument,
   pageTitle,
   pageMarkdown,
   projectWorkspacePath,
@@ -102,6 +115,8 @@ function OpenHistoryPanel({
 }: HistoryPanelProps) {
   const intl = useIntl();
 
+  const pageId = openedDocument.ownerBlockId;
+  const { libraryId, documentId } = openedDocument;
   const auditSessionId = useMutationAuditSessionId();
   const requestSerialRef = useRef(0);
   const restoreInFlightRef = useRef(false);
@@ -138,13 +153,18 @@ function OpenHistoryPanel({
         setTimelineError("initial");
       };
       return listPageHistory({
-        requestingProjectId: projectId,
         pageId: targetPageId,
         pageSize: DEFAULT_PAGE_HISTORY_PAGE_SIZE,
       })
         .then((result) => {
           if (requestSerial !== requestSerialRef.current) return;
-          if (!result.ok) return onFailure();
+          if (
+            !result.ok ||
+            result.value.libraryId !== libraryId ||
+            result.value.pageId !== targetPageId ||
+            result.value.documentId !== documentId
+          )
+            return onFailure();
           setEntries(result.value.entries);
           setNextCursor(result.value.nextCursor);
           setSelectedEntryId((current) =>
@@ -158,7 +178,7 @@ function OpenHistoryPanel({
           if (requestSerial === requestSerialRef.current) setLoading(false);
         });
     },
-    [projectId],
+    [libraryId, documentId],
   );
 
   useEffect(() => {
@@ -212,7 +232,7 @@ function OpenHistoryPanel({
     if (!selectedEntry || selectedEntry.kind !== "document_version" || selectedPreview) return;
     let cancelled = false;
     void getDocumentVersion({
-      projectId,
+      projectId: null,
       documentId: selectedEntry.documentId,
       versionId: selectedEntry.versionMetadata.versionId,
     })
@@ -238,7 +258,7 @@ function OpenHistoryPanel({
     return () => {
       cancelled = true;
     };
-  }, [projectId, selectedEntry, selectedPreview]);
+  }, [selectedEntry, selectedPreview]);
 
   const navigate = useCallback(
     (direction: -1 | 1) => {
@@ -280,13 +300,17 @@ function OpenHistoryPanel({
     return await runWithCleanup(
       async () => {
         const result = await listPageHistory({
-          requestingProjectId: projectId,
-          pageId: pageId,
+          pageId,
           before: cursor,
           pageSize: DEFAULT_PAGE_HISTORY_PAGE_SIZE,
         });
         if (requestSerial !== requestSerialRef.current) return;
-        if (!result.ok) {
+        if (
+          !result.ok ||
+          result.value.libraryId !== libraryId ||
+          result.value.pageId !== pageId ||
+          result.value.documentId !== documentId
+        ) {
           setTimelineError("earlier");
           return;
         }
@@ -303,7 +327,7 @@ function OpenHistoryPanel({
         },
       },
     );
-  }, [pageId, loadingOlder, nextCursor, projectId]);
+  }, [pageId, loadingOlder, nextCursor, libraryId, documentId]);
 
   const handleRestore = useCallback(async () => {
     if (
@@ -322,8 +346,17 @@ function OpenHistoryPanel({
       async () => {
         let pendingRestore = pendingRestoreRef.current;
         if (!pendingRestore || pendingRestore.entryId !== selectedEntry.id) {
-          const descriptor = await getOwnedDocumentDescriptor(projectId, pageId);
-          if (descriptor.readiness !== "ready") {
+          const descriptor = validateLibraryOwnedBlockDocumentDescriptor(
+            pageId,
+            unwrapLibraryOwnedBlockDocumentPreparationResult(
+              await prepareLibraryOwnedBlockDocument(pageId),
+            ),
+          );
+          if (
+            descriptor.libraryId !== libraryId ||
+            descriptor.storeEpoch !== openedDocument.storeEpoch ||
+            descriptor.generation !== openedDocument.generation
+          ) {
             throw new Error(
               getIntl().formatMessage({
                 id: "board.historyPanel.syncBeforeRestore",
@@ -331,7 +364,10 @@ function OpenHistoryPanel({
               }),
             );
           }
-          if (descriptor.documentId !== recovery.documentId) {
+          if (
+            descriptor.documentId !== documentId ||
+            descriptor.documentId !== recovery.documentId
+          ) {
             throw new Error(
               getIntl().formatMessage({
                 id: "board.historyPanel.revisionNotInDocument",
@@ -343,7 +379,7 @@ function OpenHistoryPanel({
             entryId: selectedEntry.id,
             request: {
               mutationId: createUuidV7(),
-              projectId,
+              projectId: null,
               storeEpoch: descriptor.storeEpoch,
               documentId: descriptor.documentId,
               versionId: recovery.versionId,
@@ -358,7 +394,7 @@ function OpenHistoryPanel({
 
         const commit = () =>
           restoreDocumentVersion(
-            projectId,
+            pendingRestore.request.projectId,
             pendingRestore.request.documentId,
             pendingRestore.request,
           );
@@ -407,7 +443,17 @@ function OpenHistoryPanel({
         },
       },
     );
-  }, [auditSessionId, pageId, loadFirstPage, onPageMutated, projectId, selectedEntry]);
+  }, [
+    auditSessionId,
+    pageId,
+    loadFirstPage,
+    onPageMutated,
+    documentId,
+    libraryId,
+    openedDocument.storeEpoch,
+    openedDocument.generation,
+    selectedEntry,
+  ]);
 
   if (!open) return null;
 
@@ -474,7 +520,7 @@ function OpenHistoryPanel({
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
                 <HistoryCurrentRevisionPreview
                   fileAuthority={fileAuthority}
-                  projectId={projectId}
+                  projectId={null}
                   pageId={pageId}
                   title={pageTitle}
                   markdown={pageMarkdown}
@@ -493,7 +539,7 @@ function OpenHistoryPanel({
                 {selectedEntry.kind === "document_version" ? (
                   <HistoryRevisionPreview
                     fileAuthority={fileAuthority}
-                    projectId={projectId}
+                    projectId={null}
                     entry={selectedEntry}
                     detail={selectedPreview}
                     loading={previewLoading}
@@ -688,7 +734,7 @@ export function HistoryCurrentRevisionPreview({
   projectWorkspacePath,
 }: {
   fileAuthority?: LibraryFileAuthority | null;
-  projectId: string;
+  projectId: string | null;
   pageId: string | null;
   title?: string;
   markdown?: string;
@@ -757,7 +803,7 @@ export function HistoryRevisionPreview({
   projectWorkspacePath,
 }: {
   fileAuthority?: LibraryFileAuthority | null;
-  projectId: string;
+  projectId: string | null;
   entry: Extract<PageHistoryEntry, { kind: "document_version" }>;
   detail: DocumentVersionDetail | null;
   loading: boolean;

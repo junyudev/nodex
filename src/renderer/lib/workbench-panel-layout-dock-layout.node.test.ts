@@ -316,11 +316,9 @@ describe("workbench panel preview", () => {
     test("creates new Page preview identity and preserves it on promotion", () => {
       const session = makeTestWorkbenchSession();
       const first = makePreviewPageStageTab(session, "right", {
-        projectId: "project-1",
         pageId: "page-1",
       });
       const replacement = makePreviewPageStageTab(session, "right", {
-        projectId: "project-1",
         pageId: "page-1",
       });
       expect(replacement.id).not.toBe(first.id);
@@ -372,7 +370,6 @@ describe("workbench panel preview", () => {
         kind: "page_file",
         title: "report.html",
         config: {
-          routingContext: { kind: "library" },
           pageId: "page",
           fileId: "file",
           logicalPath: null,

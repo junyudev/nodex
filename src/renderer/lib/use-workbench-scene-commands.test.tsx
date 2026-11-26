@@ -58,7 +58,7 @@ function fixture() {
       titleSnapshot: "Page",
       state: null,
       stateKey: 0,
-      config: { routingContext: { kind: "library" }, pageId: "page" },
+      config: { pageId: "page" },
     },
   });
   const owner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {

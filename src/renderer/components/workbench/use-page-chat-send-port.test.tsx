@@ -53,7 +53,7 @@ function setup() {
   return renderHook(
     () =>
       usePageChatSendPort({
-        routingContext: { kind: "project", projectId: "project" },
+        routingContext: { kind: "library" },
         pageId: "page",
         onEnsureDefaultDraftSessionForProject: vi.fn(),
         onRefreshSessions: vi.fn(),
@@ -96,8 +96,7 @@ it.each([false, true])(
     const view = setup();
     await act(async () => {
       const accepted = await view.result.current.onSendPagePrompt({
-        projectId: "project",
-        threadId: "root",
+        threadId: "chat-search-hit",
         prompt: "Review",
       });
       expect(mocks.handOff).toHaveBeenCalledWith({ pageId: "page", sessionId: "chat" });
@@ -121,7 +120,6 @@ it("rejects a failed send instead of returning a send record", async () => {
   await act(async () => {
     await expect(
       view.result.current.onSendPagePrompt({
-        projectId: "project",
         threadId: "root",
         prompt: "Review",
       }),
@@ -136,7 +134,6 @@ it("does not deliver a Page when its hand-off is rejected", async () => {
   await act(async () => {
     await expect(
       view.result.current.onSendPagePrompt({
-        projectId: "project",
         threadId: "root",
         prompt: "Review",
       }),

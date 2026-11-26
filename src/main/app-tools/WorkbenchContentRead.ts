@@ -1,6 +1,5 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { WorkbenchSceneReference } from "../../shared/nodex-app-tools/workbench";
 import type { WorkbenchPreparedPageContent } from "../../shared/nodex-app-tools/workbench-content";
@@ -95,8 +94,8 @@ const preparedFor = (
   prepared.libraryId === description.libraryId &&
   prepared.libraryId === authority.libraryId &&
   prepared.storeEpoch === authority.storeEpoch &&
-  contentRoutingContextKey(prepared.routingContext) ===
-    contentRoutingContextKey(description.displayedRoutingContext);
+  prepared.routingContext.kind === "library" &&
+  description.displayedRoutingContext.kind === "library";
 
 const matchesFence = (observation: PageObservation, prepared: WorkbenchPreparedPageContent) =>
   observation.document.documentId === prepared.documentId &&

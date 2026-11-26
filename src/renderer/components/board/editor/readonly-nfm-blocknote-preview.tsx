@@ -96,7 +96,7 @@ interface ReadonlyMarkdownBlockNotePreviewProps {
   fileAuthority?: FileReadAuthority | FilePreviewAuthority | null;
   /** Markdown, or Blocks already read from it. Keep Blocks stable between renders. */
   content: string | readonly MarkdownBlock[];
-  projectId: string;
+  projectId: string | null;
   pageId: string;
   historyId?: number | string | null;
   projectWorkspacePath?: string | null;

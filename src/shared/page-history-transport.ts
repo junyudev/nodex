@@ -172,7 +172,7 @@ export const parsePageHistoryCursor = (
 export const parseListPageHistoryRequest = (value: unknown): ListPageHistoryRequest => {
   const label = "listPageHistory";
   const record = readRecord(value, label);
-  assertExactKeys(record, label, ["requestingProjectId", "pageId"], ["before", "pageSize"]);
+  assertExactKeys(record, label, ["pageId"], ["before", "pageSize"]);
   const before =
     record.before === undefined
       ? undefined
@@ -182,10 +182,6 @@ export const parseListPageHistoryRequest = (value: unknown): ListPageHistoryRequ
       ? undefined
       : readSafeIntegerValue(record.pageSize, `${label}.pageSize`, 1, MAX_PAGE_HISTORY_PAGE_SIZE);
   return {
-    requestingProjectId: readStringValue(
-      record.requestingProjectId,
-      `${label}.requestingProjectId`,
-    ),
     pageId: readStringValue(record.pageId, `${label}.pageId`),
     ...(before === undefined ? {} : { before }),
     ...(pageSize === undefined ? {} : { pageSize }),

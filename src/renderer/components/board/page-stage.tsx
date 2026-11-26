@@ -83,6 +83,8 @@ function readPortablePageMarkdown(document: Y.Doc): string {
 
 interface PageStageDescriptionEditorProps {
   readonly contentRoutingContext: PageStageProps["contentRoutingContext"];
+  readonly executionProjectId: PageStageProps["executionProjectId"];
+  readonly launchProjectId: PageStageProps["launchProjectId"];
   readonly projectName?: string | null;
   readonly projectWorkspacePath?: string | null;
   readonly pageId: string;
@@ -138,6 +140,8 @@ function CollaborativePageStageRawContent({ document }: { readonly document: Y.D
 
 const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   contentRoutingContext,
+  executionProjectId,
+  launchProjectId,
   projectName,
   projectWorkspacePath,
   pageId,
@@ -290,6 +294,8 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
     <div className="relative">
       <NfmEditor
         contentRoutingContext={contentRoutingContext}
+        executionProjectId={executionProjectId}
+        launchProjectId={launchProjectId}
         projectName={projectName}
         projectWorkspacePath={projectWorkspacePath}
         source={{
@@ -445,7 +451,7 @@ export function PageStage(props: PageStageProps) {
     persistViewport,
   });
   const focusIntent = usePageBlockFocusIntent(
-    props.contentRoutingContext.kind === "project" ? props.contentRoutingContext.projectId : null,
+    props.editorSessionKey ?? "",
     controller.page?.id ?? "",
   );
   const handleToggleHistoryPanel = useCallback(() => {
@@ -555,13 +561,11 @@ export function PageStage(props: PageStageProps) {
             automationsNavigation.scheduleRunbook({
               pageId: page.id,
               title: controller.title,
-              projectId:
-                controller.contentRoutingContext.kind === "project"
-                  ? controller.contentRoutingContext.projectId
-                  : null,
+              projectId: props.launchProjectId ?? null,
             }),
         }
       : {}),
+    onOpenTerminal: props.onOpenTerminalPanel,
     ...(props.onDelete
       ? {
           onDelete: () => {
@@ -593,6 +597,8 @@ export function PageStage(props: PageStageProps) {
       description={
         <PageStageDescriptionEditor
           contentRoutingContext={props.contentRoutingContext}
+          executionProjectId={props.executionProjectId}
+          launchProjectId={props.launchProjectId}
           projectName={props.projectName}
           projectWorkspacePath={props.projectWorkspacePath}
           pageId={page.id}
@@ -706,7 +712,6 @@ export function PageStage(props: PageStageProps) {
               ? {
                   onOpenPage: (pageId: string, titleSnapshot: string) => {
                     void props.onOpenPage?.({
-                      routingContext: props.contentRoutingContext,
                       pageId,
                       titleSnapshot,
                     });

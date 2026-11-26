@@ -48,7 +48,7 @@ export const make = Effect.gen(function* () {
         id: "pending",
         titleSnapshot: "",
         kind: "page_file" as const,
-        config: { routingContext, pageId: target.pageId, fileId: target.fileId, logicalPath: null },
+        config: { pageId: target.pageId, fileId: target.fileId, logicalPath: null },
       };
       const description = yield* content.describePageFile({
         authority,
@@ -73,7 +73,7 @@ export const make = Effect.gen(function* () {
               id: "pending",
               titleSnapshot: "",
               kind: "page_stage",
-              config: { routingContext, pageId: target.pageId },
+              config: { pageId: target.pageId },
             }
           : target.kind === "canvas"
             ? {

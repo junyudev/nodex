@@ -32,8 +32,18 @@ export const WindowSessionNewWindowRequestSchema = z
     activeProjectId: z.string().min(1).nullable().optional(),
     browserUrl: z.url({ protocol: /^https?$/ }).optional(),
     page: WorkbenchPageStageSurfaceConfigSchema.optional(),
+    pageDestination: z
+      .discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("library") }),
+        z.strictObject({ kind: z.literal("project"), projectId: z.string().min(1) }),
+      ])
+      .optional(),
   })
   .strict()
+  .refine(({ page, pageDestination }) => page !== undefined || pageDestination === undefined, {
+    path: ["pageDestination"],
+    message: "A Page destination requires a Page",
+  })
   .refine(
     ({ focus, activeProjectSessionId }) => focus === undefined || Boolean(activeProjectSessionId),
     {

@@ -70,7 +70,6 @@ export function makeTestWorkbenchTab(
         kind: input.kind,
         browserTabId: null,
         config: {
-          routingContext: { kind: "project", projectId: input.projectId ?? "project-1" },
           pageId: input.pageId,
         },
       };

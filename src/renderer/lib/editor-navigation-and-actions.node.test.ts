@@ -348,7 +348,6 @@ describe("nfm block move runtime", () => {
   });
 
   const request = (destination: NfmBlockMoveRequest["destination"]): NfmBlockMoveRequest => ({
-    projectId,
     storeEpoch,
     sourcePageId: "page-source",
     sourceDocumentId: "document-source",
@@ -425,8 +424,10 @@ describe("nfm block move runtime", () => {
       });
     });
 
-    test("rejects destinations outside the source Project before any mutation work", async () => {
-      const readDatabase = vi.fn<NfmBlockMoveRuntimeDependencies["readDatabase"]>();
+    test("rejects a Board response from outside the destination Project", async () => {
+      const readDatabase = vi.fn<NfmBlockMoveRuntimeDependencies["readDatabase"]>(async () =>
+        databaseRead(),
+      );
 
       await expect(
         prepareNfmBlockPromotion(
@@ -441,10 +442,9 @@ describe("nfm block move runtime", () => {
           },
         ),
       ).rejects.toMatchObject({
-        code: "destination.cross_project",
-        message: "Choose a destination in the current Project.",
+        code: "database.scope_mismatch",
       });
-      expect(readDatabase).not.toHaveBeenCalled();
+      expect(readDatabase).toHaveBeenCalledWith("project-other", expect.anything());
     });
   });
 });

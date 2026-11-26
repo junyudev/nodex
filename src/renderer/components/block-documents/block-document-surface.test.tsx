@@ -820,7 +820,7 @@ describe("reference block surfaces", () => {
   });
 
   describe("DatabaseViewReferenceSurface", () => {
-    test("preserves Library access when a referenced Page opens", () => {
+    test("opens the referenced Page from a Library View", () => {
       const card = makeCard("card-a", "Card A");
       const opened: unknown[] = [];
       const model: DatabaseViewReadModel = {
@@ -858,7 +858,6 @@ describe("reference block surfaces", () => {
 
       expect(opened).toEqual([
         {
-          routingContext: { kind: "library" },
           pageId: "card-a",
           titleSnapshot: "Card A",
         },

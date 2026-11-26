@@ -1,6 +1,6 @@
 export {
   getDocumentVersion,
-  getOwnedDocumentDescriptor,
+  prepareLibraryOwnedBlockDocument,
   listPageHistory,
   restoreDocumentVersion,
 } from "@/lib/api";

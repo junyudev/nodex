@@ -26,7 +26,6 @@ export type NfmBlockMoveDestination =
     };
 
 export interface NfmBlockMoveRequest {
-  readonly projectId: string;
   readonly storeEpoch: string;
   readonly sourcePageId: string;
   readonly sourceDocumentId: string;
@@ -191,13 +190,12 @@ export const prepareNfmBlockPromotion = async (
   if (request.rootBlockIds.length === 0) {
     fail("selection.empty", "No blocks selected.", operationId);
   }
-  if (request.destination.projectId !== request.projectId) {
-    fail("destination.cross_project", "Choose a destination in the current Project.", operationId);
-  }
+  // The source is fenced by its Document. The destination Project supplies the Board coordinates.
+  const { projectId } = request.destination;
   const sourceHead = requireSourceFence(request, operationId);
 
   const { snapshot, descriptor } = await readProjectDefaultDatabase(
-    request.projectId,
+    projectId,
     operationId,
     dependencies,
   );
@@ -230,7 +228,7 @@ export const prepareNfmBlockPromotion = async (
 
   return {
     operationId,
-    projectId: request.projectId,
+    projectId: projectId,
     storeEpoch: request.storeEpoch,
     mode: "move",
     rootBlockIds: request.rootBlockIds,

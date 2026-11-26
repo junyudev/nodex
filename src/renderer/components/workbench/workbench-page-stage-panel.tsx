@@ -1,47 +1,60 @@
+import { commitPageLifecycleIntent } from "@/lib/page-lifecycle-runtime";
+import { completePageOccurrence, skipPageOccurrence } from "@/lib/page-occurrence-runtime";
+import { workbenchPageEditorKey } from "@/lib/workbench-page-editor-key";
+import { usePublishCanonicalPageTitle } from "@/lib/page-title-projection-context";
+import { usePageExecutionContext } from "@/lib/use-page-execution-context";
+import { ownedBlockDocumentQueryOptions } from "@/lib/owned-block-document-query";
+import type { OpenPageInNewChatInput } from "@/lib/page-chat-actions";
+import type { Project } from "@/lib/types";
+import type { MutableRefObject, RefObject } from "react";
+import type { PageStageProps, PageStageSessionSnapshot } from "../board/page-stage/types";
+import type { WorkbenchPageStageSurfaceConfig } from "../../../shared/workbench-scene";
+import type { PageStageHistoryModalContext } from "@/lib/workbench-page-history";
 import { useIntl } from "@/lib/i18n";
 import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
 import { useWorkbenchPageSearchReveal } from "@/lib/workbench-surface-reveal";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
-import { useMemo, type MutableRefObject, type ReactNode, type RefObject } from "react";
+import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
+import { useMemo } from "react";
+import { useConsumePageTitleFocus } from "@/lib/page-title-focus-intent";
+import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
-import { PageStageLoadingFrame } from "@/components/board/page-stage/frame";
-import type {
-  PageStageRelatedChatCandidate,
-  PageStageSessionSnapshot,
-} from "@/components/board/page-stage/types";
-import { NodexButton } from "@/components/ui/button";
+
+import { PageStage } from "./workbench-page-stage";
+import { PageStageLoadingFrame } from "../board/page-stage/frame";
+import { type ReadyPageBlockDocumentDescriptor } from "../../lib/owned-block-document";
+import { projectPageDetailToStageModel } from "../../lib/page-stage-page";
 import {
   commitPageDetailMetadataPatch,
   commitPageDetailPropertyEdit,
-} from "@/lib/page-detail-metadata-runtime";
-import { makeEditorSurfaceKey } from "@/lib/document-session-registry";
-import { projectPageDetailToStageModel } from "@/lib/page-stage-page";
-import { pageStageSemanticValues, type PageStageSemanticValues } from "@/lib/page-stage-properties";
-import { requestPageBlockFocus } from "@/lib/page-block-focus-intents";
-import { fetchPageDetail, usePageDetail } from "@/lib/page-detail-store";
-import { usePublishCanonicalPageTitle } from "@/lib/page-title-projection-context";
-import { useConsumePageTitleFocus } from "@/lib/page-title-focus-intent";
-import { projectContentRoute } from "../../../shared/content-routing-context";
-import type {
-  CodexPromptInput,
-  CodexThreadSummary,
-  PageInput,
-  Project,
-  WorkbenchTabProjection,
-} from "@/lib/types";
-import { useBoard } from "@/lib/use-board";
-import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
-import type { OpenPageInNewChatInput } from "@/lib/page-chat-actions";
-import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
-import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
-import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
-import type { WorkbenchProjectionPageStageTabConfig } from "../../../shared/types";
+} from "../../lib/page-detail-metadata-runtime";
 import type { DatabaseId } from "../../../shared/database-identities";
-import { PageStage } from "./workbench-page-stage";
-import { usePageChatSendPort } from "./use-page-chat-send-port";
-import { usePageLinkedChats } from "@/lib/use-page-linked-chats";
+import { queryKeys } from "../../lib/query-keys";
+import { invalidateExactQuery } from "../../lib/query-invalidation";
+import { useProjectionRegistration } from "../../lib/projection-invalidation-context";
+import { libraryContentRoute } from "../../../shared/content-routing-context";
+import {
+  pageDetailDataDependencies,
+  pageDetailDocumentDependencies,
+} from "../../lib/page-detail-projection-dependencies";
+import {
+  libraryPageDetailQueryOptions,
+  LibraryPageDetailReadError,
+} from "../../lib/library-page-detail-query";
 import { useApplicationPending } from "@/bootstrap/application-surface";
+import { usePageLinkedChats, type PageChatCommands } from "@/lib/use-page-linked-chats";
+import type { CodexThreadSummary } from "@/lib/types";
+import { usePageChatSendPort, type PageChatSendPortInput } from "./use-page-chat-send-port";
+
+/** A chat and its composer as presented beside the Page. */
+export interface WorkbenchBesideChat {
+  readonly sessionId: string;
+  readonly projectId: string | null;
+  readonly sessionThread: CodexThreadSummary | null;
+  readonly canStartThreadInSession: boolean;
+  readonly sessionTitle: string | null;
+  readonly onAddToChatComposer: NonNullable<PageChatSendPortInput["onAddToChatComposer"]>;
+}
 
 export interface OpenPageTabOptions {
   placement?: WorkbenchSurfaceRelativePlacement;
@@ -56,529 +69,409 @@ export type OpenPageTabHandler = (
   options?: OpenPageTabOptions,
 ) => Promise<void>;
 
-export interface PageStageHistoryModalContext {
-  sessionId: string;
-  tabId: string;
-  projectId: string;
-  pageId: string;
-  pageTitle?: string;
-  pageMarkdown?: string;
-}
-
-interface PageStageDatabaseCapability {
-  readonly onDelete?: (pageId: string) => Promise<void>;
-  readonly onCompleteOccurrence: (pageId: string, occurrenceStart: Date) => Promise<void>;
-  readonly onSkipOccurrence: (pageId: string, occurrenceStart: Date) => Promise<void>;
-}
-
-function PageStageDatabaseCapabilityBoundary({
-  projectId,
-  databaseViewId,
-  sessionId,
-  properties,
-  children,
-}: {
-  projectId: string;
-  databaseViewId: string | null;
-  sessionId: string;
-  properties: PageStageSemanticValues | null;
-  children: (capability: PageStageDatabaseCapability | null) => ReactNode;
-}) {
-  const board = useBoard({
-    projectId,
-    databaseViewId: databaseViewId ?? undefined,
-    sessionId,
-    enabled: properties !== null && databaseViewId !== null,
-  });
-  if (!properties || !databaseViewId) return children(null);
-  return children({
-    onDelete: async (pageId: string) => {
-      const deleted = await board.deletePage(properties.status, pageId);
-      if (!deleted) throw new Error(`Page ${pageId} delete did not commit`);
-    },
-    onCompleteOccurrence: async (pageId, occurrenceStart) => {
-      const completed = await board.completeOccurrence({
-        pageId,
-        occurrenceStart,
-        source: "page-detail",
-      });
-      if (!completed) throw new Error(`Page ${pageId} occurrence completion did not commit`);
-      await fetchPageDetail(projectId, pageId);
-    },
-    onSkipOccurrence: async (pageId, occurrenceStart) => {
-      const skipped = await board.skipOccurrence({
-        pageId,
-        occurrenceStart,
-        source: "page-detail",
-      });
-      if (!skipped) throw new Error(`Page ${pageId} occurrence skip did not commit`);
-      await fetchPageDetail(projectId, pageId);
-    },
-  });
-}
-
-export function PageStageSessionTab({
-  tab,
+export function WorkbenchPageSurface({
+  config,
+  surfaceId,
   sceneOwner,
-  project,
+  sceneProjectId,
+  projects,
+  preview,
+  isActivePanelTab,
   closeRef,
   persistRef,
   sessionSnapshotRef,
-  sessionId,
-  sessionThread,
-  canStartThreadInSession,
-  sessionTitle = null,
-  onLeavePage,
   onClose,
-  onOpenTerminal,
-  onEnsureDefaultDraftSessionForProject,
-  onRefreshSessions,
-  onOpenPageTab,
-  onOpenPageInNewWindow,
-  onOpenPageFile,
-  onOpenCanvasStage,
+  onLeavePage,
   onOpenDatabase,
-  onOpenThread,
-  onOpenRelatedChat,
+  onOpenPage,
+  onOpenPageFile,
+  onOpenPageInNewWindow,
+  onOpenCanvas,
+  onOpenTerminalPanel,
+  onOpenCodexThread,
   onOpenPageInNewChat,
-  onLinkPageToChat,
-  onHandOffPageToChat,
-  relatedChatCandidates,
-  onResolveChatSessionForThread,
+  pageChats,
+  besideChat,
+  chatCommands,
   historyPanelActive,
   onToggleHistoryPanel,
-  isActivePanelTab,
-  onAddToChatComposer,
 }: {
-  sceneOwner?: WorkbenchSceneOwner;
-  tab: WorkbenchTabProjection & {
-    config: WorkbenchProjectionPageStageTabConfig;
-    preview?: true;
-  };
-  project: Project | null;
-  closeRef: RefObject<(() => Promise<void>) | null>;
-  persistRef?: MutableRefObject<(() => Promise<void>) | null>;
-  sessionSnapshotRef?: MutableRefObject<PageStageSessionSnapshot | null>;
-  sessionId: string;
-  sessionThread: CodexThreadSummary | null;
-  canStartThreadInSession: boolean;
-  sessionTitle?: string | null;
-  onLeavePage: (snapshot: PageStageSessionSnapshot) => void;
-  onClose: () => void;
-  onOpenTerminal: () => Promise<void>;
-  onEnsureDefaultDraftSessionForProject: (
-    projectId: string,
-    options?: { select?: boolean },
-  ) => Promise<WorkbenchSessionRenderProjection>;
-  onRefreshSessions: (projectId: string) => Promise<WorkbenchSessionRenderProjection[]>;
-  onOpenPageTab: OpenPageTabHandler;
-  onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
-  onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
-  onOpenCanvasStage: OpenCanvasStageHandler;
-  /** Opens a Database in this Page's tab group, as the Page's location and references do. */
-  onOpenDatabase: (databaseId: DatabaseId) => void;
-  onOpenThread: (threadId: string) => Promise<void>;
-  onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
-  onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
-  onLinkPageToChat: (input: {
-    readonly pageId: string;
-    readonly sessionId: string;
-  }) => Promise<void>;
-  onHandOffPageToChat: (input: {
-    readonly pageId: string;
-    readonly sessionId: string;
-  }) => Promise<void>;
-  relatedChatCandidates: readonly PageStageRelatedChatCandidate[];
-  onResolveChatSessionForThread: (threadId: string) => Promise<{
-    readonly id: string;
-    readonly projectId: string | null;
-    readonly executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
-  }>;
-  historyPanelActive: boolean;
-  onToggleHistoryPanel: (context: PageStageHistoryModalContext) => void;
-  isActivePanelTab: boolean;
-  /** Present when this Page is shown beside a chat that can take Page content as a draft. */
-  onAddToChatComposer?: (promptInput: CodexPromptInput) => void;
+  readonly config: WorkbenchPageStageSurfaceConfig;
+  readonly surfaceId: string;
+  readonly sceneOwner: WorkbenchSceneOwner;
+  readonly sceneProjectId: string | null;
+  readonly projects: readonly Project[];
+  readonly preview?: boolean;
+  readonly isActivePanelTab: boolean;
+  readonly closeRef: RefObject<(() => Promise<void>) | null>;
+  readonly persistRef?: MutableRefObject<(() => Promise<void>) | null>;
+  readonly sessionSnapshotRef?: MutableRefObject<PageStageSessionSnapshot | null>;
+  readonly onLeavePage: PageStageProps["onLeavePage"];
+  readonly onClose: () => void;
+  readonly onOpenDatabase: (databaseId: DatabaseId) => void;
+  readonly onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
+  readonly onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
+  readonly onOpenPage: (
+    pageId: string,
+    titleSnapshot: string | undefined,
+    placement: WorkbenchSurfaceRelativePlacement,
+    blockId?: string,
+  ) => void;
+  readonly onOpenCanvas: (canvasBlockId: string, titleSnapshot?: string) => void;
+  readonly pageChats?: PageChatCommands;
+  readonly besideChat?: WorkbenchBesideChat | null;
+  readonly chatCommands: Omit<
+    PageChatSendPortInput,
+    "routingContext" | "pageId" | "onAddToChatComposer"
+  >;
+  readonly onOpenTerminalPanel?: () => void;
+  readonly onOpenCodexThread: (threadId: string) => Promise<void>;
+  readonly onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
+  readonly historyPanelActive: boolean;
+  readonly onToggleHistoryPanel: (context: PageStageHistoryModalContext) => void;
 }) {
+  const { pageId, titleSnapshot } = config;
   const intl = useIntl();
-  if (tab.config.routingContext.kind !== "project")
-    throw new Error("Project Page Stage requires a Project route");
-  const pageAccessProjectId = tab.config.routingContext.projectId;
-  const searchReveal = useWorkbenchPageSearchReveal(
-    sceneOwner ?? { kind: "session", sessionId },
-    tab.id,
-  );
-  const linkedChats = usePageLinkedChats(tab.config.pageId, { enabled: project !== null });
-  const editorSessionKey = makeEditorSurfaceKey(sessionId, tab.id);
-
-  const detailSnapshot = usePageDetail(
-    project?.libraryId ?? null,
-    pageAccessProjectId,
-    tab.config.pageId,
-  );
-  const stageProjection = useMemo(() => {
-    if (!detailSnapshot.detail) return { page: null, error: null };
-    try {
-      return {
-        page: projectPageDetailToStageModel(detailSnapshot.detail),
-        error: null,
-      };
-    } catch (error) {
-      return {
-        page: null,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }, [detailSnapshot.detail]);
+  const searchReveal = useWorkbenchPageSearchReveal(sceneOwner, surfaceId);
+  const editorSessionKey = workbenchPageEditorKey(sceneOwner, surfaceId);
+  const execution = usePageExecutionContext(pageId, sceneProjectId, projects, besideChat);
+  const chatSendPort = usePageChatSendPort({
+    routingContext: libraryContentRoute,
+    pageId,
+    ...chatCommands,
+    onAddToChatComposer: besideChat?.onAddToChatComposer,
+  });
+  const queryClient = useQueryClient();
+  const linkedChats = usePageLinkedChats(pageId, { enabled: pageChats !== undefined });
+  const detailQueryKey = useMemo(() => queryKeys.library.pageDetail(pageId), [pageId]);
+  const detail = useQuery(libraryPageDetailQueryOptions(pageId));
+  const documentOptions = ownedBlockDocumentQueryOptions({
+    routingContext: libraryContentRoute,
+    ownerBlockId: pageId,
+  });
+  const documentQueryKey = documentOptions.queryKey;
+  const document = useQuery(documentOptions);
   usePublishCanonicalPageTitle(
-    detailSnapshot.detail?.libraryId ?? null,
-    detailSnapshot.detail?.page.pageId ?? null,
-    detailSnapshot.detail?.page.title ?? null,
-    detailSnapshot.detail
+    detail.data?.libraryId ?? null,
+    detail.data?.page.pageId ?? null,
+    detail.data?.page.title ?? null,
+    detail.data
       ? {
-          generation: detailSnapshot.detail.page.documentGeneration,
-          headSeq: detailSnapshot.detail.page.documentHeadSeq,
+          generation: detail.data.page.documentGeneration,
+          headSeq: detail.data.page.documentHeadSeq,
         }
       : undefined,
   );
-  const page = stageProjection.page;
+  const stagePage = useMemo(() => {
+    if (!detail.data) return null;
+    return projectPageDetailToStageModel(detail.data);
+  }, [detail.data]);
   // A Page created a moment ago opens ready to be named; reopening one never moves focus.
-  const focusTitle = useConsumePageTitleFocus(tab.config.pageId, Boolean(page));
-  const pageLoadError = !page
-    ? (stageProjection.error ??
-      (detailSnapshot.error === "Page not found" ? null : detailSnapshot.error))
-    : null;
-  const pageHydrating =
-    !page && (detailSnapshot.loading || (!detailSnapshot.error && !stageProjection.error));
-  useApplicationPending(isActivePanelTab && project != null && pageHydrating);
+  const focusTitle = useConsumePageTitleFocus(pageId, Boolean(stagePage && document.data));
 
-  const chatSendPort = usePageChatSendPort({
-    routingContext: projectContentRoute(pageAccessProjectId),
-    pageId: tab.config.pageId,
-    onEnsureDefaultDraftSessionForProject,
-    onRefreshSessions,
-    onResolveChatSessionForThread,
-    onHandOffPageToChat,
-    onAddToChatComposer,
-  });
-
-  if (!project) {
-    return (
-      <PageStageSessionNotice
-        title={intl.formatMessage({
-          id: "workbench.workbenchPageStagePanel.projectNotFound",
-          defaultMessage: "Project not found",
-        })}
-        description={intl.formatMessage({
-          id: "workbench.workbenchPageStagePanel.projectUnavailable",
-          defaultMessage: "This page tab points to a project that is no longer available.",
-        })}
-        actionLabel={intl.formatMessage({
-          id: "workbench.workbenchPageStagePanel.closeTab",
-          defaultMessage: "Close tab",
-        })}
-        onAction={onClose}
-      />
-    );
-  }
-
-  if (pageHydrating) {
-    return (
-      <PageStageLoadingFrame titleSnapshot={tab.config.titleSnapshot} pageId={tab.config.pageId} />
-    );
-  }
-
-  if (pageLoadError) {
-    return (
-      <PageStageSessionNotice
-        title={intl.formatMessage({
-          id: "workbench.workbenchPageStagePanel.loadFailed",
-          defaultMessage: "Could not load Page",
-        })}
-        description={
-          tab.config.titleSnapshot
-            ? intl.formatMessage(
-                {
-                  id: "workbench.workbenchPageStagePanel.loadNamedPageFailed",
-                  defaultMessage: "Nodex could not load {title} in {project}. {reason}",
-                },
-                { title: tab.config.titleSnapshot, project: project.name, reason: pageLoadError },
-              )
-            : intl.formatMessage(
-                {
-                  id: "workbench.workbenchPageStagePanel.loadPageFailed",
-                  defaultMessage: "Nodex could not load this page in {project}. {reason}",
-                },
-                { project: project.name, reason: pageLoadError },
-              )
+  const authority = detail.data;
+  const getCursor = () => {
+    const currentDetail = queryClient.getQueryData<typeof authority>(detailQueryKey);
+    const currentDocument =
+      queryClient.getQueryData<ReadyPageBlockDocumentDescriptor>(documentQueryKey);
+    if (!currentDetail || !currentDocument || currentDetail.libraryId !== currentDocument.libraryId)
+      return null;
+    if (
+      currentDetail.storeEpoch !== currentDocument.storeEpoch ||
+      currentDetail.page.documentGeneration !== currentDocument.generation ||
+      currentDetail.page.documentHeadSeq !== currentDocument.headSeq
+    )
+      return null;
+    return {
+      storeEpoch: currentDetail.storeEpoch,
+      commitSeq: currentDetail.commitSeq,
+    };
+  };
+  useProjectionRegistration(
+    authority
+      ? {
+          scope: { kind: "library", libraryId: authority.libraryId },
+          consumerKey: hashKey(["projection", detailQueryKey]),
+          getDependencies: () => {
+            const currentDetail = queryClient.getQueryData<typeof authority>(detailQueryKey);
+            return pageDetailDataDependencies(currentDetail ?? null, pageId);
+          },
+          getCursor,
+          invalidate: async () => {
+            await invalidateExactQuery(queryClient, detailQueryKey);
+          },
         }
-      />
-    );
-  }
-
-  if (!page) {
-    return (
-      <PageStageSessionNotice
-        title={intl.formatMessage({
-          id: "workbench.workbenchPageStagePanel.pageNotFound",
-          defaultMessage: "Page not found",
-        })}
-        description={
-          tab.config.titleSnapshot
-            ? intl.formatMessage(
-                {
-                  id: "workbench.workbenchPageStagePanel.namedPageUnavailable",
-                  defaultMessage: "{title} is no longer available in {project}.",
-                },
-                { title: tab.config.titleSnapshot, project: project.name },
-              )
-            : intl.formatMessage(
-                {
-                  id: "workbench.workbenchPageStagePanel.pageUnavailable",
-                  defaultMessage: "This page is no longer available in {project}.",
-                },
-                { project: project.name },
-              )
+      : null,
+  );
+  useProjectionRegistration(
+    authority
+      ? {
+          scope: { kind: "library", libraryId: authority.libraryId },
+          consumerKey: hashKey(["projection", documentQueryKey]),
+          getDependencies: () =>
+            pageDetailDocumentDependencies(
+              queryClient.getQueryData<typeof authority>(detailQueryKey) ?? null,
+              pageId,
+            ),
+          getCursor,
+          invalidate: async () => {
+            await invalidateExactQuery(queryClient, documentQueryKey);
+          },
         }
-        actionLabel={intl.formatMessage({
-          id: "workbench.workbenchPageStagePanel.closeTab",
-          defaultMessage: "Close tab",
-        })}
-        onAction={onClose}
-      />
-    );
-  }
-
-  const semanticValues =
-    page.databaseContext.kind === "member"
-      ? pageStageSemanticValues(page.databaseContext.semanticProperties)
-      : null;
-  const renderDocumentSurface = (
-    databaseCapability: PageStageDatabaseCapability | null,
-  ): ReactNode => (
-    <OwnedBlockDocumentBoundary
-      routingContext={projectContentRoute(pageAccessProjectId)}
-      ownerBlockId={page.page.id}
-    >
-      {(documentModel, documentControls) => {
-        if (documentModel.status === "error") {
-          const retrying = documentModel.error.retrying === true;
-          return (
-            <PageStageSessionNotice
-              title={
-                documentModel.error.retryable
-                  ? intl.formatMessage({
-                      id: "workbench.workbenchPageStagePanel.coreBusy",
-                      defaultMessage: "Core is busy",
-                    })
-                  : intl.formatMessage({
-                      id: "workbench.workbenchPageStagePanel.openFailed",
-                      defaultMessage: "Could not open page",
-                    })
-              }
-              description={documentModel.error.message}
-              {...(!retrying
-                ? {
-                    actionLabel: intl.formatMessage({
-                      id: "workbench.workbenchPageStagePanel.retry",
-                      defaultMessage: "Retry",
-                    }),
-                    onAction: () => {
-                      void documentControls.reload();
-                    },
-                  }
-                : {})}
-            />
-          );
-        }
-        const documentAuthority =
-          documentModel.status === "ready"
-            ? {
-                kind: "yjs" as const,
-                descriptor: documentModel.descriptor,
-                reload: documentControls.reload,
-              }
-            : null;
-
-        return (
-          <PageStage
-            contentRoutingContext={projectContentRoute(pageAccessProjectId)}
-            editorSessionKey={editorSessionKey}
-            pageTitleIdentity={
-              project ? { libraryId: project.libraryId, pageId: tab.config.pageId } : undefined
-            }
-            retainEditorSession={tab.preview !== true}
-            documentAuthority={documentAuthority}
-            page={page}
-            autoFocusTitle={focusTitle}
-            searchReveal={searchReveal}
-            projectName={project.name}
-            projectWorkspacePath={projectWorkspaceRootOrNull(project)}
-            closeRef={closeRef as MutableRefObject<(() => Promise<void>) | null>}
-            persistRef={persistRef}
-            sessionSnapshotRef={sessionSnapshotRef}
-            onClose={onClose}
-            onOpenOnRight={() => {
-              void onOpenPageTab(
-                pageAccessProjectId,
-                tab.config.pageId,
-                page.page.title.slice(0, 2_000) || tab.config.titleSnapshot,
-                {
-                  placement: { kind: "adjacent-right", sourceSurfaceId: tab.id },
-                  openMode: "durable",
-                },
-              );
-            }}
-            onOpenInNewWindow={
-              onOpenPageInNewWindow
-                ? () =>
-                    onOpenPageInNewWindow({
-                      ...tab.config,
-                      titleSnapshot: page.page.title.slice(0, 2_000) || tab.config.titleSnapshot,
-                    })
-                : undefined
-            }
-            onLeavePage={onLeavePage}
-            onUpdate={async (pageId: string, updates: Partial<PageInput>) =>
-              await commitPageDetailMetadataPatch({
-                projectId: pageAccessProjectId,
-                pageId,
-                operationId: createUuidV7(),
-                clientSessionId: tab.id,
-                patch: updates,
-              })
-            }
-            onUpdateProperty={async (pageId, propertyId, edit) =>
-              await commitPageDetailPropertyEdit({
-                projectId: pageAccessProjectId,
-                pageId,
-                propertyId,
-                edit,
-                operationId: createUuidV7(),
-                clientSessionId: tab.id,
-              })
-            }
-            onRefreshProperties={async () => {
-              await fetchPageDetail(pageAccessProjectId, tab.config.pageId);
-            }}
-            {...(databaseCapability?.onDelete ? { onDelete: databaseCapability.onDelete } : {})}
-            {...(databaseCapability
-              ? {
-                  onCompleteOccurrence: databaseCapability.onCompleteOccurrence,
-                  onSkipOccurrence: databaseCapability.onSkipOccurrence,
-                }
-              : {})}
-            onOpenTerminalPanel={() => {
-              void onOpenTerminal();
-            }}
-            onToggleHistoryPanel={(snapshot) =>
-              onToggleHistoryPanel({
-                sessionId,
-                tabId: tab.id,
-                projectId: pageAccessProjectId,
-                pageId: tab.config.pageId,
-                pageTitle: snapshot.title || tab.config.titleSnapshot,
-                pageMarkdown: snapshot.markdown,
-              })
-            }
-            historyPanelActive={historyPanelActive}
-            isActivePanelTab={isActivePanelTab}
-            sessionId={sessionId}
-            sessionThread={sessionThread}
-            canStartThreadInSession={canStartThreadInSession}
-            sessionTitle={sessionTitle}
-            {...linkedChats}
-            relatedChatCandidates={relatedChatCandidates}
-            onOpenRelatedChat={onOpenRelatedChat}
-            onCreateRelatedChat={
-              onOpenPageInNewChat
-                ? async () => {
-                    await onOpenPageInNewChat({
-                      projectId: pageAccessProjectId,
-                      pageId: tab.config.pageId,
-                      titleSnapshot: page.page.title,
-                    });
-                  }
-                : undefined
-            }
-            onLinkRelatedChat={async (relatedSessionId) => {
-              await onLinkPageToChat({
-                pageId: tab.config.pageId,
-                sessionId: relatedSessionId,
-              });
-            }}
-            onOpenCodexThread={onOpenThread}
-            onOpenPageFile={
-              onOpenPageFile
-                ? async (input) => {
-                    await onOpenPageFile({
-                      ...input,
-                      placement: { kind: "same-group", sourceSurfaceId: tab.id },
-                    });
-                  }
-                : undefined
-            }
-            onOpenPage={async ({ routingContext, pageId, titleSnapshot, sourceBlockId }) => {
-              if (routingContext.kind !== "project") return;
-              await onOpenPageTab(routingContext.projectId, pageId, titleSnapshot, {
-                placement: { kind: "same-group", sourceSurfaceId: tab.id },
-                openMode: "durable",
-              });
-              if (!sourceBlockId) return;
-              requestPageBlockFocus({
-                projectId: routingContext.projectId,
-                pageId,
-                blockId: sourceBlockId,
-              });
-            }}
-            onOpenDatabase={onOpenDatabase}
-            onOpenCanvas={({ routingContext, canvasBlockId, titleSnapshot }) => {
-              if (routingContext.kind !== "project") return;
-              void onOpenCanvasStage(routingContext.projectId, canvasBlockId, titleSnapshot, {
-                placement: { kind: "same-group", sourceSurfaceId: tab.id },
-              });
-            }}
-            {...chatSendPort}
-          />
-        );
-      }}
-    </OwnedBlockDocumentBoundary>
+      : null,
   );
 
-  return (
-    <PageStageDatabaseCapabilityBoundary
-      projectId={pageAccessProjectId}
-      databaseViewId={project.defaultDatabaseViewId}
-      sessionId={tab.id}
-      properties={semanticValues}
-    >
-      {renderDocumentSurface}
-    </PageStageDatabaseCapabilityBoundary>
-  );
-}
+  useApplicationPending(isActivePanelTab && detail.isPending);
+  if (detail.isPending)
+    return <PageStageLoadingFrame pageId={pageId} titleSnapshot={titleSnapshot} />;
 
-function PageStageSessionNotice({
-  title,
-  description,
-  actionLabel,
-  onAction,
-}: {
-  title: string;
-  description: string;
-  actionLabel?: string;
-  onAction?: () => void;
-}) {
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-token-main-surface-primary p-3 select-none">
-      <div className="mx-auto flex h-full w-full max-w-md flex-col items-center justify-center text-center">
-        <div className="text-base font-medium text-token-text-primary">{title}</div>
-        <div className="mt-1 text-sm text-token-text-secondary">{description}</div>
-        {actionLabel && onAction ? (
-          <NodexButton type="button" size="sm" className="mt-3" onClick={onAction}>
-            {actionLabel}
-          </NodexButton>
-        ) : null}
+  const pageMissing =
+    detail.error instanceof LibraryPageDetailReadError &&
+    detail.error.failure.code === "page_not_found";
+  const documentFailure = document.error ?? document.failureReason;
+  const documentRetrying = !detail.isError && !document.isError && documentFailure !== null;
+  if (detail.isError || documentFailure || !stagePage) {
+    const error = detail.error ?? documentFailure;
+    const coreBusy = error instanceof Error && "retryable" in error && error.retryable;
+
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 bg-token-main-surface-primary px-6 text-center">
+        <p className="text-sm text-token-text-primary">
+          {coreBusy
+            ? intl.formatMessage({
+                id: "workbench.workbenchPageStagePanel.coreBusy",
+                defaultMessage: "Core is busy",
+              })
+            : intl.formatMessage({
+                id: "workbench.workbenchLibraryPageSurface.openFailed",
+                defaultMessage: "Could not open Page",
+              })}
+        </p>
+        <p className="max-w-lg text-sm text-token-description-foreground">
+          {error instanceof Error && !coreBusy && !pageMissing
+            ? error.message
+            : intl.formatMessage({
+                id: "workbench.workbenchLibraryPageSurface.unavailable",
+                defaultMessage: "The Page is unavailable.",
+              })}
+        </p>
+        {!documentRetrying && (
+          <button
+            type="button"
+            className="mt-1 rounded-md bg-token-foreground/5 px-2.5 py-1.5 text-sm text-token-text-secondary hover:bg-token-foreground/10 hover:text-token-text-primary"
+            onClick={() => {
+              if (pageMissing) onClose();
+              else void Promise.all([detail.refetch(), document.refetch()]);
+            }}
+          >
+            {pageMissing
+              ? intl.formatMessage({
+                  id: "workbench.workbenchPageStagePanel.closeTab",
+                  defaultMessage: "Close tab",
+                })
+              : intl.formatMessage({
+                  id: "workbench.workbenchLibraryPageSurface.retry",
+                  defaultMessage: "Retry",
+                })}
+          </button>
+        )}
       </div>
-    </div>
+    );
+  }
+
+  const descriptor =
+    document.data?.libraryId === detail.data.libraryId &&
+    document.data?.storeEpoch === detail.data.storeEpoch
+      ? document.data
+      : null;
+  const refreshProperties = () => invalidateExactQuery(queryClient, detailQueryKey);
+  const openBeside = { kind: "same-group", sourceSurfaceId: surfaceId } as const;
+  return (
+    <PageStage
+      contentRoutingContext={descriptor?.routingContext ?? libraryContentRoute}
+      editorSessionKey={editorSessionKey}
+      pageTitleIdentity={{ libraryId: detail.data.libraryId, pageId }}
+      retainEditorSession={!preview}
+      page={stagePage}
+      autoFocusTitle={focusTitle}
+      searchReveal={searchReveal}
+      closeRef={closeRef}
+      persistRef={persistRef}
+      sessionSnapshotRef={sessionSnapshotRef}
+      onLeavePage={onLeavePage}
+      executionProjectId={execution.executionProjectId}
+      launchProjectId={execution.launchProjectId}
+      projectName={execution.projectName}
+      projectWorkspacePath={execution.workspaceRoot}
+      documentAuthority={
+        descriptor
+          ? {
+              kind: "yjs",
+              descriptor,
+              reload: async () => {
+                await queryClient.resetQueries({ queryKey: documentQueryKey, exact: true });
+              },
+            }
+          : null
+      }
+      onOpenDatabase={onOpenDatabase}
+      onOpenPageFile={
+        onOpenPageFile
+          ? async (input) => {
+              await onOpenPageFile({ ...input, placement: openBeside });
+            }
+          : undefined
+      }
+      onOpenPage={({ pageId: nextPageId, titleSnapshot, sourceBlockId }) =>
+        onOpenPage(nextPageId, titleSnapshot, openBeside, sourceBlockId)
+      }
+      onOpenCanvas={({ canvasBlockId, titleSnapshot }) =>
+        onOpenCanvas(canvasBlockId, titleSnapshot)
+      }
+      onClose={onClose}
+      onOpenOnRight={() =>
+        onOpenPage(pageId, stagePage.page.title.slice(0, 2_000), {
+          kind: "adjacent-right",
+          sourceSurfaceId: surfaceId,
+        })
+      }
+      onOpenInNewWindow={
+        onOpenPageInNewWindow
+          ? () =>
+              onOpenPageInNewWindow(
+                { pageId, titleSnapshot: stagePage.page.title.slice(0, 2_000) },
+                sceneOwner.kind === "project" ? sceneOwner : undefined,
+              )
+          : undefined
+      }
+      onOpenTerminalPanel={execution.executionProjectId ? onOpenTerminalPanel : undefined}
+      onOpenCodexThread={onOpenCodexThread}
+      onToggleHistoryPanel={
+        descriptor
+          ? (snapshot) =>
+              onToggleHistoryPanel({
+                sceneOwner,
+                surfaceId,
+                pageId,
+                descriptor,
+                pageTitle: snapshot.title || titleSnapshot,
+                pageMarkdown: snapshot.markdown,
+                workspaceRoot: execution.workspaceRoot,
+              })
+          : undefined
+      }
+      historyPanelActive={historyPanelActive}
+      isActivePanelTab={isActivePanelTab}
+      sessionId={
+        besideChat?.sessionId ?? (sceneOwner.kind === "session" ? sceneOwner.sessionId : null)
+      }
+      sessionThread={besideChat?.sessionThread}
+      canStartThreadInSession={besideChat?.canStartThreadInSession}
+      sessionTitle={besideChat?.sessionTitle}
+      chatProjectId={besideChat ? execution.targetProjectId : undefined}
+      {...chatSendPort}
+      {...linkedChats}
+      relatedChatCandidates={pageChats?.candidates}
+      onOpenRelatedChat={pageChats?.openChat}
+      onCreateRelatedChat={
+        onOpenPageInNewChat
+          ? async () => {
+              await onOpenPageInNewChat({
+                projectId: execution.launchProjectId,
+                pageId,
+                titleSnapshot: stagePage.page.title,
+              });
+            }
+          : undefined
+      }
+      onLinkRelatedChat={
+        pageChats
+          ? async (sessionId) => {
+              await pageChats.linkPage({ pageId, sessionId });
+            }
+          : undefined
+      }
+      onUpdate={async (targetPageId, patch) => {
+        const result = await commitPageDetailMetadataPatch({
+          executionProjectId: execution.executionProjectId,
+          pageId: targetPageId,
+          operationId: createUuidV7(),
+          clientSessionId: surfaceId,
+          patch,
+        });
+        await refreshProperties();
+        return result;
+      }}
+      onUpdateProperty={async (targetPageId, propertyId, edit) => {
+        const result = await commitPageDetailPropertyEdit({
+          pageId: targetPageId,
+          propertyId,
+          edit,
+          operationId: createUuidV7(),
+        });
+        await refreshProperties();
+        return result;
+      }}
+      onRefreshProperties={refreshProperties}
+      onDelete={async (targetPageId) => {
+        const result = await commitPageLifecycleIntent({
+          kind: "delete",
+          projectId: null,
+          pageId: targetPageId,
+          operationId: createUuidV7(),
+          clientSessionId: surfaceId,
+        });
+        if (result.receipt.lifecycle !== "deleted")
+          throw new Error(
+            intl.formatMessage({
+              id: "lib.boardPageMutationCommand.deleteFailed",
+              defaultMessage: "Failed to delete Page",
+            }),
+          );
+      }}
+      onCompleteOccurrence={async (targetPageId, occurrenceStart) => {
+        const result = await completePageOccurrence(
+          null,
+          {
+            operationId: createUuidV7(),
+            createdPageId: createUuidV7(),
+            pageId: targetPageId,
+            occurrenceStart,
+            source: "page-detail",
+          },
+          surfaceId,
+        );
+        if (!result.success)
+          throw new Error(
+            result.error ??
+              intl.formatMessage({
+                id: "lib.useBoard.completeFailed",
+                defaultMessage: "Failed to complete occurrence",
+              }),
+          );
+        await refreshProperties();
+      }}
+      onSkipOccurrence={async (targetPageId, occurrenceStart) => {
+        const result = await skipPageOccurrence(
+          null,
+          {
+            operationId: createUuidV7(),
+            pageId: targetPageId,
+            occurrenceStart,
+            source: "page-detail",
+          },
+          surfaceId,
+        );
+        if (!result.success)
+          throw new Error(
+            result.error ??
+              intl.formatMessage({
+                id: "lib.useBoard.skipFailed",
+                defaultMessage: "Failed to skip occurrence",
+              }),
+          );
+        await refreshProperties();
+      }}
+    />
   );
 }

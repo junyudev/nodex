@@ -8,6 +8,8 @@ import {
   LIBRARY_FILES_SCENARIO_ID,
   requireLibraryFilesScenarioFacts,
 } from "../../../scripts/scenarios/scenarios/library-files";
+import { createUuidV7 } from "../../shared/uuid-v7";
+import { createCoreLibraryModuleAdapter } from "./library-module-adapter";
 import { createCoreDocumentSyncAdapter } from "./document-sync-adapter";
 
 describe("library/files authoritative scenario", () => {
@@ -63,13 +65,13 @@ describe("library/files authoritative scenario", () => {
       const pageAId = context.manifest.pageIdsByKey[LIBRARY_FILES_PAGE_A_KEY];
       const historyVersionId = context.manifest.entityIdsByKey?.[LIBRARY_FILES_HISTORY_KEY];
       if (!pageAId || !historyVersionId) throw new Error("Scenario history identity is missing");
-      const documents = createCoreDocumentSyncAdapter(project);
+      const documents = createCoreDocumentSyncAdapter(context.client);
       const descriptor = await documents.readDescriptor({
         ownerBlockId: pageAId,
         clientSessionId: "scenario:verify-history",
       });
       const history = await documents.getVersion({
-        projectId: context.manifest.projectId,
+        projectId: null,
         documentId: descriptor.documentId,
         versionId: historyVersionId,
       });
@@ -79,6 +81,81 @@ describe("library/files authoritative scenario", () => {
           summary: { fileSnapshotStatus: "exact" },
           materialization: { kind: "page" },
         },
+      });
+      const { handshake } = context.client;
+      const library = createCoreLibraryModuleAdapter({
+        client: context.client,
+        libraryId: handshake.library_id,
+        profileId: handshake.generation.profile_id,
+        storeEpoch: handshake.store_epoch,
+      });
+      expect(await library.listPageHistory({ pageId: pageAId })).toMatchObject({
+        ok: true,
+        value: {
+          documentId: descriptor.documentId,
+          entries: expect.arrayContaining([
+            expect.objectContaining({
+              versionMetadata: expect.objectContaining({ versionId: historyVersionId }),
+            }),
+          ]),
+        },
+      });
+      const historicalFile = await context.client.readFileBlob({
+        fileId: facts.sharedFileId,
+        source: {
+          kind: "document_revision",
+          document_id: descriptor.documentId,
+          revision_id: historyVersionId,
+        },
+      });
+      expect(historicalFile.bytes).toEqual(pageABytes.bytes);
+
+      const changed = await createCoreDocumentSyncAdapter(project).applyDocumentMutation({
+        mutationId: createUuidV7(),
+        projectId: context.manifest.projectId,
+        storeEpoch: descriptor.storeEpoch,
+        documentId: descriptor.documentId,
+        generation: descriptor.generation,
+        expectedHeadSeq: descriptor.headSeq,
+        markdown: "Current edit",
+        actor: { kind: "user" },
+      });
+      if (!changed.ok) throw new Error(changed.error.message);
+      const restore = {
+        mutationId: createUuidV7(),
+        projectId: null,
+        storeEpoch: descriptor.storeEpoch,
+        documentId: descriptor.documentId,
+        versionId: historyVersionId,
+        generation: descriptor.generation,
+        expectedHeadSeq: changed.value.headSeq,
+        actor: { kind: "user" },
+      };
+      expect(await documents.restoreVersion(restore)).toMatchObject({
+        ok: true,
+        value: { projectId: null, headSeq: changed.value.headSeq + 1, duplicate: false },
+      });
+      expect(await documents.restoreVersion(restore)).toMatchObject({
+        ok: true,
+        value: { headSeq: changed.value.headSeq + 1, duplicate: true },
+      });
+      const restored = await library.listPageHistory({ pageId: pageAId });
+      if (!restored.ok) throw new Error(restored.error.message);
+      const revision = restored.value.entries.find(
+        (entry) =>
+          entry.kind === "document_version" && entry.versionMetadata.revisionKind === "restore",
+      );
+      if (!revision || revision.kind !== "document_version")
+        throw new Error("Expected restored revision");
+      expect(
+        await documents.getVersion({
+          projectId: null,
+          documentId: descriptor.documentId,
+          versionId: revision.versionMetadata.versionId,
+        }),
+      ).toMatchObject({
+        ok: true,
+        value: { summary: { projectId: null, fileSnapshotStatus: "exact" } },
       });
     });
   });

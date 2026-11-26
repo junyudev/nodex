@@ -3,6 +3,7 @@ import { useRef, type ReactNode } from "react";
 import { PageExecutionHoldItem } from "@/components/workbench/execution-hold-controls";
 import {
   AutomationsIcon,
+  TerminalIcon,
   PageMenuCopyIdIcon,
   PageMenuCopyMarkdownIcon,
   PageMenuCopyTitleIcon,
@@ -47,6 +48,7 @@ export interface PageStageMenuActions {
   readonly onToggleMarkdownSource: () => void;
   /** Opens a new automation that follows this Page as its runbook. */
   readonly onSchedule?: () => void;
+  readonly onOpenTerminal?: () => void;
   readonly onDelete?: () => void;
 }
 
@@ -221,6 +223,14 @@ export function PageStageMenu({
       {actions.onSchedule ? (
         <NodexDropdownItem leftSlot={<AutomationsIcon />} onSelect={actions.onSchedule}>
           {intl.formatMessage({ id: "board.pageMenu.schedule", defaultMessage: "Schedule" })}
+        </NodexDropdownItem>
+      ) : null}
+      {actions.onOpenTerminal ? (
+        <NodexDropdownItem leftSlot={<TerminalIcon />} onSelect={actions.onOpenTerminal}>
+          {intl.formatMessage({
+            id: "board.pageMenu.openTerminal",
+            defaultMessage: "Open Terminal",
+          })}
         </NodexDropdownItem>
       ) : null}
       {actions.onDelete ? (

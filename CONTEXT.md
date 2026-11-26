@@ -487,7 +487,7 @@ one of these occurrences that establishes Page containment.
 Mention, Reference Block, and Link edges never change parentage, membership,
 or copy closure.
 
-Page Stage resolves the owned Document with exact `(libraryId, pageId)`
+Page Stage resolves the Library-owned Document in every Scene with exact `(libraryId, pageId)`
 identity after resolving the current resource lifecycle. It never derives a Document
 ID from Page ID, treats a query row as content authority, or initializes an
 existing Document from a projection. Only a ready descriptor for the registered
@@ -674,10 +674,9 @@ A placed resource's location is its ownership trail: the Pages and Databases
 that own it, outermost first, ending at its direct owner. A Data
 Source-parented Page lives in the Source's home Database, and a Database or
 Canvas hosted in a Page lives in that Page. An empty trail is the top level of
-Space. Core derives every location from parents alone, so the routing context a
-surface was opened through, a Project presentation, and any reference, View,
-or relation never change where content is said to live. A Database segment
-names the Project whose primary Database it is, if any.
+Space. Core derives every location from parents alone. A Database segment names
+the Project whose primary Database it is, if any. A Page’s home Project is the
+nearest such Project in its Location.
 
 ### Database
 

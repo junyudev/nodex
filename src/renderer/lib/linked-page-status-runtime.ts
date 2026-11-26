@@ -10,7 +10,7 @@ import {
   readPropertyOptionWindow,
   type PropertyOptionWindow,
 } from "./database-property-options-runtime";
-import { commitLibraryPageDetailPropertyEdit } from "./page-detail-metadata-runtime";
+import { commitPageDetailPropertyEdit } from "./page-detail-metadata-runtime";
 import type { PageStageMetadataMutationResult } from "./page-stage-page";
 
 export interface LinkedPageStatusPort {
@@ -46,7 +46,7 @@ const DEFAULT_DEPENDENCIES: LinkedPageStatusRuntimeDependencies = {
   readOptionWindow: (property, after) =>
     readPropertyOptionWindow(libraryContentRoute, property, after),
   commitPropertyEdit: async ({ pageId, propertyId, operationId, expectedValueRevision, value }) =>
-    await commitLibraryPageDetailPropertyEdit({
+    await commitPageDetailPropertyEdit({
       pageId,
       propertyId,
       operationId,

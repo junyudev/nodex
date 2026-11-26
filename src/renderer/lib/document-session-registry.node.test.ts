@@ -6,7 +6,9 @@ import type {
   BlockDocumentSurfaceRuntime,
   BlockDocumentSurfaceStatus,
 } from "./block-document-surface-runtime";
-import { DocumentSessionRegistry, makeEditorSurfaceKey } from "./document-session-registry";
+import { DocumentSessionRegistry } from "./document-session-registry";
+
+const makeEditorSurfaceKey = (sceneId: string, tabId: string): string => `${sceneId}\u0000${tabId}`;
 
 const descriptor = (generation = 1, headSeq = 1): OwnedDocumentDescriptor => ({
   libraryId: "library-1",

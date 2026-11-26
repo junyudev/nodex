@@ -465,7 +465,7 @@ export function replaceWorkbenchWindowSnapshot(
 export function snapshotWorkbenchWindowState(state: WorkbenchWindowState): WorkbenchLayoutSnapshot {
   const location = getRestorableWorkbenchLocation(state.location);
   return {
-    version: 9,
+    version: 10,
     location,
     homeLocation: getWorkbenchHomeLocation(location) ?? state.homeLocation,
     databaseSearchByProject: {

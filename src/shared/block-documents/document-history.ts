@@ -29,7 +29,8 @@ export interface CreateDocumentVersionCheckpoint {
 interface DocumentVersionSummaryBase {
   readonly versionId: string;
   readonly documentId: DocumentId;
-  readonly projectId: string;
+  /** Project provenance of the revision's author, when present. */
+  readonly projectId: string | null;
   readonly generation: number;
   readonly baseHeadSeq: number;
   readonly schemaKey: string;
@@ -130,14 +131,14 @@ export interface ListDocumentVersions {
 }
 
 export interface GetDocumentVersion {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly documentId: DocumentId;
   readonly versionId: string;
 }
 
 export interface PrepareDocumentVersionRestore {
   readonly mutationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly documentId: DocumentId;
   readonly versionId: string;

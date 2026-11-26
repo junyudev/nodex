@@ -401,16 +401,7 @@ export function useWorkbenchPanelProjection({
           ? presentSessionTitle(snapshot, intl)
           : snapshot
         : presentWorkbenchPanelTabTitle(tab, snapshot, intl, { browserPage: browserTabSnapshot });
-      const pageStageLibraryId =
-        !transientPanelTab && tab.kind === "page_stage"
-          ? tab.config.routingContext.kind === "library"
-            ? currentLibraryId
-            : projects.find(
-                (project) =>
-                  tab.config.routingContext.kind === "project" &&
-                  project.id === tab.config.routingContext.projectId,
-              )?.libraryId
-          : undefined;
+      const pageStageLibraryId = currentLibraryId;
       const pageStageTitleSource =
         !transientPanelTab && tab.kind === "page_stage" && pageStageLibraryId
           ? pageTitleStore.createSource(

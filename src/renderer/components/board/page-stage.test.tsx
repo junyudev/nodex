@@ -128,6 +128,12 @@ vi.mock("@/components/block-documents/block-document-surface", () => ({
   },
 }));
 
+vi.mock("@/components/block-documents/page-editor-session-surface", async () => {
+  const { BlockDocumentSurface } =
+    await import("@/components/block-documents/block-document-surface");
+  return { PageEditorSessionSurface: BlockDocumentSurface };
+});
+
 vi.mock("@/components/workbench/execution-hold-controls", () => ({
   PageExecutionHoldItem: () => null,
 }));
@@ -206,6 +212,7 @@ function renderStage(
   return renderView(
     <NodexTooltipProvider>
       <PageStage
+        editorSessionKey="test:page-stage"
         contentRoutingContext={projectContentRoute("default")}
         onClose={() => undefined}
         page={page}
@@ -327,7 +334,7 @@ describe("page stage", () => {
         scrollTop: 80,
       });
       const intent = requestPageBlockFocus({
-        projectId: "default",
+        editorSurfaceId: "test:page-stage",
         pageId: "page-1",
         blockId: "target-block",
       });

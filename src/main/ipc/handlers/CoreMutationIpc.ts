@@ -750,7 +750,7 @@ export const live: Layer.Layer<
       "block-documents:history:restore",
       (
         event,
-        projectId: string,
+        projectId: string | null,
         documentId: string,
         rawRequest: IpcApi["block-documents:history:restore"]["args"][2],
       ) => {

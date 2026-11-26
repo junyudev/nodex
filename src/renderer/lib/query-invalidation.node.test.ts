@@ -64,7 +64,7 @@ describe("exact query invalidation", () => {
       storeEpoch: "epoch-1",
       commitSeq: 5,
     });
-    queryClient.setQueryData(queryKeys.library.pageDocument("page-1"), {
+    queryClient.setQueryData(queryKeys.blockDocuments.owned({ kind: "library" }, "page-1"), {
       storeEpoch: "epoch-1",
       headSeq: 12,
     });

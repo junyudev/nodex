@@ -93,13 +93,13 @@ describe("workbench agent context", () => {
           titleSnapshot: "First page",
           stateKey: 0,
           state: null,
-          config: { routingContext: { kind: "library" }, pageId: "page-first" },
+          config: { pageId: "page-first" },
         },
       });
       const state = stateFor([scene], { kind: "library" });
       const submission = readWorkbenchSubmitPresentation(state, "generation-a");
       const next = updateWorkbenchSceneSurface(scene, "page-tab", {
-        config: { routingContext: { kind: "library" }, pageId: "page-second" },
+        config: { pageId: "page-second" },
       });
       const after = readWorkbenchSubmitPresentation(
         stateFor([next], { kind: "library" }),
@@ -122,7 +122,7 @@ describe("workbench agent context", () => {
         id: "preview-page",
         kind: "page_stage",
         titleSnapshot: "Preview page",
-        config: { routingContext: { kind: "project", projectId: "project-a" }, pageId: "page-a" },
+        config: { pageId: "page-a" },
         stateKey: 3,
         state: { selectedBlock: "private-block" },
       };
@@ -609,7 +609,7 @@ describe("workbench agent context", () => {
       titleSnapshot: id,
       stateKey: 0,
       state: null,
-      config: { routingContext: { kind: "library" }, pageId },
+      config: { pageId },
     });
     for (const id of ["first", "second", "duplicate"])
       scene = createWorkbenchSceneSurface(scene, {
@@ -736,7 +736,7 @@ describe("workbench scene tab presentation", () => {
         id: "page",
         kind: "page_stage",
         titleSnapshot: "Page",
-        config: { pageId: "root", routingContext: { kind: "library" } },
+        config: { pageId: "root" },
         stateKey: 0,
         state: null,
       } satisfies WorkbenchSurfaceDescriptor;

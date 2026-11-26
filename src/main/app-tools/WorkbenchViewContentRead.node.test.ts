@@ -377,7 +377,6 @@ describe("WorkbenchContentRouting", () => {
       kind: "page_stage",
       titleSnapshot: "Stale",
       config: {
-        routingContext: { kind: "project", projectId: "project:other" },
         pageId: "page:target",
       },
     };
@@ -402,7 +401,7 @@ describe("WorkbenchContentRouting", () => {
                   page_id: "page:target",
                   title: "Current",
                   library_id: "library",
-                  displayed_routing_context: page.config.routingContext,
+                  displayed_routing_context: { kind: "library" },
                 },
               },
             } as never);
@@ -413,7 +412,7 @@ describe("WorkbenchContentRouting", () => {
             pageId: "page:target",
             title: "Current",
             libraryId: "library",
-            displayedRoutingContext: page.config.routingContext,
+            displayedRoutingContext: { kind: "library" },
           });
           assert.deepEqual(requests, [
             {
@@ -421,7 +420,7 @@ describe("WorkbenchContentRouting", () => {
               read: {
                 kind: "agent_surface_description",
                 target: { kind: "page", page_id: "page:target" },
-                displayed_routing_context: page.config.routingContext,
+                displayed_routing_context: { kind: "library" },
                 authorization: {
                   call_id: "call",
                   provenance: {
@@ -500,7 +499,6 @@ describe("WorkbenchContentRouting", () => {
               kind: "page_file",
               titleSnapshot: "Stale",
               config: {
-                routingContext: { kind: "library" },
                 pageId: "page",
                 fileId: "file",
                 logicalPath: "old.html",
@@ -530,7 +528,6 @@ describe("WorkbenchContentRouting", () => {
           kind: "page_file" as const,
           titleSnapshot: "private",
           config: {
-            routingContext: { kind: "library" as const },
             pageId: "page",
             fileId: "file",
             logicalPath: null,
@@ -625,7 +622,6 @@ describe("WorkbenchContentRouting", () => {
                   kind: "page_file",
                   titleSnapshot: "report.html",
                   config: {
-                    routingContext: { kind: "library" },
                     pageId: "page",
                     fileId: "file",
                     logicalPath: "output/report.html",

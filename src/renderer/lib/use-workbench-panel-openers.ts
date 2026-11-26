@@ -1433,7 +1433,6 @@ export function useWorkbenchPanelOpeners({
         return;
       }
       const placementRequest = options?.placement;
-      const routingContext = { kind: "project" as const, projectId };
       if (
         activeSession &&
         options?.openMode === "durable" &&
@@ -1443,21 +1442,16 @@ export function useWorkbenchPanelOpeners({
           kind: "session",
           sessionId: activeSession.id,
         })?.tabs.find((tab) => tab.tabId === placementRequest.sourceSurfaceId)?.surface;
-        if (
-          source?.kind === "page_stage" &&
-          source.config.pageId === pageId &&
-          source.config.routingContext.kind === "project" &&
-          source.config.routingContext.projectId === projectId
-        ) {
+        if (source?.kind === "page_stage" && source.config.pageId === pageId) {
           await presentSessionPageBeside(
             activeSession.id,
-            { routingContext, pageId, titleSnapshot },
+            { pageId, titleSnapshot },
             placementRequest,
           );
           return;
         }
       }
-      if (!activeSession || activeSession.projectId === null) {
+      if (!activeSession) {
         requestPageStageNavigation(projectId, pageId, titleSnapshot, options);
         return;
       }
@@ -1465,11 +1459,7 @@ export function useWorkbenchPanelOpeners({
 
       const existing = activeSession.tabs.find(
         (tab) =>
-          tab.kind === "page_stage" &&
-          "pageId" in tab.config &&
-          tab.config.pageId === pageId &&
-          tab.config.routingContext.kind === "project" &&
-          tab.config.routingContext.projectId === projectId,
+          tab.kind === "page_stage" && "pageId" in tab.config && tab.config.pageId === pageId,
       );
       if (existing) {
         const existingLeafId = resolveLeafIdForPanelTab(
@@ -1521,9 +1511,7 @@ export function useWorkbenchPanelOpeners({
         options?.openMode !== "preview" &&
         matchingPreviewTab?.kind === "page_stage" &&
         "pageId" in matchingPreviewTab.config &&
-        matchingPreviewTab.config.pageId === pageId &&
-        matchingPreviewTab.config.routingContext.kind === "project" &&
-        matchingPreviewTab.config.routingContext.projectId === projectId
+        matchingPreviewTab.config.pageId === pageId
       ) {
         await pinPreviewTab(targetPanelId, matchingPreviewTab.id, previewLeafId);
         return;
@@ -1539,7 +1527,6 @@ export function useWorkbenchPanelOpeners({
           return {
             ...current,
             [slotKey]: makePreviewPageStageTab(activeSession, targetPanelId, {
-              projectId,
               pageId,
               titleSnapshot,
             }),
@@ -1560,8 +1547,7 @@ export function useWorkbenchPanelOpeners({
         kind: "page_stage",
         title: titleSnapshot || pageId,
         config: {
-          routingContext: { kind: "project", projectId },
-          pageId: pageId,
+          pageId,
           titleSnapshot,
         },
       });

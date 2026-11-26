@@ -21,6 +21,7 @@ interface EvidenceClaim {
 
 const PAGE_TITLE = "Sidebar Page to move";
 const DATABASE_TITLE = "Relocation Alpha DB";
+const DATABASE_TAB_LABEL = `${DATABASE_TITLE}, Space`;
 const rail = (page: Page) => page.getByRole("navigation", { name: "App navigation", exact: true });
 const tabs = (page: Page) => page.locator('[data-app-shell-tab-controller] [role="tab"]:visible');
 const content = (page: Page) =>
@@ -776,12 +777,13 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await standaloneRow.click();
           await expectSpacePage();
           await content(page).getByRole("listitem").filter({ hasText: DATABASE_TITLE }).click();
-          await expect(
-            page.getByRole("tab", { name: DATABASE_TITLE, exact: true }),
-          ).toHaveAttribute("aria-selected", "true");
+          const databaseTab = tabs(page).and(
+            page.getByRole("tab", { name: DATABASE_TAB_LABEL, exact: true }),
+          );
+          await expect(databaseTab).toHaveAttribute("aria-selected", "true");
           claim(
             "Space keeps two independently closable content tabs",
-            { titles: [PAGE_TITLE, DATABASE_TITLE], closeButtons: 2 },
+            { titles: [PAGE_TITLE, DATABASE_TAB_LABEL], closeButtons: 2 },
             {
               titles: await readTabLabels(page),
               closeButtons: await page.locator("[data-app-shell-tab-close-button]:visible").count(),
@@ -798,11 +800,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               .getByRole("tab", { name: PAGE_TITLE, exact: true })
               .getAttribute("aria-selected"),
           );
-          await page.getByRole("tab", { name: DATABASE_TITLE, exact: true }).hover();
+          await databaseTab.hover();
           await page
-            .getByRole("button", { name: `Close ${DATABASE_TITLE} tab`, exact: true })
+            .getByRole("button", { name: `Close ${DATABASE_TAB_LABEL} tab`, exact: true })
             .click();
-          await expect(page.getByRole("tab", { name: DATABASE_TITLE, exact: true })).toHaveCount(0);
+          await expect(databaseTab).toHaveCount(0);
           claim(
             "Closing a content tab preserves the selected Page",
             { titles: [PAGE_TITLE] },

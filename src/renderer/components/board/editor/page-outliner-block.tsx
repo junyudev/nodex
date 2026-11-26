@@ -205,7 +205,6 @@ export function PageOutlinerBlock({
       ? {
           onOpenPage: () =>
             host.openPage?.({
-              routingContext: target.contentRoutingContext,
               pageId: target.page.pageId,
               titleSnapshot: plainTitle,
             }),

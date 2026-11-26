@@ -133,22 +133,23 @@ describe("WindowSession schemas", () => {
     }
   });
 
-  test("accepts Library and Project Page targets and rejects conflicting or invalid targets", () => {
-    const page = { routingContext: { kind: "library" }, pageId: "page-1" };
-    const projectPage = {
-      ...page,
-      routingContext: { kind: "project", projectId: "project-1" },
-      titleSnapshot: "Roadmap",
-    };
-    for (const target of [page, projectPage]) {
-      expect(WindowSessionNewWindowRequestSchema.parse({ page: target })).toEqual({ page: target });
+  test("accepts an optional Page destination and rejects conflicting or invalid requests", () => {
+    const page = { pageId: "page-1", titleSnapshot: "Roadmap" };
+    for (const request of [
+      { page },
+      { page, pageDestination: { kind: "library" } },
+      { page, pageDestination: { kind: "project", projectId: "project-1" } },
+    ]) {
+      expect(WindowSessionNewWindowRequestSchema.parse(request)).toEqual(request);
     }
     for (const request of [
       { page: { ...page, pageId: "" } },
-      { page: { ...page, routingContext: { kind: "project" } } },
-      { page: { ...page, routingContext: { kind: "session", sessionId: "session-1" } } },
+      { page: { ...page, routingContext: { kind: "library" } } },
       { page: { ...page, titleSnapshot: 1 } },
       { page: { ...page, extra: true } },
+      { pageDestination: { kind: "library" } },
+      { page, pageDestination: { kind: "project" } },
+      { page, pageDestination: { kind: "session", sessionId: "session-1" } },
       { page, browserUrl: "https://example.com/" },
       { page, activeProjectSessionId: null },
       { page, activeProjectId: "project-1" },
@@ -174,7 +175,7 @@ describe("WindowSession schemas", () => {
     });
 
     expect(parsed.sessions[0]?.layoutRevision).toBe(3);
-    expect(parsed.sessions[0]?.layout.version).toBe(9);
+    expect(parsed.sessions[0]?.layout.version).toBe(10);
     expect(parsed.sessions[1]?.lifecycle).toEqual({
       state: "closed",
       closedAt: "2026-07-24T00:00:00.000Z",
@@ -289,7 +290,7 @@ describe("WindowSession schemas", () => {
       ],
     });
 
-    expect(parsed.sessions[0]?.layout.version).toBe(9);
+    expect(parsed.sessions[0]?.layout.version).toBe(10);
     expect(parsed.sessions[0]?.layout.scenesByOwnerKey).toEqual({});
   });
 });

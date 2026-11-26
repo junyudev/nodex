@@ -134,6 +134,9 @@ function toLegacySurface(surface: WorkbenchSurfaceDescriptor): WorkbenchSurfaceD
   ) {
     return surface;
   }
+  if (surface.kind === "page_stage") {
+    return { ...surface, config: { ...surface.config, projectId: "project-1" } };
+  }
   if (surface.config.routingContext.kind !== "project") {
     throw new Error("Legacy Scenes only carried Project resource surfaces");
   }
@@ -228,7 +231,7 @@ describe("WorkbenchScene", () => {
       id: "library-page",
       kind: "page_stage",
       titleSnapshot: "Note",
-      config: { routingContext: { kind: "library" }, pageId: "page-1" },
+      config: { pageId: "page-1" },
       stateKey: 0,
       state: null,
     };
@@ -241,16 +244,6 @@ describe("WorkbenchScene", () => {
     // Only Library content opens beside the Library Inbox.
     expect(
       createWorkbenchSceneSurface(inbox, { panelId: "right", surface: browserSurface() }),
-    ).toBe(inbox);
-    expect(
-      createWorkbenchSceneSurface(inbox, {
-        panelId: "right",
-        surface: {
-          ...libraryPage,
-          id: "project-page",
-          config: { routingContext: { kind: "project", projectId: "project-1" }, pageId: "p" },
-        },
-      }),
     ).toBe(inbox);
     // The Inbox Home cannot be closed or sent to the bottom panel.
     expect(removeWorkbenchSceneSurface(withPage, home.id)).toBe(withPage);
@@ -274,7 +267,7 @@ describe("WorkbenchScene", () => {
           id: "library-page",
           kind: "page_stage",
           titleSnapshot: "Note",
-          config: { routingContext: { kind: "library" }, pageId: "page-1" },
+          config: { pageId: "page-1" },
           stateKey: 0,
           state: null,
         },
@@ -417,7 +410,6 @@ describe("WorkbenchScene", () => {
         kind: "page_stage",
         titleSnapshot: "Library Page",
         config: {
-          routingContext: { kind: "library" },
           pageId: "page:library",
         },
         stateKey: 0,
@@ -446,7 +438,6 @@ describe("WorkbenchScene", () => {
         kind: "page_stage",
         titleSnapshot: "Right Page",
         config: {
-          routingContext: { kind: "project", projectId: "project-1" },
           pageId: "page:right",
         },
         stateKey: 0,
@@ -472,7 +463,6 @@ describe("WorkbenchScene", () => {
       kind: "page_stage",
       titleSnapshot: "Visible Page",
       config: {
-        routingContext: { kind: "project", projectId: "project-1" },
         pageId: "page:visible",
       },
       stateKey: 0,
@@ -510,7 +500,6 @@ describe("WorkbenchScene", () => {
             kind: "page_stage" as const,
             titleSnapshot: `Page ${index}`,
             config: {
-              routingContext: { kind: "library" as const },
               pageId: `page:${index}`,
             },
             stateKey: 0,
@@ -533,7 +522,6 @@ describe("WorkbenchScene", () => {
         id: "library-root",
         kind: "page_stage",
         config: {
-          routingContext: { kind: "library" },
           pageId: "page:root",
         },
       },
@@ -566,7 +554,7 @@ describe("WorkbenchScene", () => {
     expect(WorkbenchSceneSnapshotSchema.parse(migrated)).toEqual(migrated);
   });
 
-  test("drops Resource surfaces that cannot be authorized by Pages", () => {
+  test("keeps Pages from a legacy Resource Scene and drops Browser tabs", () => {
     const seed = projectScene();
     const primary = protectedPrimary(seed);
     const root = seed.panels.right.layout.root;
@@ -583,7 +571,6 @@ describe("WorkbenchScene", () => {
         id: "library-root",
         kind: "page_stage",
         config: {
-          routingContext: { kind: "library" },
           pageId: "page:root",
         },
       },
@@ -593,7 +580,6 @@ describe("WorkbenchScene", () => {
           kind: "page_stage",
           titleSnapshot: "Project Page",
           config: {
-            routingContext: { kind: "project", projectId: "legacy" },
             pageId: "page:project",
           },
           stateKey: 0,
@@ -621,8 +607,11 @@ describe("WorkbenchScene", () => {
 
     const migrated = migrateWorkbenchSceneV4ToV5(legacy);
 
-    expect(Object.keys(migrated.panelSurfacesById)).toEqual(["library-root"]);
-    expect(flattenWorkbenchPanelTabIds(migrated.panels.right.layout)).toEqual(["library-root"]);
+    expect(Object.keys(migrated.panelSurfacesById)).toEqual(["library-root", "project-page"]);
+    expect(flattenWorkbenchPanelTabIds(migrated.panels.right.layout)).toEqual([
+      "library-root",
+      "project-page",
+    ]);
     expect(WorkbenchSceneSnapshotSchema.parse(migrated)).toEqual(migrated);
   });
 
@@ -1080,13 +1069,12 @@ describe("WorkbenchScene", () => {
         kind: "page_stage",
         titleSnapshot: "Page",
         config: {
-          routingContext: { kind: "library" },
           pageId: "page-1",
         },
         stateKey: 0,
         state: null,
       }),
-    ).toBe("page:library:page-1");
+    ).toBe("page:page-1");
     expect(
       getWorkbenchSurfaceReuseKey({
         id: "review-session",
@@ -1218,7 +1206,6 @@ describe("Page File surfaces", () => {
     stateKey: 0,
     state: null,
     config: {
-      routingContext: { kind: "library" },
       pageId: "page:report",
       fileId: "file:report",
       logicalPath: "profile/report.html",
@@ -1246,14 +1233,13 @@ describe("Page File surfaces", () => {
       }
     },
   );
-  test("uses Library resource identity across presentation routes and title/path changes", () => {
+  test("uses Page and File identity across title and path changes", () => {
     const key = getWorkbenchSurfaceReuseKey(surface);
     expect(
       getWorkbenchSurfaceReuseKey({
         ...surface,
         config: {
           ...surface.config,
-          routingContext: { kind: "project", projectId: "another" },
           logicalPath: "renamed.html",
           titleSnapshot: "Renamed",
         },
@@ -1271,18 +1257,6 @@ describe("Page File surfaces", () => {
         config: { ...surface.config, fileId: "other-file" },
       }),
     ).not.toBe(key);
-  });
-  test("Library and Inbox discard a Project-routed File just as they discard a Project-routed Page", () => {
-    for (const owner of [LIBRARY_SCENE_OWNER, INBOX_SCENE_OWNER]) {
-      const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
-        panelId: "right",
-        surface: {
-          ...surface,
-          config: { ...surface.config, routingContext: { kind: "project", projectId: "project" } },
-        },
-      });
-      expect(normalizeWorkbenchScene(scene).panelSurfacesById[surface.id]).toBeUndefined();
-    }
   });
 });
 
@@ -1395,5 +1369,66 @@ test("round trips a thread app and rejects binding it to another chat", () => {
         [surface.id]: { ...surface, config: { ...surface.config, sessionId: "other" } },
       },
     }).success,
+  ).toBe(false);
+});
+
+test("migrates legacy Page and File routes without collapsing adjacent copies", () => {
+  const first = {
+    id: "page-left",
+    kind: "page_stage",
+    titleSnapshot: "Left title",
+    config: { pageId: "same-page", titleSnapshot: "Left title" },
+    stateKey: 2,
+    state: { scrollTop: 20 },
+  } as const;
+  const second = {
+    ...first,
+    id: "page-right",
+    titleSnapshot: "Right title",
+    config: { ...first.config, titleSnapshot: "Right title" },
+  };
+  const file = {
+    id: "page-file",
+    kind: "page_file",
+    titleSnapshot: "Report",
+    config: { pageId: "same-page", fileId: "report", logicalPath: "report.pdf" },
+    stateKey: 0,
+    state: null,
+  } as const;
+  const scene = createWorkbenchSceneSurface(projectScene(), { panelId: "right", surface: first });
+  const right = splitWorkbenchSceneLeaf(
+    createWorkbenchSceneSurface(scene, { panelId: "right", surface: second }),
+    {
+      panelId: "right",
+      side: "right",
+      leafId: scene.panels.right.layout.activeLeafId,
+      surfaceId: second.id,
+    },
+  );
+  const current = createWorkbenchSceneSurface(right, { panelId: "right", surface: file });
+  const legacy = {
+    ...current,
+    version: 10,
+    panelSurfacesById: {
+      [first.id]: {
+        ...first,
+        config: { ...first.config, routingContext: { kind: "project", projectId: "old" } },
+      },
+      [second.id]: { ...second, config: { ...second.config, routingContext: { kind: "library" } } },
+      [file.id]: {
+        ...file,
+        config: { ...file.config, routingContext: { kind: "project", projectId: "old" } },
+      },
+    },
+  };
+  const restored = WorkbenchSceneSnapshotSchema.parse(legacy);
+  expect(restored).toEqual(current);
+  const leaves = listWorkbenchPanelLeaves(restored.panels.right.layout);
+  expect(leaves.find((leaf) => leaf.tabIds.includes(first.id))?.id).not.toBe(
+    leaves.find((leaf) => leaf.tabIds.includes(second.id))?.id,
+  );
+  expect(getWorkbenchSurfaceReuseKey(first)).toBe(getWorkbenchSurfaceReuseKey(second));
+  expect(
+    WorkbenchSceneSnapshotSchema.safeParse({ ...legacy, version: WORKBENCH_SCENE_VERSION }).success,
   ).toBe(false);
 });

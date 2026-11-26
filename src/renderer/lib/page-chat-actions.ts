@@ -1,5 +1,4 @@
 import { defineMessage, getIntl } from "@/lib/i18n";
-import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type { CodexPromptInput } from "@/lib/types";
 
 /** How a chat picker marks the chat whose Scene it opened in, which it lists first. */
@@ -15,27 +14,26 @@ export type ChatDestinationTarget =
   | { readonly kind: "new-thread"; readonly sessionId?: string };
 
 export interface OpenPageInNewChatInput {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly pageId: string;
   readonly pageKey?: string;
   readonly titleSnapshot?: string;
 }
 
 export interface SendPageToChatInput extends OpenPageInNewChatInput {
+  readonly projectId: string;
   readonly target: ChatDestinationTarget;
 }
 
-/** Pages to show in a chat's right panel, in tab order, opened through `routingContext`. */
+/** Pages to show in a chat's right panel, in tab order. */
 export interface ShowPagesInChatInput {
   readonly sessionId: string;
-  readonly routingContext: ContentRoutingContext;
   readonly pages: readonly { readonly pageId: string; readonly titleSnapshot?: string }[];
 }
 
-/** One Page to open beside its chat, through `routingContext`, taking the person to that chat. */
+/** One Page to open beside its chat, taking the person to that chat. */
 export interface OpenPageInChatInput {
   readonly sessionId: string;
-  readonly routingContext: ContentRoutingContext;
   readonly page: ShowPagesInChatInput["pages"][number];
 }
 
@@ -54,7 +52,7 @@ export interface ResolvedPageChatSession {
 }
 
 interface SendPageToChatDependencies {
-  readonly loadPageContext: (input: OpenPageInNewChatInput) => Promise<PagePromptContext>;
+  readonly loadPageContext: (input: SendPageToChatInput) => Promise<PagePromptContext>;
   readonly resolveSessionById: (sessionId: string) => Promise<ResolvedPageChatSession>;
   readonly resolveSessionForThread: (threadId: string) => Promise<ResolvedPageChatSession>;
   readonly ensureDefaultSession: (projectId: string) => Promise<ResolvedPageChatSession>;

@@ -30,10 +30,7 @@ const PREPARE_WAIT_MS = 8_000;
 const MAX_PREPARATIONS = 128;
 
 const samePage = (left: PageSurface, right: PageSurface) =>
-  left.id === right.id &&
-  left.config.pageId === right.config.pageId &&
-  contentRoutingContextKey(left.config.routingContext) ===
-    contentRoutingContextKey(right.config.routingContext);
+  left.id === right.id && left.config.pageId === right.config.pageId;
 const pending = (state: EditorState): boolean =>
   state.transientInput ||
   !state.status.ready ||
@@ -55,8 +52,7 @@ const matchesPage = (state: EditorState, surface: PageSurface): boolean => {
     descriptor.documentId === provider.documentId &&
     descriptor.storeEpoch === provider.storeEpoch &&
     descriptor.generation === provider.generation &&
-    contentRoutingContextKey(descriptor.routingContext) ===
-      contentRoutingContextKey(surface.config.routingContext)
+    descriptor.routingContext.kind === "library"
   );
 };
 
@@ -123,7 +119,7 @@ export function createWorkbenchPageContent(
           pageId: surface.config.pageId,
           documentId: fence.documentId,
           libraryId: after.status.descriptor.libraryId,
-          routingContext: surface.config.routingContext,
+          routingContext: after.status.descriptor.routingContext,
           storeEpoch: fence.storeEpoch,
           generation: fence.generation,
           expectedHeadSeq: after.status.provider.headSeq,
@@ -166,6 +162,10 @@ export function createWorkbenchPageContent(
       const current = participant.read();
       if (
         !matchesPage(current, surface) ||
+        current.status.descriptor.documentId !== ready.documentId ||
+        current.status.descriptor.libraryId !== ready.libraryId ||
+        contentRoutingContextKey(current.status.descriptor.routingContext) !==
+          contentRoutingContextKey(ready.routingContext) ||
         current.status.provider.storeEpoch !== ready.storeEpoch ||
         current.status.provider.generation !== ready.generation
       )

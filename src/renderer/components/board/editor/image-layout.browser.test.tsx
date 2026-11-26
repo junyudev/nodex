@@ -267,7 +267,6 @@ describe("attachment chip", () => {
           await settleEditor();
         });
         expect(openPageFile).toHaveBeenLastCalledWith({
-          routingContext: { kind: "project", projectId: "project-1" },
           pageId: "page-1",
           fileId: "file-1",
           logicalPath: null,

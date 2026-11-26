@@ -528,19 +528,19 @@ describe("document-sync-adapter", () => {
       });
       await expect(
         adapter.getVersion({
-          projectId: "project:one",
+          projectId: null,
           documentId: "document:one",
           versionId: documentVersionSummary().versionId,
         }),
       ).resolves.toEqual({ ok: true, value: documentVersionDetail() });
     });
 
-    test("maps a write-fenced forward restore and its durable no-change outcome", async (createCoreDocumentSyncAdapter) => {
+    test("maps a Library-scoped write-fenced restore and its durable no-change outcome", async (createCoreDocumentSyncAdapter) => {
       const client = new FakeCoreClient();
       const adapter = createCoreDocumentSyncAdapter(client);
       const request = {
         mutationId: "restore:history",
-        projectId: "project:one",
+        projectId: null,
         storeEpoch: "epoch:test",
         documentId: "document:one",
         versionId: documentVersionSummary().versionId,

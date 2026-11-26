@@ -90,13 +90,12 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...referenceBase,
     kind: z.literal("page_stage"),
-    config: z.strictObject({ routingContext: ContentRoutingContextSchema, pageId: identity }),
+    config: z.strictObject({ pageId: identity }),
   }),
   z.strictObject({
     ...referenceBase,
     kind: z.literal("page_file"),
     config: z.strictObject({
-      routingContext: ContentRoutingContextSchema,
       pageId: identity,
       fileId: identity,
       logicalPath: z.string().min(1).max(4_096).nullable(),
@@ -436,14 +435,13 @@ export function projectWorkbenchSurfaceReference(
     return {
       ...base,
       kind: surface.kind,
-      config: { routingContext: surface.config.routingContext, pageId: surface.config.pageId },
+      config: { pageId: surface.config.pageId },
     };
   if (surface.kind === "page_file")
     return {
       ...base,
       kind: surface.kind,
       config: {
-        routingContext: surface.config.routingContext,
         pageId: surface.config.pageId,
         fileId: surface.config.fileId,
         logicalPath: surface.config.logicalPath,
@@ -488,9 +486,9 @@ function observedTargetKey(surface: WorkbenchSurfaceReference): string {
   if (kind === "image_editor")
     return JSON.stringify([kind, config.projectId, config.threadId, config.initialImageId]);
   if (kind === "side_chat") return JSON.stringify([kind, config.sessionId]);
+  if (kind === "page_stage") return JSON.stringify([kind, config.pageId]);
+  if (kind === "page_file") return JSON.stringify([kind, config.pageId, config.fileId]);
   const access = contentRoutingContextKey(config.routingContext);
-  if (kind === "page_stage") return JSON.stringify([kind, access, config.pageId]);
-  if (kind === "page_file") return JSON.stringify([kind, access, config.pageId, config.fileId]);
   if (kind === "canvas_stage") return JSON.stringify([kind, access, config.canvasBlockId]);
   return JSON.stringify([
     kind,

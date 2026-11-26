@@ -930,7 +930,7 @@ The complete recovery and authorization contracts live in [Reliability](RELIABIL
 
 A Document is an independently synchronized content owner. Page title/body Documents use Yrs; Canvas Documents use the scene-native engine. Store epoch, Document generation, durable head, Yjs state vector, and content hash are distinct coordinates with different purposes.
 
-The public identity of a Document observation is `(libraryId, routingContext, documentId)`: Library owns physical lifetime, while `routingContext` is explicit Library or Project presentation routing. Core authors this identity; Main and renderer adapters validate it without projecting Library access into a synthetic Project.
+The public identity of a Document observation is `(libraryId, routingContext, documentId)`: Library owns physical lifetime, while `routingContext` is explicit Library or Project presentation routing. Core authors this identity; Main and renderer adapters validate it without projecting Library access into a synthetic Project. Workbench Pages always observe the Library-owned Document. A Page tab identifies only the Page, and its Scene supplies any execution context.
 
 A mounted surface first resolves a current content descriptor and completes its canonical synchronization barrier. Multiple surfaces may share the same process-local Document session while retaining independent editor, cursor, camera, and presence state. Surface presentation never becomes durable content authority.
 

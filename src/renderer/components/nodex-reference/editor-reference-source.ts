@@ -14,7 +14,6 @@ export function useEditorReferenceSource(): NodexReferenceSource {
     openInPlace: (destination, titleSnapshot) =>
       destination.kind === "page"
         ? openPage({
-            routingContext: host.contentRoutingContext,
             pageId: destination.pageId,
             ...(titleSnapshot ? { titleSnapshot } : {}),
             ...(destination.blockId ? { sourceBlockId: destination.blockId } : {}),

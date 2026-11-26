@@ -74,6 +74,10 @@ export interface PageStageProps {
   page: PageStagePageModel | null;
   /** Content authority selected by the mounted Project or Resource surface. */
   contentRoutingContext: ContentRoutingContext;
+  /** The Scene's Project for editor execution affordances. */
+  executionProjectId?: string | null;
+  /** Where a newly started chat or Automation defaults to running. */
+  launchProjectId?: string | null;
   projectName?: string | null;
   /** Workspace context for editor-owned local execution surfaces. */
   projectWorkspacePath?: string | null;
@@ -119,7 +123,7 @@ export interface PageStageProps {
   onOpenDatabase?: (databaseId: DatabaseId) => void | Promise<void>;
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
   onStartNewSessionThreadFromEditor?: (input: {
-    projectId: string;
+    projectId: string | null;
     targetSessionId?: string;
     prompt: string;
     promptInput?: CodexPromptInput;
@@ -127,7 +131,6 @@ export interface PageStageProps {
     threadName?: string;
   }) => Promise<PageChatSendResult>;
   onSendPagePrompt?: (input: {
-    projectId: string;
     threadId: string;
     prompt: string;
     promptInput?: CodexPromptInput;

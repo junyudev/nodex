@@ -14,7 +14,6 @@ export type PageHistoryCursor =
     };
 
 export interface ListPageHistoryRequest {
-  readonly requestingProjectId: string;
   readonly pageId: string;
   readonly before?: PageHistoryCursor;
   readonly pageSize?: number;

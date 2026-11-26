@@ -390,12 +390,12 @@ export function useWorkbenchPanelCommandRouter({
       panelId: PanelId,
       leafId: string,
     ) => {
-      if (destination.projectId === null) {
-        await openLibraryPage(destination.pageId, destination.titleSnapshot, panelId, leafId);
-        return;
-      }
-      if (!activeSession || activeSession.projectId === null) {
-        openPageStage(destination.projectId, destination.pageId, destination.titleSnapshot);
+      if (!activeSession) {
+        if (destination.projectId === null) {
+          await openLibraryPage(destination.pageId, destination.titleSnapshot, panelId, leafId);
+        } else {
+          openPageStage(destination.projectId, destination.pageId, destination.titleSnapshot);
+        }
         return;
       }
 
@@ -404,9 +404,7 @@ export function useWorkbenchPanelCommandRouter({
           tab.kind === "page_stage" &&
           tab.panelId === panelId &&
           "pageId" in tab.config &&
-          tab.config.pageId === destination.pageId &&
-          tab.config.routingContext.kind === "project" &&
-          tab.config.routingContext.projectId === destination.projectId,
+          tab.config.pageId === destination.pageId,
       );
       if (existing) {
         const existingLeafId = resolveLeafIdForPanelTab(activeSession, panelId, existing.id);
@@ -424,9 +422,7 @@ export function useWorkbenchPanelCommandRouter({
       if (
         matchingPreviewTab?.kind === "page_stage" &&
         "pageId" in matchingPreviewTab.config &&
-        matchingPreviewTab.config.pageId === destination.pageId &&
-        matchingPreviewTab.config.routingContext.kind === "project" &&
-        matchingPreviewTab.config.routingContext.projectId === destination.projectId
+        matchingPreviewTab.config.pageId === destination.pageId
       ) {
         await pinPreviewTab(panelId, matchingPreviewTab.id, leafId);
         return;
@@ -439,7 +435,6 @@ export function useWorkbenchPanelCommandRouter({
         kind: "page_stage",
         title: destination.titleSnapshot || destination.pageId,
         config: {
-          routingContext: { kind: "project", projectId: destination.projectId },
           pageId: destination.pageId,
           titleSnapshot: destination.titleSnapshot || destination.pageId,
         },

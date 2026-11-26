@@ -157,7 +157,6 @@ export function resolveContentTabLocation(
           renderTooltip: (title: string) => (
             <PageFileTabTooltip
               title={title}
-              routingContext={surface.config.routingContext}
               pageId={surface.config.pageId}
               location={path}
               filePath={surface.config.logicalPath}
@@ -171,19 +170,17 @@ export function resolveContentTabLocation(
 /** A Page File tab's tooltip follows its Page's location with the Page and the File's folders. */
 function PageFileTabTooltip({
   title,
-  routingContext,
   pageId,
   location,
   filePath,
 }: {
   readonly title: string;
-  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly location: readonly string[];
   readonly filePath?: string | null;
 }) {
   const intl = useIntl();
-  const page = usePageTargetReadModel(routingContext, pageId);
+  const page = usePageTargetReadModel({ kind: "library" }, pageId);
   const pageTitle =
     page.data?.status === "available"
       ? page.data.page.title.trim() ||

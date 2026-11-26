@@ -174,7 +174,10 @@ export function usePageStageController(
     historyPanelActive = false,
     isActivePanelTab = true,
   } = props;
-  const executionProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
+  const navigationProjectId =
+    props.executionProjectId === undefined
+      ? projectIdFromContentRoutingContext(contentRoutingContext)
+      : props.executionProjectId;
   const page = pageModel?.page ?? null;
   const databaseSemantic =
     pageModel?.databaseContext.kind === "member"
@@ -277,7 +280,7 @@ export function usePageStageController(
 
   const handleClose = async () => {
     await handlePersist();
-    const sessionSnapshot = buildPageStageSessionSnapshot(executionProjectId, page, title);
+    const sessionSnapshot = buildPageStageSessionSnapshot(navigationProjectId, page, title);
     if (sessionSnapshot) {
       onLeavePage?.(sessionSnapshot);
     }
@@ -310,14 +313,14 @@ export function usePageStageController(
 
   useEffect(() => {
     if (!sessionSnapshotRef || !isActivePanelTab) return;
-    const snapshot = buildPageStageSessionSnapshot(executionProjectId, page, title);
+    const snapshot = buildPageStageSessionSnapshot(navigationProjectId, page, title);
     sessionSnapshotRef.current = snapshot;
     return () => {
       if (sessionSnapshotRef.current === snapshot) {
         sessionSnapshotRef.current = null;
       }
     };
-  }, [executionProjectId, isActivePanelTab, page, sessionSnapshotRef, title]);
+  }, [navigationProjectId, isActivePanelTab, page, sessionSnapshotRef, title]);
 
   useEffect(() => {
     const wasActive = previousActivePanelTabRef.current;
@@ -329,6 +332,7 @@ export function usePageStageController(
   const handleDelete = async () => {
     if (!page || !onDelete) return;
     return runPageStageSavingCommand(beginSaving, async () => {
+      await handlePersist();
       await onDelete(page.id);
       onClose();
     });

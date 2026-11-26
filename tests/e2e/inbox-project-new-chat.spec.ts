@@ -55,11 +55,14 @@ test("a chat a Project Inbox starts in a repository opens at once and runs in it
       await expect.poll(async () => (await session())?.executionRef ?? null).not.toBeNull();
       const sessionId = (await session())!.id;
       // The conversation is there from the start: reading it never fails while Git works.
-      const opened = await invokeIpc(page, "agent-runtime:session:read", { sessionId });
-      // The Inbox sends the message with its provenance, so the prompt contains the text.
-      expect(
-        opened.snapshot.projection.messages.some((message) => message.text.includes(text)),
-      ).toBe(true);
+      await invokeIpc(page, "agent-runtime:session:read", { sessionId });
+      // The Session can be read while Git works. Wait for the Inbox message to arrive separately.
+      await expect
+        .poll(async () => {
+          const opened = await invokeIpc(page, "agent-runtime:session:read", { sessionId });
+          return opened.snapshot.projection.messages.some((message) => message.text.includes(text));
+        })
+        .toBe(true);
       // Its first Run starts only in the Page's own checkout, on the Page's branch.
       const inspect = async () =>
         (await invokeIpc(page, "agent-runtime:session:inspect", { sessionId })).thread;
