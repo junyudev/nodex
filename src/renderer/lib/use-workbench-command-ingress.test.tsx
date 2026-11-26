@@ -58,14 +58,15 @@ describe("useWorkbenchCommandIngress", () => {
     const { result } = renderHook(() => useWorkbenchCommandIngress());
     const port = makePort();
 
-    expect(result.current.execute("captureToInbox", "keyboard_shortcut")).toBe(false);
+    const capture = { commandId: "captureToInbox", source: "keyboard_shortcut" } as const;
+    expect(result.current.execute(capture)).toBe(false);
 
     act(() => {
       result.current.register(port);
     });
 
-    expect(result.current.execute("captureToInbox", "keyboard_shortcut")).toBe(true);
-    expect(port.execute).toHaveBeenCalledWith("captureToInbox", "keyboard_shortcut");
+    expect(result.current.execute(capture)).toBe(true);
+    expect(port.execute).toHaveBeenCalledWith(capture);
   });
 
   test("forwards native commands directly to the registered port", async () => {
@@ -110,8 +111,8 @@ describe("useWorkbenchCommandIngress", () => {
     expect(port.toggleSidebar).toHaveBeenCalledWith("menu");
     expect(port.cyclePanelTab).toHaveBeenCalledWith("previous");
     expect(port.closePanelTab).toHaveBeenCalledOnce();
-    expect(port.execute).toHaveBeenCalledWith("toggleBottomPanel", "menu");
-    expect(port.execute).toHaveBeenCalledWith("toggleFullView", "menu");
+    expect(port.execute).toHaveBeenCalledWith({ commandId: "toggleBottomPanel", source: "menu" });
+    expect(port.execute).toHaveBeenCalledWith({ commandId: "toggleFullView", source: "menu" });
     expect(port.execute).toHaveBeenCalledTimes(2);
   });
 

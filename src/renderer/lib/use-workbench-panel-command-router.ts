@@ -25,6 +25,7 @@ import {
   getPanelNewTabAction,
   isWorkbenchTabKind,
   matchesPanelActionShortcut,
+  type PanelNewTabAction,
   type PanelNewTabActionKind,
 } from "./workbench-panel-actions";
 import {
@@ -39,6 +40,7 @@ import {
   focusBrowserAddressBar,
   isDocumentLevelShortcutTarget,
   isWorkbenchPanelTabShortcutTargetBlocked,
+  resolveBrowserTabPanelScope,
   type PanelTabCycleScope,
 } from "./workbench-panel-shortcut-scope";
 import {
@@ -52,7 +54,10 @@ import {
   findWorkbenchPanelLeafForTab,
 } from "../../shared/workbench-panel-layout";
 import { resolveBrowserTabTitle } from "../../shared/browser-url";
-import { requireWorkbenchBrowserTabProjectionId } from "../../shared/browser-sidebar";
+import {
+  requireWorkbenchBrowserTabProjectionId,
+  type BrowserSidebarTabIdentity,
+} from "../../shared/browser-sidebar";
 import type { WorkbenchPanelController } from "./use-workbench-panel-controller";
 import type { useWorkbenchPanelLifecycle } from "./use-workbench-panel-lifecycle";
 import type { useWorkbenchPanelOpeners } from "./use-workbench-panel-openers";
@@ -730,10 +735,16 @@ export function useWorkbenchPanelCommandRouter({
     [focusLanding, landOnScene, panelTabShortcutStateRef, resolvePanelShortcutScope, windowOwner],
   );
 
-  const focusActiveBrowserAddress = useCallback((): boolean => {
-    if (!activePanelOwnerKey) return false;
-    return focusBrowserAddressBar(document, resolvePanelShortcutScope(null));
-  }, [activePanelOwnerKey, resolvePanelShortcutScope]);
+  const focusActiveBrowserAddress = useCallback(
+    (browserTab?: BrowserSidebarTabIdentity): boolean => {
+      if (!activePanelOwnerKey) return false;
+      const scope =
+        (browserTab && resolveBrowserTabPanelScope(document, browserTab)) ??
+        resolvePanelShortcutScope(null);
+      return focusBrowserAddressBar(document, scope);
+    },
+    [activePanelOwnerKey, resolvePanelShortcutScope],
+  );
 
   const keymap =
     commandKeymapState ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform());
@@ -744,9 +755,17 @@ export function useWorkbenchPanelCommandRouter({
     );
     if (!action) return false;
     if (handleContentSearchNavigationShortcut(event, keymap.platform)) return true;
+    return openPanelNewTab(
+      action,
+      action.kind === "browser" ? resolveFocusedPanelTabCycleScope(event.target) : null,
+    );
+  };
 
-    const browserScope =
-      action.kind === "browser" ? resolveFocusedPanelTabCycleScope(event.target) : null;
+  /** A new Browser tab joins the Browser group it was asked from, otherwise the action's panel. */
+  const openPanelNewTab = (
+    action: PanelNewTabAction,
+    browserScope: PanelTabCycleScope | null,
+  ): boolean => {
     const panelId = browserScope?.panelId ?? action.defaultPanelId;
     const leafId = browserScope?.leafId;
     // The Terminal toggle targets a Session Terminal; Project Scenes can create one from New tab.
@@ -822,8 +841,21 @@ export function useWorkbenchPanelCommandRouter({
     };
   }, []);
 
+  /** Browser commands from a focused page act on the group showing that page. */
+  const browserCommandScope = (browserTab?: BrowserSidebarTabIdentity) =>
+    (browserTab && resolveBrowserTabPanelScope(document, browserTab)) ??
+    resolveFocusedPanelTabCycleScope(document.activeElement);
+  const openBrowserTab = (browserTab?: BrowserSidebarTabIdentity): boolean => {
+    const action = PANEL_NEW_TAB_ACTIONS.find((candidate) => candidate.kind === "browser");
+    return action ? openPanelNewTab(action, browserCommandScope(browserTab)) : false;
+  };
+  const closeBrowserTab = (browserTab?: BrowserSidebarTabIdentity): boolean =>
+    closeFocusedPanelTab(browserCommandScope(browserTab));
+
   return {
     createBrowserTabToRight,
+    openBrowserTab,
+    closeBrowserTab,
     reloadBrowserTab,
     openPanelDestinationFromPicker,
     resolveActivePanelCapabilities,

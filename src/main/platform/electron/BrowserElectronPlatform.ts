@@ -44,6 +44,7 @@ export type BrowserWebContentsLike = Pick<
     text: string,
     options?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
   ) => number;
+  setIgnoreMenuShortcuts?: WebContents["setIgnoreMenuShortcuts"];
   isCurrentlyAudible?: () => boolean;
   isCrashed?: () => boolean;
   navigationHistory?: {

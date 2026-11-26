@@ -1,3 +1,21 @@
+import {
+  guestShortcutUsesNativeIngress,
+  isBrowserEditingChord,
+} from "../../shared/browser/browser-workbench-shortcuts";
+import type { CommandKeymapState } from "../../shared/command-keybindings";
+import {
+  EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL,
+  type WorkbenchCommandInvocation,
+} from "../../shared/workbench-commands";
+import { safeSendToWebContents } from "../ipc-safe-send";
+import {
+  browserShortcutEvent,
+  makeBrowserGuestShortcuts,
+  matchBrowserGuestShortcut,
+  mayRouteNativeShortcut,
+  type BrowserGuestShortcutCommand,
+  type BrowserGuestShortcuts,
+} from "./browser-guest-shortcuts";
 import { BrowserAnnotations } from "../browser/BrowserAnnotations";
 import { randomUUID } from "node:crypto";
 import { BrowserPageDialogs } from "../browser/BrowserPageDialogs";
@@ -335,6 +353,10 @@ interface ActiveBrowserImageDrag extends BrowserSidebarTabIdentity {
 }
 
 export class BrowserState {
+  private guestShortcutKeymap: CommandKeymapState | undefined;
+  private guestShortcuts: BrowserGuestShortcuts | undefined;
+  private requestNewWindow: (() => void) | undefined;
+
   private readonly rendererDestruction: BrowserStateDeps["rendererDestruction"];
   readonly permissions: BrowserSessionPermissions;
   private readonly annotations = new Map<string, BrowserAnnotations>();
@@ -431,6 +453,88 @@ export class BrowserState {
       },
       deps.permissionStore,
     );
+  }
+
+  configureGuestShortcuts(keymap: CommandKeymapState, requestNewWindow: () => void): void {
+    this.requestNewWindow = requestNewWindow;
+    if (this.guestShortcutKeymap === keymap) return;
+    this.guestShortcutKeymap = keymap;
+    this.guestShortcuts = makeBrowserGuestShortcuts(keymap);
+    for (const guestId of this.webContentsTabIds.keys()) {
+      const contents = this.electron.webContentsFromId(guestId);
+      if (contents) this.sendGuestShortcuts(contents);
+    }
+  }
+
+  private sendGuestShortcuts(contents: BrowserWebContentsLike): void {
+    if (!this.guestShortcuts) return;
+    safeSendToWebContents(contents, "browser-workbench-shortcuts", [this.guestShortcuts]);
+  }
+
+  private dispatchGuestShortcut(
+    contents: BrowserWebContentsLike,
+    commandId: BrowserGuestShortcutCommand,
+  ): boolean {
+    const page = this.getPermissionPage(contents.id);
+    // The native input target, or the owned preload's trusted key event, identifies the guest.
+    if (!page?.presented) return false;
+    if (commandId === "newWindow") {
+      this.requestNewWindow?.();
+      return true;
+    }
+    if (commandId === "navigateBack" || commandId === "navigateForward") {
+      const back = commandId === "navigateBack";
+      if (back && contents.canGoBack()) contents.goBack();
+      if (!back && contents.canGoForward()) contents.goForward();
+      return true;
+    }
+    const invocation: WorkbenchCommandInvocation = {
+      commandId,
+      source: "keyboard_shortcut",
+      browserTab: browserIdentity(page),
+    };
+    return safeSendToWebContents(
+      this.electron.webContentsFromId(page.ownerWebContentsId),
+      EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL,
+      [invocation],
+    );
+  }
+
+  forwardGuestPageShortcut(guestId: number, commandId: unknown, accelerator: unknown): void {
+    const bindings = this.guestShortcuts;
+    if (!bindings || typeof accelerator !== "string") return;
+    const binding = [...bindings.pageFirst, ...bindings.reserved].find(
+      (binding) => binding.commandId === commandId && binding.bindings.includes(accelerator),
+    );
+    if (!binding) return;
+    const contents = this.electron.webContentsFromId(guestId);
+    if (contents) this.dispatchGuestShortcut(contents, binding.commandId);
+  }
+
+  private routeGuestInput(
+    contents: BrowserWebContentsLike,
+    event: Electron.Event,
+    input: Electron.Input,
+  ): void {
+    const shortcuts = this.guestShortcuts;
+    const keyboardEvent = browserShortcutEvent(input);
+    const match =
+      shortcuts && mayRouteNativeShortcut(input) && !isBrowserEditingChord(keyboardEvent)
+        ? matchBrowserGuestShortcut(keyboardEvent, shortcuts)
+        : null;
+    // Page-owned first refusal requires bypassing Electron's application menu for this key.
+    contents.setIgnoreMenuShortcuts?.(match !== null);
+    if (
+      input.type !== "keyDown" ||
+      match?.pageFirst !== false ||
+      !guestShortcutUsesNativeIngress(keyboardEvent)
+    )
+      return;
+    if (input.isAutoRepeat) {
+      event.preventDefault();
+      return;
+    }
+    if (this.dispatchGuestShortcut(contents, match.commandId)) event.preventDefault();
   }
 
   private getPermissionPage(webContentsId: number): BrowserPermissionPage | null {
@@ -2721,8 +2825,10 @@ export class BrowserState {
             ...(contents.isLoading() ? {} : { pendingUrl: undefined }),
           })
         : attached;
-    if (contents && !contents.isDestroyed())
+    if (contents && !contents.isDestroyed()) {
+      this.sendGuestShortcuts(contents);
       contents.send("browser-annotation-saved", snapshot?.annotations ?? []);
+    }
     this.logger.info("Browser webview attached", {
       ...browserIdentity(event),
       mountGeneration: event.mountGeneration,
@@ -2845,6 +2951,10 @@ export class BrowserState {
         if (!isBrowserContextMenuParams(params)) return;
         this.showBrowserContextMenu(webContentsId, contents, params);
       });
+      add("before-input-event", (event, input) => {
+        if (input && event)
+          this.routeGuestInput(contents, event as Electron.Event, input as Electron.Input);
+      });
       // Electron omits Chromium's user_gesture flag from permission callbacks.
       // Only native input ingress can establish this short-lived activation.
       for (const name of ["before-input-event", "before-mouse-event"]) {
@@ -2916,6 +3026,7 @@ export class BrowserState {
         this.fork(this.persistPageSnapshotForWebContents(webContentsId, contents));
       });
       add("dom-ready", () => {
+        this.sendGuestShortcuts(contents);
         contents.send("browser-annotation-saved", this.tabs.get(tabId)?.annotations ?? []);
         const tab = this.tabs.get(tabId);
         if (tab) this.syncAnnotationPresentation(tab);

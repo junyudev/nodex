@@ -1,4 +1,9 @@
 import {
+  guestShortcutUsesNativeIngress,
+  isBrowserEditingChord,
+  type BrowserGuestShortcutBindings,
+} from "../shared/browser/browser-workbench-shortcuts";
+import {
   captureBrowserAnnotationAnchor,
   resolveBrowserAnnotationAnchor,
   hitTestBrowserAnnotation,
@@ -823,8 +828,69 @@ function suspendAnnotation(suspended: boolean): void {
   }
   ipcRenderer.send("browser-annotation-suspend", { suspended });
 }
+let workbenchShortcuts: BrowserGuestShortcutBindings | undefined;
+ipcRenderer.on("browser-workbench-shortcuts", (_event, shortcuts: typeof workbenchShortcuts) => {
+  workbenchShortcuts = shortcuts;
+});
+
+function isGuestTextInput(event: KeyboardEvent): boolean {
+  return event.composedPath().some((target) => {
+    const element = target as HTMLElement;
+    return (
+      typeof element.closest === "function" &&
+      (element.isContentEditable || element.matches("input,textarea,select,[role='textbox']"))
+    );
+  });
+}
+
+function onWorkbenchGuestKeyDown(event: KeyboardEvent): void {
+  const shortcuts = workbenchShortcuts;
+  if (!shortcuts || !event.isTrusted || !mayUseGuestShortcut(event)) return;
+  if (!event.metaKey && !event.ctrlKey && isGuestTextInput(event)) return;
+  if (isBrowserEditingChord(event)) return;
+
+  const match = (bindings: string[]) =>
+    bindings.find((binding) =>
+      matchesKeyboardEventToAccelerator(event, binding, shortcuts.platform),
+    );
+
+  if (!guestShortcutUsesNativeIngress(event)) {
+    for (const item of shortcuts.reserved) {
+      const binding = match(item.bindings);
+      if (!binding) continue;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      ipcRenderer.send("browser-workbench-shortcut", item.commandId, binding);
+      return;
+    }
+  }
+
+  for (const item of shortcuts.pageFirst) {
+    const binding = match(item.bindings);
+    if (!binding) continue;
+    // A task boundary lets even later page handlers decide whether to cancel the event.
+    setTimeout(() => {
+      if (!event.defaultPrevented)
+        ipcRenderer.send("browser-workbench-shortcut", item.commandId, binding);
+    }, 0);
+    return;
+  }
+}
+
+window.addEventListener("keydown", onWorkbenchGuestKeyDown, true);
+
+function mayUseGuestShortcut(event: KeyboardEvent): boolean {
+  return (
+    !event.isComposing &&
+    !event.repeat &&
+    event.keyCode !== 229 &&
+    !["Process", "Dead", "AltGraph"].includes(event.key) &&
+    !event.getModifierState("AltGraph")
+  );
+}
+
 function onAnnotationKeyDown(event: KeyboardEvent): void {
-  if (event.isComposing || event.repeat) return;
+  if (!event.isTrusted || event.defaultPrevented || !mayUseGuestShortcut(event)) return;
   if (
     annotationShortcuts.bindings.some((binding) =>
       matchesKeyboardEventToAccelerator(event, binding, annotationShortcuts.platform),
@@ -836,12 +902,19 @@ function onAnnotationKeyDown(event: KeyboardEvent): void {
     return;
   }
   if (!annotationActive()) return;
-  const target = event.target as Element | null;
-  const editable =
-    target?.nodeType === 1 && target.closest("input,textarea,[contenteditable=true]");
+  if (
+    event.composedPath().some((target) => {
+      const element = target as Element;
+      return (
+        typeof element.matches === "function" &&
+        element.matches('dialog,[role="dialog"],[role="alertdialog"],[role="menu"]')
+      );
+    })
+  )
+    return;
   if (
     event.code === "Space" &&
-    !editable &&
+    !isGuestTextInput(event) &&
     !event.altKey &&
     !event.metaKey &&
     !event.ctrlKey &&
@@ -919,6 +992,7 @@ function observeAnnotationDocument(doc: Document): void {
   doc.addEventListener("pointerup", onAnnotationPointerUp, true);
   doc.addEventListener("pointercancel", onAnnotationPointerCancel, true);
   doc.addEventListener("keydown", onAnnotationKeyDown, true);
+  if (doc !== document) doc.defaultView?.addEventListener("keydown", onWorkbenchGuestKeyDown, true);
   doc.addEventListener(
     "keyup",
     (event) => {

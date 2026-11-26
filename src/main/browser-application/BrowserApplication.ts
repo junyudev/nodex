@@ -85,6 +85,8 @@ export interface BrowserUseRouteIdentity {
  * It owns identity admission; asynchronous Browser behavior stays on BrowserApplication.
  */
 export interface BrowserGuestHost {
+  readonly configureShortcuts: BrowserState["configureGuestShortcuts"];
+  readonly forwardPageShortcut: BrowserState["forwardGuestPageShortcut"];
   readonly authorizeAttachment: (
     ownerWebContentsId: number,
     route: BrowserSidebarPhysicalHostIdentity,
@@ -308,6 +310,10 @@ export const live = (
           state.setDownloadActive(identity, activeDownload),
       };
       const guest: BrowserGuestHost = {
+        configureShortcuts: (keymap, requestNewWindow) =>
+          state.configureGuestShortcuts(keymap, requestNewWindow),
+        forwardPageShortcut: (guestId, commandId, accelerator) =>
+          state.forwardGuestPageShortcut(guestId, commandId, accelerator),
         authorizeAttachment: (ownerWebContentsId, route) =>
           state.authorizeWebviewAttachment(ownerWebContentsId, route),
         consumeAuthorizedAttachment: (attachToken, ownerWebContentsId, guestWebContentsId) =>

@@ -13,11 +13,7 @@ import type {
   WorkbenchSidebarToggleCommandSource,
   WorkbenchThreadRenameCommandSource,
 } from "../../shared/window-navigation";
-import type {
-  WorkbenchCommandId,
-  WorkbenchCommandInvocation,
-  WorkbenchCommandSource,
-} from "../../shared/workbench-commands";
+import type { WorkbenchCommandInvocation } from "../../shared/workbench-commands";
 import type {
   ContentSearchDomain,
   ContentSearchOpenSource,
@@ -39,7 +35,7 @@ export interface WorkbenchCommandPort {
   ) => void;
   readonly cyclePanelTab: (direction: WorkbenchPanelTabCycleDirection) => void;
   readonly closePanelTab: () => void;
-  readonly execute: (commandId: WorkbenchCommandId, source: WorkbenchCommandSource) => boolean;
+  readonly execute: (invocation: WorkbenchCommandInvocation) => boolean;
   readonly openCommandPalette: (request?: CommandMenuOpenRequest) => void;
   readonly goToPages: () => void;
   readonly goToInsights: () => void;
@@ -253,7 +249,7 @@ export function useWorkbenchCommandIngress(
     [],
   );
   const execute = useCallback<WorkbenchCommandPort["execute"]>(
-    (commandId, source) => portRef.current?.execute(commandId, source) ?? false,
+    (invocation) => portRef.current?.execute(invocation) ?? false,
     [],
   );
   const openCommandPalette = useCallback<WorkbenchCommandPort["openCommandPalette"]>(
@@ -376,7 +372,7 @@ export function useWorkbenchCommandIngress(
   useEffect(
     () =>
       window.api?.onWorkbenchCommand?.((invocation: WorkbenchCommandInvocation) =>
-        execute(invocation.commandId, invocation.source),
+        execute(invocation),
       ),
     [execute],
   );

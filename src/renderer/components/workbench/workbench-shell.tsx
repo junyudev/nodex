@@ -405,7 +405,10 @@ export function WorkbenchShell({
     onRequestSettingsToggle: workbenchCommands.toggleSettings,
     onRequestKeyboardShortcuts: workbenchCommands.openKeyboardShortcuts,
     onRequestInboxCapture: () =>
-      workbenchCommands.execute(CAPTURE_TO_INBOX_COMMAND_ID, "keyboard_shortcut"),
+      workbenchCommands.execute({
+        commandId: CAPTURE_TO_INBOX_COMMAND_ID,
+        source: "keyboard_shortcut",
+      }),
     navigateBack: (source) => {
       workbenchCommands.navigate("back", source);
     },
@@ -417,7 +420,7 @@ export function WorkbenchShell({
     onRequestWorkbenchCommand: shouldUseRendererWorkbenchCommandFallback(
       Boolean(window.api?.onWorkbenchCommand),
     )
-      ? (commandId) => workbenchCommands.execute(commandId, "keyboard_shortcut")
+      ? (commandId) => workbenchCommands.execute({ commandId, source: "keyboard_shortcut" })
       : undefined,
     commandKeymapState: commandKeymapQuery.data,
   });

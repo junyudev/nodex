@@ -258,6 +258,7 @@ const dictationDictionary = dictationDictionaryLive.pipe(Layer.provideMerge(code
 const applicationMenu = Layer.unwrap(
   Effect.gen(function* () {
     const appUpdates = yield* AppUpdateRuntime;
+    const browser = yield* BrowserApplication;
     const applicationWindows = yield* ApplicationWindowRuntime;
     const config = yield* MainConfig;
     const settings = yield* ApplicationSettings;
@@ -268,6 +269,8 @@ const applicationMenu = Layer.unwrap(
       environmentPath: config.environmentPath ?? undefined,
       initialCommandKeymap: (yield* settings.snapshot().pipe(Effect.orDie)).commandKeymap,
       isPackaged: config.isPackaged,
+      onKeymapChanged: (keymap) =>
+        browser.guest.configureShortcuts(keymap, applicationWindows.requestNew),
       platform: config.platform as NodeJS.Platform,
       requestNewWindow: applicationWindows.requestNew,
       resourcesPath: config.resourcesPath,
