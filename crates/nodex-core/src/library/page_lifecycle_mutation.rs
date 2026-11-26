@@ -2153,6 +2153,8 @@ fn restore_page(
                     parent.head_seq,
                 );
             }
+            // LocalCommit checks the reactivated owners after the restored
+            // membership and indexed Document attachments are all visible.
             let mut affected_document_ids = closure.document_ids.clone();
             if let Some(parent) = &parent_commit {
                 affected_document_ids.push(parent.document_id.clone());

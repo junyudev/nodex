@@ -378,6 +378,7 @@ fn validate_store_semantics_for_view_contract(
     validate_database_relation_invariants(connection)?;
     validate_database_priority_invariants_for_view_contract(connection, view_contract)?;
     validate_library_content_ownership(connection)?;
+    crate::library::ownership::report_store_ownership(connection)?;
     validate_document_block_tombstones(connection)?;
     validate_document_page_references(connection)?;
     validate_block_transfer_undo(connection)?;

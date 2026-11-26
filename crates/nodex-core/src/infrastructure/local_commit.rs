@@ -369,6 +369,7 @@ pub(super) fn allocate(
     if commit_seq < 1 {
         return Err(corrupt("LocalCommit sequence allocation failed"));
     }
+    crate::library::ownership::staged::begin(connection, commit_seq)?;
     Ok(CommitContext {
         actor: actor.clone(),
         authorizing_member_id: authorizing_member_id.map(str::to_owned),
@@ -859,6 +860,7 @@ fn validate_and_clear_relocation_obligations(
 pub(super) fn seal(connection: &Connection, context: &CommitContext) -> Result<i64, StoreError> {
     assert_open(connection, context)?;
     validate_and_clear_relocation_obligations(connection, context)?;
+    crate::library::ownership::staged::validate_and_clear(connection, context.commit_seq)?;
     crate::workspace::page_turn::reconcile(connection, context)?;
     crate::workspace::member_attention::publish_invalidations(connection, context)?;
     let effect_count: i64 = connection.query_row(
@@ -1093,6 +1095,7 @@ pub(crate) fn abandon(connection: &Connection, context: &CommitContext) -> Resul
             "LocalCommit with registered evidence cannot be abandoned",
         ));
     }
+    crate::library::ownership::staged::validate_and_clear(connection, context.commit_seq)?;
     let deleted = connection.execute(
         "DELETE FROM local_commits
          WHERE store_epoch = ?1 AND commit_seq = ?2 AND finalized = 0",

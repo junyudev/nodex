@@ -1417,6 +1417,7 @@ fn move_selection(
     let snapshot = capture_snapshot(connection, library_id, &source_parent, selection)?;
     let target_parent = load_and_authorize_target(connection, context, library_id, target)?;
     let target_location = target_location(&target_parent, target, &snapshot)?;
+    validate_snapshot_ownership_destination(connection, &target_parent, &snapshot)?;
     ensure_destination_outside_closure(&snapshot, &target_location)?;
     let source_location = snapshot.source.clone();
     let source_placeholder = document_would_be_empty(
@@ -5419,6 +5420,35 @@ fn delete_snapshot(
     })
 }
 
+fn validate_snapshot_ownership_destination(
+    connection: &Connection,
+    parent: &ResolvedParentDocument,
+    snapshot: &OwnershipClosureSnapshot,
+) -> Result<(), StoreError> {
+    use super::ownership::{Graph, Kind, NodeId};
+    let moving = snapshot
+        .blocks
+        .iter()
+        .filter(|block| {
+            block.in_host_document
+                && matches!(block.block_type.as_str(), "page" | "database" | "canvas")
+        })
+        .map(|block| {
+            Ok(NodeId::new(
+                Kind::parse(&block.block_type)?,
+                &block.block_id,
+            ))
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    if moving.is_empty() {
+        return Ok(());
+    }
+    Graph::new(connection, &parent.authority.head.library_id).require_move(
+        &moving,
+        Some(NodeId::page(&parent.authority.owner_block_id)),
+    )
+}
+
 fn restore_snapshot(
     write: StructuralWriteContext<'_>,
     parent: &mut ResolvedParentDocument,
@@ -5435,6 +5465,7 @@ fn restore_snapshot(
     } = write;
     validate_snapshot_authorities(connection, &snapshot, "deleted")?;
     validate_restore_target(parent, &snapshot, &target)?;
+    validate_snapshot_ownership_destination(connection, parent, &snapshot)?;
     let defers_page_projection = target.document_id != snapshot.source.document_id;
     transition_closure_lifecycle(
         connection,
@@ -6446,6 +6477,7 @@ fn move_active_snapshot(
     let target_parent = load_parent_document(connection, &target.document_id)?;
     authorize_parent_write(connection, context, &target_parent)?;
     validate_restore_target_for_move(&target_parent, &snapshot, &target)?;
+    validate_snapshot_ownership_destination(connection, &target_parent, &snapshot)?;
     let root_block_ids = root_ids(&snapshot.roots);
     let source_placeholder = document_would_be_empty(
         &source_parent.base_materialization.block_tree,

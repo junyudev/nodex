@@ -1382,6 +1382,8 @@ fn reconcile_document_blocks(
             )));
         }
     }
+    // LocalCommit's ownership ledger observes hosted Database and Canvas
+    // shells here and checks their net owner changes once all indexes are rebuilt.
     connection.execute(
         "DELETE FROM document_block_index WHERE document_id = ?1",
         [&authority.head.id],

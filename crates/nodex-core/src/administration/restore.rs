@@ -421,6 +421,7 @@ fn validate_candidate_semantics(
     if validate_documents {
         validate_restore_documents(connection)?;
         validate_document_authorities(connection)?;
+        crate::library::ownership::report_store_ownership(connection)?;
     }
     validate_identity(connection, profile_id, library_id)?;
     let store_schema_version =

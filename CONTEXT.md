@@ -636,13 +636,15 @@ from mounting recursively.
 
 ### Parent and placement
 
-Parent answers who owns an active Block. Page uses the explicit `library |
-page | data_source` algebra; Canvas uses `library | page`; and Page ownership
-is a rooted acyclic forest.
-Moving a Page into itself or an ownership descendant is rejected before commit
-and by the persistence boundary. Non-Page Blocks are Library-owned or live in the
-nearest Page/owner Document according to their registered behavior. Relational
-parent coordinates and the Document's exact tree/materialized index must agree.
+Parent answers who owns an active Block. A Page's parent is a Library, Page,
+or Data Source. Each Data Source belongs to its home Database, and a Database
+or Canvas is owned by the Library or by the Page whose Document contains it.
+These edges form a rooted acyclic forest, including through archived owners.
+Moves into oneself or any ownership descendant, including Databases, their
+Data Sources, row Pages, and nested Pages, are rejected during preparation and
+checked against the final graph for changed owners at the LocalCommit seal.
+Relational parent coordinates and the Document's exact tree/materialized index
+must agree.
 
 Page relocation means changing that exclusive parent through one typed Library
 mutation. A Database destination is an active Data Source selected through its

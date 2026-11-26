@@ -2705,22 +2705,15 @@ pub(crate) fn page_relocation_database_targets(
     connection: &Connection,
     library_id: &str,
     query: &str,
+    moving_page_id: &str,
     after_updated_at: Option<&str>,
     after_database_id: Option<&str>,
     limit: usize,
 ) -> Result<(Vec<super::PageRelocationDatabaseTarget>, bool, i64), StoreError> {
     let query_limit = i64::try_from(limit.saturating_add(1))
         .map_err(|_| invalid("Database relocation target limit overflowed"))?;
-    let rows_sql = "SELECT container.block_id, container.name, \
-                      COALESCE((SELECT group_concat(primary_project.name, char(31)) FROM ( \
-                        SELECT project.name FROM projects project \
-                        WHERE project.library_id = container.library_id \
-                          AND project.database_block_id = container.block_id \
-                          AND project.lifecycle = 'active' \
-                        ORDER BY project.name, project.id \
-                      ) primary_project), ''), \
-                      source.id, view.id, container.updated_at \
-                    FROM database_containers container \
+    let excluded = crate::library::ownership::exclusion_cte(4, 3);
+    let candidates = "FROM database_containers container \
                     JOIN blocks block ON block.id = container.block_id \
                       AND block.library_id = container.library_id \
                     JOIN database_views view ON view.id = container.default_view_id \
@@ -2730,7 +2723,8 @@ pub(crate) fn page_relocation_database_targets(
                       AND source.home_database_block_id = container.block_id \
                       AND source.library_id = container.library_id \
                       AND source.lifecycle = 'active' \
-                    WHERE container.library_id = ?1 AND container.lifecycle = 'active' \
+                    WHERE container.library_id = ?1
+                      AND NOT EXISTS (SELECT 1 FROM excluded WHERE kind = 'database' AND id = container.block_id) AND container.lifecycle = 'active' \
                       AND block.lifecycle = 'active' \
                       AND (?2 = '' OR instr(lower(container.name), ?2) > 0 OR EXISTS( \
                         SELECT 1 FROM projects project \
@@ -2738,16 +2732,30 @@ pub(crate) fn page_relocation_database_targets(
                           AND project.database_block_id = container.block_id \
                           AND project.lifecycle = 'active' \
                           AND instr(lower(project.name), ?2) > 0 \
-                      )) \
-                      AND (?3 IS NULL OR container.updated_at < ?3 \
-                        OR (container.updated_at = ?3 AND container.block_id > ?4)) \
-                    ORDER BY container.updated_at DESC, container.block_id LIMIT ?5";
+                      ))";
+    let rows_sql = format!(
+        "{excluded} SELECT container.block_id, container.name, \
+                      COALESCE((SELECT group_concat(primary_project.name, char(31)) FROM ( \
+                        SELECT project.name FROM projects project \
+                        WHERE project.library_id = container.library_id \
+                          AND project.database_block_id = container.block_id \
+                          AND project.lifecycle = 'active' \
+                        ORDER BY project.name, project.id \
+                      ) primary_project), ''), \
+                      source.id, view.id, container.updated_at \
+                    {candidates}
+                      AND (?5 IS NULL OR container.updated_at < ?5
+                        OR (container.updated_at = ?5 AND container.block_id > ?6))
+                    ORDER BY container.updated_at DESC, container.block_id LIMIT ?7"
+    );
     let mut rows = connection
-        .prepare(rows_sql)?
+        .prepare(&rows_sql)?
         .query_map(
             params![
                 library_id,
                 query,
+                moving_page_id,
+                "page",
                 after_updated_at,
                 after_database_id,
                 query_limit
@@ -2772,24 +2780,8 @@ pub(crate) fn page_relocation_database_targets(
     let has_more = rows.len() > limit;
     rows.truncate(limit);
     let total = connection.query_row(
-        "SELECT COUNT(*) FROM database_containers container \
-         JOIN blocks block ON block.id = container.block_id \
-           AND block.library_id = container.library_id \
-         JOIN database_views view ON view.id = container.default_view_id \
-           AND view.database_block_id = container.block_id AND view.lifecycle = 'active' \
-         JOIN data_sources source ON source.id = view.data_source_id \
-           AND source.home_database_block_id = container.block_id \
-           AND source.library_id = container.library_id AND source.lifecycle = 'active' \
-         WHERE container.library_id = ?1 AND container.lifecycle = 'active' \
-           AND block.lifecycle = 'active' \
-           AND (?2 = '' OR instr(lower(container.name), ?2) > 0 OR EXISTS( \
-             SELECT 1 FROM projects project \
-             WHERE project.library_id = container.library_id \
-               AND project.database_block_id = container.block_id \
-               AND project.lifecycle = 'active' \
-               AND instr(lower(project.name), ?2) > 0 \
-           ))",
-        params![library_id, query],
+        &format!("{excluded} SELECT COUNT(*) {candidates}"),
+        params![library_id, query, moving_page_id, "page"],
         |row| row.get::<_, i64>(0),
     )?;
     Ok((rows, has_more, total))
