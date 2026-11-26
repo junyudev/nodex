@@ -740,26 +740,11 @@ fn move_block(
     }
     let resolved_parent =
         resolve_write_parent_for_context(connection, context, library_id, parent)?;
-    if authority.resource_kind == "page"
-        && let Some(target_page_id) = &resolved_parent.page_id
-    {
-        let cycle = connection
-            .query_row(
-                "WITH RECURSIVE ancestors(page_id) AS (\
-                   SELECT ?1 \
-                   UNION ALL \
-                   SELECT page.parent_id FROM pages page JOIN ancestors current \
-                     ON page.block_id = current.page_id \
-                   WHERE page.parent_kind = 'page'\
-                 ) SELECT 1 FROM ancestors WHERE page_id = ?2 LIMIT 1",
-                params![target_page_id, authority.id],
-                |_| Ok(()),
-            )
-            .optional()?;
-        if cycle.is_some() {
-            return Err(invalid("A Page cannot move below itself"));
-        }
-    }
+    use super::ownership::{Graph, NodeId};
+    Graph::new(connection, library_id).require_move(
+        &[NodeId::from(target)],
+        resolved_parent.page_id.as_deref().map(NodeId::page),
+    )?;
     let actor_project_id = resolved_parent.actor_project_id.clone();
     let source_parent_key = resource_parent_key(connection, &authority)?;
     let source_document_id = authority.containing_document_id.clone();
@@ -5376,6 +5361,578 @@ mod tests {
                 .lifecycle,
             LibraryPageLifecycleState::Deleted
         );
+    }
+
+    const PAGE_CYCLE_MESSAGE: &str = "A Page can't move into itself or anything it contains.";
+    const DATABASE_CYCLE_MESSAGE: &str = "A Database can't move into one of its own Pages.";
+
+    #[test]
+    fn database_and_row_ownership_moves_refuse_cycles_and_allow_space_repair() {
+        use nodex_core_contracts::DATABASE_CONTRACT_VERSION;
+        use nodex_core_contracts::database::{DatabaseIntent, DatabaseTransferTarget};
+        use nodex_core_contracts::library::{
+            LibraryMoveDestinationScope, LibraryPageRelocationDestinationScope,
+            LibraryPlacedResourceTarget,
+        };
+
+        const DATABASE: &str = "018f0000-0000-7000-8000-000000000001";
+        const SOURCE: &str = "018f0000-0000-7000-8000-000000000002";
+        const VIEW: &str = "018f0000-0000-7000-8000-000000000003";
+        let (_directory, kernel, module) = seeded_library();
+        let apply = |operation_id: &str, intent| {
+            module.apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: operation_id.to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent,
+                },
+            )
+        };
+        let read = |read| {
+            module
+                .read(
+                    &context(),
+                    ModuleReadRequest {
+                        contract_version: LIBRARY_CONTRACT_VERSION,
+                        read,
+                    },
+                )
+                .expect("read move destinations")
+                .value
+        };
+        let host = create_mention_test_page(&module, "cycle:host", "page:host", "document:host");
+        module
+            .apply(&context(), create_database_request("cycle:database"))
+            .unwrap();
+        let source = || LibraryPageWriteDestination::DataSource {
+            data_source_id: SOURCE.to_owned(),
+            view_id: Some(VIEW.to_owned()),
+            group: None,
+            at: None,
+        };
+        let row = apply(
+            "cycle:row",
+            LibraryIntent::CreatePageFromText {
+                values: Vec::new(),
+                title_markdown: "Row destination".to_owned(),
+                markdown: "Row contents.".to_owned(),
+                destination: source(),
+            },
+        )
+        .unwrap()
+        .committed
+        .value
+        .page_create
+        .unwrap();
+        let parent = |page_id: &str, head_seq| LibraryWriteParent::Page {
+            page_id: page_id.to_owned(),
+            expected_document_generation: 1,
+            expected_document_head_seq: head_seq,
+            before: None,
+            insertion: None,
+        };
+        let nested = apply(
+            "cycle:nested",
+            LibraryIntent::CreatePage {
+                page_id: "page:nested-row".to_owned(),
+                document_id: "document:nested-row".to_owned(),
+                title: "Nested destination".to_owned(),
+                parent: parent(&row.page_id, 1),
+            },
+        )
+        .unwrap()
+        .committed
+        .value
+        .page_create
+        .unwrap();
+        let database = LibraryPlacedResourceTarget::Database {
+            database_id: DATABASE.to_owned(),
+        };
+        let move_database = |operation_id, expected_location_revision, parent| {
+            apply(
+                operation_id,
+                LibraryIntent::MoveBlock {
+                    target: database.clone(),
+                    expected_location_revision,
+                    parent,
+                },
+            )
+        };
+        let db_destinations = |scope| {
+            read(LibraryRead::MoveDestinations {
+                target: database.clone(),
+                scope,
+                cursor: None,
+                limit: Some(1),
+            })
+        };
+        for scope in [
+            LibraryMoveDestinationScope::Suggested,
+            LibraryMoveDestinationScope::Search {
+                query: "destination".to_owned(),
+            },
+            LibraryMoveDestinationScope::Candidates {
+                page_ids: vec![
+                    row.page_id.clone(),
+                    nested.page_id.clone(),
+                    host.page_id.clone(),
+                ],
+            },
+        ] {
+            let expected = u64::from(!matches!(scope, LibraryMoveDestinationScope::Search { .. }));
+            let LibraryReadValue::MoveDestinations {
+                items,
+                total,
+                has_more,
+                root_is_current,
+                ..
+            } = db_destinations(scope)
+            else {
+                panic!("Database move window")
+            };
+            assert!(root_is_current);
+            assert_eq!(total, expected);
+            assert!(!has_more);
+            assert!(items.iter().all(|item| item.page_id == host.page_id));
+        }
+        let original = ownership_move_evidence(&kernel);
+        for (operation, target, head) in [
+            ("cycle:database-to-row", &row.page_id, 2),
+            ("cycle:database-to-subpage", &nested.page_id, 1),
+        ] {
+            let error = move_database(operation, 1, parent(target, head)).unwrap_err();
+            assert_ownership_rejection(error, DATABASE_CYCLE_MESSAGE);
+        }
+        assert_eq!(ownership_move_evidence(&kernel), original);
+
+        let row_document_id = row.document_id.clone();
+        let error = kernel
+            .writer()
+            .call(move |connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    let commit = crate::infrastructure::local_commit::begin(
+                        transaction,
+                        "epoch-1",
+                        "cycle:bad-hosted-edge",
+                        &"b".repeat(64),
+                        NOW,
+                    )?;
+                    transaction.execute(
+                        "DELETE FROM library_block_placements WHERE block_id = ?1",
+                        [DATABASE],
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO document_block_index(
+                       document_id, block_id, ordinal, block_type, text, projected_seq
+                     ) VALUES (?1, ?2, 99, 'database', '', 2)",
+                        params![row_document_id, DATABASE],
+                    )?;
+                    crate::infrastructure::local_commit::finalize(transaction, &commit)
+                })
+            })
+            .unwrap_err();
+        assert_eq!(error.code, StoreErrorCode::InvalidInput);
+        assert_eq!(error.message, DATABASE_CYCLE_MESSAGE);
+        assert_eq!(ownership_move_evidence(&kernel), original);
+
+        move_database(
+            "cycle:database-to-unrelated-page",
+            1,
+            parent(&host.page_id, 1),
+        )
+        .unwrap();
+        let page_destinations = |scope| {
+            read(LibraryRead::PageRelocationDestinations {
+                page_id: host.page_id.clone(),
+                scope,
+                cursor: None,
+                limit: Some(1),
+            })
+        };
+        for scope in [
+            LibraryPageRelocationDestinationScope::PageSuggested,
+            LibraryPageRelocationDestinationScope::PageSearch {
+                query: "destination".to_owned(),
+            },
+            LibraryPageRelocationDestinationScope::PageCandidates {
+                page_ids: vec![nested.page_id.clone(), row.page_id.clone()],
+            },
+            LibraryPageRelocationDestinationScope::Databases {
+                query: Some("Product".to_owned()),
+            },
+        ] {
+            let LibraryReadValue::PageRelocationDestinations {
+                items,
+                total,
+                has_more,
+                ..
+            } = page_destinations(scope)
+            else {
+                panic!("Page move window")
+            };
+            assert!(items.is_empty());
+            assert_eq!(total, 0);
+            assert!(!has_more);
+        }
+
+        let original = ownership_move_evidence(&kernel);
+        for (operation, destination, view) in [
+            (
+                "cycle:page-to-row",
+                LibraryPageWriteDestination::Page {
+                    page_id: row.page_id.clone(),
+                    at: None,
+                },
+                None,
+            ),
+            ("cycle:page-to-source", source(), Some(VIEW)),
+        ] {
+            let error = apply(
+                operation,
+                LibraryIntent::MovePage {
+                    page_id: host.page_id.clone(),
+                    destination,
+                    expected_etag: Some(prepare_move_etag(&module, &host.page_id, view)),
+                },
+            )
+            .unwrap_err();
+            assert_ownership_rejection(error, PAGE_CYCLE_MESSAGE);
+        }
+        let batch_error = apply(
+            "cycle:batch-to-source",
+            LibraryIntent::MovePages {
+                page_ids: vec![host.page_id.clone()],
+                destination: source(),
+            },
+        )
+        .unwrap_err();
+        assert_ownership_rejection(batch_error, PAGE_CYCLE_MESSAGE);
+        let overlap = apply(
+            "cycle:batch-ownership-overlap",
+            LibraryIntent::MovePages {
+                page_ids: vec![host.page_id.clone(), row.page_id.clone()],
+                destination: LibraryPageWriteDestination::Library { at: None },
+            },
+        )
+        .unwrap_err();
+        assert_ownership_rejection(
+            overlap,
+            "Page moves cannot select both an ownership ancestor and its descendant",
+        );
+
+        let database_module =
+            crate::database::DatabaseModule::new("profile-1", "library-1", &kernel);
+        let error = database_module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "cycle:standalone-transfer".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::TransferPage {
+                        page_id: host.page_id.clone(),
+                        expected_parent_revision: 1,
+                        expected_active_membership_revision: 0,
+                        target: DatabaseTransferTarget::DataSource {
+                            data_source_id: SOURCE.to_owned(),
+                        },
+                    }],
+                },
+            )
+            .unwrap_err();
+        assert_ownership_rejection(error, PAGE_CYCLE_MESSAGE);
+        assert_eq!(ownership_move_evidence(&kernel), original);
+
+        let moved = apply(
+            "cycle:row-to-space",
+            LibraryIntent::MovePage {
+                page_id: row.page_id.clone(),
+                destination: LibraryPageWriteDestination::Library { at: None },
+                expected_etag: Some(prepare_move_etag(&module, &row.page_id, None)),
+            },
+        )
+        .unwrap();
+        let token = moved
+            .committed
+            .value
+            .block_transfer
+            .unwrap()
+            .undo_token
+            .unwrap();
+        move_database("cycle:database-to-former-row", 2, parent(&row.page_id, 2)).unwrap();
+        let original = ownership_move_evidence(&kernel);
+        let error = apply(
+            "cycle:undo-to-former-source",
+            LibraryIntent::UndoPageRelocation {
+                token: token.clone(),
+            },
+        )
+        .unwrap_err();
+        assert_ownership_rejection(error, PAGE_CYCLE_MESSAGE);
+        assert_eq!(ownership_move_evidence(&kernel), original);
+
+        let row_id = row.page_id.clone();
+        // A staged relational edge bypasses command preflight, but must roll back at seal.
+        let error = kernel
+            .writer()
+            .call(move |connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    let commit = crate::infrastructure::local_commit::begin(
+                        transaction,
+                        "epoch-1",
+                        "cycle:bad-local-commit",
+                        &"a".repeat(64),
+                        NOW,
+                    )?;
+                    stage_cycle_test_membership(transaction, &row_id, SOURCE)?;
+                    crate::infrastructure::local_commit::finalize(transaction, &commit)
+                })
+            })
+            .unwrap_err();
+        assert_eq!(error.code, StoreErrorCode::InvalidInput);
+        assert_eq!(error.message, PAGE_CYCLE_MESSAGE);
+        assert!(!error.retryable);
+        assert_eq!(ownership_move_evidence(&kernel), original);
+
+        // Simulate a legacy cycle with a real Database shell in the owning Document.
+        let row_id = row.page_id.clone();
+        kernel
+            .writer()
+            .call(move |connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    stage_cycle_test_membership(transaction, &row_id, SOURCE)?;
+                    crate::library::ownership::report_store_ownership(transaction)
+                })
+            })
+            .expect("legacy cycles remain repairable");
+        create_mention_test_page(
+            &module,
+            "cycle:unrelated-write",
+            "page:independent",
+            "document:independent",
+        );
+        move_database(
+            "cycle:repair-to-space",
+            3,
+            LibraryWriteParent::Library { before: None },
+        )
+        .expect("remove the cyclic Database edge");
+        kernel
+            .readers()
+            .read_default(|connection| {
+                use crate::library::ownership::{Graph, NodeId};
+                let trail = Graph::new(connection, "library-1").trail(NodeId::new(
+                    crate::library::ownership::Kind::Database,
+                    DATABASE,
+                ))?;
+                trail.require_root()?;
+                assert_eq!(trail.nodes.len(), 1);
+                assert!(connection.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM library_block_placements WHERE block_id = ?1)",
+                    [DATABASE],
+                    |row| row.get::<_, bool>(0),
+                )?);
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn structural_move_history_rejects_a_new_row_as_the_former_database_host() {
+        use nodex_core_contracts::library::{
+            LibraryPlacedResourceTarget, LibraryStructuralEditCommand, LibraryStructuralSelection,
+            LibraryStructuralTarget,
+        };
+        const DATABASE: &str = "018f0000-0000-7000-8000-000000000001";
+        const SOURCE: &str = "018f0000-0000-7000-8000-000000000002";
+        const VIEW: &str = "018f0000-0000-7000-8000-000000000003";
+        let (_directory, kernel, module) = seeded_library();
+        let original_host = create_mention_test_page(
+            &module,
+            "history:original-host",
+            "page:original-host",
+            "document:original-host",
+        );
+        let new_host = create_mention_test_page(
+            &module,
+            "history:new-host",
+            "page:new-host",
+            "document:new-host",
+        );
+        let apply = |operation_id: &str, intent| {
+            module.apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    operation_id: operation_id.to_owned(),
+                    intent,
+                },
+            )
+        };
+        module
+            .apply(&context(), create_database_request("history:database"))
+            .unwrap();
+        apply(
+            "history:database-to-first-host",
+            LibraryIntent::MoveBlock {
+                target: LibraryPlacedResourceTarget::Database {
+                    database_id: DATABASE.to_owned(),
+                },
+                expected_location_revision: 1,
+                parent: LibraryWriteParent::Page {
+                    page_id: original_host.page_id.clone(),
+                    expected_document_generation: 1,
+                    expected_document_head_seq: 1,
+                    before: None,
+                    insertion: None,
+                },
+            },
+        )
+        .unwrap();
+        let moved = apply(
+            "history:move-database-shell",
+            LibraryIntent::ApplyStructuralEdit {
+                command: Box::new(LibraryStructuralEditCommand::MoveSelection {
+                    selection: LibraryStructuralSelection {
+                        source_document_id: original_host.document_id.clone(),
+                        root_block_ids: vec![DATABASE.to_owned()],
+                        source_head: LibraryDocumentHead {
+                            document_id: original_host.document_id.clone(),
+                            generation: 1,
+                            head_seq: 2,
+                        },
+                    },
+                    target: LibraryStructuralTarget {
+                        target_document_id: new_host.document_id.clone(),
+                        parent_block_id: None,
+                        before_block_id: None,
+                        target_head: LibraryDocumentHead {
+                            document_id: new_host.document_id,
+                            generation: 1,
+                            head_seq: 1,
+                        },
+                    },
+                }),
+            },
+        )
+        .unwrap();
+        let history = moved
+            .committed
+            .value
+            .structural_edit
+            .unwrap()
+            .history
+            .unwrap();
+        let row = apply(
+            "history:add-original-host-as-row",
+            LibraryIntent::MovePage {
+                page_id: original_host.page_id.clone(),
+                destination: LibraryPageWriteDestination::DataSource {
+                    data_source_id: SOURCE.to_owned(),
+                    view_id: Some(VIEW.to_owned()),
+                    group: None,
+                    at: None,
+                },
+                expected_etag: Some(prepare_move_etag(
+                    &module,
+                    &original_host.page_id,
+                    Some(VIEW),
+                )),
+            },
+        )
+        .unwrap();
+        let original = ownership_move_evidence(&kernel);
+        let error = apply(
+            "history:reject-cyclic-reverse",
+            LibraryIntent::ReverseStructuralEdit {
+                token: history.clone(),
+            },
+        )
+        .unwrap_err();
+        assert_ownership_rejection(error, DATABASE_CYCLE_MESSAGE);
+        assert_eq!(ownership_move_evidence(&kernel), original);
+
+        apply(
+            "history:remove-original-host-from-source",
+            LibraryIntent::UndoPageRelocation {
+                token: row
+                    .committed
+                    .value
+                    .block_transfer
+                    .unwrap()
+                    .undo_token
+                    .unwrap(),
+            },
+        )
+        .unwrap();
+        apply(
+            "history:retry-reverse",
+            LibraryIntent::ReverseStructuralEdit { token: history },
+        )
+        .expect("the rejected replay did not consume the history");
+    }
+
+    fn stage_cycle_test_membership(
+        connection: &Connection,
+        page_id: &str,
+        source: &str,
+    ) -> Result<(), StoreError> {
+        connection.execute(
+            "DELETE FROM library_block_placements WHERE block_id = ?1",
+            [page_id],
+        )?;
+        connection.execute(
+            "UPDATE pages SET parent_kind = 'data_source', parent_id = ?2 WHERE block_id = ?1",
+            params![page_id, source],
+        )?;
+        connection.execute(
+            "UPDATE data_source_page_memberships SET removed_at = NULL
+             WHERE page_block_id = ?1 AND data_source_id = ?2",
+            params![page_id, source],
+        )?;
+        connection.execute(
+            "UPDATE page_read_model SET parent_kind = 'data_source', parent_id = ?2,
+               library_rank_key = NULL,
+               membership_id = (SELECT id FROM data_source_page_memberships
+                                WHERE page_block_id = ?1 AND data_source_id = ?2),
+               database_block_id = (SELECT home_database_block_id FROM data_sources WHERE id = ?2)
+             WHERE page_block_id = ?1",
+            params![page_id, source],
+        )?;
+        Ok(())
+    }
+
+    fn ownership_move_evidence(kernel: &SqliteStoreKernel) -> String {
+        kernel.readers().read_default(|connection| {
+            Ok(connection.query_row(
+                "SELECT json_array(
+                   (SELECT json_group_array(json_array(block_id, parent_kind, parent_id))
+                    FROM (SELECT * FROM pages ORDER BY block_id)),
+                   (SELECT json_group_array(json_array(block_id, rank_key))
+                    FROM (SELECT * FROM library_block_placements ORDER BY block_id)),
+                   (SELECT json_group_array(json_array(id, revision, removed_at))
+                    FROM (SELECT * FROM data_source_page_memberships ORDER BY id)),
+                   (SELECT json_group_array(json_array(id, generation, head_seq))
+                    FROM (SELECT * FROM documents ORDER BY id)),
+                   (SELECT json_group_array(json_array(block_id, document_id, parent_block_id))
+                    FROM (SELECT * FROM document_block_index ORDER BY block_id)),
+                   (SELECT json_group_array(json_array(transfer_operation_id, consumed_at))
+                    FROM (SELECT * FROM block_transfer_undo_recipes ORDER BY transfer_operation_id)),
+                   (SELECT json_group_array(json_array(recipe_operation_id, state))
+                    FROM (SELECT * FROM structural_history_recipes ORDER BY recipe_operation_id)),
+                   (SELECT max(commit_seq) FROM local_commits)
+                 )", [], |row| row.get(0),
+            )?)
+        }).unwrap()
+    }
+
+    fn assert_ownership_rejection(error: nodex_core_contracts::CoreError, message: &str) {
+        assert_eq!(error.code, CoreErrorCode::InvalidInput);
+        assert_eq!(error.message, message);
+        assert!(!error.retryable);
     }
 
     #[test]

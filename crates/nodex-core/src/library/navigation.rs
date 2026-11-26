@@ -2474,6 +2474,7 @@ fn page_relocation_database_destinations(
         connection,
         library_id,
         &query,
+        page_id,
         after_updated_at.as_deref(),
         after_id.as_deref(),
         limit,
@@ -2647,12 +2648,9 @@ fn page_relocation_page_destinations(
     )?;
     let (after_updated_at, after_id) = keyset_text_coordinate(after.as_ref())?;
     let limit = read_limit(limit)?;
-    let destinations_cte = "WITH RECURSIVE excluded(page_id) AS ( \
-        SELECT ?2 UNION \
-        SELECT page.block_id FROM pages page \
-        JOIN excluded parent ON page.parent_kind = 'page' AND page.parent_id = parent.page_id \
-        WHERE page.library_id = ?1 \
-      ), destinations AS ( \
+    let excluded = super::ownership::exclusion_cte(6, 2);
+    let destinations_cte = format!(
+        "{excluded}, destinations AS ( \
         SELECT page.block_id, materialization.title, page.updated_at, \
           EXISTS( \
             SELECT 1 FROM pages child \
@@ -2666,7 +2664,7 @@ fn page_relocation_page_destinations(
             WHERE child.library_id = ?1 AND child_block.lifecycle = 'active' \
               AND child_block.library_id = child.library_id \
               AND child.parent_kind = 'page' AND child.parent_id = page.block_id \
-              AND NOT EXISTS(SELECT 1 FROM excluded WHERE page_id = child.block_id) \
+              AND NOT EXISTS(SELECT 1 FROM excluded WHERE kind = 'page' AND id = child.block_id) \
           ) AS has_children \
         FROM pages page \
         JOIN blocks block ON block.id = page.block_id AND block.library_id = page.library_id \
@@ -2679,22 +2677,28 @@ fn page_relocation_page_destinations(
           AND materialization.schema_version = document.schema_version \
         WHERE page.library_id = ?1 AND block.lifecycle = 'active' \
           AND document.readiness = 'ready' \
-          AND NOT EXISTS(SELECT 1 FROM excluded WHERE page_id = page.block_id) \
+          AND NOT EXISTS(SELECT 1 FROM excluded WHERE kind = 'page' AND id = page.block_id) \
           AND ((?3 = 'suggested' AND page.block_id != ?4) \
             OR (?3 = 'children_library' AND page.parent_kind = 'library' AND page.parent_id = ?4) \
             OR (?3 = 'children_page' AND page.parent_kind = 'page' AND page.parent_id = ?4) \
             OR (?3 = 'search' AND instr(lower(materialization.title), ?5) > 0) \
             OR (?3 = 'candidates' AND page.block_id IN (SELECT value FROM json_each(?5)))) \
-      ) ";
+      ) "
+    );
     let rows_sql = format!(
         "{destinations_cte} SELECT block_id, title, updated_at, has_children \
-         FROM destinations WHERE (?6 IS NULL OR updated_at < ?6 \
-           OR (updated_at = ?6 AND block_id > ?7)) \
+         FROM destinations WHERE (?7 IS NULL OR updated_at < ?7 \
+           OR (updated_at = ?7 AND block_id > ?8)) \
          ORDER BY CASE WHEN ?3 = 'candidates' THEN (SELECT key FROM json_each(?5) WHERE value = block_id) END,
-           updated_at DESC, block_id LIMIT ?8"
+           updated_at DESC, block_id LIMIT ?9"
     );
-    let include_current_page =
-        scope_kind == "suggested" && requested_cursor.is_none() && source.parent_kind == "page";
+    let include_current_page = scope_kind == "suggested"
+        && requested_cursor.is_none()
+        && source.parent_kind == "page"
+        && !super::ownership::Graph::new(connection, library_id)
+            .trail(super::ownership::NodeId::page(&source.parent_id))?
+            .nodes
+            .contains(&super::ownership::NodeId::page(page_id));
     let page_limit = limit.saturating_sub(usize::from(include_current_page));
     let query_limit = i64::try_from(page_limit.saturating_add(1))
         .map_err(|_| invalid("Page relocation target limit overflowed"))?;
@@ -2707,6 +2711,7 @@ fn page_relocation_page_destinations(
                 scope_kind,
                 parent_id,
                 query,
+                "page",
                 after_updated_at,
                 after_id,
                 query_limit,
@@ -2754,7 +2759,7 @@ fn page_relocation_page_destinations(
     let count_sql = format!("{destinations_cte} SELECT COUNT(*) FROM destinations");
     let page_total = connection.query_row(
         &count_sql,
-        params![library_id, page_id, scope_kind, parent_id, query],
+        params![library_id, page_id, scope_kind, parent_id, query, "page"],
         |row| row.get::<_, i64>(0),
     )?;
     let expected_move_etag = crate::database::mint_page_move_etag_prevalidated(
@@ -2792,7 +2797,7 @@ fn page_relocation_page_destinations(
     if include_current_page {
         let current = connection
             .query_row(
-                "SELECT materialization.title, page.updated_at, EXISTS( \
+                &format!("{} SELECT materialization.title, page.updated_at, EXISTS( \
                    SELECT 1 FROM pages child \
                    JOIN blocks child_block ON child_block.id = child.block_id \
                    JOIN documents child_document ON child_document.id = child.document_id \
@@ -2803,7 +2808,7 @@ fn page_relocation_page_destinations(
                      AND child_materialization.schema_version = child_document.schema_version \
                    WHERE child.library_id = ?1 AND child_block.lifecycle = 'active' \
                      AND child.parent_kind = 'page' AND child.parent_id = page.block_id \
-                     AND child.block_id != ?3 \
+                     AND NOT EXISTS (SELECT 1 FROM excluded WHERE kind = 'page' AND id = child.block_id) \
                  ) AS has_children \
                  FROM pages page \
                  JOIN blocks block ON block.id = page.block_id AND block.library_id = page.library_id \
@@ -2816,7 +2821,9 @@ fn page_relocation_page_destinations(
                    AND materialization.schema_version = document.schema_version \
                  WHERE page.library_id = ?1 AND page.block_id = ?2 \
                    AND block.lifecycle = 'active' AND document.readiness = 'ready'",
-                params![library_id, source.parent_id, page_id],
+                    super::ownership::exclusion_cte(4, 3)
+                ),
+                params![library_id, source.parent_id, page_id, "page"],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -2898,11 +2905,9 @@ fn move_destinations(
         ));
     }
 
-    let (target_id, target_is_page) = match &target {
-        LibraryPlacedResourceTarget::Page { page_id } => (page_id.as_str(), true),
-        LibraryPlacedResourceTarget::Database { database_id } => (database_id.as_str(), false),
-        LibraryPlacedResourceTarget::Canvas { canvas_id } => (canvas_id.as_str(), false),
-    };
+    let moved = super::ownership::NodeId::from(&target);
+    let target_id = moved.id.as_str();
+    let target_kind = moved.kind.as_str();
     let current_parent_page_id =
         (authority.parent_kind == "page").then(|| authority.parent_id.clone());
     let root_is_current = authority.parent_kind == "library";
@@ -2969,14 +2974,9 @@ fn move_destinations(
     let limit = read_limit(limit)?;
     let query_limit =
         i64::try_from(limit.saturating_add(1)).map_err(|_| invalid("Library limit overflowed"))?;
-    let destinations_cte = "WITH RECURSIVE excluded(page_id) AS ( \
-        SELECT ?2 WHERE ?3 \
-        UNION \
-        SELECT page.block_id FROM pages page \
-        INNER JOIN excluded parent ON page.parent_kind = 'page' \
-          AND page.parent_id = parent.page_id \
-        WHERE page.library_id = ?1 \
-      ), destinations AS ( \
+    let excluded = super::ownership::exclusion_cte(3, 2);
+    let destinations_cte = format!(
+        "{excluded}, destinations AS ( \
         SELECT page.block_id, materialization.title, page.updated_at, \
           document.generation, document.head_seq, \
           EXISTS( \
@@ -2992,7 +2992,7 @@ fn move_destinations(
               AND child_block.lifecycle = 'active' \
               AND child_block.library_id = child.library_id \
               AND child.parent_kind = 'page' AND child.parent_id = page.block_id \
-              AND NOT EXISTS(SELECT 1 FROM excluded WHERE page_id = child.block_id) \
+              AND NOT EXISTS(SELECT 1 FROM excluded WHERE kind = 'page' AND id = child.block_id) \
           ) AS has_children \
         FROM pages page \
         INNER JOIN blocks block ON block.id = page.block_id \
@@ -3004,7 +3004,7 @@ fn move_destinations(
           AND materialization.schema_version = document.schema_version \
         WHERE page.library_id = ?1 \
           AND block.lifecycle = 'active' AND block.library_id = page.library_id \
-          AND NOT EXISTS(SELECT 1 FROM excluded WHERE page_id = page.block_id) \
+          AND NOT EXISTS(SELECT 1 FROM excluded WHERE kind = 'page' AND id = page.block_id) \
           AND ( \
             ?4 = 'suggested' \
             OR (?4 = 'search' AND instr(lower(materialization.title), ?6) > 0) \
@@ -3014,7 +3014,8 @@ fn move_destinations(
             OR (?4 = 'children_page' AND page.parent_kind = 'page' \
               AND page.parent_id = ?5) \
           ) \
-      ) ";
+      ) "
+    );
     let rows_sql = format!(
         "{destinations_cte} \
          SELECT block_id, title, updated_at, generation, head_seq, has_children \
@@ -3030,7 +3031,7 @@ fn move_destinations(
             params![
                 library_id,
                 target_id,
-                target_is_page,
+                target_kind,
                 scope_kind,
                 scope_parent_id,
                 query,
@@ -3076,7 +3077,7 @@ fn move_destinations(
         params![
             library_id,
             target_id,
-            target_is_page,
+            target_kind,
             scope_kind,
             scope_parent_id,
             query,
@@ -3097,7 +3098,7 @@ fn move_destinations(
     let current_destination = current_parent_page_id
         .as_deref()
         .map(|page_id| {
-            exact_move_destination_row(connection, library_id, target_id, target_is_page, page_id)?
+            exact_move_destination_row(connection, library_id, target_id, target_kind, page_id)?
                 .map(|row| {
                     move_destination_entry(
                         connection,
@@ -3126,19 +3127,13 @@ fn exact_move_destination_row(
     connection: &Connection,
     library_id: &str,
     target_id: &str,
-    target_is_page: bool,
+    target_kind: &str,
     page_id: &str,
 ) -> Result<Option<MoveDestinationRow>, StoreError> {
     connection
         .query_row(
-            "WITH RECURSIVE excluded(page_id) AS ( \
-               SELECT ?2 WHERE ?3 \
-               UNION \
-               SELECT page.block_id FROM pages page \
-               INNER JOIN excluded parent ON page.parent_kind = 'page' \
-                 AND page.parent_id = parent.page_id \
-               WHERE page.library_id = ?1 \
-             ) \
+            &format!(
+                "{} \
              SELECT page.block_id, materialization.title, page.updated_at, \
                document.generation, document.head_seq, \
                EXISTS( \
@@ -3155,7 +3150,7 @@ fn exact_move_destination_row(
                    AND child_block.library_id = child.library_id \
                    AND child.parent_kind = 'page' AND child.parent_id = page.block_id \
                    AND NOT EXISTS( \
-                     SELECT 1 FROM excluded WHERE page_id = child.block_id \
+                     SELECT 1 FROM excluded WHERE kind = 'page' AND id = child.block_id \
                    ) \
                ) AS has_children \
              FROM pages page \
@@ -3168,8 +3163,10 @@ fn exact_move_destination_row(
                AND materialization.schema_version = document.schema_version \
              WHERE page.library_id = ?1 AND page.block_id = ?4 \
                AND block.lifecycle = 'active' AND block.library_id = page.library_id \
-               AND NOT EXISTS(SELECT 1 FROM excluded WHERE page_id = page.block_id)",
-            params![library_id, target_id, target_is_page, page_id],
+               AND NOT EXISTS(SELECT 1 FROM excluded WHERE kind = 'page' AND id = page.block_id)",
+                super::ownership::exclusion_cte(3, 2)
+            ),
+            params![library_id, target_id, target_kind, page_id],
             |row| {
                 Ok(MoveDestinationRow {
                     page_id: row.get(0)?,

@@ -1292,6 +1292,7 @@ fn apply_with_authority(
             PreparedBlockTransfer::PageOwnership(prepared) => prepared,
             _ => return Err(corrupt("Prepared Block transfer compiler diverged")),
         };
+        validate_page_ownership_move(connection, library_id, intent, &prepared.target)?;
         return apply_page_ownership_transfer(
             connection,
             context,
@@ -2185,34 +2186,7 @@ fn prepare_page_ownership_transfer(
     {
         return Err(invalid("Page already belongs to the requested parent"));
     }
-    if intent.mode == LibraryBlockTransferMode::Move
-        && let PreparedPageOwnershipTarget::Document {
-            page_id: target_page_id,
-            ..
-        } = &target
-    {
-        for root_page_id in &intent.root_block_ids {
-            check_request_interruption()?;
-            let cycle = connection
-                .query_row(
-                    "WITH RECURSIVE descendants(page_id) AS ( \
-                       SELECT ?1 UNION ALL \
-                       SELECT page.block_id FROM pages page \
-                       JOIN blocks block ON block.id = page.block_id \
-                         AND block.library_id = page.library_id \
-                       JOIN descendants parent \
-                         ON page.parent_kind = 'page' AND page.parent_id = parent.page_id \
-                       WHERE block.lifecycle = 'active' \
-                     ) SELECT 1 FROM descendants WHERE page_id = ?2 LIMIT 1",
-                    params![root_page_id, target_page_id],
-                    |_| Ok(()),
-                )
-                .optional()?;
-            if cycle.is_some() {
-                return Err(invalid("A Page cannot move below its ownership subtree"));
-            }
-        }
-    }
+    validate_page_ownership_move(connection, library_id, intent, &target)?;
 
     let mut roots = Vec::with_capacity(intent.root_block_ids.len());
     for page_id in &intent.root_block_ids {
@@ -2544,6 +2518,31 @@ fn page_ownership_read_set(prepared: &PreparedPageOwnershipTransfer) -> Prepared
         location_revisions,
         source_memberships,
     }
+}
+
+fn validate_page_ownership_move(
+    connection: &Connection,
+    library_id: &str,
+    intent: &LibraryBlockTransferLogicalIntent,
+    target: &PreparedPageOwnershipTarget,
+) -> Result<(), StoreError> {
+    use super::ownership::{Graph, NodeId};
+    if intent.mode != LibraryBlockTransferMode::Move {
+        return Ok(());
+    }
+    let parent = match target {
+        PreparedPageOwnershipTarget::Library { .. } => return Ok(()),
+        PreparedPageOwnershipTarget::Document { page_id, .. } => NodeId::page(page_id),
+        PreparedPageOwnershipTarget::DataSource { destination } => {
+            NodeId::data_source(&destination.data_source_id)
+        }
+    };
+    let moving = intent
+        .root_block_ids
+        .iter()
+        .map(|id| NodeId::page(id))
+        .collect::<Vec<_>>();
+    Graph::new(connection, library_id).require_move(&moving, Some(parent))
 }
 
 #[allow(clippy::too_many_arguments)]

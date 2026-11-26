@@ -791,7 +791,7 @@ fn compile_resolved_preflight(
     request_hash: String,
     resolved: ResolvedDestination,
 ) -> Result<MovePreflight, StoreError> {
-    assert_no_ownership_overlap(connection, &request.page_ids)?;
+    assert_no_ownership_overlap(connection, library_id, &request.page_ids)?;
     let ResolvedDestination {
         destination: resolved_destination,
         authorization_fingerprint: destination_fingerprint,
@@ -1000,7 +1000,7 @@ fn revalidate_preflight(
     preflight: &MovePreflight,
 ) -> Result<(), StoreError> {
     validate_request(request)?;
-    assert_no_ownership_overlap(connection, &request.page_ids)?;
+    assert_no_ownership_overlap(connection, library_id, &request.page_ids)?;
     let ResolvedDestination {
         destination: resolved_destination,
         authorization_fingerprint: destination_fingerprint,
@@ -1507,7 +1507,7 @@ fn validate_request(request: &LibraryAgentMovePagesRequest) -> Result<(), StoreE
     if let LibraryAgentPageDestination::Page { page_id, .. } = &request.destination
         && unique.contains(page_id.as_str())
     {
-        return Err(invalid("A moved Page cannot be its own destination Page"));
+        return Err(super::ownership::Kind::Page.cycle_error());
     }
     let anchor = match &request.destination {
         LibraryAgentPageDestination::Library { at }
@@ -1529,39 +1529,28 @@ fn validate_request(request: &LibraryAgentMovePagesRequest) -> Result<(), StoreE
 
 fn assert_no_ownership_overlap(
     connection: &Connection,
+    library_id: &str,
     page_ids: &[String],
 ) -> Result<(), StoreError> {
-    let selected = page_ids.iter().map(String::as_str).collect::<HashSet<_>>();
-    for page_id in page_ids {
-        let mut current = page_id.clone();
-        let mut visited = HashSet::new();
-        let mut reached_root = false;
-        for _ in 0..256 {
-            if !visited.insert(current.clone()) {
-                return Err(corrupt("Page ownership hierarchy contains a cycle"));
-            }
-            let parent = connection
-                .query_row(
-                    "SELECT parent_kind, parent_id FROM pages WHERE block_id = ?1",
-                    [&current],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-                )
-                .optional()?
-                .ok_or_else(|| not_found("Source Page is unavailable"))?;
-            if parent.0 != "page" {
-                reached_root = true;
-                break;
-            }
-            if selected.contains(parent.1.as_str()) {
-                return Err(invalid(
-                    "Page moves cannot select both an ownership ancestor and its descendant",
-                ));
-            }
-            current = parent.1;
-        }
-        if !reached_root {
-            return Err(corrupt(
-                "Page ownership hierarchy exceeds its supported depth",
+    use super::ownership::{Graph, NodeId};
+    if page_ids.len() < 2 {
+        return Ok(());
+    }
+    let selected = page_ids
+        .iter()
+        .map(|id| NodeId::page(id))
+        .collect::<HashSet<_>>();
+    let graph = Graph::new(connection, library_id);
+    for page_id in &selected {
+        let trail = graph.trail(page_id.clone())?;
+        if trail
+            .nodes
+            .iter()
+            .skip(1)
+            .any(|owner| selected.contains(owner))
+        {
+            return Err(invalid(
+                "Page moves cannot select both an ownership ancestor and its descendant",
             ));
         }
     }

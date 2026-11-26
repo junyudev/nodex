@@ -1,0 +1,1 @@
+Nodex now prevents moving a Database into one of its own Pages or moving a Page into a Database it contains. Move pickers hide those destinations, and an affected Database can be recovered by moving it back to Space.

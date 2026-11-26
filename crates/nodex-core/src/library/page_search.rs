@@ -295,7 +295,7 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
         .collect::<rusqlite::Result<HashMap<_, _>>>()?;
     populate_project_associations(connection, library_id, &data_source_databases, &mut pages)?;
     let page_keys = current_page_keys_in_library(connection, library_id)?;
-    let indexed_owners = location::IndexedOwners::load(connection, library_id)?;
+    let indexed_owners = location::IndexedLocations::load(connection, library_id)?;
     let locations = pages
         .keys()
         .map(|page_id| {

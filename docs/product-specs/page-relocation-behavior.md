@@ -1,7 +1,7 @@
 # Page Relocation Behavior
 
 Status: Active
-Last updated: 2026-08-31
+Last updated: 2026-11-26
 
 ## Scope
 
@@ -34,7 +34,7 @@ relocation. It is shown only when the startup capability
 destination-picker frame. Its autofocus search field searches two Core-owned
 sections together. With an empty query they are:
 
-- `Databases`: every active Database in the current Library with an active
+- `Databases`: eligible active Databases in the current Library with an active
   default View and Data Source. A primary Project name may appear as quiet
   secondary context and participates in search.
 - `Recent`: up to eight eligible recently updated Page destinations. When the
@@ -47,14 +47,16 @@ metadata preview rows may appear immediately but remain disabled until the
 authoritative relocation read supplies their exact move ETag.
 
 The current parent remains visible, is labeled `Current`, and cannot be
-selected. The moving Page and its complete Page-owned subtree are absent. A
-bounded window that has more entries directs the user to search.
+selected. Core excludes the moving Page and every destination it owns, including hosted
+Databases and their Data Sources, rows, and nested Pages. This applies to the
+Recent, tree, and search results before counts and paging. A bounded window
+that has more entries directs the user to search.
 
 Arrow Up and Arrow Down move through selectable rows and skip `Current`.
 Arrow Right expands a focused Page, Arrow Left collapses it, Enter commits the
 focused destination, and Escape closes the action menu. Loading feedback is
 delayed for 400 milliseconds. A failed read or mutation stays inside the
-picker as a compact retryable state.
+picker as a compact inline error.
 
 ## Authority and atomicity
 
@@ -69,7 +71,9 @@ Library, active lifecycle, destination Document or Database/View/Data Source,
 cycle exclusion, and move ETag. It then changes typed parentage, owning shells,
 membership, View ranks, Page-key projection, affected Documents, history, and
 LocalCommit delivery in one SQLite transaction. A stale or unauthorized target
-leaves both source and destination unchanged.
+leaves both source and destination unchanged. A destination inside the moving
+Page's ownership is refused with “A Page can't move into itself or anything it
+contains.” The picker shows the error inline.
 
 ## Undo
 
@@ -90,5 +94,6 @@ For a Data Source source, Core records the source Data Source, default View,
 and exact active View ranks. Undo reactivates the source membership and dormant
 Property values without applying new destination-group values, and restores
 all saved ranks atomically. Reuse, tampering, store-epoch mismatch, or another
-relocation of the Page fails before any write; the token remains retryable when
-a recoverable source-position conflict is repaired.
+relocation of the Page fails before any write. Undo also refuses a former
+parent now owned by the moved Page. The token remains available when a conflict
+is repaired.

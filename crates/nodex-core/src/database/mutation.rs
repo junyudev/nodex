@@ -4818,6 +4818,16 @@ fn transfer_page(
             .map_or(0, |membership| membership.revision),
         "Page active membership revision changed",
     )?;
+    use crate::library::ownership::{Graph, NodeId};
+    let (proposed_parent, target_source) = match target {
+        DatabaseTransferTarget::Library { .. } => (None, None),
+        DatabaseTransferTarget::Page { page_id } => (Some(NodeId::page(page_id)), None),
+        DatabaseTransferTarget::DataSource { data_source_id } => (
+            Some(NodeId::data_source(data_source_id)),
+            Some(require_source(connection, library_id, data_source_id)?),
+        ),
+    };
+    Graph::new(connection, library_id).require_move(&[NodeId::page(page_id)], proposed_parent)?;
     let previous_source = active_membership
         .as_ref()
         .map(|membership| require_source(connection, library_id, &membership.data_source_id))
@@ -4908,7 +4918,8 @@ fn transfer_page(
             (None, None)
         }
         DatabaseTransferTarget::DataSource { data_source_id } => {
-            let target_source = require_source(connection, library_id, data_source_id)?;
+            let target_source = target_source
+                .ok_or_else(|| corrupt("Transfer lost its destination Data Source"))?;
 
             if active_membership
                 .as_ref()
