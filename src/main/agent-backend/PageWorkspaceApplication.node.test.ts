@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, writeFile, rm, realpath, symlink } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import * as Effect from "effect/Effect";
+import { HostInvocation } from "../../host/HostInvocation";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { fileURLToPath } from "node:url";
 import { acquireAgentRuntimeProcess } from "../platform/node/AgentRuntimeProcess";
@@ -61,6 +62,7 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
   let pullRequest: unknown = null;
   const consumers = new Set<string>();
   const events: string[] = [];
+  const pageReaders: (string | null)[] = [];
   const busy = new Set<string>();
   const held = new Set<string>();
   let afterHold = false;
@@ -72,7 +74,8 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
   const core = {
     workspace: {
       read: (input: { kind: string; page_id?: string; session_id?: string }) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
+          if (input.kind === "page_workspace") pageReaders.push(yield* HostInvocation);
           if (input.kind === "effective_execution_hold") {
             return {
               value: {
@@ -114,7 +117,7 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
           };
         }),
       apply: (input: { operationId: string; intent: Record<string, unknown> }) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           const intent = input.intent;
           events.push(String(intent.kind));
           if (intent.kind === "claim_page_workspace") {
@@ -155,7 +158,10 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
               worktree_path: null,
               revision: workspace.revision + 1,
             };
-          if (intent.kind === "upsert_page_pull_request") pullRequest = intent;
+          if (intent.kind === "upsert_page_pull_request") {
+            expect(yield* HostInvocation).toBeNull();
+            pullRequest = intent;
+          }
           return {};
         }),
     },
@@ -267,6 +273,7 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
     repository,
     owner,
     events,
+    pageReaders,
     busy,
     connection,
     pausePage: (paused: boolean) => {
@@ -558,7 +565,8 @@ it.effect(
         yield* owner.refresh("page");
         expect(f.pr).toBeNull();
         forge.read.mockResolvedValue(pr);
-        yield* owner.refresh("page");
+        yield* owner.refresh("page").pipe(Effect.provideService(HostInvocation, "member-proof"));
+        expect(f.pageReaders.at(-1)).toBe("member-proof");
         expect(f.pr).toMatchObject({ number: 42 });
         forge.read.mockResolvedValue({ status: "error" });
         yield* owner.refresh("page");

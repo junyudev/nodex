@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { HostInvocation } from "../../host/HostInvocation";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
@@ -367,7 +368,7 @@ export const make = Effect.gen(function* () {
       url: pr.url,
       state: pr.state,
       observed_at: DateTime.formatIso(yield* DateTime.now),
-    });
+    }).pipe(Effect.provideService(HostInvocation, null));
   });
   const reconcile = Effect.fn("PageWorkspaceApplication.reconcile")(function* (
     connection: AgentRuntimeApplicationConnection | null,
@@ -587,6 +588,7 @@ export const make = Effect.gen(function* () {
       lane
         .withPermits(1)(reconcile(connection))
         .pipe(Effect.andThen(observePrs(connection))),
+    // Authorize the Page read as the requester before the Host observes its own checkout.
     refresh: (pageId: string) =>
       readPage(pageId).pipe(
         Effect.flatMap((value) => (value.workspace ? refreshPr(value.workspace) : Effect.void)),
