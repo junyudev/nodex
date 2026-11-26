@@ -9,6 +9,7 @@ import type { ScenarioManifest } from "../contracts";
 import { waitForCoreRuntimeRemoval } from "../profile/isolated-profile";
 import { materializeScenario } from "../seed/scenario-seed";
 import { materializeSeededSourceFolder } from "../seed/source-folder";
+import { RELEASE_CAPTURE_SCENARIO_ID } from "../scenarios/nodex-coordination";
 import { CROSS_PROVIDER_SCENARIO_ID } from "../scenarios/agent-cross-provider-delegation";
 
 export const materializeDevelopmentSeed = async (input: {
@@ -69,6 +70,17 @@ export const materializeDevelopmentSeed = async (input: {
       manifest,
       clock: input.runtimeClock,
     });
+  }
+  if (input.scenarioId === RELEASE_CAPTURE_SCENARIO_ID) {
+    const { prepareScenarioCodexAppServerRuntimeSync } =
+      await import("../runtime/agent-runtime-fixture");
+    const { seedCoordinationNativeExecution } = await import("../runtime/coordination-native-seed");
+    const root = path.join(path.dirname(input.nodexHome), "scripted-agent-runtime");
+    prepareScenarioCodexAppServerRuntimeSync(
+      root,
+      path.resolve("scripts/scenarios/runtime/cross-provider-peer.mjs"),
+    );
+    await seedCoordinationNativeExecution(root, manifest);
   }
   return manifest;
 };

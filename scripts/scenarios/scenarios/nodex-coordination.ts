@@ -12,6 +12,7 @@ import {
 } from "../contracts";
 
 export const NODEX_COORDINATION_SCENARIO_ID = "nodex-coordination";
+export const RELEASE_CAPTURE_SCENARIO_ID = "release/capture";
 export const NODEX_COORDINATION_SCENARIO_REVISION = 13;
 export const WORK_AGENT = {
   selection: { instanceId: "codex", model: "gpt-5.5", effort: "medium" },
@@ -102,11 +103,14 @@ export interface NodexCoordinationScenarioFacts extends ScenarioFacts {
   readonly automaticBlockedCount: number;
 }
 
-export const requireNodexCoordinationFacts = (value: unknown): NodexCoordinationScenarioFacts => {
+const requireCoordinationFacts = (
+  value: unknown,
+  scenarioId: string,
+): NodexCoordinationScenarioFacts => {
   const envelope = parseScenarioFacts(value);
   const candidate = value as Partial<NodexCoordinationScenarioFacts>;
   if (
-    envelope.scenarioId !== NODEX_COORDINATION_SCENARIO_ID ||
+    envelope.scenarioId !== scenarioId ||
     envelope.scenarioRevision !== NODEX_COORDINATION_SCENARIO_REVISION ||
     ![
       candidate.cardCount,
@@ -125,6 +129,9 @@ export const requireNodexCoordinationFacts = (value: unknown): NodexCoordination
   return value as NodexCoordinationScenarioFacts;
 };
 
+export const requireNodexCoordinationFacts = (value: unknown): NodexCoordinationScenarioFacts =>
+  requireCoordinationFacts(value, NODEX_COORDINATION_SCENARIO_ID);
+
 const valueOf = <T>(
   result:
     | { readonly ok: true; readonly value: T }
@@ -139,7 +146,11 @@ const identity = (values: Readonly<Record<string, string>> | undefined, key: str
   throw new Error("nodex-coordination identity missing: " + key);
 };
 
-const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace) => {
+const materialize = async (
+  port: ScenarioSeedPort,
+  workspace: string,
+  scenarioId: string,
+): Promise<ScenarioManifest> => {
   const project = await port.createProject({ name: "Nodex", sources: [workspace] });
   if (!project.defaultDatabaseViewId) throw new Error("Nodex has no Board");
   const pages: Record<string, string> = {};
@@ -396,10 +407,12 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
     summary: "A smoother first run",
     rationale: null,
   });
-  entities.sourceProblem = await port.recordSourceProblem();
+  if (scenarioId === NODEX_COORDINATION_SCENARIO_ID) {
+    entities.sourceProblem = await port.recordSourceProblem();
+  }
   return {
     version: 1,
-    scenarioId: NODEX_COORDINATION_SCENARIO_ID,
+    scenarioId,
     scenarioRevision: NODEX_COORDINATION_SCENARIO_REVISION,
     projectId: project.id,
     databaseViewId: project.defaultDatabaseViewId,
@@ -474,28 +487,39 @@ const inspect = async (
     const state = (await port.readPageTurn(pageId)).reason ?? "none";
     states[state] = (states[state] ?? 0) + 1;
   }
-  return requireNodexCoordinationFacts({
-    scenarioId: manifest.scenarioId,
-    scenarioRevision: manifest.scenarioRevision,
-    cardCount: (await port.readBoard(manifest.projectId, manifest.databaseViewId)).totalRows,
-    managedChatCount,
-    reportCounts: counts,
-    turnCounts: states,
-    inboxRowCounts: rowCounts(library),
-    activityCount: (await port.readActivity()).length,
-    planSteps: plan.action.steps.map(({ key, blockedBy }) => ({ key, blockedBy })),
-    nodexStartedCount: history.filter(
-      (item) => item.proposal?.confirmedBy === "nodex" && item.proposal.state === "completed",
-    ).length,
-    projectTurnCount: project.filter((item) => item.rowKind === "turn").length,
-    automaticBlockedCount,
-  });
+  return requireCoordinationFacts(
+    {
+      scenarioId: manifest.scenarioId,
+      scenarioRevision: manifest.scenarioRevision,
+      cardCount: (await port.readBoard(manifest.projectId, manifest.databaseViewId)).totalRows,
+      managedChatCount,
+      reportCounts: counts,
+      turnCounts: states,
+      inboxRowCounts: rowCounts(library),
+      activityCount: (await port.readActivity()).length,
+      planSteps: plan.action.steps.map(({ key, blockedBy }) => ({ key, blockedBy })),
+      nodexStartedCount: history.filter(
+        (item) => item.proposal?.confirmedBy === "nodex" && item.proposal.state === "completed",
+      ).length,
+      projectTurnCount: project.filter((item) => item.rowKind === "turn").length,
+      automaticBlockedCount,
+    },
+    manifest.scenarioId,
+  );
 };
 
 export const nodexCoordinationScenario: ScenarioDomainRecipe = {
   id: NODEX_COORDINATION_SCENARIO_ID,
   revision: NODEX_COORDINATION_SCENARIO_REVISION,
-  materialize,
+  materialize: (port, workspace) => materialize(port, workspace, NODEX_COORDINATION_SCENARIO_ID),
   inspect,
   parseFacts: requireNodexCoordinationFacts,
+};
+
+/** The same coordinated work without a deliberately failed GitHub poll. */
+export const releaseCaptureScenario: ScenarioDomainRecipe = {
+  ...nodexCoordinationScenario,
+  id: RELEASE_CAPTURE_SCENARIO_ID,
+  materialize: (port, workspace) => materialize(port, workspace, RELEASE_CAPTURE_SCENARIO_ID),
+  parseFacts: (value) => requireCoordinationFacts(value, RELEASE_CAPTURE_SCENARIO_ID),
 };

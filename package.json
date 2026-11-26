@@ -138,6 +138,7 @@
     "dev:landing": "vp run --filter @nodex/landing dev",
     "build:landing": "vp run --filter @nodex/landing build",
     "preview:landing": "vp run --filter @nodex/landing preview",
+    "capture": "tsx scripts/capture.ts",
     "capture:landing": "tsx packages/landing/scripts/capture-demos.ts",
     "release:version": "tsx scripts/release/cli.ts version",
     "release:promote": "tsx scripts/release/cli.ts promote",

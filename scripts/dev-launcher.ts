@@ -45,6 +45,7 @@ import type { IsolatedRunFailure } from "./isolated-run/IsolatedRun";
 import { getScenario } from "./scenarios/registry";
 import { INBOX_TRIAGE_SCENARIO_ID } from "./scenarios/scenarios/inbox-triage";
 import { materializeDevelopmentSeed } from "./scenarios/harness/development-seed";
+import { RELEASE_CAPTURE_SCENARIO_ID } from "./scenarios/scenarios/nodex-coordination";
 import { CROSS_PROVIDER_SCENARIO_ID } from "./scenarios/scenarios/agent-cross-provider-delegation";
 import { assertSeededSourceFolder } from "./scenarios/seed/source-folder";
 import { isolatedElectronArguments } from "./isolated-run/electron-arguments";
@@ -339,8 +340,10 @@ export const createDevLaunchPlan = (input: {
                 : undefined,
             ]),
         );
-  const usesSkillsSeed =
-    (input.arguments.seed ?? input.home.manifest.seed?.id) === SKILLS_PAGES_SCENARIO_ID;
+  const scenarioId = input.arguments.seed ?? input.home.manifest.seed?.id;
+  const usesSkillsSeed = scenarioId === SKILLS_PAGES_SCENARIO_ID;
+  const usesScriptedRuntime =
+    scenarioId === CROSS_PROVIDER_SCENARIO_ID || scenarioId === RELEASE_CAPTURE_SCENARIO_ID;
   const environment: NodeJS.ProcessEnv = {
     ...electronApplicationEnvironment(withoutAgentShell(input.environment)),
     ...developmentFeatureEnvironment(enabledFeatures),
@@ -382,7 +385,7 @@ export const createDevLaunchPlan = (input: {
           CLAUDE_CONFIG_DIR: path.join(input.home.root, "home", ".claude"),
         }
       : {}),
-    ...((input.arguments.seed ?? input.home.manifest.seed?.id) === CROSS_PROVIDER_SCENARIO_ID
+    ...(usesScriptedRuntime
       ? {
           NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT: path.join(
             input.home.root,
