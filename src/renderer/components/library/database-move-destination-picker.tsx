@@ -1,6 +1,6 @@
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { presentSpaceTopLevel } from "@/lib/resource-location-presentation";
-import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
+import { useId, useMemo, useState, type KeyboardEvent } from "react";
 
 import { PageIcon, ActivitySpinnerIcon } from "@/components/shared/icons";
 import {
@@ -8,6 +8,7 @@ import {
   NodexDestinationPickerOption,
   NodexDestinationPickerSection,
   NodexDestinationPickerStatus,
+  useDestinationPickerLoading,
 } from "@/components/ui/destination-picker";
 import { buildLibraryMoveOperation } from "@/lib/library-operations";
 import { normalizeSearchText } from "@/lib/search-text";
@@ -24,7 +25,6 @@ import type {
 import { useInteractivePageSearch } from "@/lib/interactive-page-search";
 
 const ROOT_ROW_ID = "library-root";
-const LOAD_DELAY_MS = 400;
 
 export type DatabaseMoveDestinationPickerRow =
   | {
@@ -177,7 +177,6 @@ export function DatabaseMoveDestinationPickerSurface({
   const inputId = useId();
   const rows = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
-  const [showLoading, setShowLoading] = useState(false);
   const resolvedFocusedRowId =
     focusedRowId && rows.some((row) => row.id === focusedRowId)
       ? focusedRowId
@@ -188,12 +187,9 @@ export function DatabaseMoveDestinationPickerSurface({
     : undefined;
   const pickerDisabled = acceptingRowId !== null || stale;
 
-  if (!loading && showLoading) setShowLoading(false);
-  useEffect(() => {
-    if (!loading) return;
-    const timer = window.setTimeout(() => setShowLoading(true), LOAD_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [loading]);
+  const searching = Boolean(normalizeSearchText(query));
+  const busy = loading && !error;
+  const showLoading = useDestinationPickerLoading(busy, searching);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
@@ -240,7 +236,7 @@ export function DatabaseMoveDestinationPickerSurface({
       inputId={inputId}
       listboxId={listboxId}
       activeDescendantId={activeDescendantId}
-      busy={loading || stale}
+      busy={busy}
       dialogRole="presentation"
       autoFocus
       onQueryChange={(nextQuery) => {
@@ -272,7 +268,9 @@ export function DatabaseMoveDestinationPickerSurface({
           </NodexDestinationPickerSection>
         ) : null,
       )}
-      {showLoading ? (
+      {error ? (
+        <NodexDestinationPickerStatus role="alert">{error}</NodexDestinationPickerStatus>
+      ) : showLoading ? (
         <NodexDestinationPickerStatus>
           <ActivitySpinnerIcon className="mr-2 size-3.5 text-token-description-foreground" />
           {rows.length > 0
@@ -285,9 +283,7 @@ export function DatabaseMoveDestinationPickerSurface({
                 defaultMessage: "Loading Pages…",
               })}
         </NodexDestinationPickerStatus>
-      ) : null}
-      {error ? <NodexDestinationPickerStatus>{error}</NodexDestinationPickerStatus> : null}
-      {!loading && !error && rows.length === 0 ? (
+      ) : !loading && rows.length === 0 ? (
         <NodexDestinationPickerStatus>
           {intl.formatMessage({
             id: "components.databaseMoveDestinationPicker.noPages",
@@ -295,7 +291,7 @@ export function DatabaseMoveDestinationPickerSurface({
           })}
         </NodexDestinationPickerStatus>
       ) : null}
-      {!query && hasMore ? (
+      {!searching && hasMore ? (
         <NodexDestinationPickerStatus>
           {intl.formatMessage({
             id: "components.databaseMoveDestinationPicker.searchHint",
@@ -458,16 +454,18 @@ export function DatabaseMoveDestinationPicker({
           rows: [rootRow, ...treeRows],
         },
       ];
-  const rowsStale = Boolean(
-    normalizedQuery && (pageSearch.enrichment === "loading" || search.isFetching),
-  );
+  const rowsStale = Boolean(normalizedQuery && search.isFetching);
   const activeQuery = normalizedQuery ? search : root;
   const loading =
-    activeQuery.isPending ||
-    (!normalizedQuery && recent.isPending) ||
-    childQueries.some((child) => child.isPending);
-  const loadError =
-    activeQuery.error ?? recent.error ?? childQueries.find((child) => child.error)?.error;
+    activeQuery.isFetching ||
+    (normalizedQuery
+      ? pageSearch.initialPending && !search.data
+      : recent.isFetching || childQueries.some((child) => child.isFetching));
+  const loadFailed =
+    activeQuery.error ||
+    (normalizedQuery
+      ? pageSearch.enrichment === "unavailable" && pageSearch.rows.length === 0
+      : recent.error || childQueries.some((child) => child.error));
   const hasMore =
     Boolean(activeQuery.data?.hasMore) ||
     (!normalizedQuery && childQueries.some((child) => child.data?.hasMore));
@@ -521,7 +519,7 @@ export function DatabaseMoveDestinationPicker({
       stale={rowsStale}
       error={
         acceptError ??
-        (loadError
+        (loadFailed
           ? intl.formatMessage({
               id: "components.databaseMoveDestinationPicker.loadError",
               defaultMessage: "Could not load destinations",

@@ -54,9 +54,12 @@ that has more entries directs the user to search.
 
 Arrow Up and Arrow Down move through selectable rows and skip `Current`.
 Arrow Right expands a focused Page, Arrow Left collapses it, Enter commits the
-focused destination, and Escape closes the action menu. Loading feedback is
-delayed for 400 milliseconds. A failed read or mutation stays inside the
-picker as a compact inline error.
+focused destination, and Escape closes the action menu. Initial tree loading
+feedback is delayed for 400 milliseconds. Search shows loading while it waits
+for initial matches or checks their eligibility. When those reads settle with
+no eligible destinations, the picker shows `No matching destinations` while
+additional matches can continue to arrive. A failed read or mutation stays
+inside the picker as a compact inline error.
 
 ## Authority and atomicity
 

@@ -44,6 +44,8 @@ export interface InteractivePageSearchResult {
   readonly rows: readonly PageSearchResult[];
   readonly truncated: boolean;
   readonly coverage?: PageSearchCoverage;
+  /** The live query is awaiting its first Find response. */
+  readonly initialPending: boolean;
   readonly enrichment: "idle" | "loading" | "settled" | "unavailable";
   readonly queryRevision: string;
 }
@@ -340,6 +342,7 @@ export function useInteractivePageSearch(intent: PageSearchIntent): InteractiveP
       rows: usePreview
         ? preview
         : (search.response?.hits ?? []).flatMap((hit) => (hit.kind === "page" ? [hit.page] : [])),
+      initialPending: intent.enabled !== false && !search.settled,
       enrichment:
         intent.enabled === false
           ? "idle"
@@ -359,6 +362,7 @@ export function useInteractivePageSearch(intent: PageSearchIntent): InteractiveP
       search.failed,
       search.pending,
       search.response,
+      search.settled,
       source,
       usePreview,
     ],

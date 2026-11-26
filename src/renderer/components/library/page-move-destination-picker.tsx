@@ -1,7 +1,7 @@
 import { useIntl } from "@/lib/i18n";
 import { presentSpaceTopLevel } from "@/lib/resource-location-presentation";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 
 import { ActivitySpinnerIcon, BoardIcon, PageIcon } from "@/components/shared/icons";
 import {
@@ -9,6 +9,7 @@ import {
   NodexDestinationPickerOption,
   NodexDestinationPickerSection,
   NodexDestinationPickerStatus,
+  useDestinationPickerLoading,
 } from "@/components/ui/destination-picker";
 import { toast } from "@/components/ui/toast";
 import { useInteractivePageSearch } from "@/lib/interactive-page-search";
@@ -20,8 +21,6 @@ import {
   useUndoLibraryPageRelocation,
 } from "@/lib/use-library-navigation";
 import type { LibraryPageRelocationDestinationEntry } from "../../../shared/library-module";
-
-const LOAD_DELAY_MS = 400;
 
 interface AuthoritativeDestinationRow {
   readonly id: string;
@@ -193,7 +192,6 @@ export function PageMoveDestinationPicker({
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
-  const [showLoading, setShowLoading] = useState(false);
   const { mutation } = useApplyLibraryOperation();
   const undoPageRelocation = useUndoLibraryPageRelocation();
   const databases = useLibraryPageRelocationDestinations(pageId, {
@@ -211,6 +209,7 @@ export function PageMoveDestinationPicker({
     excludePageIds: [pageId],
     limit: 100,
   });
+  const readsPages = !normalizedQuery || search.rows.length > 0;
   const pages = useLibraryPageRelocationDestinations(
     pageId,
     {
@@ -219,7 +218,7 @@ export function PageMoveDestinationPicker({
         : { kind: "page_children", parent: { kind: "library" } },
       limit: 100,
     },
-    !normalizedQuery || search.rows.length > 0,
+    readsPages,
   );
   const expandedPageIdList = [...expandedPageIds].sort();
   const childQueries = useLibraryPageRelocationChildren(
@@ -251,7 +250,7 @@ export function PageMoveDestinationPicker({
       }))
     : flattenPageTree(pages.data?.items ?? [], childItems, expandedPageIds);
   const previewPageRows: readonly DestinationRow[] =
-    normalizedQuery && pages.isPending
+    normalizedQuery && pages.isLoading
       ? search.rows.map((row) => ({
           id: `preview:${row.pageId}`,
           title: row.title,
@@ -263,7 +262,8 @@ export function PageMoveDestinationPicker({
         }))
       : [];
   const pageRows = authoritativePageRows.length ? authoritativePageRows : previewPageRows;
-  const recentRows = (suggested.data?.items ?? []).map((entry): AuthoritativeDestinationRow => ({
+  const recentItems = normalizedQuery ? [] : (suggested.data?.items ?? []);
+  const recentRows = recentItems.map((entry): AuthoritativeDestinationRow => ({
     id: `recent:${entry.key}`,
     entry,
     depth: 0,
@@ -277,17 +277,20 @@ export function PageMoveDestinationPicker({
       ? focusedRowId
       : nextEnabledRowId(rows, null, 1);
   const focusedRow = rows.find((row) => row.id === resolvedFocusedRowId) ?? null;
+  const loadFailed =
+    databases.error ||
+    pages.error ||
+    (search.enrichment === "unavailable" && search.rows.length === 0) ||
+    (!normalizedQuery && (suggested.error || childQueries.some((child) => child.error)));
   const loading =
-    databases.isPending ||
-    (normalizedQuery ? search.enrichment === "loading" || pages.isFetching : pages.isPending) ||
-    (!normalizedQuery && suggested.isPending) ||
-    childQueries.some((child) => child.isPending);
-  const loadError =
-    databases.error ??
-    pages.error ??
-    (search.enrichment === "unavailable" ? new Error("Page search is unavailable") : null) ??
-    (!normalizedQuery ? suggested.error : null) ??
-    childQueries.find((child) => child.error)?.error;
+    !loadFailed &&
+    !acceptError &&
+    (databases.isFetching ||
+      pages.isFetching ||
+      (normalizedQuery
+        ? search.initialPending && !pages.data
+        : suggested.isFetching || childQueries.some((child) => child.isFetching)));
+  const showLoading = useDestinationPickerLoading(loading, Boolean(normalizedQuery));
   const hasMore =
     Boolean(
       databases.data?.hasMore ||
@@ -298,17 +301,11 @@ export function PageMoveDestinationPicker({
 
   const refetchDestinations = (): void => {
     void databases.refetch();
-    void pages.refetch();
+    if (readsPages) void pages.refetch();
+    if (normalizedQuery) return;
     void suggested.refetch();
     for (const child of childQueries) void child.refetch();
   };
-
-  if (!loading && showLoading) setShowLoading(false);
-  useEffect(() => {
-    if (!loading) return;
-    const timer = window.setTimeout(() => setShowLoading(true), LOAD_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [loading]);
 
   const accept = async (row: AuthoritativeDestinationRow): Promise<void> => {
     setAcceptError(null);
@@ -495,7 +492,7 @@ export function PageMoveDestinationPicker({
           ))}
         </NodexDestinationPickerSection>
       ) : null}
-      {!normalizedQuery && recentRows.length > 0 ? (
+      {recentRows.length > 0 ? (
         <NodexDestinationPickerSection
           label={intl.formatMessage({
             id: "components.pageMoveDestinationPicker.recent",
@@ -553,23 +550,9 @@ export function PageMoveDestinationPicker({
           ))}
         </NodexDestinationPickerSection>
       ) : null}
-      {showLoading ? (
-        <NodexDestinationPickerStatus>
-          <ActivitySpinnerIcon className="mr-2 size-3.5 text-token-description-foreground" />
-          {rows.length > 0
-            ? intl.formatMessage({
-                id: "components.pageMoveDestinationPicker.loadingMore",
-                defaultMessage: "Loading more destinations…",
-              })
-            : intl.formatMessage({
-                id: "components.pageMoveDestinationPicker.loading",
-                defaultMessage: "Loading destinations…",
-              })}
-        </NodexDestinationPickerStatus>
-      ) : null}
       {acceptError ? (
         <NodexDestinationPickerStatus role="alert">{acceptError}</NodexDestinationPickerStatus>
-      ) : loadError ? (
+      ) : loadFailed ? (
         <NodexDestinationPickerStatus role="alert">
           <span>
             {intl.formatMessage({
@@ -588,8 +571,20 @@ export function PageMoveDestinationPicker({
             })}
           </button>
         </NodexDestinationPickerStatus>
-      ) : null}
-      {!loading && !loadError && rows.length === 0 ? (
+      ) : showLoading ? (
+        <NodexDestinationPickerStatus>
+          <ActivitySpinnerIcon className="mr-2 size-3.5 text-token-description-foreground" />
+          {rows.length > 0
+            ? intl.formatMessage({
+                id: "components.pageMoveDestinationPicker.loadingMore",
+                defaultMessage: "Loading more destinations…",
+              })
+            : intl.formatMessage({
+                id: "components.pageMoveDestinationPicker.loading",
+                defaultMessage: "Loading destinations…",
+              })}
+        </NodexDestinationPickerStatus>
+      ) : !loading && rows.length === 0 ? (
         <NodexDestinationPickerStatus>
           {intl.formatMessage({
             id: "components.pageMoveDestinationPicker.noDestinations",

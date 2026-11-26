@@ -1,4 +1,10 @@
-import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 
 import {
   ActivitySpinnerIcon,
@@ -9,6 +15,19 @@ import {
 import { StatusIcon } from "@/lib/status-presentation";
 import { cn } from "@/lib/utils";
 import { NodexTooltip } from "./tooltip";
+
+/** Delay browse feedback so fast initial tree reads do not flash a spinner. */
+export function useDestinationPickerLoading(loading: boolean, searching: boolean) {
+  const delayLoading = loading && !searching;
+  const [showDelayedLoading, setShowDelayedLoading] = useState(false);
+  if (!delayLoading && showDelayedLoading) setShowDelayedLoading(false);
+  useEffect(() => {
+    if (!delayLoading) return;
+    const timer = window.setTimeout(() => setShowDelayedLoading(true), 400);
+    return () => window.clearTimeout(timer);
+  }, [delayLoading]);
+  return loading && (searching || showDelayedLoading);
+}
 
 interface NodexDestinationPickerProps {
   readonly ariaLabel: string;

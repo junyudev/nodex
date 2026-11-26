@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import {
@@ -44,25 +44,38 @@ const currentDestination = {
   expectedMoveEtag: "etag:pages",
 };
 
+const recentDestination = {
+  ...currentDestination,
+  key: "page:recent",
+  kind: "page" as const,
+  title: "Recent destination",
+  isCurrent: false,
+  destination: { kind: "page" as const, pageId: "page:recent", at: { kind: "end" as const } },
+};
+
 vi.mock("@/lib/use-library-navigation", () => ({
   useApplyLibraryOperation: () => ({ mutation: { mutateAsync: navigation.mutateAsync } }),
   useUndoLibraryPageRelocation: () => navigation.undoPageRelocation,
   useLibraryPageRelocationDestinations: (
     _pageId: string,
-    input: { readonly scope: { readonly kind: string } },
+    input: { readonly scope: { readonly kind: string; readonly query?: string } },
   ) => {
     navigation.relocationRead(input.scope);
+    const isFetching = navigation.searchPending && input.scope.kind === "page_candidates";
     return {
       data: {
         items:
-          input.scope.kind === "databases"
+          input.scope.kind === "databases" && !input.scope.query
             ? [databaseDestination]
             : input.scope.kind === "page_children"
               ? [currentDestination]
-              : [],
+              : input.scope.kind === "page_suggested"
+                ? [recentDestination]
+                : [],
         hasMore: false,
       },
-      isPending: navigation.searchPending && input.scope.kind === "page_candidates",
+      isLoading: isFetching,
+      isFetching,
       error: null,
       refetch: vi.fn(),
     };
@@ -73,17 +86,19 @@ vi.mock("@/lib/use-library-navigation", () => ({
 vi.mock("@/lib/interactive-page-search", () => ({
   configuredPageSearchProjectIds: () => [],
   useInteractivePageSearch: (input: { readonly query: string }) => ({
-    rows: input.query
-      ? [
-          {
-            pageId: "page:preview",
-            title: "Preview Roadmap",
-            locationLabel: "Pages / Planning",
-            updatedAt: "2026-08-30T00:00:00.000Z",
-          },
-        ]
-      : [],
-    enrichment: "idle",
+    rows:
+      input.query === "Roadmap" || input.query === "Interview"
+        ? [
+            {
+              pageId: "page:preview",
+              title: input.query === "Interview" ? "Interview notes" : "Preview Roadmap",
+              locationLabel: "Pages / Planning",
+              updatedAt: "2026-08-30T00:00:00.000Z",
+            },
+          ]
+        : [],
+    initialPending: false,
+    enrichment: input.query === "Interview" ? "loading" : "settled",
     queryRevision: input.query,
   }),
 }));
@@ -172,6 +187,35 @@ describe("PageMoveDestinationPicker", () => {
         pageIds: ["page:preview"],
       });
     });
+  });
+
+  test("shows the empty status when search has no eligible destinations", async () => {
+    render(
+      <PageMoveDestinationPicker
+        pageId="page:one"
+        title="Release plan"
+        onClose={() => undefined}
+      />,
+    );
+
+    const input = screen.getByRole("combobox", { name: "Move Release plan to" });
+    const results = within(screen.getByRole("listbox"));
+    await results.findByRole("option", { name: "Recent destination" });
+
+    for (const query of ["zzqqxx", "Interview"]) {
+      await act(async () => {
+        fireEvent.change(input, { target: { value: query } });
+      });
+
+      await results.findByText("No matching destinations");
+      expect(results.queryByRole("option")).toBeNull();
+      expect(screen.getByRole("listbox").getAttribute("aria-busy")).toBe("false");
+
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "Enter" });
+      });
+      expect(navigation.mutateAsync).not.toHaveBeenCalled();
+    }
   });
 
   test("keeps query-fresh metadata previews inert until relocation authority arrives", async () => {

@@ -44,6 +44,9 @@ For a non-empty query, the picker immediately presents matching rows from the sh
 The instant metadata preview searches the same readable Library, including standalone Pages and Pages in Databases without a Project.
 Pending completion uses one stable trailing `Loading more Pages…` status row and never clears query-fresh metadata rows.
 Empty and failed reads remain compact status rows inside the result region.
+When the initial search and its eligibility checks settle with no eligible
+Pages, the picker shows `No matching Pages` while additional matches can
+continue to arrive.
 When a bounded tree window has a continuation, the picker explains that search can reach destinations outside the visible window.
 
 ## Destination authority

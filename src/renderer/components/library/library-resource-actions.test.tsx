@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
+import { parseDatabaseId } from "../../../shared/database-identities";
 import { renderWithMaitai } from "../../test/thread-maitai";
 
 import { LibraryResourceActions } from "./library-resource-actions";
@@ -22,17 +23,20 @@ vi.mock("@/lib/use-library-navigation", () => ({
   }),
   useLibraryCatalog: () => ({ data: { items: [] } }),
   useLibraryPath: () => ({ data: undefined, isPending: false }),
-  useLibraryMoveDestinations: () => ({
-    data: {
-      kind: "move_destinations",
-      items: [],
-      currentDestination: null,
-      nextCursor: null,
-      hasMore: false,
-      total: 0,
-      rootIsCurrent: false,
-    },
-    isPending: false,
+  useLibraryMoveDestinations: (_target: unknown, _input: unknown, enabled = true) => ({
+    data: enabled
+      ? {
+          kind: "move_destinations",
+          items: [],
+          currentDestination: null,
+          nextCursor: null,
+          hasMore: false,
+          total: 0,
+          rootIsCurrent: false,
+        }
+      : undefined,
+    isPending: !enabled,
+    isFetching: false,
     error: null,
   }),
   useLibraryMoveDestinationChildren: () => [],
@@ -69,7 +73,12 @@ vi.mock("@/lib/use-library-navigation", () => ({
 
 vi.mock("@/lib/interactive-page-search", () => ({
   configuredPageSearchProjectIds: () => [],
-  useInteractivePageSearch: () => ({ rows: [], enrichment: "idle", queryRevision: "" }),
+  useInteractivePageSearch: () => ({
+    rows: [],
+    initialPending: false,
+    enrichment: "loading",
+    queryRevision: "",
+  }),
 }));
 
 const openActions = async (): Promise<void> => {
@@ -155,6 +164,21 @@ describe("Library resource actions", () => {
         expectedEtag: "etag:pages",
       }),
     );
+  });
+
+  test("shows the empty status when Database move search has no Page candidates", async () => {
+    renderActions({ target: { kind: "database", databaseId: parseDatabaseId("database-1") } });
+
+    await openActions();
+    const input = await openMoveSubmenu();
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "zzqqxx" } });
+    });
+
+    const results = await screen.findByRole("listbox");
+    await within(results).findByText("No matching Pages");
+    expect(within(results).queryByRole("option")).toBeNull();
+    expect(results.getAttribute("aria-busy")).toBe("false");
   });
 
   test("opens the resource in the selected Project", async () => {
