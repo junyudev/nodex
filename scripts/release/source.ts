@@ -13,11 +13,14 @@ import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { parse as parseToml } from "smol-toml";
 import {
+  readUnreleasedChangesWithMedia,
+  type UnreleasedChange,
+} from "../../src/shared/change-media";
+import {
   CHANGES_DIRECTORY,
-  CHANGES_README,
+  groupChangeEntries,
   formatChangelog,
   parseChangelog,
-  readUnreleasedChanges,
   type PublishedRelease,
   type RepositoryFile,
 } from "../../src/shared/changelog";
@@ -395,12 +398,12 @@ function versionFiles(current: ReleaseSourceSnapshot, version: string): ReleaseS
   };
 }
 
-export function validateReleaseSource(current: ReleaseSourceSnapshot): void {
+export function validateReleaseSource(current: ReleaseSourceSnapshot): readonly UnreleasedChange[] {
   const version = current.packageVersion;
   if (parseChangelog(current.changelog).some((release) => release.version === version)) {
     throw new Error(`Source version ${version} already has a dated changelog section.`);
   }
-  readUnreleasedChanges(current.files.changes);
+  return readUnreleasedChangesWithMedia(current.files.changes);
 }
 
 export function setSourceVersion(cwd: string, target: string): void {
@@ -429,20 +432,24 @@ function advancedFiles(
       `CHANGELOG.md already lists ${release.version} with different release notes or date.`,
     );
   }
-  if (!isDeepStrictEqual(release.sections, readUnreleasedChanges(sourceChanges))) {
+  const source = readUnreleasedChangesWithMedia(sourceChanges);
+  if (!isDeepStrictEqual(release.sections, groupChangeEntries(source))) {
     throw new Error(`Release ${release.version} notes do not match its source change files.`);
   }
   const comparison = compareStableVersions(current.packageVersion, release.version);
   if (comparison < 0) throw new Error("Main source version is older than the published release.");
-  const shipped = new Map(sourceChanges.map(({ path, content }) => [path, content]));
+  const shipped = new Map(source.map(({ path, entry }) => [path, entry]));
+  const publishedPaths = new Set(
+    readUnreleasedChangesWithMedia(current.files.changes)
+      .filter(({ path, entry }) => shipped.get(path) === entry)
+      .map(({ path }) => path),
+  );
   return {
     ...(comparison === 0
       ? versionFiles(current, nextPatchVersion(release.version))
       : current.files),
     changelog: formatChangelog([release, ...published]),
-    changes: current.files.changes.filter(
-      ({ path, content }) => path === CHANGES_README || shipped.get(path) !== content,
-    ),
+    changes: current.files.changes.filter(({ path }) => !publishedPaths.has(path)),
   };
 }
 

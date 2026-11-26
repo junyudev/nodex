@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { checkLocalChangeMedia } from "../media/store";
 import {
   assembleReleaseBundle,
   parseReleaseBundleManifest,
@@ -103,7 +104,7 @@ const main = async (): Promise<void> => {
     const snapshot = flags.has("head")
       ? inspectReleaseSourceAtRef(projectRoot, required(flags, "head"))
       : inspectReleaseSource(projectRoot);
-    validateReleaseSource(snapshot);
+    checkLocalChangeMedia(projectRoot, validateReleaseSource(snapshot));
     writeJson(flags.get("output"), { version: snapshot.packageVersion });
     return;
   }

@@ -142,6 +142,7 @@
     "release:version": "tsx scripts/release/cli.ts version",
     "release:promote": "tsx scripts/release/cli.ts promote",
     "release:advance": "tsx scripts/release/cli.ts advance",
+    "media:add": "tsx scripts/media/add.ts",
     "release:check": "tsx scripts/release/cli.ts check",
     "release:resolve:nightly": "tsx scripts/release/cli.ts resolve-nightly",
     "release:resolve:source": "tsx scripts/release/cli.ts resolve-source",

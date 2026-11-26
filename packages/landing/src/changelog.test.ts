@@ -41,7 +41,7 @@ const sampleChanges = [
   },
   {
     path: "changes/added/2026-03-14-public-page.md",
-    content: "Added a public changelog page.\n",
+    content: `---\nmedia:\n  - caption: Read the changelog\n    light: ${"a".repeat(64)}.png\n---\n\nAdded a public changelog page.\n`,
   },
 ];
 

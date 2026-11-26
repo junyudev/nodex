@@ -109,54 +109,101 @@ const CHANGE_FILE =
   /^changes\/(?<kind>[^/]+)\/(?<date>\d{4}-\d{2}-\d{2})-(?<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$/u;
 const blockStart = /^(?:[-*+]\s|\d+[.)]\s|#|>|```|~~~|<)/u;
 
-function changeEntry(file: RepositoryFile): string {
-  const lines = normalize(file.content)
+/** The optional YAML header and the untouched entry body. */
+export function splitChangeFile(file: RepositoryFile): {
+  readonly frontMatter: string | null;
+  readonly body: string;
+} {
+  const opener = /^---(?:\r\n?|\n|$)/u.exec(file.content);
+  if (!opener) return { frontMatter: null, body: file.content };
+  const rest = file.content.slice(opener[0].length);
+  const closer = /(?:^|(?<=[\r\n]))---(?:\r\n?|\n|$)/u.exec(rest);
+  if (!closer)
+    throw new Error(`${file.path} needs a closing --- for its front matter. ${CHANGES_HELP}`);
+  return {
+    frontMatter: rest.slice(0, closer.index),
+    body: rest.slice(closer.index + closer[0].length),
+  };
+}
+
+function changeEntry(path: string, body: string): string {
+  const lines = normalize(body)
     .split("\n")
     .map((line) => line.trim());
   while (lines.at(-1) === "") lines.pop();
   while (lines[0] === "") lines.shift();
-  if (lines.length === 0) throw new Error(`${file.path} is empty. ${CHANGES_HELP}`);
+  if (lines.length === 0) throw new Error(`${path} is empty. ${CHANGES_HELP}`);
   if (lines.includes("")) {
-    throw new Error(`${file.path} must hold one paragraph, the entry itself. ${CHANGES_HELP}`);
+    throw new Error(`${path} must hold one paragraph, the entry itself. ${CHANGES_HELP}`);
   }
   if (lines.some((line) => blockStart.test(line))) {
     throw new Error(
-      `${file.path} must be the entry's text alone, without a list marker, heading, quote, code block or HTML. ${CHANGES_HELP}`,
+      `${path} must be the entry's text alone, without a list marker, heading, quote, code block or HTML. ${CHANGES_HELP}`,
     );
   }
   return lines.join(" ");
 }
 
-/**
- * The entries not released yet, from the files under `changes/`: each kind's entries in file-name
- * order, which is the order they were written. Throws on a file that is not a valid change.
- */
-export function readUnreleasedChanges(
-  files: readonly RepositoryFile[],
-): readonly ReleaseNotesSection[] {
-  const byKind = new Map<ChangelogSectionKind, { name: string; entry: string }[]>();
+export interface ChangeEntry {
+  readonly kind: ChangelogSectionKind;
+  readonly date: string;
+  readonly slug: string;
+  readonly path: string;
+  readonly entry: string;
+  readonly frontMatter: string | null;
+}
+
+/** Reads the release set in kind and file-name order, leaving front matter as text. */
+export function readChangeEntries(files: readonly RepositoryFile[]): readonly ChangeEntry[] {
+  const changes: ChangeEntry[] = [];
+  const pathsBySlug = new Map<string, string>();
   for (const file of files) {
     if (file.path === CHANGES_README) continue;
-    const match = CHANGE_FILE.exec(file.path);
-    const kind = match?.groups?.kind ?? "";
-    if (!match || !isSectionKind(kind) || !isCalendarDate(match.groups!.date)) {
+    const { kind = "", date = "", slug = "" } = CHANGE_FILE.exec(file.path)?.groups ?? {};
+    if (!isSectionKind(kind) || !isCalendarDate(date)) {
       throw new Error(
         `${file.path} is not a change. Name each change ${CHANGES_DIRECTORY}/<kind>/<YYYY-MM-DD>-<slug>.md, where <kind> is one of ${CHANGELOG_SECTION_KINDS.join(", ")} and <slug> is lowercase ASCII words joined by hyphens. ${CHANGES_HELP}`,
       );
     }
-    const entries = byKind.get(kind) ?? [];
-    entries.push({
-      name: file.path.slice(file.path.lastIndexOf("/") + 1),
-      entry: changeEntry(file),
+    const previous = pathsBySlug.get(slug);
+    if (previous !== undefined) {
+      throw new Error(
+        `${file.path} uses the same slug "${slug}" as ${previous}. Give each change a unique slug. ${CHANGES_HELP}`,
+      );
+    }
+    pathsBySlug.set(slug, file.path);
+    const { body, frontMatter } = splitChangeFile(file);
+    changes.push({
+      kind,
+      date,
+      slug,
+      path: file.path,
+      entry: changeEntry(file.path, body),
+      frontMatter,
     });
-    byKind.set(kind, entries);
   }
-  return CHANGELOG_SECTION_KINDS.flatMap((kind) => {
-    const entries = byKind.get(kind);
-    if (!entries) return [];
-    entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
-    return [{ kind, entries: entries.map(({ entry }) => entry) }];
+  return changes.sort((left, right) => {
+    const kindOrder =
+      CHANGELOG_SECTION_KINDS.indexOf(left.kind) - CHANGELOG_SECTION_KINDS.indexOf(right.kind);
+    return kindOrder || (left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   });
+}
+
+/** Groups entries already read in release order into the sections used for release notes. */
+export function groupChangeEntries(
+  changes: readonly Pick<ChangeEntry, "kind" | "entry">[],
+): readonly ReleaseNotesSection[] {
+  return CHANGELOG_SECTION_KINDS.flatMap((kind) => {
+    const entries = changes.filter((change) => change.kind === kind).map(({ entry }) => entry);
+    return entries.length === 0 ? [] : [{ kind, entries }];
+  });
+}
+
+/** Reads the text of changes not released yet without interpreting their front matter. */
+export function readUnreleasedChanges(
+  files: readonly RepositoryFile[],
+): readonly ReleaseNotesSection[] {
+  return groupChangeEntries(readChangeEntries(files));
 }
 
 // ---------------------------------------------------------------------------------------------
