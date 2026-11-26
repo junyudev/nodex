@@ -7,7 +7,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
-use super::mutation::{WorkspaceMutationEffects, finish_mutation, project_session_scope};
+use super::mutation::{
+    WorkspaceMutationEffects, finish_mutation, finish_no_op, project_session_scope,
+};
 use super::thread::{finish_thread_mutation, upsert_thread_records};
 
 const MAX_ID_LENGTH: usize = 512;
@@ -47,6 +49,7 @@ pub(super) fn mutate_session(
             | ProjectSessionIntent::SetPinned { .. }
             | ProjectSessionIntent::SetFallbackTitle { .. }
             | ProjectSessionIntent::RecordUserMessage { .. }
+            | ProjectSessionIntent::RecordAgentMessage { .. }
             | ProjectSessionIntent::LinkThread { .. }
             | ProjectSessionIntent::UnlinkThread { .. }
     ) {
@@ -228,6 +231,48 @@ pub(super) fn mutate_session(
                 } else {
                     SessionInvalidationKind::None
                 },
+                now,
+            )
+        }
+        ProjectSessionIntent::RecordAgentMessage { message_id } => {
+            if !matches!(
+                context.adapter,
+                nodex_core_contracts::AdapterKind::ElectronHost
+                    | nodex_core_contracts::AdapterKind::Test
+            ) || context.agent_attribution.is_some()
+            {
+                return Err(StoreError::new(
+                    StoreErrorCode::Unauthorized,
+                    "Accepted Agent messages require their execution Host",
+                    false,
+                ));
+            }
+            let now = sqlite_now(connection)?;
+            if !adopt_run_session(connection, session_id, message_id)? {
+                return finish_no_op(
+                    connection,
+                    context,
+                    store_epoch,
+                    operation_id,
+                    request_hash,
+                    "record_session_agent_message",
+                    Vec::new(),
+                    Vec::new(),
+                    &now,
+                );
+            }
+            finish_session_mutation(
+                connection,
+                library_id,
+                context,
+                store_epoch,
+                operation_id,
+                request_hash,
+                "record_session_agent_message",
+                session_id,
+                &authority,
+                Vec::new(),
+                SessionInvalidationKind::SummaryAndDetail,
                 now,
             )
         }
@@ -1196,7 +1241,38 @@ pub(super) fn accept_person_message(
     let cancelled = super::member_attention::cancel_snooze(connection, member, session_id)?;
     let reopened = super::member_attention::reopen(connection, member, session_id)?;
     let seen = super::member_attention::clear_woke(connection, member, session_id)?;
-    Ok(moved || cancelled > 0 || reopened || seen)
+    let adopted = adopt_run_session(connection, session_id, message_id)?;
+    Ok(moved || cancelled > 0 || reopened || seen || adopted)
+}
+
+/// Direct dispatches carry their exact Automation message ID. The delivery record covers
+/// a follow-up racing the initial run binding after the runtime has accepted the dispatch.
+fn adopt_run_session(
+    connection: &Connection,
+    session_id: &str,
+    message_id: &str,
+) -> Result<bool, StoreError> {
+    validate_id("message_id", message_id)?;
+    let changed = connection.execute(
+        "INSERT INTO automation_run_session_adoptions(session_id)
+         SELECT ?1 WHERE NOT EXISTS (
+           SELECT 1 FROM automation_execution_runs WHERE message_id=?2
+         ) AND (
+           EXISTS (
+             SELECT 1 FROM automation_execution_runs run
+             JOIN automations definition ON definition.automation_id=run.automation_id
+             WHERE run.session_id=?1 AND definition.kind='cron' AND definition.trigger_kind='clock'
+           ) OR EXISTS (
+             SELECT 1 FROM chat_message_deliveries delivery
+             JOIN automation_execution_runs run ON run.message_id=delivery.delivery_id
+             JOIN automations definition ON definition.automation_id=run.automation_id
+             WHERE delivery.session_id=?1 AND run.session_id IS NULL
+               AND definition.kind='cron' AND definition.trigger_kind='clock'
+           )
+         ) ON CONFLICT DO NOTHING",
+        params![session_id, message_id],
+    )?;
+    Ok(changed > 0)
 }
 
 pub(super) fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {

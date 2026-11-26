@@ -3826,7 +3826,10 @@ mod tests {
         drop(module);
         drop(kernel);
         let mut connection = open_writer(&path).expect("open predecessor Store");
-        // The data-only step leaves the v221 physical schema intact.
+        // Rewind the v223 schema change. The v222 name repair only changes data.
+        connection
+            .execute_batch(include_str!("../../tests/fixtures/rewind-v223-to-v222.sql"))
+            .expect("rewind the automation schema");
         connection
             .execute_batch(
                 "UPDATE database_containers SET name = 'Cards'
@@ -3872,7 +3875,7 @@ mod tests {
         );
         let prepared = prepare_profile_store(&mut connection, directory.path()).expect("upgrade");
         assert_eq!(prepared.migrated_from_version, Some(221));
-        assert_eq!(prepared.schema_version, 222);
+        assert_eq!(prepared.schema_version, 223);
         let after = read(&connection);
         assert_eq!(
             after,

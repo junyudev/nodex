@@ -23,9 +23,39 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 /// Whether a root chat lists as a task of its own. Expects a `session` row and its
 /// left-joined linked `thread`.
-pub(super) const LISTED_CHAT_SQL: &str = "NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) \
+pub(super) const ROOT_CHAT_SQL: &str = "NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) \
      AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
      AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)";
+
+/// Clock Cron runs remain in Automations until someone continues their chat.
+pub(super) const CHAT_LIST_AUTOMATION_SQL: &str = "(
+     EXISTS (SELECT 1 FROM automation_run_session_adoptions adopted WHERE adopted.session_id = session.id)
+     OR NOT EXISTS (
+       SELECT 1 FROM automation_execution_runs run
+       JOIN automations definition ON definition.automation_id = run.automation_id
+       WHERE run.session_id = session.id AND definition.kind = 'cron' AND definition.trigger_kind = 'clock'
+     )
+   )";
+
+pub(crate) fn require_root_chat_session(
+    connection: &Connection,
+    session_id: &str,
+) -> Result<(), StoreError> {
+    let root = connection.query_row(
+        &format!(
+            "SELECT {ROOT_CHAT_SQL} FROM project_sessions session
+                  LEFT JOIN project_session_threads link ON link.session_id = session.id
+                  LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id
+                  WHERE session.id = ?1"
+        ),
+        [session_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if !root {
+        return Err(invalid("A historical run requires a root chat"));
+    }
+    Ok(())
+}
 
 /// The chat `session` lists in the Library `library` (an SQL expression): it is outside every
 /// Project, or its Project is not archived.
@@ -248,7 +278,7 @@ fn read_task_window_in_scope(
     let normalized = normalize_request(request)?;
     // Pins and settlement order each Member's lanes, so a cursor belongs to its reader.
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_task_window_v9",
+        "workspace_task_window_v10",
         member,
         project_id,
         whole_library,
@@ -357,7 +387,7 @@ fn read_task_window_in_scope(
         "FROM project_sessions session \
          LEFT JOIN project_session_threads link ON link.session_id = session.id \
          LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-         WHERE {LISTED_CHAT_SQL} AND {scope_predicate} AND {library_predicate} \
+         WHERE {ROOT_CHAT_SQL} AND {CHAT_LIST_AUTOMATION_SQL} AND {scope_predicate} AND {library_predicate} \
            AND (?3 = 1 OR session.archived = 0) AND {own_draft} \
            {lifecycle_predicate} {placement_predicate} {search_predicate}"
     );

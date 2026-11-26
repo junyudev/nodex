@@ -587,6 +587,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   /** Upkeep the execution owner does after a Member's action, with its own authority. */
   const asExecutionOwner = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
     host(operation).pipe(Effect.provideService(HostInvocation, null));
+  const recordAcceptedAgentMessage = (sessionId: string, messageId: string) =>
+    asExecutionOwner(
+      core.workspace.apply({
+        operationId: createOperationId("session.agent-message"),
+        intent: {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "record_agent_message", message_id: messageId },
+        },
+      }),
+    ).pipe(Effect.asVoid);
   const requireAutomationExecution = Effect.fn(
     "AgentRuntimeApplication.requireAutomationExecution",
   )(function* (
@@ -2095,6 +2106,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     if (
       !provenance &&
       !input.sender &&
+      !input.automationExecution &&
       input.messageOrigin !== "automation" &&
       input.messageOrigin !== "host"
     )
@@ -3485,8 +3497,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         },
         input.modeLimit,
       );
+      // Reminder acceptance keeps the queued message's authorship. Core checks the exact
+      // Automation message identity separately when deciding whether the chat was adopted.
       if (!agent)
         yield* recordAcceptedUserMessage(core, input.sessionId, prepared.message.messageId);
+      else if (!input.automationExecution)
+        yield* recordAcceptedAgentMessage(input.sessionId, prepared.message.messageId);
       const sideChatTitle = yield* titleSideChatRequest(
         connection,
         loaded,
@@ -3549,13 +3565,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...(input.launchId === undefined ? {} : { launch: true as const }),
     });
     if (!result) return null;
-    if ((yield* CoreApplicationAgent) === null && input.origin !== "host")
-      yield* recordAcceptedUserMessage(core, input.sessionId, input.messageId);
+    const agent = (yield* CoreApplicationAgent) !== null;
+    if (input.origin !== "host")
+      yield* agent
+        ? recordAcceptedAgentMessage(input.sessionId, input.messageId)
+        : recordAcceptedUserMessage(core, input.sessionId, input.messageId);
     const sideChatTitle = yield* titleSideChatRequest(
       connection,
       { binding, threadId },
       { messageId: input.messageId },
-      (yield* CoreApplicationAgent) !== null,
+      agent,
     );
     const receipt: AgentRuntimeSendMessageResult = {
       sessionId: input.sessionId,
@@ -3697,8 +3716,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
       ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
     });
-    if (!agent && !input.senderThreadId && input.origin !== "host")
-      yield* recordAcceptedUserMessage(core, input.sessionId, prepared.messageId);
+    if (input.origin !== "host" && !input.automationExecution)
+      yield* agent || input.senderThreadId
+        ? recordAcceptedAgentMessage(input.sessionId, prepared.messageId)
+        : recordAcceptedUserMessage(core, input.sessionId, prepared.messageId);
     const sideChatTitle = yield* titleSideChatRequest(
       connection,
       loaded,
@@ -4865,7 +4886,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         Effect.gen(function* () {
           yield* authorizeSession(input.sessionId);
           const connection = yield* options.connect;
-          return yield* connection.request("native-message.receipt", input);
+          const receipt = yield* connection.request("native-message.receipt", input);
+          if (receipt?.result && receipt.result.delivery !== "unconfirmed")
+            yield* recordAcceptedAgentMessage(input.sessionId, input.messageId);
+          return receipt;
         }),
       ),
     nativeMessageReserve: (input: AgentRuntimeOperations["native-message.reserve"]["input"]) =>
@@ -4896,7 +4920,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         Effect.gen(function* () {
           yield* authorizeSession(input.sessionId);
           const connection = yield* options.connect;
-          return yield* connection.request("native-message.settle", input);
+          const settled = yield* connection.request("native-message.settle", input);
+          if (settled.result && settled.result.delivery !== "unconfirmed")
+            yield* recordAcceptedAgentMessage(input.sessionId, input.messageId);
+          return settled;
         }),
       ),
     importAcp: (input: Parameters<typeof importAcp>[0]) =>

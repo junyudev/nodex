@@ -86,6 +86,7 @@ mod sidebar_pins;
 mod sidebar_section;
 mod subagent_projection;
 mod task_window;
+pub(crate) use task_window::require_root_chat_session;
 #[cfg(test)]
 mod test_support;
 mod thread;

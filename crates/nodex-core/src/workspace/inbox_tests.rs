@@ -5194,6 +5194,8 @@ mod scheduled {
 
     pub(super) fn task_input() -> AutomationInput {
         AutomationInput {
+            initial_status: None,
+            import_origin: None,
             trigger: AutomationTriggerInput::Clock {
                 rrule: "FREQ=MINUTELY;INTERVAL=5".into(),
                 timezone: None,

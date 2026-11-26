@@ -483,6 +483,7 @@ fn decode_definition(row: &rusqlite::Row<'_>, legacy: bool) -> rusqlite::Result<
         }
     };
     Ok(Automation {
+        import_origin: None,
         scope: row.get::<_, Option<String>>(28)?.map_or(
             nodex_core_contracts::automation::AutomationScope::Space,
             |project_id| nodex_core_contracts::automation::AutomationScope::Project { project_id },
@@ -541,6 +542,34 @@ fn enrich_definition(
     } else {
         super::firing::held(connection, &item.automation_id)?
     };
+    if !legacy {
+        item.import_origin = connection
+            .query_row(
+                "SELECT agent, source_home, source_automation_id FROM automation_import_origins
+             WHERE automation_id=?1",
+                [&item.automation_id],
+                |row| {
+                    use nodex_core_contracts::automation::{
+                        AutomationImportAgent, AutomationImportOrigin,
+                    };
+                    let agent = match row.get::<_, String>(0)?.as_str() {
+                        "codex" => AutomationImportAgent::Codex,
+                        "claude" => AutomationImportAgent::Claude,
+                        _ => {
+                            return Err(rusqlite_conversion(
+                                "Stored Automation import Agent is invalid".into(),
+                            ));
+                        }
+                    };
+                    Ok(AutomationImportOrigin {
+                        agent,
+                        source_home: row.get(1)?,
+                        source_automation_id: row.get(2)?,
+                    })
+                },
+            )
+            .optional()?;
+    }
     item.runbook_title = connection.query_row(
         "SELECT COALESCE(materialization.title,'') FROM pages page \
          JOIN blocks block ON block.id=page.block_id AND block.lifecycle='active' \
@@ -548,6 +577,16 @@ fn enrich_definition(
          WHERE page.block_id=?1", [item.runbook_page_id.as_deref()], |row| row.get(0),
     ).optional()?;
     validate_definition(item)
+}
+
+pub(super) fn import_agent_literal(
+    agent: nodex_core_contracts::automation::AutomationImportAgent,
+) -> &'static str {
+    use nodex_core_contracts::automation::AutomationImportAgent;
+    match agent {
+        AutomationImportAgent::Codex => "codex",
+        AutomationImportAgent::Claude => "claude",
+    }
 }
 
 fn validate_definition(definition: Automation) -> Result<Automation, StoreError> {

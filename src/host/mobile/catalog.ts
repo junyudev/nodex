@@ -302,6 +302,7 @@ export const makeMobileCatalog = Effect.gen(function* () {
             order: "conversation",
             // A new chat no message has started yet is a Composer on a desktop, not a conversation.
             exclude_drafts: true,
+            chat_list_only: ranked === null,
             ...(input.projectId === null ? { projectless_only: true } : {}),
             ...(typeof input.projectId === "string" ? { project_id: input.projectId } : {}),
             ...(ranked ? { session_ids: ranked.sessionIds } : {}),

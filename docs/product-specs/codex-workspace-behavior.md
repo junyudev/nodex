@@ -120,6 +120,10 @@ An archived Thread must be explicitly restored before resume.
 
 ## Projectless Chats
 
+Clock Cron run chats appear in Automation history. Continuing one adds it to the
+Project chat list or Projectless Chats and its ordinary unread count. See
+[Automations behavior](automations-behavior.md#execution).
+
 A Chat with a Project uses the Project's folder. A projectless Chat owns a Chat
 folder as soon as its first filesystem action needs one. A draft can use that
 folder before it has a Thread. The first Turn and later actions reuse it for

@@ -124,6 +124,10 @@ export type ProjectWorkspaceIntent = ProjectWorkspaceApplyRequest["intent"];
 export type ProjectWorkspaceApplyResponse = components["schemas"]["ProjectWorkspaceApplyResponse"];
 export type ProjectWorkspaceApplyResult = SuccessfulPayload<ProjectWorkspaceApplyResponse>;
 
+export type AutomationInput = components["schemas"]["AutomationInput"];
+export type AutomationInitialStatus = components["schemas"]["AutomationInitialStatus"];
+export type AutomationImportOrigin = components["schemas"]["AutomationImportOrigin"];
+export type AutomationHistoricalRunInput = components["schemas"]["AutomationHistoricalRunInput"];
 export type AutomationReadRequest = components["schemas"]["AutomationReadRequest"];
 export type AutomationRead = AutomationReadRequest["read"];
 export type AutomationReadResponse = components["schemas"]["AutomationReadResponse"];
