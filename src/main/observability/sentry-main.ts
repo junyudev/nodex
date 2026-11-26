@@ -1,3 +1,9 @@
+import type { ElectronMainOptions } from "@sentry/electron/main";
+import {
+  AGENT_RUNTIME_START_OPERATION,
+  agentRuntimeStartReasons,
+  type AgentRuntimeStartFailure,
+} from "../../host/HostDiagnostics";
 import { formatAppVersion } from "../../shared/app-version";
 import type { DiagnosticsSettings } from "../../shared/types";
 import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
@@ -102,17 +108,50 @@ function toBackendLogBreadcrumb(entry: BackendLogEntry): Record<string, unknown>
   });
 }
 
+const agentRuntimeStartMessage = (failure: AgentRuntimeStartFailure) =>
+  `Agent execution process could not start: ${agentRuntimeStartReasons[failure]}`;
+
+const isAgentRuntimeStartFailure = (value: unknown): value is AgentRuntimeStartFailure =>
+  typeof value === "string" && Object.hasOwn(agentRuntimeStartReasons, value);
+
 export async function initializeMainSentry(input: InitializeMainSentryInput): Promise<boolean> {
   if (activeAdapter) return true;
   if (!shouldInitialize(input.settings)) return false;
 
   const adapter = input.adapter ?? (await loadDefaultAdapter());
+  const privacy = createSentryPrivacyOptions();
+  const beforeSend: NonNullable<ElectronMainOptions["beforeSend"]> = (event, hint) => {
+    if (event.tags?.operation !== AGENT_RUNTIME_START_OPERATION) return privacy.beforeSend(event);
+    const failure = event.tags.failure_class;
+    if (!isAgentRuntimeStartFailure(failure)) return null;
+    // The SDK enriches events before this hook. Keep only the bounded startup diagnosis, even
+    // when the active scope has unrelated breadcrumbs, attachments, traces or stack frames.
+    hint.attachments = [];
+    return {
+      type: event.type,
+      event_id: event.event_id,
+      timestamp: event.timestamp,
+      platform: event.platform,
+      release: event.release,
+      dist: event.dist,
+      environment: event.environment,
+      level: "error",
+      message: agentRuntimeStartMessage(failure),
+      tags: {
+        operation: AGENT_RUNTIME_START_OPERATION,
+        failure_class: failure,
+        platform: input.platform,
+      },
+      fingerprint: [AGENT_RUNTIME_START_OPERATION, failure],
+    };
+  };
   adapter.init({
     dsn: input.settings.dsn,
     environment: input.settings.environment,
     release: input.settings.release ?? `nodex@${input.appVersion}`,
     dist: input.arch,
-    ...createSentryPrivacyOptions(),
+    ...privacy,
+    beforeSend,
     tracesSampleRate: input.settings.tracesSampleRate,
     attachScreenshot: false,
   });
@@ -130,6 +169,13 @@ export async function initializeMainSentry(input: InitializeMainSentryInput): Pr
   });
 
   return true;
+}
+
+export function captureAgentRuntimeStartFailure(failure: AgentRuntimeStartFailure): void {
+  activeAdapter?.captureMessage(agentRuntimeStartMessage(failure), {
+    level: "error",
+    tags: { operation: AGENT_RUNTIME_START_OPERATION, failure_class: failure },
+  });
 }
 
 export function captureMainException(error: unknown, context: CaptureContext = {}): void {

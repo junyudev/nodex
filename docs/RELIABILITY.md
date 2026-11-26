@@ -512,6 +512,14 @@ fatal diagnostics, so desktop state creation cannot block Windows startup on dir
 
 ### Local Agent Runtime conversations
 
+The Host reports one diagnostic for each failed Agent Runtime startup attempt, even when the
+process exits before publishing a generation identity. Desktop sends an error event to Sentry when
+crash diagnostics are active. Search for `operation:agent-runtime.start` and filter by
+`failure_class` or `platform`. The event uses a fixed reason line for each class and excludes
+raw errors, environment values, paths, and inherited SDK context. Headless Hosts record the same
+classification in their local logs. Normal shutdown, interruption, and an occupied Profile writer
+lease do not count as failed starts.
+
 Agent Runtime owns local Thread and Run history, queues, delegated work and command
 receipts in its execution store. Core retains the product Session and its immutable
 execution reference. Restart recovery reconciles those identities before execution;

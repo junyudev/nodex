@@ -77,6 +77,21 @@ const writerHome = Effect.gen(function* () {
   return { home, owner: fs.readFileString(lock), hasOwner: fs.exists(lock) };
 });
 
+const startProcess = (
+  home: string,
+  host: Parameters<typeof acquireAgentRuntimeProcess>[0]["host"],
+) =>
+  acquireAgentRuntimeProcess({
+    executable: process.execPath,
+    entryPath: fileURLToPath(
+      new URL("../../../packages/agent-runtime/src/nodex/entry.ts", import.meta.url),
+    ),
+    configuration: { home, cwd: home, providers: {} },
+    profileHome: home,
+    environment: { ...process.env, NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}` },
+    host,
+  });
+
 it.live(
   "releases the writer before the next request when the activating caller is interrupted",
   () =>
@@ -84,7 +99,9 @@ it.live(
       const f = yield* fixture;
       const { home, hasOwner } = yield* writerHome;
       const activating = yield* Deferred.make<AgentRuntimeProcessConnection>();
+      const reports: string[] = [];
       const supervisor = yield* make({
+        reportStartFailure: (failure) => Effect.sync(() => void reports.push(failure)),
         acquire: () => acquireWriterLease(home).pipe(Effect.andThen(f.acquire)),
         activate: (connection) =>
           Effect.gen(function* () {
@@ -107,26 +124,21 @@ it.live(
       assert.notEqual(second.identity.runtimeGeneration, first.identity.runtimeGeneration);
       yield* supervisor.close;
       assert.isFalse(yield* hasOwner);
+      assert.isEmpty(reports);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.live("refuses an execution writer held by another Runtime process", () =>
   Effect.gen(function* () {
     const { home, owner } = yield* writerHome;
-    const acquire = (host: Parameters<typeof acquireAgentRuntimeProcess>[0]["host"]) =>
-      acquireAgentRuntimeProcess({
-        executable: process.execPath,
-        entryPath: fileURLToPath(
-          new URL("../../../packages/agent-runtime/src/nodex/entry.ts", import.meta.url),
-        ),
-        configuration: { home, cwd: home, providers: {} },
-        profileHome: home,
-        environment: { ...process.env, NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}` },
-        host,
-      });
-    const other = yield* acquire(() => Effect.void);
+    const other = yield* startProcess(home, () => Effect.void);
     const otherOwner = yield* owner;
-    const supervisor = yield* make({ acquire, activate: () => Effect.succeed(() => Effect.void) });
+    const reports: string[] = [];
+    const supervisor = yield* make({
+      acquire: (host) => startProcess(home, host),
+      activate: () => Effect.succeed(() => Effect.void),
+      reportStartFailure: (failure) => Effect.sync(() => void reports.push(failure)),
+    });
 
     const { profileBusyMessage } = yield* supervisor.get().pipe(Effect.flip);
     assert.ok(profileBusyMessage);
@@ -136,10 +148,30 @@ it.live("refuses an execution writer held by another Runtime process", () =>
       message: profileBusyMessage,
     });
     assert.equal(yield* owner, otherOwner);
+    assert.isEmpty(reports);
     assert.strictEqual(
       (yield* other.request("runtime.identity", {})).runtimeGeneration,
       other.identity.runtimeGeneration,
     );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("reports a real pre-ready initialization failure from the execution process", () =>
+  Effect.gen(function* () {
+    const { home } = yield* writerHome;
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    yield* fs.writeFileString(path.join(home, "agent-runtime.sqlite"), "invalid SQLite fixture");
+    const reports: string[] = [];
+    const supervisor = yield* make({
+      acquire: (host) => startProcess(home, host),
+      activate: () => Effect.succeed(() => Effect.void),
+      reportStartFailure: (failure) => Effect.sync(() => void reports.push(failure)),
+    });
+
+    const error = yield* supervisor.get().pipe(Effect.flip);
+    assert.equal(error.operation, "start");
+    assert.deepEqual(reports, ["initialization-failed"]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
@@ -233,6 +265,40 @@ it.effect(
       assert.strictEqual((yield* supervisor.get()).identity.runtimeGeneration, "5");
       assert.deepEqual(yield* supervisor.connectionState, { status: "ready", generation: "5" });
     }).pipe(Effect.scoped),
+);
+
+it.effect("reports one safe startup failure per attempt despite concurrent Session reads", () =>
+  Effect.gen(function* () {
+    const reports: string[] = [];
+    let starts = 0;
+    const supervisor = yield* make({
+      acquire: () =>
+        Effect.suspend(() => {
+          starts += 1;
+          return Effect.fail(
+            new AgentRuntimeProcessError({
+              reason: "start",
+              code: "bootstrap-rejected",
+              message: "C:\\private\\runtime with a private environment value",
+            }),
+          );
+        }),
+      activate: () => Effect.succeed(() => Effect.void),
+      reportStartFailure: (failure) => Effect.sync(() => void reports.push(failure)),
+      restarts: { limit: 1, window: "5 minutes" },
+    });
+
+    const results = yield* Effect.all(
+      Array.from({ length: 6 }, () =>
+        supervisor.request("thread.read", { threadId: "thread" }).pipe(Effect.flip),
+      ),
+      { concurrency: "unbounded" },
+    );
+
+    assert.lengthOf(results, 6);
+    assert.equal(starts, 2);
+    assert.deepEqual(reports, ["bootstrap-rejected", "bootstrap-rejected"]);
+  }).pipe(Effect.scoped),
 );
 
 it.effect("publishes each connection transition and reports a failed start with a message", () =>

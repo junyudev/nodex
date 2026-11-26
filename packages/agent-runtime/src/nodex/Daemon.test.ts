@@ -499,10 +499,10 @@ it("starts only from a stdin bootstrap whose provider instances stay out of the 
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
     });
-    const exit = new Promise<number | null>((resolve) => child.once("exit", resolve));
+    const closed = new Promise<number | null>((resolve) => child.once("close", resolve));
     child.stdin.write(`${JSON.stringify({ id: "1", method: "runtime.identity", input: {} })}\n`);
-    expect(await exit).toBe(1);
-    expect(stdout).toBe("");
+    expect(await closed).toBe(1);
+    expect(JSON.parse(stdout)).toEqual({ type: "startup-failed", reason: "bootstrap-rejected" });
   } finally {
     await fs.rm(unconfigured, { recursive: true, force: true });
   }

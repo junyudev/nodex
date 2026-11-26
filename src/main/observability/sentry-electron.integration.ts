@@ -43,7 +43,7 @@ test("keeps crash diagnostics and streamed spans private in Electron", async () 
           import { app } from "electron";
           import * as Sentry from "@sentry/electron/main";
           import { electronMainSentryAdapter } from "./src/main/observability/sentry-electron-main-adapter";
-          import { initializeMainSentry, captureMainException, runMainTraceSpan, shutdownMainSentry } from "./src/main/observability/sentry-main";
+          import { initializeMainSentry, captureMainException, captureAgentRuntimeStartFailure, runMainTraceSpan, shutdownMainSentry } from "./src/main/observability/sentry-main";
           app.setPath("userData", ${JSON.stringify(path.join(directory, "profile"))});
           const envelopes = [];
           process.env.NODEX_SENTRY_FORCE_TEST = "1";
@@ -70,6 +70,13 @@ test("keeps crash diagnostics and streamed spans private in Electron", async () 
               name: "Read /Users/alice/private", op: "file.read", root: true,
               attributes: { prompt: "private prompt", "url.full": "https://example.com/read?secret=value" },
             }, (trace) => trace);
+            Sentry.addBreadcrumb({ category: "backend", message: "private /Volumes/team/agent" });
+            Sentry.setContext("account", { value: "private environment value" });
+            Sentry.getCurrentScope().addAttachment({
+              filename: "private-profile.txt", data: "private attachment",
+            });
+            captureAgentRuntimeStartFailure("bootstrap-rejected");
+            captureAgentRuntimeStartFailure("bootstrap-rejected");
             Sentry.logger.info("private log");
             await shutdownMainSentry();
             return { envelopes, trace };
@@ -114,6 +121,38 @@ test("keeps crash diagnostics and streamed spans private in Electron", async () 
     expect(itemTypes).toContain("event");
     expect(itemTypes).toContain("span");
     expect(itemTypes).not.toContain("log");
+    const startupEnvelopes = (
+      result.envelopes as [
+        { trace?: unknown },
+        [{ type: string }, { tags?: Record<string, string> }][],
+      ][]
+    ).filter(([, items]) =>
+      items.some(
+        ([header, event]) =>
+          header.type === "event" && event.tags?.operation === "agent-runtime.start",
+      ),
+    );
+    expect(startupEnvelopes).toHaveLength(2);
+    for (const [headers, items] of startupEnvelopes) {
+      expect(headers.trace).toBeUndefined();
+      expect(items).toHaveLength(1);
+      const event = items[0]?.[1];
+      expect(event).toMatchObject({
+        level: "error",
+        message:
+          "Agent execution process could not start: Agent execution rejected its startup configuration",
+        tags: {
+          operation: "agent-runtime.start",
+          failure_class: "bootstrap-rejected",
+          platform: process.platform,
+        },
+        fingerprint: ["agent-runtime.start", "bootstrap-rejected"],
+      });
+      expect(event).not.toHaveProperty("breadcrumbs");
+      expect(event).not.toHaveProperty("contexts");
+      expect(event).not.toHaveProperty("exception");
+      expect(JSON.stringify(event)).not.toContain("private");
+    }
     const spanEnvelope = (
       result.envelopes as [
         unknown,
