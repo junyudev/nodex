@@ -1,12 +1,9 @@
 import { getIntl } from "@/lib/i18n";
 import { toast } from "@/components/ui/toast";
-import { libraryContentRoute, projectContentRoute } from "../../shared/content-routing-context";
-import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import { parseDatabaseViewId } from "../../shared/database-identities";
 import type { LibraryRouteTarget } from "../../shared/library-module";
 import type { WorkbenchSceneOwner } from "../../shared/workbench-scene";
 import { createNodexReferenceRouter, type NodexReferenceRouter } from "./nodex-reference-router";
-import { requestPageBlockFocus } from "./page-block-focus-intents";
 import { isRemoteSpace } from "./renderer-space";
 import { sessionExecutionThreadId } from "./session-execution";
 import type { ExistingSideChatTarget } from "./use-workbench-panel-openers";
@@ -17,7 +14,7 @@ import type { OpenPageInNewWindowHandler } from "./workbench-shell-operations";
 /** The options of the Workbench presenter that places Library content into a Scene. */
 export interface WorkbenchLibraryContentOptions {
   readonly owner?: WorkbenchSceneOwner;
-  readonly pageRoutingContext?: ContentRoutingContext;
+  readonly blockId?: string;
   readonly titleSnapshot?: string;
   readonly placement?: WorkbenchSurfaceRelativePlacement;
   readonly targetPanelId?: "right";
@@ -69,6 +66,9 @@ export function createWorkbenchNodexReferenceRouter(
         mode: owner?.kind === "session" ? "durable" : input.mode,
         tab: input.activate ? "activate" : "background",
         ...(input.titleSnapshot ? { titleSnapshot: input.titleSnapshot } : {}),
+        ...(destination.kind === "page" && destination.blockId
+          ? { blockId: destination.blockId }
+          : {}),
         ...(input.isCurrent ? { isCurrent: input.isCurrent } : {}),
       };
       const homeProjectId = input.placement === "home" ? input.homeProjectId : null;
@@ -81,7 +81,6 @@ export function createWorkbenchNodexReferenceRouter(
             : await owners.presentLibraryContent(target, {
                 ...options,
                 owner: { kind: "project", projectId: homeProjectId },
-                pageRoutingContext: projectContentRoute(homeProjectId),
               });
       // Space is every Page's and View's own Scene.
       else if (input.placement === "home" || !owner)
@@ -101,13 +100,6 @@ export function createWorkbenchNodexReferenceRouter(
           ...options,
           owner,
           targetPanelId: "right",
-        });
-      // A link to one Block brings that Block into view once the Page shows.
-      if (presented && destination.kind === "page" && destination.blockId)
-        requestPageBlockFocus({
-          projectId: null,
-          pageId: destination.pageId,
-          blockId: destination.blockId,
         });
       return presented;
     },
@@ -129,11 +121,14 @@ export function createWorkbenchNodexReferenceRouter(
     openInNewWindow: async (destination, titleSnapshot) => {
       if (destination.kind === "page") {
         if (!owners.openPageInNewWindow) return false;
-        owners.openPageInNewWindow({
-          routingContext: libraryContentRoute,
-          pageId: destination.pageId,
-          ...(titleSnapshot ? { titleSnapshot } : {}),
-        });
+        const source = owners.selectedSceneOwner();
+        owners.openPageInNewWindow(
+          {
+            pageId: destination.pageId,
+            ...(titleSnapshot ? { titleSnapshot } : {}),
+          },
+          source?.kind === "project" ? source : undefined,
+        );
         return true;
       }
       if (destination.kind !== "session" || !owners.openSessionInNewWindow) return false;

@@ -189,7 +189,7 @@ describe("WorkbenchSceneNavigator", () => {
         owner,
         request: {
           kind: "page_stage",
-          config: { routingContext: { kind: "library" }, pageId: "page-1" },
+          config: { pageId: "page-1" },
         },
         target: { panelId: "right", leafId: agentsLeaf!.id },
         mode: "durable",
@@ -244,63 +244,58 @@ describe("WorkbenchSceneNavigator", () => {
   );
 
   test.each([
-    { owner: { kind: "library" }, routingContext: { kind: "library" }, mode: "preview" },
+    { owner: { kind: "library" }, mode: "preview" },
     {
       owner: { kind: "project", projectId: "alpha" },
-      routingContext: { kind: "project", projectId: "alpha" },
       mode: "durable",
     },
     {
       owner: { kind: "session", sessionId: "chat" },
-      routingContext: { kind: "project", projectId: "alpha" },
       mode: "durable",
     },
-  ] as const)(
-    "opens another Page tab to the right in $owner.kind",
-    async ({ owner, routingContext, mode }) => {
-      const harness = createHarness();
-      const input = {
-        owner,
-        request: { kind: "page_stage", config: { routingContext, pageId: "roadmap" } },
-        target: { panelId: "right" },
-        mode,
-        navigation: "select-owner",
-      } as const;
-      const source = await harness.navigator.presentPanelSurface(input);
-      if (source.status !== "presented") throw new Error(source.reason);
+  ] as const)("opens another Page tab to the right in $owner.kind", async ({ owner, mode }) => {
+    const harness = createHarness();
+    const input = {
+      owner,
+      request: { kind: "page_stage", config: { pageId: "roadmap" } },
+      target: { panelId: "right" },
+      mode,
+      navigation: "select-owner",
+    } as const;
+    const source = await harness.navigator.presentPanelSurface(input);
+    if (source.status !== "presented") throw new Error(source.reason);
 
-      const beside = {
-        ...input,
-        mode: "durable",
-        target: {
-          ...input.target,
-          placement: { kind: "adjacent-right", sourceSurfaceId: source.surfaceId },
-        },
-      } as const;
-      const opened = await harness.navigator.presentPanelSurface(beside);
-      if (opened.status !== "presented") throw new Error(opened.reason);
-      const repeated = await harness.navigator.presentPanelSurface(beside);
+    const beside = {
+      ...input,
+      mode: "durable",
+      target: {
+        ...input.target,
+        placement: { kind: "adjacent-right", sourceSurfaceId: source.surfaceId },
+      },
+    } as const;
+    const opened = await harness.navigator.presentPanelSurface(beside);
+    if (opened.status !== "presented") throw new Error(opened.reason);
+    const repeated = await harness.navigator.presentPanelSurface(beside);
 
-      expect(opened.surfaceId).not.toBe(source.surfaceId);
-      expect(repeated).toMatchObject({
-        status: "presented",
-        reused: true,
-        surfaceId: opened.surfaceId,
-      });
-      const scene = harness.scenes[makeWorkbenchSceneKey(owner)]!;
-      const layout = scene.panels.right.layout;
-      const sourceGroup =
-        mode === "preview"
-          ? Object.values(harness.previews).find((entry) => entry.surface.id === source.surfaceId)
-              ?.leafId
-          : findWorkbenchPanelLeafForTab(layout, source.surfaceId)?.id;
-      const newGroup = findWorkbenchPanelLeafForTab(layout, opened.surfaceId);
-      expect(sourceGroup).toBeDefined();
-      expect(newGroup?.activeTabId).toBe(opened.surfaceId);
-      expect(findNearestWorkbenchPanelLeafToRight(layout, sourceGroup!)).toBe(newGroup?.id);
-      expect(scene.panelSurfacesById[opened.surfaceId]).toMatchObject(input.request);
-    },
-  );
+    expect(opened.surfaceId).not.toBe(source.surfaceId);
+    expect(repeated).toMatchObject({
+      status: "presented",
+      reused: true,
+      surfaceId: opened.surfaceId,
+    });
+    const scene = harness.scenes[makeWorkbenchSceneKey(owner)]!;
+    const layout = scene.panels.right.layout;
+    const sourceGroup =
+      mode === "preview"
+        ? Object.values(harness.previews).find((entry) => entry.surface.id === source.surfaceId)
+            ?.leafId
+        : findWorkbenchPanelLeafForTab(layout, source.surfaceId)?.id;
+    const newGroup = findWorkbenchPanelLeafForTab(layout, opened.surfaceId);
+    expect(sourceGroup).toBeDefined();
+    expect(newGroup?.activeTabId).toBe(opened.surfaceId);
+    expect(findNearestWorkbenchPanelLeafToRight(layout, sourceGroup!)).toBe(newGroup?.id);
+    expect(scene.panelSurfacesById[opened.surfaceId]).toMatchObject(input.request);
+  });
   test("materializes and deduplicates a Project resource without creating a Session", async () => {
     const harness = createHarness();
     const owner = { kind: "project" as const, projectId: "alpha" };
@@ -309,7 +304,6 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage" as const,
         config: {
-          routingContext: { kind: "project" as const, projectId: "alpha" },
           pageId: "page:one",
         },
         titleSnapshot: "Page One",
@@ -343,7 +337,6 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage" as const,
           config: {
-            routingContext: { kind: "project" as const, projectId: "alpha" },
             pageId,
           },
           titleSnapshot: pageId,
@@ -395,7 +388,6 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage",
         config: {
-          routingContext: { kind: "library" },
           pageId: "page:one",
         },
       },
@@ -523,7 +515,6 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage",
           config: {
-            routingContext: { kind: "project", projectId: "alpha" },
             pageId,
           },
           titleSnapshot: pageId,
@@ -577,7 +568,6 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,
@@ -638,7 +628,6 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,
@@ -718,7 +707,6 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage" as const,
         config: {
-          routingContext: { kind: "project" as const, projectId: "alpha" },
           pageId: "page:one",
         },
         titleSnapshot: "Page One",
@@ -758,7 +746,7 @@ describe("WorkbenchSceneNavigator", () => {
         owner,
         request: {
           kind: "page_stage",
-          config: { routingContext: { kind: "library" }, pageId },
+          config: { pageId },
           titleSnapshot: pageId,
         },
         target: { panelId: "right" },
@@ -801,7 +789,6 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage" as const,
           config: {
-            routingContext: { kind: "library" as const },
             pageId,
           },
           titleSnapshot: pageId,
@@ -829,7 +816,6 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,
@@ -1008,7 +994,7 @@ describe("Page File Scene navigation", () => {
         owner,
         request: {
           kind: "page_stage",
-          config: { routingContext: { kind: "library" }, pageId: "report" },
+          config: { pageId: "report" },
           titleSnapshot: "Report",
         },
         target: { panelId: "bottom" },
@@ -1020,7 +1006,7 @@ describe("Page File Scene navigation", () => {
         owner,
         request: {
           kind: "page_stage",
-          config: { routingContext: { kind: "library" }, pageId: "sibling" },
+          config: { pageId: "sibling" },
         },
         target: { panelId: "bottom" },
         mode: "durable",
@@ -1033,7 +1019,6 @@ describe("Page File Scene navigation", () => {
         request: {
           kind: "page_file" as const,
           config: {
-            routingContext: { kind: "library" as const },
             pageId: "report",
             fileId: "file",
             logicalPath: "report.html",
@@ -1086,7 +1071,6 @@ describe("Page File Scene navigation", () => {
       request: {
         kind: "page_file" as const,
         config: {
-          routingContext: { kind: "library" as const },
           pageId: "page",
           fileId: "first",
           logicalPath: null,
@@ -1118,7 +1102,6 @@ test("renames and retargets a Page File preview before and after pinning", async
     request: {
       kind: "page_file",
       config: {
-        routingContext: { kind: "library" },
         pageId: "page",
         fileId: "old",
         logicalPath: "old.html",
@@ -1171,7 +1154,7 @@ test("opening a File from a Page preview pins the source Page first", async () =
     request: {
       kind: "page_stage",
       titleSnapshot: "Page",
-      config: { routingContext: { kind: "library" }, pageId: "page" },
+      config: { pageId: "page" },
     },
     target: { panelId: "right" },
     mode: "preview",
@@ -1183,7 +1166,6 @@ test("opening a File from a Page preview pins the source Page first", async () =
     request: {
       kind: "page_file",
       config: {
-        routingContext: { kind: "library" },
         pageId: "page",
         fileId: "file",
         logicalPath: null,

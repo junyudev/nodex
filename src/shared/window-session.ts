@@ -52,6 +52,7 @@ export interface WindowSessionNewWindowRequest {
   activeProjectId?: string | null;
   browserUrl?: string;
   page?: WorkbenchPageStageSurfaceConfig;
+  pageDestination?: { kind: "library" } | { kind: "project"; projectId: string };
 }
 
 export interface WindowSessionSaveLayoutInput {

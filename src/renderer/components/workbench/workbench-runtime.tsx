@@ -69,16 +69,13 @@ import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header"
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
 import { ContentIssuesControl } from "@/components/shared/content-issues-control";
 import { contentEditIssues, type ContentEditLocation } from "@/lib/content-edit-issues";
-import type {
-  ContentRoutingContext,
-  ContentRoutingIdentity,
-} from "../../../shared/content-routing-context";
+import type { ContentRoutingIdentity } from "../../../shared/content-routing-context";
 import { ContentRecoveryObserver } from "@/features/document-recovery/recovery-entry";
+import { WorkbenchPageSurface, type OpenPageTabHandler } from "./workbench-page-stage-panel";
 import {
-  PageStageSessionTab,
-  type OpenPageTabHandler,
+  matchesPageStageHistory,
   type PageStageHistoryModalContext,
-} from "./workbench-page-stage-panel";
+} from "@/lib/workbench-page-history";
 import {
   HeaderAction,
   HeaderActionProvider,
@@ -322,7 +319,10 @@ import { WorkbenchSessionScene } from "./workbench-session-scene";
 import { ProjectSessionThreadComposerDock } from "./workbench-session-thread-route";
 import { WorkbenchSceneFrame } from "./workbench-scene-frame";
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
-import { WorkbenchLibraryPageSurface } from "./workbench-library-page-surface";
+import { requestPageBlockFocus } from "@/lib/page-block-focus-intents";
+import { workbenchPageEditorKey } from "@/lib/workbench-page-editor-key";
+import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
+import { resolveSessionPageSendTarget } from "@/lib/session-execution";
 import { LibrarySceneBreadcrumb, useLibrarySceneNavigation } from "./library-scene-breadcrumb";
 import { WorkbenchWindowTitle } from "./workbench-window-title";
 import { PagesTabPicker } from "./pages-tab-picker";
@@ -459,11 +459,7 @@ import {
   type WorkbenchNewTabOwnerContext,
   type WorkbenchNewTabPlacement,
 } from "@/lib/workbench-new-tab-port";
-import {
-  inboxPagePeek,
-  readPageStagePanelTabPageRef,
-  resolveSessionPanelActiveTabId,
-} from "@/lib/workbench-panel-placement";
+import { inboxPagePeek, resolveSessionPanelActiveTabId } from "@/lib/workbench-panel-placement";
 import { formatToggleFullViewShortcutLabel } from "@/lib/workbench-command-shortcuts";
 import {
   oppositeWorkbenchPanelSide,
@@ -1874,46 +1870,35 @@ export function WorkbenchRuntime({
       : true;
   const sidePanelOpen = !rightPanelCollapsed;
   const bottomPanelOpen = !bottomPanelCollapsed;
-  const [previousHistorySession, setPreviousHistorySession] = useState(activeSession);
-  if (previousHistorySession !== activeSession) {
-    setPreviousHistorySession(activeSession);
-    if (pageStageHistoryModal) {
-      const ownerTab = activeSession?.tabs.find((tab) => tab.id === pageStageHistoryModal.tabId);
-      const pageRef = readPageStagePanelTabPageRef(ownerTab);
-      if (
-        activeSession?.id !== pageStageHistoryModal.sessionId ||
-        pageRef?.projectId !== pageStageHistoryModal.projectId ||
-        pageRef?.pageId !== pageStageHistoryModal.pageId
+  if (pageStageHistoryModal) {
+    const historyTab =
+      presentedScene &&
+      (presentedScene.panelSurfacesById[pageStageHistoryModal.surfaceId] ??
+        listWorkbenchScenePreviewEntries(presentedScene, previewSurfacesByPanel).find(
+          (entry) => entry.surface.id === pageStageHistoryModal.surfaceId,
+        )?.surface);
+    if (
+      historyTab?.kind !== "page_stage" ||
+      !presentedScene ||
+      !matchesPageStageHistory(
+        pageStageHistoryModal,
+        presentedScene.owner,
+        historyTab.id,
+        historyTab.config.pageId,
       )
-        setPageStageHistoryModal(null);
-    }
+    )
+      setPageStageHistoryModal(null);
   }
   const closePageStageHistoryModal = useCallback(() => {
     setPageStageHistoryModal(null);
   }, []);
   const togglePageStageHistoryModal = useCallback((context: PageStageHistoryModalContext) => {
-    setPageStageHistoryModal((current) => {
-      if (
-        current &&
-        current.sessionId === context.sessionId &&
-        current.tabId === context.tabId &&
-        current.projectId === context.projectId &&
-        current.pageId === context.pageId
-      ) {
-        return null;
-      }
-      return context;
-    });
+    setPageStageHistoryModal((current) =>
+      matchesPageStageHistory(current, context.sceneOwner, context.surfaceId, context.pageId)
+        ? null
+        : context,
+    );
   }, []);
-  const pageStageHistoryModalProject = useMemo(
-    () =>
-      pageStageHistoryModal
-        ? (projects.find((project) => project.id === pageStageHistoryModal.projectId) ?? null)
-        : null,
-    [pageStageHistoryModal, projects],
-  );
-  const pageStageHistoryPanelProjectId =
-    pageStageHistoryModal?.projectId ?? activeProject?.id ?? null;
   const rightActiveRenderableTab = activeSessionPanelModel?.rightActiveRenderableTab ?? null;
   const rightPanelFullWidth = sidePanelOpen && (rightPanel?.size.fullWidth ?? false);
   const { preferredSide: preferredSessionContentSide, update: updatePreferredSessionContentSide } =
@@ -2457,8 +2442,7 @@ export function WorkbenchRuntime({
       target: LibraryRouteTarget,
       options: {
         readonly owner?: WorkbenchSceneOwner;
-        /** The Project presentation a Page opens in; Library content opens as Space content. */
-        readonly pageRoutingContext?: ContentRoutingContext;
+        readonly blockId?: string;
         readonly reveal?: import("@/lib/page-search-reveal").PageSearchReveal;
         readonly titleSnapshot?: string;
         readonly placement?: PresentWorkbenchPanelSurfaceInput["target"]["placement"];
@@ -2477,7 +2461,6 @@ export function WorkbenchRuntime({
               ? {
                   kind: "page_stage",
                   config: {
-                    routingContext: options.pageRoutingContext ?? libraryContentRoute,
                     pageId: target.pageId,
                     ...(options.titleSnapshot ? { titleSnapshot: options.titleSnapshot } : {}),
                   },
@@ -2530,7 +2513,18 @@ export function WorkbenchRuntime({
             ...(options.tab ? { tab: options.tab } : {}),
             ...(options.isCurrent ? { isCurrent: options.isCurrent } : {}),
           });
-          return presented.status === "presented";
+          if (presented.status !== "presented") return false;
+          if (target.kind === "page" && options.blockId) {
+            requestPageBlockFocus({
+              editorSurfaceId: workbenchPageEditorKey(
+                options.owner ?? LIBRARY_SCENE_OWNER,
+                presented.surfaceId,
+              ),
+              pageId: target.pageId,
+              blockId: options.blockId,
+            });
+          }
+          return true;
         },
         {
           onError: (error) => {
@@ -2661,9 +2655,6 @@ export function WorkbenchRuntime({
         { kind: "page", pageId: created.pageId },
         {
           owner,
-          pageRoutingContext: created.projectId
-            ? projectContentRoute(created.projectId)
-            : libraryContentRoute,
           titleSnapshot: title,
           targetPanelId: placement.panelId,
           navigation,
@@ -2906,7 +2897,6 @@ export function WorkbenchRuntime({
         {
           kind: "page_stage",
           config: {
-            routingContext: { kind: "project", projectId },
             pageId,
             ...(titleSnapshot ? { titleSnapshot } : {}),
           },
@@ -3062,9 +3052,6 @@ export function WorkbenchRuntime({
           ? {
               kind: "page_stage",
               config: {
-                routingContext: destination.projectId
-                  ? { kind: "project", projectId: destination.projectId }
-                  : { kind: "library" },
                 pageId: destination.pageId,
                 ...(destination.titleSnapshot ? { titleSnapshot: destination.titleSnapshot } : {}),
               },
@@ -3246,7 +3233,6 @@ export function WorkbenchRuntime({
           kind: "page_file",
           titleSnapshot: input.title,
           config: {
-            routingContext: input.routingContext,
             pageId: input.pageId,
             fileId: input.fileId,
             logicalPath: input.logicalPath,
@@ -3277,14 +3263,14 @@ export function WorkbenchRuntime({
     requestPageStageNavigation: openPageStage,
     presentProjectScenePage: openProjectScenePage,
     presentPageSearchHit: async (projectId, pageId, titleSnapshot, options) => {
-      const session = activeSession?.projectId != null ? activeSession : null;
+      const session = activeSession;
       const result = await sceneNavigator.presentPanelSurface({
         owner: session
           ? { kind: "session", sessionId: session.id }
           : { kind: "project", projectId },
         request: {
           kind: "page_stage",
-          config: { routingContext: { kind: "project", projectId }, pageId, titleSnapshot },
+          config: { pageId, titleSnapshot },
           titleSnapshot,
           reveal: options?.reveal,
         },
@@ -5182,13 +5168,13 @@ export function WorkbenchRuntime({
         onUpdateConfig={(patch) =>
           updateWorkbenchPageFileConfig(workbenchWindow.owner, owner, surface.id, patch)
         }
-        onOpenPage={({ routingContext, pageId, title }) => {
+        onOpenPage={({ pageId, title }) => {
           void sceneNavigator.presentPanelSurface({
             owner,
             request: {
               kind: "page_stage",
               titleSnapshot: title,
-              config: { routingContext, pageId, titleSnapshot: title },
+              config: { pageId, titleSnapshot: title },
             },
             target: {
               panelId: context.panelId,
@@ -5324,16 +5310,11 @@ export function WorkbenchRuntime({
     }
 
     if (
-      (surface.kind === "db_view" ||
-        surface.kind === "page_stage" ||
-        surface.kind === "canvas_stage") &&
+      (surface.kind === "db_view" || surface.kind === "canvas_stage") &&
       surface.config.routingContext.kind === "library"
     ) {
       return (
         <WorkbenchLibraryResourceSurface
-          onLeavePage={onLeavePageStage}
-          onOpenPageInNewWindow={onOpenPageInNewWindow}
-          onOpenPageFile={openPageFileTab}
           surface={surface}
           owner={workbenchWindow.owner}
           sceneOwner={activeProjectScene.owner}
@@ -5358,7 +5339,6 @@ export function WorkbenchRuntime({
               placement: options?.placement ?? { kind: "same-group", sourceSurfaceId: surface.id },
             });
           }}
-          pageChats={pageChatCommands}
         />
       );
     }
@@ -5475,55 +5455,106 @@ export function WorkbenchRuntime({
     }
 
     if (surface.kind === "page_stage") {
-      if (surface.config.routingContext.kind !== "project") return null;
-      const pageAccessProjectId = surface.config.routingContext.projectId;
-      const tab: WorkbenchTabProjection = {
-        ...common,
-        kind: "page_stage",
-        config: surface.config,
-      };
+      const sceneOwner = activeProjectScene.owner;
+      const dock = activeProjectScene.agentDock;
+      const dockSession = projectAgentDockSession;
+      const dockTarget =
+        dockSession &&
+        resolveSessionPageSendTarget(
+          dockSession,
+          activeProject.id,
+          dockSession.thread ? projectSessionThreadLinkToSummary(dockSession.thread) : null,
+        );
       return (
-        <PageStageSessionTab
-          onOpenPageInNewWindow={onOpenPageInNewWindow}
-          onOpenPageFile={openPageFileTab}
-          tab={tab}
-          project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
+        <WorkbenchPageSurface
+          config={surface.config}
+          surfaceId={surface.id}
+          sceneOwner={sceneOwner}
+          sceneProjectId={activeProject.id}
+          projects={projects}
+          preview={previewEntry !== null}
+          isActivePanelTab={context.active}
           closeRef={pageStageCloseRef}
           persistRef={pageStagePersistRef}
           sessionSnapshotRef={pageStageSessionSnapshotRef}
-          sceneOwner={activeProjectScene.owner}
-          sessionId={projectSceneKey}
-          sessionThread={null}
-          canStartThreadInSession={false}
           onLeavePage={onLeavePageStage}
           onClose={closeSurface}
-          onOpenTerminal={async () => {
-            await openProjectSceneManualSurface(activeProject.id, "terminal", {
+          onOpenPageInNewWindow={onOpenPageInNewWindow}
+          onOpenPageFile={openPageFileTab}
+          onOpenPage={(pageId, titleSnapshot, placement, blockId) => {
+            void presentLibraryTarget(
+              { kind: "page", pageId },
+              {
+                owner: sceneOwner,
+                targetPanelId: context.panelId,
+                titleSnapshot,
+                placement,
+                blockId,
+              },
+            );
+          }}
+          onOpenCanvas={(canvasId, titleSnapshot) => {
+            void presentLibraryTarget(
+              { kind: "canvas", canvasId },
+              {
+                owner: sceneOwner,
+                targetPanelId: context.panelId,
+                titleSnapshot,
+                placement: { kind: "same-group", sourceSurfaceId: surface.id },
+              },
+            );
+          }}
+          onOpenDatabase={openDatabaseInSourceGroup}
+          onOpenTerminalPanel={() => {
+            void openProjectSceneManualSurface(activeProject.id, "terminal", {
               panelId: "bottom",
               targetLeafId: activeProjectScene.panels.bottom.layout.activeLeafId,
             });
           }}
-          onEnsureDefaultDraftSessionForProject={ensureDefaultDraftSessionForProject}
-          onRefreshSessions={refreshProjectSessions}
-          onOpenPageTab={openProjectScenePage}
-          onOpenCanvasStage={openProjectSceneCanvas}
-          onOpenDatabase={openDatabaseInSourceGroup}
-          onOpenThread={async (threadId) => {
+          onOpenCodexThread={async (threadId) => {
             await openAttachedThreadSessionById(threadId);
           }}
-          onOpenRelatedChat={sessionCommands.openProjectSessionById}
           onOpenPageInNewChat={sessionCommands.openPageInNewChat}
-          onLinkPageToChat={sessionCommands.linkPageToChat}
-          onHandOffPageToChat={sessionCommands.handOffPageToChat}
-          relatedChatCandidates={pageStageRelatedChatCandidates}
-          onResolveChatSessionForThread={sessionCommands.resolveChatSessionForThread}
-          historyPanelActive={Boolean(
-            pageStageHistoryModal &&
-            pageStageHistoryModal.sessionId === projectSceneKey &&
-            pageStageHistoryModal.tabId === surface.id,
+          pageChats={pageChatCommands}
+          chatCommands={{
+            onEnsureDefaultDraftSessionForProject: ensureDefaultDraftSessionForProject,
+            onRefreshSessions: refreshProjectSessions,
+            onResolveChatSessionForThread: sessionCommands.resolveChatSessionForThread,
+            onHandOffPageToChat: sessionCommands.handOffPageToChat,
+          }}
+          besideChat={
+            dock && dockSession
+              ? {
+                  sessionId: dockSession.id,
+                  projectId: activeProject.id,
+                  sessionThread: dockTarget?.kind === "thread" ? dockTarget.thread : null,
+                  canStartThreadInSession:
+                    dock.binding.kind === "session" && dockTarget?.kind === "launch",
+                  sessionTitle: dockSession.displayTitle,
+                  onAddToChatComposer: (promptInput) =>
+                    sessionCommands.addToChatComposer({
+                      sessionId: dockSession.id,
+                      promptInput,
+                      ...(dock.binding.kind === "new"
+                        ? {
+                            projectDraft: {
+                              kind: "project-draft",
+                              projectId: activeProject.id,
+                              draftId: dock.newDraftId,
+                            },
+                          }
+                        : {}),
+                    }),
+                }
+              : null
+          }
+          historyPanelActive={matchesPageStageHistory(
+            pageStageHistoryModal,
+            sceneOwner,
+            surface.id,
+            surface.config.pageId,
           )}
           onToggleHistoryPanel={togglePageStageHistoryModal}
-          isActivePanelTab={context.active}
         />
       );
     }
@@ -5781,23 +5812,58 @@ export function WorkbenchRuntime({
 
     if (surface.kind === "page_stage") {
       return (
-        <WorkbenchLibraryPageSurface
-          onLeavePage={onLeavePageStage}
-          onOpenPageInNewWindow={onOpenPageInNewWindow}
-          onOpenPageFile={openPageFileTab}
-          pageId={surface.config.pageId}
+        <WorkbenchPageSurface
+          config={surface.config}
           surfaceId={surface.id}
           sceneOwner={librarySceneOwner}
+          sceneProjectId={null}
+          projects={projects}
+          preview={listWorkbenchScenePreviewEntries(
+            activeLibraryScene,
+            previewSurfacesByPanel,
+          ).some((entry) => entry.surface.id === surface.id)}
           isActivePanelTab={context.active}
+          closeRef={pageStageCloseRef}
+          persistRef={pageStagePersistRef}
+          sessionSnapshotRef={pageStageSessionSnapshotRef}
+          onLeavePage={onLeavePageStage}
           onClose={removeSurface}
+          onOpenPageInNewWindow={onOpenPageInNewWindow}
+          onOpenPageFile={openPageFileTab}
           onOpenDatabase={(databaseId) => openInSourceGroup({ kind: "database", databaseId })}
-          onOpenPage={(pageId, titleSnapshot, placement) =>
-            openInSourceGroup({ kind: "page", pageId }, titleSnapshot, placement)
-          }
+          onOpenPage={(pageId, titleSnapshot, placement, blockId) => {
+            void presentLibraryTarget(
+              { kind: "page", pageId },
+              {
+                owner: librarySceneOwner,
+                titleSnapshot,
+                placement,
+                blockId,
+                targetPanelId: context.panelId,
+              },
+            );
+          }}
           onOpenCanvas={(canvasId, titleSnapshot) =>
             openInSourceGroup({ kind: "canvas", canvasId }, titleSnapshot)
           }
+          onOpenCodexThread={async (threadId) => {
+            await openAttachedThreadSessionById(threadId);
+          }}
+          onOpenPageInNewChat={sessionCommands.openPageInNewChat}
           pageChats={pageChatCommands}
+          chatCommands={{
+            onEnsureDefaultDraftSessionForProject: ensureDefaultDraftSessionForProject,
+            onRefreshSessions: refreshProjectSessions,
+            onResolveChatSessionForThread: sessionCommands.resolveChatSessionForThread,
+            onHandOffPageToChat: sessionCommands.handOffPageToChat,
+          }}
+          historyPanelActive={matchesPageStageHistory(
+            pageStageHistoryModal,
+            librarySceneOwner,
+            surface.id,
+            surface.config.pageId,
+          )}
+          onToggleHistoryPanel={togglePageStageHistoryModal}
         />
       );
     }
@@ -6437,9 +6503,6 @@ export function WorkbenchRuntime({
       setAutomationsPath(null);
       void sessionCommands.openPageInChat({
         sessionId: session.id,
-        routingContext: session.projectId
-          ? { kind: "project", projectId: session.projectId }
-          : { kind: "library" },
         page: { pageId: page.pageId, titleSnapshot: page.title },
       });
     },
@@ -6875,16 +6938,17 @@ export function WorkbenchRuntime({
                                 }}
                               />
                             ),
-                          afterMain: pageStageHistoryPanelProjectId ? (
+                          afterMain: pageStageHistoryModal ? (
                             <HistoryPanel
-                              projectId={pageStageHistoryPanelProjectId}
-                              pageId={pageStageHistoryModal?.pageId ?? null}
-                              pageTitle={pageStageHistoryModal?.pageTitle}
-                              pageMarkdown={pageStageHistoryModal?.pageMarkdown}
-                              projectWorkspacePath={projectWorkspaceRootOrNull(
-                                pageStageHistoryModalProject,
+                              key={workbenchPageEditorKey(
+                                pageStageHistoryModal.sceneOwner,
+                                pageStageHistoryModal.surfaceId,
                               )}
-                              open={pageStageHistoryModal !== null}
+                              descriptor={pageStageHistoryModal.descriptor}
+                              pageTitle={pageStageHistoryModal.pageTitle}
+                              pageMarkdown={pageStageHistoryModal.pageMarkdown}
+                              projectWorkspacePath={pageStageHistoryModal.workspaceRoot}
+                              open
                               onClose={closePageStageHistoryModal}
                             />
                           ) : null,

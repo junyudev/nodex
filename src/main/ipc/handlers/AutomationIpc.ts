@@ -207,11 +207,11 @@ export const live: Layer.Layer<
     );
     yield* handlePlainCommand("page:occurrence:complete", (_, projectId, input) => {
       requireCompleteOccurrence(input);
-      return automation.occurrences.complete(projectId, input);
+      return automation.occurrences.complete(projectId ?? undefined, input);
     });
     yield* handlePlainCommand("page:occurrence:skip", (_, projectId, input) => {
       requireOccurrence(input);
-      return automation.occurrences.skip(projectId, input);
+      return automation.occurrences.skip(projectId ?? undefined, input);
     });
     yield* handlePlainCommand("page:occurrence:update", (_, projectId, input) => {
       requireUpdateOccurrence(input);

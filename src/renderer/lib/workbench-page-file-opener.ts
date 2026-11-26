@@ -1,4 +1,3 @@
-import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import {
   findWorkbenchPanelLeaf,
   listWorkbenchPanelLeaves,
@@ -24,7 +23,6 @@ import type { useWorkbenchPanelLifecycle } from "./use-workbench-panel-lifecycle
 import type { prepareWorkbenchSceneSurfaceClose } from "./workbench-scene-command-lifecycle";
 
 export interface OpenPageFileTabInput {
-  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly fileId: string;
   readonly logicalPath: string | null;
@@ -43,7 +41,6 @@ export function findPageFileTab(
   session: Pick<WorkbenchSessionRenderProjection, "tabs">,
   input: Pick<OpenPageFileTabInput, "pageId" | "fileId">,
 ): WorkbenchTabProjection | null {
-  // Project routes all resolve to this Profile's one Library.
   return (
     session.tabs.find(
       (tab) =>
@@ -155,7 +152,6 @@ export async function openSessionPageFileTab(
     if (!sameWorkbenchPreviewInstance(before, current)) return false;
   }
   const config = {
-    routingContext: input.routingContext,
     pageId: input.pageId,
     fileId: input.fileId,
     logicalPath: input.logicalPath,

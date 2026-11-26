@@ -610,12 +610,11 @@ function CanvasEditor({
       }
 
       onOpenPage?.({
-        routingContext: descriptor.routingContext,
         pageId,
         titleSnapshot: getPageTitleHintFromElement(element),
       });
     },
-    [activePageId, descriptor.routingContext, onCloseActivePage, onOpenPage],
+    [activePageId, onCloseActivePage, onOpenPage],
   );
 
   // Place an existing card on the canvas

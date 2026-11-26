@@ -319,7 +319,7 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
       >;
     },
     restoreDocumentVersion(
-      projectId: string,
+      projectId: string | null,
       documentId: string,
       request: PrepareDocumentVersionRestore,
     ) {

@@ -117,7 +117,11 @@ export const make = Effect.gen(function* () {
               input.authority,
               input.callId,
             ),
-            displayed_routing_context: input.surface.config.routingContext,
+            // Workbench Pages always present a Library-owned Document, regardless of Scene.
+            displayed_routing_context:
+              input.surface.kind === "page_stage"
+                ? { kind: "library" }
+                : input.surface.config.routingContext,
             target: coreTarget(input.surface),
           },
           { deadlineMs: 5_000 },
@@ -143,7 +147,7 @@ export const make = Effect.gen(function* () {
         surface: {
           ...input.surface,
           kind: "page_stage",
-          config: { routingContext: config.routingContext, pageId: config.pageId },
+          config: { pageId: config.pageId },
         },
       });
       if (page.status !== "available" || page.kind !== "page") return { status: "unavailable" };

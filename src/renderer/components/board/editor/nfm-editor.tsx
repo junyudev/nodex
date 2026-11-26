@@ -71,7 +71,6 @@ import { parseNodexDestination } from "../../../../shared/nodex-reference";
 import {
   libraryContentRoute,
   projectIdFromContentRoutingContext,
-  projectContentRoute,
   type ContentCanvasNavigationTarget,
   type ContentRoutingContext,
   type ContentPageNavigationTarget,
@@ -251,6 +250,8 @@ import {
 
 interface NfmEditorCommonProps {
   contentRoutingContext: ContentRoutingContext;
+  executionProjectId?: string | null;
+  launchProjectId?: string | null;
   projectName?: string | null;
   projectWorkspacePath?: string | null;
   sourcePageContext?: {
@@ -271,7 +272,7 @@ interface NfmEditorCommonProps {
   openSkill?: OpenSkillMention;
   onOpenPageFile?: BlockReferenceHostRuntime["openPageFile"];
   onStartNewSessionThreadFromEditor?: (input: {
-    projectId: string;
+    projectId: string | null;
     targetSessionId?: string;
     prompt: string;
     promptInput?: CodexPromptInput;
@@ -279,7 +280,6 @@ interface NfmEditorCommonProps {
     threadName?: string;
   }) => Promise<PageChatSendResult>;
   onSendPagePrompt?: (input: {
-    projectId: string;
     threadId: string;
     prompt: string;
     promptInput?: CodexPromptInput;
@@ -330,7 +330,7 @@ interface NfmEditorInstanceProps extends NfmEditorCommonProps {
 
 interface InlineViewHostContextRuntimeEditor {
   nodexSourcePageContext?: {
-    projectId: string;
+    projectId: string | null;
     pageId: string;
   } | null;
 }
@@ -509,6 +509,8 @@ function collapseNfmHandedOffSelection(
 function NfmEditorInstance({
   owner,
   contentRoutingContext,
+  executionProjectId: suppliedExecutionProjectId,
+  launchProjectId: suppliedLaunchProjectId,
   projectName = null,
   projectWorkspacePath,
   source,
@@ -518,7 +520,8 @@ function NfmEditorInstance({
   sessionThread = null,
   canStartThreadInSession = false,
   sessionTitle = null,
-  chatProjectId = null,
+  chatProjectId,
+  onOpenCodexThread,
   onOpenPage,
   onOpenDatabase,
   onOpenCanvas,
@@ -545,9 +548,12 @@ function NfmEditorInstance({
     structuralSession: structuralEditingSession,
   } = owner;
   const queryClient = useQueryClient();
-  const executionProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
-  // Sends go through the beside chat's Project, which a Library Page does not have of its own.
-  const chatSendProjectId = chatProjectId ?? executionProjectId;
+  const contentProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
+  const executionProjectId =
+    suppliedExecutionProjectId === undefined ? contentProjectId : suppliedExecutionProjectId;
+  const launchProjectId =
+    suppliedLaunchProjectId === undefined ? executionProjectId : suppliedLaunchProjectId;
+  const chatSendProjectId = chatProjectId === undefined ? launchProjectId : chatProjectId;
   const parentBlockReferenceRuntime = useBlockReferenceHostRuntime();
   const { resolved: themeMode } = useTheme();
   const { spellcheck } = useSpellcheck();
@@ -618,10 +624,6 @@ function NfmEditorInstance({
   const sourcePageId = sourcePageContext?.pageId;
   // Keep equivalent authority inputs referentially stable. Recreating this object on every
   // document commit would release live object URLs and remount otherwise unchanged media.
-  const pageFileContentRoutingContext = useMemo(
-    () => (executionProjectId ? projectContentRoute(executionProjectId) : libraryContentRoute),
-    [executionProjectId],
-  );
   // One editor instance owns one isolated cache; the Provider releases every acquired scope.
   const [pageFileReadCache] = useState(createRendererFileReadCache);
   const libraryId = surfaceMutationBarrier?.libraryId;
@@ -630,7 +632,7 @@ function NfmEditorInstance({
       sourcePageId && libraryId
         ? createFilePlacementRuntime(
             {
-              contentRoutingContext: pageFileContentRoutingContext,
+              contentRoutingContext: libraryContentRoute,
               libraryId,
               readSource: { kind: "page", page_id: sourcePageId },
               storeEpoch: source.storeEpoch,
@@ -639,14 +641,7 @@ function NfmEditorInstance({
             source.documentId,
           )
         : null,
-    [
-      pageFileReadCache,
-      pageFileContentRoutingContext,
-      source.storeEpoch,
-      source.documentId,
-      sourcePageId,
-      libraryId,
-    ],
+    [pageFileReadCache, source.storeEpoch, source.documentId, sourcePageId, libraryId],
   );
   const resolveLocalClipboardFileReference = useCallback(
     async (fileReference: string): Promise<string | null> => {
@@ -872,12 +867,10 @@ function NfmEditorInstance({
   useEffect(() => {
     bindNfmSourcePageContext(
       editor,
-      sourcePageContext && executionProjectId
-        ? { projectId: executionProjectId, pageId: sourcePageContext.pageId }
-        : null,
+      sourcePageContext ? { projectId: contentProjectId, pageId: sourcePageContext.pageId } : null,
     );
     return () => bindNfmSourcePageContext(editor, null);
-  }, [editor, executionProjectId, sourcePageContext]);
+  }, [editor, contentProjectId, sourcePageContext]);
 
   const handlePasteResourceChoice = async (mode: "materialized" | "link") => {
     if (!editor || !pasteResourceDialog || pasteResourcePending) return;
@@ -1500,14 +1493,6 @@ function NfmEditorInstance({
         }),
       );
     }
-    if (executionProjectId === null) {
-      throw new Error(
-        getIntl().formatMessage({
-          id: "editor.nfmEditor.moveRequiresProject",
-          defaultMessage: "Moving Blocks requires a Project.",
-        }),
-      );
-    }
     const session = owner.getActiveStructuralSession();
     if (!session) {
       throw new Error(
@@ -1518,7 +1503,6 @@ function NfmEditorInstance({
       );
     }
     await session.promoteBlocks({
-      projectId: executionProjectId,
       storeEpoch: source.storeEpoch,
       sourcePageId: sourcePageContext.pageId,
       sourceDocumentId: source.documentId,
@@ -1556,9 +1540,7 @@ function NfmEditorInstance({
       if (
         !session?.moveBlocksToDocument(selection.blockIds, async () => {
           const target = await prepareOwnedBlockDocumentForContentRouting(
-            destination.projectId
-              ? { kind: "project", projectId: destination.projectId }
-              : { kind: "library" },
+            libraryContentRoute,
             destination.pageId,
           );
           if (!target.ok) throw new Error(target.error.message);
@@ -1600,14 +1582,6 @@ function NfmEditorInstance({
       target: NfmSendToThreadRequest["target"],
       promptInput: CodexPromptInput,
     ): Promise<PageChatSendResult> => {
-      if (chatSendProjectId === null) {
-        throw new Error(
-          getIntl().formatMessage({
-            id: "editor.nfmEditor.sendRequiresProject",
-            defaultMessage: "Sending Blocks to a chat requires a Project.",
-          }),
-        );
-      }
       const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
       await surfaceMutationBarrier?.flushAndFence();
       if (target.kind === "thread") {
@@ -1619,7 +1593,6 @@ function NfmEditorInstance({
             }),
           );
         return onSendPagePrompt({
-          projectId: chatSendProjectId,
           threadId: target.threadId,
           prompt: promptInput.text,
           promptInput,
@@ -1635,7 +1608,8 @@ function NfmEditorInstance({
         );
       }
       return onStartNewSessionThreadFromEditor({
-        projectId: chatSendProjectId,
+        projectId:
+          target.sessionId && chatProjectId !== undefined ? chatProjectId : launchProjectId,
         targetSessionId: target.sessionId,
         prompt: promptInput.text,
         promptInput,
@@ -1643,7 +1617,8 @@ function NfmEditorInstance({
       });
     },
     [
-      chatSendProjectId,
+      chatProjectId,
+      launchProjectId,
       onSendPagePrompt,
       onStartNewSessionThreadFromEditor,
       surfaceMutationBarrier,
@@ -1704,6 +1679,7 @@ function NfmEditorInstance({
     sourcePageContext !== undefined,
     executionProjectId,
     chatSendProjectId,
+    Boolean(onSendPagePrompt || onStartNewSessionThreadFromEditor),
   );
 
   /** A Prompt keeps its exact last accepted message; a folded Prompt leaves room for the next. */
@@ -1863,12 +1839,12 @@ function NfmEditorInstance({
     }
     return {
       surfaceId: source.clientSessionId,
-      projectId: executionProjectId,
+      projectId: contentProjectId,
       documentId: source.documentId,
       storeEpoch: source.storeEpoch,
       blockTransferDrop: {
         surfaceId: source.clientSessionId,
-        projectId: executionProjectId,
+        projectId: contentProjectId,
         documentId: source.documentId,
         storeEpoch: source.storeEpoch,
         ...(sourcePageContext?.pageId ? { hostPageId: sourcePageContext.pageId } : {}),
@@ -1971,7 +1947,7 @@ function NfmEditorInstance({
       beginLocalBlockDragSession(
         {
           sourceSurfaceId: source.clientSessionId,
-          projectId: executionProjectId,
+          projectId: contentProjectId,
           storeEpoch: source.storeEpoch,
           source: sourcePageContext
             ? { kind: "page", pageId: sourcePageContext.pageId }
@@ -2013,7 +1989,7 @@ function NfmEditorInstance({
         dataTransfer,
       );
     },
-    [contentRoutingContext, editor, executionProjectId, queryClient, source, sourcePageContext],
+    [contentProjectId, contentRoutingContext, editor, queryClient, source, sourcePageContext],
   );
   const handleBlockDragEnd = useCallback(
     () => endLocalBlockDragSession({ sourceSurfaceId: source.clientSessionId }),
@@ -2317,7 +2293,7 @@ function NfmEditorInstance({
           ? {
               openInPlace: (content) =>
                 content.kind === "page"
-                  ? onOpenPage({ routingContext: contentRoutingContext, pageId: content.pageId })
+                  ? onOpenPage({ pageId: content.pageId, sourceBlockId: content.blockId })
                   : undefined,
             }
           : {}),
@@ -2393,8 +2369,9 @@ function NfmEditorInstance({
       sessions: threadMentionSummaryMap,
       resolvingIds: threadMentionResolvingIds,
       resolveSession: resolveSessionMention,
+      openThread: onOpenCodexThread,
     }),
-    [resolveSessionMention, threadMentionResolvingIds, threadMentionSummaryMap],
+    [onOpenCodexThread, resolveSessionMention, threadMentionResolvingIds, threadMentionSummaryMap],
   );
 
   const agentConfigRuntimeValue = useMemo<AgentConfigRuntimeValue>(

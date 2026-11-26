@@ -129,8 +129,8 @@ function openBrowserInClonedLayout(
 function openPageInClonedLayout(
   layout: WorkbenchLayoutSnapshot,
   page: WorkbenchPageStageSurfaceConfig,
+  location: NonNullable<WindowSessionNewWindowRequest["pageDestination"]> = { kind: "library" },
 ): WorkbenchLayoutSnapshot {
-  const location = page.routingContext;
   const sceneKey = makeWorkbenchSceneKey(location);
   const scene = layout.scenesByOwnerKey[sceneKey] ?? materializeInitialWorkbenchScene(location);
   const surface: WorkbenchSurfaceDescriptor = {
@@ -413,7 +413,7 @@ export class WindowSessionState {
       location,
     };
     const targetLayout = override.page
-      ? openPageInClonedLayout(requestedLayout, override.page)
+      ? openPageInClonedLayout(requestedLayout, override.page, override.pageDestination)
       : override.browserUrl === undefined
         ? requestedLayout
         : openBrowserInClonedLayout(requestedLayout, override.browserUrl);

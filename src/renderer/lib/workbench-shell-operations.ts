@@ -7,6 +7,7 @@ import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 
 export type OpenPageInNewWindowHandler = (
   page: NonNullable<WindowSessionNewWindowRequest["page"]>,
+  pageDestination?: WindowSessionNewWindowRequest["pageDestination"],
 ) => void;
 
 const moveSidebarThreadCommand = defineRendererCommand({

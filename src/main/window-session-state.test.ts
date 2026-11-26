@@ -206,7 +206,7 @@ describe("WindowSessionState", () => {
 
       expect(session.lifecycle).toEqual({ state: "open" });
       expect(session.layoutRevision).toBe(0);
-      expect(session.layout.version).toBe(9);
+      expect(session.layout.version).toBe(10);
       expect(getActiveProjectId(session.layout)).toBeNull();
       expect(catalog?.version).toBe(3);
       expect(catalog?.sessions).toHaveLength(1);
@@ -581,7 +581,6 @@ describe("WindowSessionState", () => {
           kind: "page_stage",
           titleSnapshot: "Clone only",
           config: {
-            routingContext: { kind: "project", projectId: "project-1" },
             pageId: "page-1",
           },
           stateKey: 0,
@@ -699,7 +698,7 @@ describe("WindowSessionState", () => {
         } as const;
         const sessionOwner = { kind: "session", sessionId: sessionLocation.sessionId } as const;
         const sceneKey = makeWorkbenchSceneKey(routingContext);
-        const page = { routingContext, pageId: "page-1", titleSnapshot: "Roadmap" };
+        const page = { pageId: "page-1", titleSnapshot: "Roadmap" };
         const existing = {
           id: "source-page",
           kind: "page_stage",
@@ -750,7 +749,10 @@ describe("WindowSessionState", () => {
           },
         });
 
-        const clone = state.cloneSessionForWindow(1, { page });
+        const clone = state.cloneSessionForWindow(1, {
+          page,
+          ...(routingContext.kind === "project" ? { pageDestination: routingContext } : {}),
+        });
 
         expect(clone.id).not.toBe(source.id);
         expect(clone.activeSpaceId).toBe("team-space");
@@ -885,7 +887,7 @@ describe("WindowSessionState", () => {
         lifecycle: { state: "open" },
         layoutRevision: 7,
         layout: {
-          version: 9,
+          version: 10,
           location: {
             kind: "project",
             projectId: "legacy",
@@ -935,7 +937,7 @@ describe("WindowSessionState", () => {
         lifecycle: { state: "open" },
         layoutRevision: 0,
         layout: {
-          version: 9,
+          version: 10,
           location: {
             kind: "project",
             projectId: "legacy",

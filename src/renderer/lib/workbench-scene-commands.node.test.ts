@@ -70,7 +70,7 @@ function page(id: string): WorkbenchSurfaceDescriptor {
     titleSnapshot: id,
     stateKey: 0,
     state: null,
-    config: { routingContext: { kind: "library" }, pageId: `page:${id}` },
+    config: { pageId: `page:${id}` },
   };
 }
 function browser(id: string): WorkbenchSurfaceDescriptor {
@@ -438,7 +438,7 @@ describe("shared Workbench Scene executor", () => {
     {
       kind: "page_stage",
       titleSnapshot: "Library Page",
-      config: { routingContext: { kind: "library" }, pageId: "page-a" },
+      config: { pageId: "page-a" },
     },
     {
       kind: "canvas_stage",
@@ -693,7 +693,7 @@ describe("shared Workbench Scene executor", () => {
       surface: {
         kind: "page_stage",
         titleSnapshot: "C",
-        config: { routingContext: { kind: "library" }, pageId: "page:c" },
+        config: { pageId: "page:c" },
       },
     };
     const opened = await subject.execute(open);
@@ -758,7 +758,7 @@ describe("shared Workbench Scene executor", () => {
       surface: {
         kind: "page_stage",
         titleSnapshot: "Preview",
-        config: { routingContext: { kind: "library" }, pageId: "page:preview" },
+        config: { pageId: "page:preview" },
       },
     });
     expect(opened).toMatchObject({ tabId: "preview", applied: true, persisted: true, error: null });
@@ -1038,7 +1038,7 @@ describe("generation-local Workbench operation receipts", () => {
         surface: {
           kind: "page_stage",
           titleSnapshot: "B",
-          config: { routingContext: { kind: "library" }, pageId: "b" },
+          config: { pageId: "b" },
         },
       }),
       () => false,
@@ -1210,7 +1210,7 @@ describe("resource-preserving preview promotion", () => {
       surface: {
         kind: "page_stage",
         titleSnapshot: "Preview",
-        config: { routingContext: { kind: "library" }, pageId: "page:preview" },
+        config: { pageId: "page:preview" },
       },
     };
     subject.commit.mockRejectedValueOnce(new Error("disk unavailable"));
@@ -1261,7 +1261,6 @@ test.each([false, true])(
         kind: "page_file",
         titleSnapshot: "report.html",
         config: {
-          routingContext: { kind: "library" },
           pageId: "page:source",
           fileId: "file",
           logicalPath: "report.html",
@@ -1298,7 +1297,6 @@ test("Page Files honor an explicit source tab ahead of the default parent-Page p
         kind: "page_file",
         titleSnapshot: "File",
         config: {
-          routingContext: { kind: "library" },
           pageId: "page:parent",
           fileId: "file",
           logicalPath: null,

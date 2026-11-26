@@ -246,9 +246,7 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
             minimumCommitSeq,
           ),
         listPageHistory: (request) =>
-          use("library.listPageHistory", request.requestingProjectId, (core) =>
-            core.listPageHistory(request),
-          ),
+          use("library.listPageHistory", undefined, (core) => core.listPageHistory(request)),
         searchPages: (input) =>
           use("library.searchPages", undefined, (core, signal) => core.searchPages(input, signal)),
         pageSearchMetadata: (projectFilterIds, pageIds) =>

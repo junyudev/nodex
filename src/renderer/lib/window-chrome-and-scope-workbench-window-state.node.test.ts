@@ -425,7 +425,6 @@ describe("WorkbenchWindowState", () => {
             kind: "page_stage",
             titleSnapshot: "Page One",
             config: {
-              routingContext: { kind: "library" },
               pageId: "page:one",
             },
             stateKey: 0,
@@ -490,7 +489,7 @@ describe("WorkbenchWindowState", () => {
         id: "page:one",
         kind: "page_stage",
         titleSnapshot: "Page One",
-        config: { routingContext: { kind: "project", projectId: "alpha" }, pageId: "page:one" },
+        config: { pageId: "page:one" },
         stateKey: 0,
         state: null,
       },

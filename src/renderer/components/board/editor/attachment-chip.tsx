@@ -85,7 +85,6 @@ async function openAttachment(
   if (destination.kind === "none") return;
   if (destination.kind === "page-file") {
     await host?.openPageFile?.({
-      routingContext: destination.routingContext,
       pageId: destination.pageId,
       fileId: destination.fileId,
       logicalPath: null,

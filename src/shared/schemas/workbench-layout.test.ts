@@ -17,6 +17,7 @@ import {
   materializeInitialWorkbenchSessionView,
 } from "../workbench-session-view";
 import {
+  createWorkbenchSceneSurface,
   LIBRARY_SCENE_OWNER,
   materializeInitialWorkbenchScene,
   patchWorkbenchScenePanel,
@@ -460,7 +461,7 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
     });
 
     expect(migrated).toMatchObject({
-      version: 9,
+      version: 10,
       location: { kind: "project", projectId: "alpha" },
       databaseSearchByProject: { alpha: "owner:me" },
     });
@@ -552,7 +553,10 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
     expect(second).toEqual(first);
     expect(second.location).toEqual({ kind: "library" });
     expect(second.scenesByOwnerKey.library?.primary).toBeNull();
-    expect(Object.keys(second.scenesByOwnerKey.library!.panelSurfacesById)).toEqual([primary.id]);
+    expect(Object.keys(second.scenesByOwnerKey.library!.panelSurfacesById)).toEqual([
+      primary.id,
+      "legacy-project-page",
+    ]);
     expect(Object.values(second.scenesByOwnerKey.library!.panelSurfacesById)[0]).toMatchObject({
       kind: "db_view",
       config: {
@@ -605,15 +609,50 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
     expect(surface?.id.length).toBeLessThanOrEqual(160);
     expect(surface).toMatchObject({
       kind: "page_stage",
-      config: {
-        routingContext: { kind: "library" },
-        pageId: root.pageId,
-      },
+      config: { pageId: root.pageId },
     });
   });
 });
 
-describe("WorkbenchLayoutSnapshotSchema v9", () => {
+describe("WorkbenchLayoutSnapshotSchema v10", () => {
+  test("migrates v9 Window Sessions with formerly routed Pages in Space", () => {
+    const surface = {
+      id: "page-tab",
+      kind: "page_stage",
+      titleSnapshot: "Note",
+      config: { pageId: "note" },
+      stateKey: 3,
+      state: null,
+    } as const;
+    const current = createWorkbenchSceneSurface(
+      materializeInitialWorkbenchScene(LIBRARY_SCENE_OWNER),
+      {
+        panelId: "right",
+        surface,
+      },
+    );
+    const restored = WorkbenchLayoutSnapshotSchema.parse({
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      version: 9,
+      location: LIBRARY_SCENE_OWNER,
+      scenesByOwnerKey: {
+        library: {
+          ...current,
+          version: 10,
+          panelSurfacesById: {
+            [surface.id]: {
+              ...surface,
+              config: { ...surface.config, routingContext: { kind: "project", projectId: "old" } },
+            },
+          },
+        },
+      },
+    });
+
+    expect(restored.version).toBe(10);
+    expect(restored.scenesByOwnerKey.library).toEqual(current);
+  });
+
   test("a v8 window keeps Space's tabs under `library` and opens the Inbox as its own Scene", () => {
     const library = materializeInitialWorkbenchScene(LIBRARY_SCENE_OWNER);
     const v8 = {
@@ -626,7 +665,7 @@ describe("WorkbenchLayoutSnapshotSchema v9", () => {
 
     const parsed = WorkbenchLayoutSnapshotSchema.parse(v8);
 
-    expect(parsed.version).toBe(9);
+    expect(parsed.version).toBe(10);
     expect(parsed.location).toEqual({ kind: "inbox" });
     expect(parsed.homeLocation).toEqual({ kind: "inbox" });
     expect(parsed.scenesByOwnerKey).toEqual({ library });
@@ -744,7 +783,7 @@ describe("WorkbenchLayoutSnapshotSchema locations", () => {
         ...createDefaultWorkbenchLayoutSnapshotV7(),
         location: legacy,
       });
-      expect(parsed.version).toBe(9);
+      expect(parsed.version).toBe(10);
       expect(parsed.location).toEqual(current);
       expect(parsed.homeLocation).toEqual(current);
       expect(WorkbenchLayoutSnapshotSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(

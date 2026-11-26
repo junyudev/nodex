@@ -220,25 +220,22 @@ describe("project session Terminal config", () => {
 });
 
 describe("project session Page Stage config", () => {
-  test("persists only Page identity, access context, and a title snapshot", () => {
+  test("persists only Page identity and a title snapshot", () => {
     expect(
       parseWorkbenchProjectionTabConfig("page_stage", {
-        routingContext: { kind: "project", projectId: "alpha" },
         pageId: "nested",
         titleSnapshot: "Nested",
       }),
     ).toEqual({
-      routingContext: { kind: "project", projectId: "alpha" },
       pageId: "nested",
       titleSnapshot: "Nested",
     });
   });
 
-  test("rejects interaction-derived ancestor trails at the durable boundary", () => {
-    expect(() =>
-      parseWorkbenchProjectionTabConfig("page_stage", {
-        routingContext: { kind: "project", projectId: "alpha" },
-        pageId: "nested",
+  test("rejects placement context and ancestor trails at the durable boundary", () => {
+    for (const patch of [
+      { routingContext: { kind: "project", projectId: "alpha" } },
+      {
         ancestors: [
           {
             projectId: "stale-project",
@@ -246,8 +243,12 @@ describe("project session Page Stage config", () => {
             titleSnapshot: "Stale title",
           },
         ],
-      }),
-    ).toThrow();
+      },
+    ]) {
+      expect(() =>
+        parseWorkbenchProjectionTabConfig("page_stage", { pageId: "nested", ...patch }),
+      ).toThrow();
+    }
   });
 });
 
@@ -376,7 +377,6 @@ describe("project session Review config", () => {
 
 describe("Page File configuration", () => {
   const config = {
-    routingContext: { kind: "library" },
     pageId: "page",
     fileId: "file",
     logicalPath: "profile/report.html",
@@ -388,8 +388,9 @@ describe("Page File configuration", () => {
       parseWorkbenchProjectionTabConfig("page_file", { ...config, logicalPath: null }).logicalPath,
     ).toBeNull();
   });
-  test("rejects runtime capabilities and incomplete resource identity", () => {
+  test("rejects placement context, runtime capabilities, and incomplete resource identity", () => {
     for (const patch of [
+      { routingContext: { kind: "library" } },
       { url: "https://example.com" },
       { grant: "secret" },
       { fileId: "" },

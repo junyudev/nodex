@@ -1195,9 +1195,7 @@ export class NfmStructuralEditingSession {
         if (
           promotion.sourceDocumentId !== runtime.source.documentId ||
           promotion.storeEpoch !== runtime.source.storeEpoch ||
-          promotion.sourceDocumentGeneration !== runtime.source.generation ||
-          (runtime.routingContext.kind === "project" &&
-            promotion.projectId !== runtime.routingContext.projectId)
+          promotion.sourceDocumentGeneration !== runtime.source.generation
         )
           throw new Error(
             getIntl().formatMessage({

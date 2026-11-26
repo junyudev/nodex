@@ -877,12 +877,12 @@ beside the Page:
   has a key, title, and content as Markdown), `Download as Markdown`,
   `Open on right`, `Open in new window`, the `Full width` and
   `Show Markdown source` view toggles, `Pause work` or `Resume work`,
-  `Schedule`, and `Delete` where the Page can be deleted. An action the Page's
-  host cannot perform is absent. Before the menu, a Page below the top level of
+  `Schedule`, and `Delete` where the Page can be deleted. The menu offers the same Page controls in every Scene. Before the menu, a Page below the top level of
   Space shows where it lives: the Databases and Pages that own it, outermost
   first, each opening on click in the Page's tab group (in a Project, its own
   Database opens as its Board). The trail is the Page's ownership, so it reads
-  the same however the Page was opened.
+  the same however the Page was opened. In a Scene with a Project,
+  `Open Terminal` opens that Scene’s Terminal.
 - **Editing tools** act on the body's caret without taking its focus.
   `Text style` sets the line at the caret, or the selected Blocks, to text, a
   heading, or a list, and marks the current style. `Image` and `Table` insert
@@ -890,7 +890,7 @@ beside the Page:
   description of each, grouped as Agent, Pages, Blocks, and Inline. Before the
   person has placed a caret in the body, an insertion lands at its end. The
   tools dim while the Page shows its Markdown source.
-- **History** opens the Page's revisions where the Page has them, and stays
+- **History** opens the Page's revisions in every Scene, including Space, and stays
   selected while they are open. **Copy link** copies the Page's deeplink and
   confirms in place.
 

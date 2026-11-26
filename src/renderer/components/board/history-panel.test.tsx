@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 
-import type { OwnedDocumentDescriptor } from "../../../shared/block-documents/contracts";
+import type { ReadyPageBlockDocumentDescriptor } from "@/lib/owned-block-document";
 import { PAGE_DOCUMENT_SCHEMA_VERSION } from "../../../shared/block-documents/page-document";
 import type { DocumentVersionDetail } from "../../../shared/block-documents/document-history";
 import type { PageHistoryEntry, PageHistoryPage } from "../../../shared/page-history";
@@ -13,9 +13,9 @@ const HistoryPanel = (props: Omit<HistoryPanelProps, "fileAuthority">) => (
   <HistoryPanelView
     {...props}
     fileAuthority={{
-      libraryId: "library:one",
-      storeEpoch: "epoch:one",
-      contentRoutingContext: { kind: "project", projectId: props.projectId },
+      libraryId: props.descriptor.libraryId,
+      storeEpoch: props.descriptor.storeEpoch,
+      contentRoutingContext: props.descriptor.routingContext,
     }}
   />
 );
@@ -23,7 +23,7 @@ const HistoryPanel = (props: Omit<HistoryPanelProps, "fileAuthority">) => (
 type HistoryPanelApiOperation =
   | "listPageHistory"
   | "getDocumentVersion"
-  | "getOwnedDocumentDescriptor"
+  | "prepareLibraryOwnedBlockDocument"
   | "restoreDocumentVersion";
 
 const callHistoryPanelApi = async (
@@ -45,8 +45,8 @@ const callHistoryPanelApi = async (
 vi.mock("./history-panel-deps", () => ({
   listPageHistory: (...args: unknown[]) => callHistoryPanelApi("listPageHistory", ...args),
   getDocumentVersion: (...args: unknown[]) => callHistoryPanelApi("getDocumentVersion", ...args),
-  getOwnedDocumentDescriptor: (...args: unknown[]) =>
-    callHistoryPanelApi("getOwnedDocumentDescriptor", ...args),
+  prepareLibraryOwnedBlockDocument: (...args: unknown[]) =>
+    callHistoryPanelApi("prepareLibraryOwnedBlockDocument", ...args),
   restoreDocumentVersion: (...args: unknown[]) =>
     callHistoryPanelApi("restoreDocumentVersion", ...args),
 }));
@@ -85,8 +85,7 @@ describe("canonical Page history panel", () => {
 
     const view = render(
       <HistoryPanel
-        projectId="project-1"
-        pageId="card-1"
+        descriptor={makeDescriptor()}
         pageTitle="Current title"
         pageMarkdown="Current body"
         open
@@ -119,8 +118,8 @@ describe("canonical Page history panel", () => {
       if (operation === "getDocumentVersion") {
         return { ok: true, value: makeVersionDetail() };
       }
-      if (operation === "getOwnedDocumentDescriptor") {
-        return makeDescriptor();
+      if (operation === "prepareLibraryOwnedBlockDocument") {
+        return { ok: true, value: makeDescriptor() };
       }
       restoreRequests.push(args[2] as Record<string, unknown>);
       if (restoreRequests.length === 1) {
@@ -131,8 +130,7 @@ describe("canonical Page history panel", () => {
 
     const view = render(
       <HistoryPanel
-        projectId="project-1"
-        pageId="card-1"
+        descriptor={makeDescriptor()}
         pageTitle="Current title"
         pageMarkdown="Current body"
         projectWorkspacePath="/workspace/project-1"
@@ -172,6 +170,7 @@ describe("canonical Page history panel", () => {
 
     expect(restoreRequests.length).toBe(2);
     expect(restoreRequests[0]?.mutationId).toBe(restoreRequests[1]?.mutationId);
+    expect(restoreRequests[0]?.projectId).toBeNull();
     expect(restoreRequests[0]?.versionId).toBe("version-1");
     expect(restoreRequests[0]?.expectedHeadSeq).toBe(14);
     expect((restoreRequests[0]?.actor as Record<string, unknown> | undefined)?.kind).toBe(
@@ -190,15 +189,15 @@ describe("canonical Page history panel", () => {
       if (operation === "getDocumentVersion") {
         return { ok: true, value: makeVersionDetail() };
       }
-      if (operation === "getOwnedDocumentDescriptor") {
-        return makeDescriptor();
+      if (operation === "prepareLibraryOwnedBlockDocument") {
+        return { ok: true, value: makeDescriptor() };
       }
       restoreCount += 1;
       return { ok: true, value: { mutationId: "restore-committed" } };
     });
 
     const view = render(
-      <HistoryPanel projectId="project-1" pageId="card-1" open onClose={() => undefined} />,
+      <HistoryPanel descriptor={makeDescriptor()} open onClose={() => undefined} />,
     );
     await selectCheckpoint(view);
 
@@ -234,9 +233,9 @@ describe("canonical Page history panel", () => {
       if (operation === "getDocumentVersion") {
         return { ok: true, value: makeVersionDetail() };
       }
-      if (operation === "getOwnedDocumentDescriptor") {
+      if (operation === "prepareLibraryOwnedBlockDocument") {
         descriptorCount += 1;
-        return makeDescriptor();
+        return { ok: true, value: makeDescriptor() };
       }
       const request = args[2] as Record<string, unknown>;
       restoreMutationIds.push(String(request.mutationId));
@@ -257,7 +256,7 @@ describe("canonical Page history panel", () => {
     });
 
     const view = render(
-      <HistoryPanel projectId="project-1" pageId="card-1" open onClose={() => undefined} />,
+      <HistoryPanel descriptor={makeDescriptor()} open onClose={() => undefined} />,
     );
     await selectCheckpoint(view);
     await act(async () => {
@@ -307,9 +306,9 @@ describe("canonical Page history panel", () => {
       if (operation === "getDocumentVersion") {
         return { ok: true, value: makeVersionDetail() };
       }
-      if (operation === "getOwnedDocumentDescriptor") {
+      if (operation === "prepareLibraryOwnedBlockDocument") {
         descriptorCount += 1;
-        return makeDescriptor();
+        return { ok: true, value: makeDescriptor() };
       }
       const request = args[2] as Record<string, unknown>;
       restoreMutationIds.push(String(request.mutationId));
@@ -327,7 +326,7 @@ describe("canonical Page history panel", () => {
     });
 
     const view = render(
-      <HistoryPanel projectId="project-1" pageId="card-1" open onClose={() => undefined} />,
+      <HistoryPanel descriptor={makeDescriptor()} open onClose={() => undefined} />,
     );
     await selectCheckpoint(view);
     await act(async () => {
@@ -393,7 +392,7 @@ describe("canonical Page history panel", () => {
     });
 
     const view = render(
-      <HistoryPanel projectId="project-1" pageId="card-1" open onClose={() => undefined} />,
+      <HistoryPanel descriptor={makeDescriptor()} open onClose={() => undefined} />,
     );
     const activityButton = await view.findByRole("button", { name: "Activity" });
     await act(async () => {
@@ -586,10 +585,10 @@ function makeVersionDetail(): DocumentVersionDetail {
   };
 }
 
-function makeDescriptor(): OwnedDocumentDescriptor {
+function makeDescriptor(): ReadyPageBlockDocumentDescriptor {
   return {
     libraryId: "library-1",
-    routingContext: { kind: "project", projectId: "project-1" },
+    routingContext: { kind: "library" },
     ownerBlockId: "card-1",
     ownerType: "page",
     ownerLifecycle: "active",

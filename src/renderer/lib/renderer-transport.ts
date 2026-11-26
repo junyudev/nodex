@@ -137,7 +137,7 @@ export interface RendererTransport {
     >
   >;
   restoreDocumentVersion: (
-    projectId: string,
+    projectId: string | null,
     documentId: string,
     request: import("../../shared/block-documents/document-history").PrepareDocumentVersionRestore,
   ) => Promise<

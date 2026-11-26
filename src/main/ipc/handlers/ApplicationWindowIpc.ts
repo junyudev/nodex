@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { nativeTheme, type IpcMainInvokeEvent } from "electron";
+import type { WindowSessionNewWindowRequest } from "../../../shared/window-session";
 import type { WorkbenchPageStageSurfaceConfig } from "../../../shared/workbench-scene";
 import { rendererSpaceParameter } from "../../../shared/space-ipc-policy";
 import { WindowSessionNewWindowRequestSchema } from "../../../shared/schemas/window-session";
@@ -24,6 +25,7 @@ export interface ApplicationWindowIpcOptions {
   readonly validatePageTarget: (
     event: IpcMainInvokeEvent,
     page: WorkbenchPageStageSurfaceConfig,
+    destination: WindowSessionNewWindowRequest["pageDestination"],
   ) => Effect.Effect<void, unknown>;
 }
 
@@ -137,7 +139,7 @@ export const live = (
 
             const generation = windows.resolveRendererGeneration(event.sender.id);
             const spaceId = rendererSpaceParameter(event.senderFrame?.url ?? "");
-            return options.validatePageTarget(event, request.page).pipe(
+            return options.validatePageTarget(event, request.page, request.pageDestination).pipe(
               Effect.andThen(
                 parse("open-new-page-window", () => {
                   if (

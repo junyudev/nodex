@@ -308,28 +308,22 @@ export function makePreviewPageStageTab(
   session: WorkbenchSessionRenderProjection,
   panelId: PanelId,
   input: {
-    projectId: string;
     pageId: string;
     titleSnapshot?: string;
   },
 ): ProjectSessionPreviewTab {
-  const projectId = resolveProjectBoundSessionId(session);
-  if (projectId === null) {
-    throw new Error("Projectless sessions cannot own project-scoped tabs");
-  }
   const now = new Date().toISOString();
   const title = input.titleSnapshot || input.pageId;
   return {
     id: makeClientWorkbenchTabProjectionId(),
     sessionId: session.id,
-    projectId,
+    projectId: session.projectId,
     browserTabId: null,
     panelId,
     kind: "page_stage",
     title,
     order: session.tabs.filter((tab) => tab.panelId === panelId).length,
     config: {
-      routingContext: { kind: "project", projectId: input.projectId },
       pageId: input.pageId,
       ...(input.titleSnapshot ? { titleSnapshot: input.titleSnapshot } : {}),
     },

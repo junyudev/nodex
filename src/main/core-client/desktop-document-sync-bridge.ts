@@ -1120,7 +1120,7 @@ const makeDesktopDocumentSessionState = (
       .use(
         "document.mutate",
         (client) => createCoreDocumentSyncAdapter(client).applyDocumentMutation(request),
-        { projectId: request.projectId },
+        { projectId: request.projectId ?? undefined },
       )
       .pipe(
         Effect.catch((error) =>
@@ -2147,7 +2147,7 @@ const makeDesktopDocumentSessionState = (
         .use(
           "document.get-version",
           (client) => createCoreDocumentSyncAdapter(client).getVersion(request),
-          { projectId: request.projectId },
+          { projectId: request.projectId ?? undefined },
         )
         .pipe(
           Effect.mapError((error) => sessionError("document.get-version", error.cause ?? error)),

@@ -166,7 +166,6 @@ export function PageStageReferencedBy({
   readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly onOpenPage?: (input: {
-    readonly routingContext: ContentRoutingContext;
     readonly pageId: string;
     readonly titleSnapshot?: string;
     readonly sourceBlockId?: string;
@@ -178,7 +177,6 @@ export function PageStageReferencedBy({
       {...backlinks}
       onOpen={(item) => {
         void onOpenPage?.({
-          routingContext,
           pageId: item.sourcePageId,
           titleSnapshot: item.sourceTitle,
           sourceBlockId: item.sourceBlockId,

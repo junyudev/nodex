@@ -666,14 +666,15 @@ function validateSceneSurfaceRequest(
   )
     return null;
 
-  if (input.request.kind === "skill") return null;
+  if (
+    input.request.kind === "skill" ||
+    input.request.kind === "page_stage" ||
+    input.request.kind === "page_file"
+  )
+    return null;
   if (input.request.kind === "agents" && input.owner.kind === "inbox") return null;
 
-  const requestAllowed =
-    input.request.kind === "page_stage" ||
-    input.request.kind === "page_file" ||
-    input.request.kind === "canvas_stage" ||
-    input.request.kind === "db_view";
+  const requestAllowed = input.request.kind === "canvas_stage" || input.request.kind === "db_view";
   const libraryAuthorized =
     requestAllowed &&
     input.request.config.routingContext.kind === "library" &&

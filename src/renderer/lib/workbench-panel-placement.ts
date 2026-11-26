@@ -143,12 +143,6 @@ export function resolveSessionPanelSurfaceTarget(
 
 export function readPageStagePanelTabPageRef(
   tab: WorkbenchTabProjection | null | undefined,
-): { projectId: string; pageId: string } | null {
-  if (!tab || tab.kind !== "page_stage") return null;
-  if (tab.config.routingContext.kind !== "project") return null;
-
-  return {
-    projectId: tab.config.routingContext.projectId,
-    pageId: tab.config.pageId,
-  };
+): { pageId: string } | null {
+  return tab?.kind === "page_stage" ? { pageId: tab.config.pageId } : null;
 }

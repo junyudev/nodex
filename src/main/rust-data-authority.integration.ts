@@ -2203,7 +2203,6 @@ describe("Electron native data authority", () => {
       });
       await expect(
         library.listPageHistory({
-          requestingProjectId: projectId,
           pageId: "page:electron-library-adapter",
           pageSize: 10,
         }),

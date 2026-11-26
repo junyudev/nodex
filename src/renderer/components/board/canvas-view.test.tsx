@@ -21,7 +21,6 @@ import { plainTextToPortableRichText } from "../../../shared/block-documents/por
 import { MemoryCanvasSceneOutbox } from "@/lib/canvas-scene-outbox";
 import type { CanvasSceneSyncAdapter } from "@/lib/canvas-scene-provider";
 import { noOpLocalCommit } from "../../../shared/testing/local-commit";
-import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import {
   readCanvasViewportPreference,
   writeCanvasViewportPreference,
@@ -64,7 +63,6 @@ let maintenanceEligible = false;
 let maintenanceReadCount = 0;
 let maintenanceApplyCount = 0;
 let openedCards: Array<{
-  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly title?: string;
 }> = [];
@@ -432,8 +430,8 @@ async function renderCanvas(strict = false) {
       board: mockBoard,
       createPage: async () => makeCardSummary("card-new", "New Card"),
     },
-    onOpenPage: ({ routingContext, pageId, titleSnapshot }) => {
-      openedCards.push({ routingContext, pageId, title: titleSnapshot });
+    onOpenPage: ({ pageId, titleSnapshot }) => {
+      openedCards.push({ pageId, title: titleSnapshot });
     },
     activePageId: undefined,
     onCloseActivePage: async () => undefined,
@@ -585,7 +583,6 @@ describe("CanvasDocumentSurface", () => {
     fireEvent.click(view.getByRole("button", { name: "open first card" }));
     expect(openedCards).toEqual([
       {
-        routingContext: descriptor.routingContext,
         pageId: "standalone-card",
         title: "Standalone",
       },

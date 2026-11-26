@@ -110,7 +110,7 @@ export type DocumentMutationCoordination = "merge_friendly" | "write_fence";
 export interface DocumentOperationResult {
   readonly mutationKind: DocumentMutationKind;
   readonly mutationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly documentId: DocumentId;
   readonly generation: number;
@@ -478,7 +478,6 @@ const parseMutationEnvelope = (
 ): {
   readonly record: Readonly<Record<string, unknown>>;
   readonly mutationId: string;
-  readonly projectId: string;
   readonly storeEpoch: string;
   readonly clientSessionId?: string;
   readonly actor: Readonly<Record<string, BlockTreeValue>>;
@@ -506,7 +505,6 @@ const parseMutationEnvelope = (
   return {
     record,
     mutationId: readBoundedString(record, "mutationId", label, MAX_SCOPE_ID_LENGTH),
-    projectId: readBoundedString(record, "projectId", label),
     storeEpoch: readBoundedString(record, "storeEpoch", label),
     ...(clientSessionId === undefined ? {} : { clientSessionId }),
     actor: readProps(record.actor, `${label}.actor`, budget),
@@ -531,7 +529,7 @@ export const parseDocumentOperationBatch = (value: unknown): DocumentOperationBa
   }
   return {
     mutationId: envelope.mutationId,
-    projectId: envelope.projectId,
+    projectId: readBoundedString(envelope.record, "projectId", "documentOperation"),
     storeEpoch: envelope.storeEpoch,
     ...(envelope.clientSessionId === undefined
       ? {}
@@ -579,7 +577,7 @@ export const parseReplaceDocumentFromMarkdown = (value: unknown): ReplaceDocumen
   }
   return {
     mutationId: envelope.mutationId,
-    projectId: envelope.projectId,
+    projectId: readBoundedString(envelope.record, "projectId", "replaceDocumentFromMarkdown"),
     storeEpoch: envelope.storeEpoch,
     ...(envelope.clientSessionId === undefined
       ? {}
@@ -598,7 +596,10 @@ export const parseDocumentVersionRestore = (value: unknown): PrepareDocumentVers
   const envelope = parseMutationEnvelope(value, "documentVersionRestore", ["versionId"], budget);
   return {
     mutationId: envelope.mutationId,
-    projectId: envelope.projectId,
+    projectId:
+      envelope.record.projectId === null
+        ? null
+        : readBoundedString(envelope.record, "projectId", "documentVersionRestore"),
     storeEpoch: envelope.storeEpoch,
     documentId: envelope.documentId,
     versionId: readBoundedString(
@@ -691,7 +692,10 @@ export const parseDocumentOperationResult = (value: unknown): DocumentOperationR
   return {
     mutationKind: result.mutationKind,
     mutationId: readBoundedString(result, "mutationId", label),
-    projectId: readBoundedString(result, "projectId", label),
+    projectId:
+      result.mutationKind === "document_version_restore" && result.projectId === null
+        ? null
+        : readBoundedString(result, "projectId", label),
     storeEpoch: readBoundedString(result, "storeEpoch", label),
     documentId: readBoundedString(result, "documentId", label),
     generation,

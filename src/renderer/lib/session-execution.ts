@@ -217,7 +217,7 @@ export type SessionPageSendTarget =
  */
 export function resolveSessionPageSendTarget(
   session: SessionExecutionSource,
-  pageProjectId: string,
+  launchProjectId: string | null,
   nativeThread: CodexThreadSummary | null,
 ): SessionPageSendTarget {
   const execution = resolveSessionExecution(session);
@@ -225,7 +225,7 @@ export function resolveSessionPageSendTarget(
     return { kind: "thread", thread: runtimeSessionThreadSummary(session, execution.rootThreadId) };
   if (execution.kind === "native")
     return nativeThread ? { kind: "thread", thread: nativeThread } : { kind: "none" };
-  return session.projectId === pageProjectId ? { kind: "launch" } : { kind: "none" };
+  return session.projectId === launchProjectId ? { kind: "launch" } : { kind: "none" };
 }
 
 /** A metadata-only thread descriptor for editor targets; it carries no execution status. */

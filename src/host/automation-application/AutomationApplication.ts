@@ -233,11 +233,11 @@ export interface AutomationOccurrences {
     readonly after?: string | null;
   }) => AutomationEffect<AutomationPageOccurrenceWindow>;
   readonly complete: (
-    projectId: string,
+    projectId: string | undefined,
     input: PageOccurrenceCompleteInput,
   ) => AutomationEffect<PageOccurrenceMutationResult>;
   readonly skip: (
-    projectId: string,
+    projectId: string | undefined,
     input: PageOccurrenceActionInput,
   ) => AutomationEffect<PageOccurrenceMutationResult>;
   readonly update: (
@@ -767,7 +767,7 @@ export const make: Effect.Effect<
 
   const applyPageOccurrence = Effect.fn("AutomationApplication.occurrences.apply")(function* (
     operation: string,
-    projectId: string,
+    projectId: string | undefined,
     operationIdentity: string,
     intent: Extract<
       AutomationIntent,

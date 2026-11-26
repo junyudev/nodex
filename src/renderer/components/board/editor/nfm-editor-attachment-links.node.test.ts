@@ -35,7 +35,7 @@ describe("attachment reference", () => {
           authority: pageAuthority,
           canOpenPageFile: true,
         }),
-      ).toEqual({ kind: "page-file", routingContext, pageId: "page-1", fileId: FILE_ID });
+      ).toEqual({ kind: "page-file", pageId: "page-1", fileId: FILE_ID });
     });
 
     test("keeps a captured or tab-less read in a viewer bound to the surface's authority", () => {

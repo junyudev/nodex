@@ -472,16 +472,12 @@ const isStatusRow = (row: PageStagePropertyRowModel) =>
 
 /** Whose move the Page waits for joins its Status, so stage and turn read as one fact. */
 function PageStatusTurnSlot({ controller }: PageStagePropertiesSectionProps) {
-  const { onOpenPage, contentRoutingContext } = controller;
+  const { onOpenPage } = controller;
   return (
     <PageStatusTurn
       pageId={controller.page?.id ?? ""}
       onOpenChat={controller.onOpenRelatedChat}
-      onOpenPage={
-        onOpenPage
-          ? (pageId) => void onOpenPage({ routingContext: contentRoutingContext, pageId })
-          : undefined
-      }
+      onOpenPage={onOpenPage ? (pageId) => void onOpenPage({ pageId }) : undefined}
     />
   );
 }

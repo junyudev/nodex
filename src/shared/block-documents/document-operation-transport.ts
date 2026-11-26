@@ -69,7 +69,7 @@ export const parseDocumentMutationRequest = (value: unknown): DocumentMutationRe
  */
 export const bindTrustedDocumentMutation = (
   rawRequest: unknown,
-  projectId: string,
+  projectId: string | null,
   documentId: string,
   identity: TrustedDocumentMutationIdentity,
 ): TrustedDocumentMutationBinding => {
@@ -94,7 +94,7 @@ export const bindTrustedDocumentMutation = (
       ok: false,
       error: documentMutationFailure(
         "invalid_document_operation_request",
-        "Document mutation does not match its Project and Document scope",
+        "Document mutation does not match its requested scope",
         { mutationId: request.mutationId },
       ),
     };
@@ -102,8 +102,6 @@ export const bindTrustedDocumentMutation = (
 
   const bound = {
     ...request,
-    projectId,
-    documentId,
     actor: identity.actor,
     ...(identity.clientSessionId === undefined
       ? { clientSessionId: undefined }

@@ -352,9 +352,9 @@ export function WorkbenchShell({
   });
 
   const handleOpenPageInNewWindow = useCallback<OpenPageInNewWindowHandler>(
-    (page) => {
+    (page, pageDestination) => {
       void flushBeforeWindowClone()
-        .then(() => openWorkbenchWindow({ page }))
+        .then(() => openWorkbenchWindow({ page, pageDestination }))
         .catch((error: unknown) => {
           toast.danger(
             error instanceof Error

@@ -32,7 +32,7 @@ function setup() {
       titleSnapshot: "Plan",
       state: null,
       stateKey: 0,
-      config: { routingContext: { kind: "library" }, pageId: "page-a" },
+      config: { pageId: "page-a" },
     },
   });
   const owner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {

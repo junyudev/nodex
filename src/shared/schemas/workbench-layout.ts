@@ -8,7 +8,7 @@ import type {
   WorkbenchLayoutSnapshotV6,
   WorkbenchLayoutSnapshotV7,
   WorkbenchLayoutSnapshotV8,
-  WorkbenchLayoutSnapshotV9,
+  WorkbenchLayoutSnapshotV10,
   WorkbenchHomeLocation,
   WorkbenchHomeLocationV8,
   WorkbenchStableLocation,
@@ -886,7 +886,7 @@ function rootSurface(root: LibraryPlacedResourceTarget): WorkbenchSurfaceDescrip
       ...common,
       kind: "page_stage",
       titleSnapshot: "Page",
-      config: { routingContext: { kind: "library" }, pageId: root.pageId },
+      config: { pageId: root.pageId },
     };
   }
   if (root.kind === "database") {
@@ -1068,7 +1068,7 @@ function migrateStableLocationV8ToV9(location: WorkbenchStableLocationV8): Workb
 
 function migrateLocationV8ToV9(
   location: WorkbenchLayoutSnapshotV8["location"],
-): WorkbenchLayoutSnapshotV9["location"] {
+): WorkbenchLayoutSnapshotV10["location"] {
   if (location.kind === "settings") {
     return { ...location, returnTo: migrateStableLocationV8ToV9(location.returnTo) };
   }
@@ -1079,7 +1079,7 @@ function migrateHomeLocationV8ToV9(location: WorkbenchHomeLocationV8): Workbench
   return location.kind === "inbox" ? { kind: "inbox" } : location;
 }
 
-const migrateWorkbenchLayoutSnapshotToV9 = (value: unknown): unknown => {
+const migrateWorkbenchLayoutSnapshotToV10 = (value: unknown): unknown => {
   const normalized = normalizeAutomationsLayout(value);
   if (typeof normalized !== "object" || normalized === null || Array.isArray(normalized))
     return normalized;
@@ -1092,9 +1092,9 @@ const migrateWorkbenchLayoutSnapshotToV9 = (value: unknown): unknown => {
       !Array.isArray(location) &&
       (location as Record<string, unknown>).kind === "pending-worktree"
     ) {
-      return { ...record, location: (location as Record<string, unknown>).returnTo };
+      return { ...record, version: 10, location: (location as Record<string, unknown>).returnTo };
     }
-    return normalized;
+    return { ...record, version: 10 };
   }
 
   const parsed = WorkbenchLayoutSnapshotV8Schema.safeParse(normalized);
@@ -1102,7 +1102,7 @@ const migrateWorkbenchLayoutSnapshotToV9 = (value: unknown): unknown => {
   const layout = parsed.data;
   return {
     ...layout,
-    version: 9,
+    version: 10,
     location: migrateLocationV8ToV9(layout.location),
     homeLocation: migrateHomeLocationV8ToV9(layout.homeLocation),
     scenesByOwnerKey: Object.fromEntries(
@@ -1114,11 +1114,11 @@ const migrateWorkbenchLayoutSnapshotToV9 = (value: unknown): unknown => {
   };
 };
 
-export const WorkbenchLayoutSnapshotV9Schema = z.preprocess(
-  migrateWorkbenchLayoutSnapshotToV9,
+export const WorkbenchLayoutSnapshotV10Schema = z.preprocess(
+  migrateWorkbenchLayoutSnapshotToV10,
   z
     .object({
-      version: z.literal(9),
+      version: z.literal(10),
       location: PersistedWorkbenchLocationV9Schema,
       homeLocation: WorkbenchHomeLocationSchema,
       databaseSearchByProject: StringRecordSchema.catch({}),
@@ -1139,7 +1139,7 @@ export const WorkbenchLayoutSnapshotV9Schema = z.preprocess(
       ...layout,
       homeLocation: getWorkbenchHomeLocation(layout.location) ?? layout.homeLocation,
     })),
-) satisfies z.ZodType<WorkbenchLayoutSnapshotV9>;
+) satisfies z.ZodType<WorkbenchLayoutSnapshotV10>;
 
 export const WorkbenchLayoutSnapshotSchema: z.ZodType<WorkbenchLayoutSnapshot> =
-  WorkbenchLayoutSnapshotV9Schema;
+  WorkbenchLayoutSnapshotV10Schema;

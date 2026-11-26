@@ -50,9 +50,6 @@ export interface EditorSurfaceAwarenessLease {
  */
 export const MAX_BACKGROUND_PAGE_EDITORS = 4;
 
-export const makeEditorSurfaceKey = (projectSessionId: string, tabId: string): string =>
-  `${projectSessionId}\u0000${tabId}`;
-
 export const makeDocumentSessionIdentity = (descriptor: OwnedDocumentDescriptor): string =>
   [
     descriptor.storeEpoch,

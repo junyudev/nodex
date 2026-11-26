@@ -166,14 +166,11 @@ function isResidentSubagentDescendant(
   );
 }
 
-function chatPageRequest(
-  routingContext: ShowPagesInChatInput["routingContext"],
-  page: ShowPagesInChatInput["pages"][number],
-): WorkbenchSurfaceOpenRequest {
+function chatPageRequest(page: ShowPagesInChatInput["pages"][number]): WorkbenchSurfaceOpenRequest {
   const titleSnapshot = page.titleSnapshot?.trim() || undefined;
   return {
     kind: "page_stage",
-    config: { routingContext, pageId: page.pageId, ...(titleSnapshot ? { titleSnapshot } : {}) },
+    config: { pageId: page.pageId, ...(titleSnapshot ? { titleSnapshot } : {}) },
     titleSnapshot,
   };
 }
@@ -564,7 +561,7 @@ export function useWorkbenchSessionCommands({
         try {
           const result = await sceneNavigator.presentPanelSurface({
             owner: { kind: "session", sessionId: presentation.domain.id },
-            request: chatPageRequest({ kind: "project", projectId: input.projectId }, input),
+            request: chatPageRequest(input),
             target: { panelId: "right" },
             mode: "durable",
             navigation: "select-owner",
@@ -621,7 +618,7 @@ export function useWorkbenchSessionCommands({
     async (input: OpenPageInChatInput): Promise<void> => {
       const result = await sceneNavigator.presentPanelSurface({
         owner: { kind: "session", sessionId: input.sessionId },
-        request: chatPageRequest(input.routingContext, input.page),
+        request: chatPageRequest(input.page),
         target: { panelId: "right" },
         mode: "durable",
         navigation: "select-owner",
@@ -645,7 +642,7 @@ export function useWorkbenchSessionCommands({
       for (const [index, page] of input.pages.entries()) {
         const result = await sceneNavigator.presentPanelSurface({
           owner: { kind: "session", sessionId: input.sessionId },
-          request: chatPageRequest(input.routingContext, page),
+          request: chatPageRequest(page),
           target: { panelId: "right" },
           mode: "durable",
           navigation: "background",
@@ -820,7 +817,14 @@ export function useWorkbenchSessionCommands({
 
   /** Appends Page content to one chat's draft and focuses it, whether or not it has started. */
   const addToChatComposer = useCallback(
-    (input: { readonly sessionId: string; readonly promptInput: CodexPromptInput }) => {
+    (input: {
+      readonly sessionId: string;
+      readonly promptInput: CodexPromptInput;
+      readonly projectDraft?: Extract<
+        import("./composer-draft-intents").ComposerChatKey,
+        { kind: "project-draft" }
+      >;
+    }) => {
       // Page content arrives as its own paragraphs after any draft, with the caret on a new line
       // below it for the instruction that goes with it.
       const text = input.promptInput.text.trim();
@@ -833,9 +837,11 @@ export function useWorkbenchSessionCommands({
           documentItems: text ? [{ type: "text", text: `${text}\n\n` }] : [],
         },
       };
-      composerDraftIntents.set({ kind: "session", sessionId: input.sessionId }, intent, {
-        reveal: true,
-      });
+      composerDraftIntents.set(
+        input.projectDraft ?? { kind: "session", sessionId: input.sessionId },
+        intent,
+        { reveal: true },
+      );
     },
     [],
   );

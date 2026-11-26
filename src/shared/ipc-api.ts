@@ -830,7 +830,7 @@ export interface IpcApi
     result: DocumentHistoryCommandResult<DocumentVersionDetail>;
   };
   "block-documents:history:restore": {
-    args: [projectId: string, documentId: string, request: DocumentMutationRequest];
+    args: [projectId: string | null, documentId: string, request: DocumentMutationRequest];
     result: DocumentOperationCommandResult;
   };
   "block-properties:mutate": {
@@ -1466,11 +1466,11 @@ export interface IpcApi
     };
   };
   "page:occurrence:complete": {
-    args: [projectId: string, input: PageOccurrenceCompleteInput, sessionId?: string];
+    args: [projectId: string | null, input: PageOccurrenceCompleteInput, sessionId?: string];
     result: PageOccurrenceMutationResult;
   };
   "page:occurrence:skip": {
-    args: [projectId: string, input: PageOccurrenceActionInput, sessionId?: string];
+    args: [projectId: string | null, input: PageOccurrenceActionInput, sessionId?: string];
     result: PageOccurrenceMutationResult;
   };
   "page:occurrence:update": {

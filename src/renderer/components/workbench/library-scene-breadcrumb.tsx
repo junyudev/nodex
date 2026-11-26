@@ -50,9 +50,7 @@ export function libraryTargetForLibrarySurface(
 ): LibraryRouteTarget | null {
   if (!surface) return null;
   if (surface.kind === "page_stage" || surface.kind === "page_file") {
-    return surface.config.routingContext.kind === "library"
-      ? { kind: "page", pageId: surface.config.pageId }
-      : null;
+    return { kind: "page", pageId: surface.config.pageId };
   }
   if (surface.kind === "canvas_stage") {
     return surface.config.routingContext.kind === "library"

@@ -521,7 +521,7 @@ describe("Core Library Module Adapter", () => {
     const projectClient = new FakeCoreClient();
     rootClient.enqueueRead(pageDetailSnapshot());
     projectClient.enqueueRead(pageDetailSnapshot());
-    projectClient.enqueueRead(pageHistorySnapshot());
+    rootClient.enqueueRead(pageHistorySnapshot());
     const rootAdapter = createCoreLibraryModuleAdapter({ client: rootClient, ...identity });
     const projectAdapter = createCoreLibraryModuleAdapter({ client: projectClient, ...identity });
 
@@ -538,8 +538,7 @@ describe("Core Library Module Adapter", () => {
       },
     });
     await expect(
-      projectAdapter.listPageHistory({
-        requestingProjectId: "project:test",
+      rootAdapter.listPageHistory({
         pageId: "page:one",
       }),
     ).resolves.toMatchObject({
@@ -550,8 +549,8 @@ describe("Core Library Module Adapter", () => {
         entries: [{ kind: "block_mutation", changeSeq: 12 }],
       },
     });
-    expect(projectClient.reads).toHaveLength(2);
-    expect(rootClient.reads).toHaveLength(1);
+    expect(projectClient.reads).toHaveLength(1);
+    expect(rootClient.reads).toHaveLength(2);
   });
 
   test("maps Page history cursors and entries through the strict shared contract", async () => {
@@ -561,7 +560,6 @@ describe("Core Library Module Adapter", () => {
 
     await expect(
       adapter.listPageHistory({
-        requestingProjectId: "project:test",
         pageId: "page:one",
         before: {
           occurredAt: "2026-07-19T18:13:00.000Z",

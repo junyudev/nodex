@@ -112,7 +112,6 @@ function NfmPageMentionContextMenuItems({
         <NfmEditorContextMenuItem
           onSelect={() => {
             void host.openPage?.({
-              routingContext,
               pageId: page.pageId,
               titleSnapshot: page.title,
             });

@@ -513,7 +513,7 @@ describe("ApplicationWindowIpc", () => {
       assert.strictEqual(openForRequest.mock.calls.length, 1);
       assert.deepEqual(openForRequest.mock.calls[0], [17, { activeProjectSessionId: "session-1" }]);
       const newWindow = handlers.get("window:new")!;
-      const page = { routingContext: { kind: "library" }, pageId: "page-1" };
+      const page = { pageId: "page-1" };
       const malformed = yield* newWindow(event, { page: { ...page, pageId: "" } }).pipe(
         Effect.exit,
       );

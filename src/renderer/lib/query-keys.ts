@@ -151,7 +151,6 @@ export const queryKeys = {
     canvasTarget: (canvasId: string) =>
       spaceQueryKey(["libraryNavigation", "canvasTarget", canvasId] as const),
     pageDetail: (pageId: string) => spaceQueryKey(["libraryPages", "detail", pageId] as const),
-    pageDocument: (pageId: string) => spaceQueryKey(["libraryPages", "document", pageId] as const),
     pageBacklinks: (routingContext: unknown, pageId: string) =>
       spaceQueryKey(["libraryPages", "backlinks", routingContext, pageId] as const),
     pageFiles: (routingContext: unknown, pageId: string) =>

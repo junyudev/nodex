@@ -414,7 +414,6 @@ test("a joined desktop starts host work, answers its question and accepts it acr
         });
         await page.screenshot({ path: path.join(screenshots, "01-start.png") });
         const history = await invokeIpc(page, "pages:history:list", {
-          requestingProjectId: initialized.projectId,
           pageId: created.page_id,
         });
         expect(history.ok).toBe(true);
@@ -936,7 +935,6 @@ test("a joined desktop starts host work, answers its question and accepts it acr
         );
         await assign(delayed.pageId);
         const independentHistory = await invokeIpc(page, "pages:history:list", {
-          requestingProjectId: initialized.projectId,
           pageId: delayed.pageId,
         });
         if (!independentHistory.ok) throw new Error(independentHistory.error.message);

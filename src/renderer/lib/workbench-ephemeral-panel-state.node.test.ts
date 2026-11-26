@@ -173,7 +173,6 @@ describe("Workbench ephemeral panel state", () => {
           kind: "page_stage" as const,
           titleSnapshot: "Project Page",
           config: {
-            routingContext: { kind: "project" as const, projectId: "project:one" },
             pageId: "page:project",
           },
           stateKey: 0,
@@ -184,7 +183,6 @@ describe("Workbench ephemeral panel state", () => {
           kind: "page_stage" as const,
           titleSnapshot: "Library Page",
           config: {
-            routingContext: { kind: "library" as const },
             pageId: "page:pages",
           },
           stateKey: 0,

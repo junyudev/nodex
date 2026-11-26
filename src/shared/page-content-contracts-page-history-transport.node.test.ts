@@ -96,7 +96,6 @@ describe("page history transport", () => {
   describe("Page history transport contract", () => {
     test("parses one exact scoped request and source-specific cursor", () => {
       const request = parseListPageHistoryRequest({
-        requestingProjectId: "project:history",
         pageId: "card:history",
         pageSize: MAX_PAGE_HISTORY_PAGE_SIZE,
         before: page.nextCursor,

@@ -657,7 +657,7 @@ export function getDocumentVersion(
 }
 
 export async function restoreDocumentVersion(
-  projectId: string,
+  projectId: string | null,
   documentId: string,
   request: PrepareDocumentVersionRestore,
 ): Promise<DocumentOperationCommandResult> {

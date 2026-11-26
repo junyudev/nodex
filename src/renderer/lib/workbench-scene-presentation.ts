@@ -31,12 +31,7 @@ function resourceProjectId(
   session: Pick<WorkbenchSessionPanelProjection, "projectId">,
   surface: WorkbenchSurfaceDescriptor,
 ): string | null {
-  if (
-    surface.kind === "db_view" ||
-    surface.kind === "page_stage" ||
-    surface.kind === "page_file" ||
-    surface.kind === "canvas_stage"
-  ) {
+  if (surface.kind === "db_view" || surface.kind === "canvas_stage") {
     return surface.config.routingContext.kind === "project"
       ? surface.config.routingContext.projectId
       : null;

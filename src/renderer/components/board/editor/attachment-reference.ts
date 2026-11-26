@@ -2,7 +2,6 @@ import { getIntl } from "@/lib/i18n";
 import { formatBytes } from "@/lib/file-metadata-format";
 import type { FilePreviewAuthority, FileReadAuthority } from "@/lib/library-file-resources";
 import { describeFileFormat } from "@/lib/page-file-view-kind";
-import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import { parseAssetSource } from "../../../../shared/assets";
 import { parseFileSource } from "../../../../shared/file-resources";
 
@@ -23,7 +22,6 @@ export interface AttachmentReferenceProps {
 export type AttachmentDestination =
   | {
       readonly kind: "page-file";
-      readonly routingContext: ContentRoutingContext;
       readonly pageId: string;
       readonly fileId: string;
     }
@@ -56,7 +54,6 @@ export function resolveAttachmentDestination(input: {
     if (currentPage && input.canOpenPageFile) {
       return {
         kind: "page-file",
-        routingContext: authority.contentRoutingContext,
         pageId: currentPage,
         fileId,
       };

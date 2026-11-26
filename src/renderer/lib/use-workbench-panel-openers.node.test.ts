@@ -224,7 +224,6 @@ function pageFileHarness() {
   };
 }
 const pageFileInput: OpenPageFileTabInput = {
-  routingContext: { kind: "library" },
   pageId: "page",
   fileId: "file",
   logicalPath: "profile/report.html",
@@ -232,21 +231,21 @@ const pageFileInput: OpenPageFileTabInput = {
 };
 
 describe("Page File opening", () => {
-  test("inserts after the source Page and activates the same File across routes and panels", async () => {
+  test("inserts after the source Page and activates the same File across panels", async () => {
     const h = pageFileHarness();
     const page = await h.createTab({
       sessionId: "session",
       panelId: "bottom",
       kind: "page_stage",
       title: "Page",
-      config: { routingContext: { kind: "library" }, pageId: "page" },
+      config: { pageId: "page" },
     });
     const sibling = await h.createTab({
       sessionId: "session",
       panelId: "bottom",
       kind: "page_stage",
       title: "Other",
-      config: { routingContext: { kind: "library" }, pageId: "other" },
+      config: { pageId: "other" },
     });
     expect(page && sibling).toBeTruthy();
     const input = {
@@ -258,12 +257,7 @@ describe("Page File opening", () => {
     const leaf = findWorkbenchPanelLeafForTab(h.scene.panels.bottom.layout, page!.id)!;
     expect(leaf.tabIds).toEqual([page!.id, file.id, sibling!.id]);
     const count = h.createTab.mock.calls.length;
-    expect(
-      await openSessionPageFileTab(
-        { ...input, routingContext: { kind: "project", projectId: "elsewhere" } },
-        h.ports,
-      ),
-    ).toBe(true);
+    expect(await openSessionPageFileTab({ ...input, placement: undefined }, h.ports)).toBe(true);
     expect(h.createTab.mock.calls.length).toBe(count);
     expect(h.setActivePanelTab).toHaveBeenLastCalledWith("bottom", file.id, {
       leafId: leaf.id,
@@ -319,7 +313,7 @@ describe("Page File opening", () => {
     const page = makePreviewWorkbenchTabProjection({ ...session, projectId: "project" }, "right", {
       kind: "page_stage",
       title: "Page",
-      config: { routingContext: { kind: "library" }, pageId: "page" },
+      config: { pageId: "page" },
     });
     h.ports.controller.updatePreviewTabsByPanel({
       [makeWorkbenchSessionPanelSlotKey(session.id, "right", leaf)]: page,

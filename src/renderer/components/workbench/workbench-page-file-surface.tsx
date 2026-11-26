@@ -12,7 +12,7 @@ import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
 import { usePageFile, usePageFileAtPath } from "@/lib/use-library-files";
-import type { ContentRoutingContext } from "../../../shared/content-routing-context";
+import { libraryContentRoute } from "../../../shared/content-routing-context";
 import type {
   WorkbenchPageFileSurfaceConfig,
   WorkbenchSurfaceDescriptor,
@@ -21,11 +21,7 @@ import type {
 export interface WorkbenchPageFileSurfaceProps {
   readonly surface: Extract<WorkbenchSurfaceDescriptor, { readonly kind: "page_file" }>;
   readonly isActive: boolean;
-  readonly onOpenPage: (input: {
-    routingContext: ContentRoutingContext;
-    pageId: string;
-    title: string;
-  }) => void;
+  readonly onOpenPage: (input: { pageId: string; title: string }) => void;
   readonly onUpdateConfig: (
     patch: Partial<
       Pick<WorkbenchPageFileSurfaceConfig, "fileId" | "logicalPath" | "titleSnapshot">
@@ -50,7 +46,8 @@ export function WorkbenchPageFileSurface({
 }: WorkbenchPageFileSurfaceProps): JSX.Element {
   const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
-  const { routingContext, pageId, fileId, logicalPath } = surface.config;
+  const { pageId, fileId, logicalPath } = surface.config;
+  const routingContext = libraryContentRoute;
   const current = usePageFile(routingContext, pageId, fileId);
   const replaced = usePageFileAtPath(
     routingContext,
@@ -80,7 +77,6 @@ export function WorkbenchPageFileSurface({
 
   const openPage = () =>
     onOpenPage({
-      routingContext,
       pageId,
       title: rawPageTitle === null ? "Page" : rawPageTitle || "Untitled",
     });

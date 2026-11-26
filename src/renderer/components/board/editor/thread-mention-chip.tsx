@@ -40,6 +40,7 @@ export interface ThreadMentionRuntimeValue {
   sessions: Record<string, CodexThreadSummary>;
   resolvingIds: Set<string>;
   resolveSession?: (sessionId: string) => Promise<CodexThreadSummary | null>;
+  openThread?: (threadId: string) => Promise<void>;
 }
 
 const EMPTY_THREADS: Record<string, CodexThreadSummary> = {};
@@ -259,7 +260,7 @@ export function ThreadMentionInlineContentView({
     source: editorSource,
     contextMenu: false,
   });
-  const canOpen = reference.interactive;
+  const canOpen = reference.interactive || Boolean(thread?.threadId && runtime.openThread);
 
   const [previousResolution, setPreviousResolution] = useState({
     uuid: props.uuid,
@@ -310,12 +311,16 @@ export function ThreadMentionInlineContentView({
       }}
       onAuxClick={canOpen ? reference.handlers.onAuxClick : undefined}
       onClick={(event) => {
-        if (canOpen) {
+        if (reference.interactive) {
           reference.handlers.onClick(event);
           return;
         }
         event.preventDefault();
         event.stopPropagation();
+        if (thread?.threadId && runtime.openThread) {
+          void runtime.openThread(thread.threadId);
+          return;
+        }
         setOpen((current) => !current);
       }}
     />

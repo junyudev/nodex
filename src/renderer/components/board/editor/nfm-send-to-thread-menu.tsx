@@ -197,7 +197,7 @@ export function NfmSendToThreadMenu({
   const [pendingAcceptQuery, setPendingAcceptQuery] = useState<string | null>(null);
   // Sending targets a Thread, so only started chats are destinations.
   const chatSearch = useChatSearch({
-    enabled: Boolean(projectId),
+    enabled: true,
     query,
     limit: SEND_TO_THREAD_RESULT_LIMIT,
     startedOnly: true,
@@ -209,7 +209,7 @@ export function NfmSendToThreadMenu({
       includeArchived: false,
       first: LINKED_CHAT_LIMIT,
     }),
-    enabled: Boolean(projectId && sourcePageId),
+    enabled: Boolean(sourcePageId),
   });
   const linkedChats = useMemo(
     () =>
@@ -230,19 +230,17 @@ export function NfmSendToThreadMenu({
 
   const rows = useMemo(
     () =>
-      projectId
-        ? buildNfmSendToThreadRows(
-            {
-              matches: chatSearch.matches,
-              linkedChats,
-              query: rowsQuery,
-              preferredTarget,
-              projectNameById,
-            },
-            intl,
-          )
-        : [],
-    [intl, chatSearch.matches, linkedChats, preferredTarget, projectId, projectNameById, rowsQuery],
+      buildNfmSendToThreadRows(
+        {
+          matches: chatSearch.matches,
+          linkedChats,
+          query: rowsQuery,
+          preferredTarget,
+          projectNameById,
+        },
+        intl,
+      ),
+    [intl, chatSearch.matches, linkedChats, preferredTarget, projectNameById, rowsQuery],
   );
   const rowsStale = shouldConsumeStalePickerNavigation({
     liveQuery: query,
@@ -251,9 +249,7 @@ export function NfmSendToThreadMenu({
   });
   // A new chat is accepted only once chat search has answered whether an existing one matches.
   const waitingForChats =
-    Boolean(projectId) &&
-    normalizeCommandPaletteSearchText(query).length > 0 &&
-    !chatSearch.settled;
+    normalizeCommandPaletteSearchText(query).length > 0 && !chatSearch.settled;
   const resolveAcceptableRows = useCallback(
     (candidateRows: readonly NfmSendToThreadRow[]) =>
       waitingForChats ? candidateRows.filter((row) => row.kind === "thread") : candidateRows,
@@ -267,7 +263,7 @@ export function NfmSendToThreadMenu({
     focusedIndex >= 0 && focusedIndex < rows.length
       ? getSendToThreadRowDomId(listboxId, focusedIndex)
       : undefined;
-  const disabled = Boolean(acceptingRowId) || !projectId;
+  const disabled = Boolean(acceptingRowId);
   const rowEntries = rows.map((row, index) => ({ row, index }));
   const mainRowEntries = rowEntries.filter(
     ({ row }) => row.kind !== "new-thread" || !row.isFooterAction,
@@ -474,15 +470,7 @@ export function NfmSendToThreadMenu({
               ))}
             </div>
           </div>
-          {!projectId ? (
-            <SendToThreadStatusRow>
-              {intl.formatMessage({
-                id: "editor.nfmSendToThreadMenu.noProject",
-                defaultMessage: "No project selected",
-              })}
-            </SendToThreadStatusRow>
-          ) : null}
-          {projectId && visibleMainRowCount === 0 ? (
+          {visibleMainRowCount === 0 ? (
             <SendToThreadStatusRow>
               {!chatSearch.answered
                 ? intl.formatMessage({
@@ -507,7 +495,7 @@ export function NfmSendToThreadMenu({
           ) : null}
           {acceptError ? <SendToThreadStatusRow>{acceptError}</SendToThreadStatusRow> : null}
         </div>
-        {projectId && footerRowEntry ? (
+        {footerRowEntry ? (
           <div className="shrink-0 px-1 pb-1 pt-1">
             <div className="mb-1 h-px w-full bg-token-menu-border" />
             <SendToThreadRow

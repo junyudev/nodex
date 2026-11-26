@@ -545,9 +545,6 @@ export function InboxRoute({
           void onShowPagesInChat({
             sessionId: decision.sessionId,
             // The Pages open as this Inbox opens them beside itself.
-            routingContext: inboxProjectId
-              ? { kind: "project", projectId: inboxProjectId }
-              : { kind: "library" },
             pages: pageIds.map((pageId) => ({
               pageId,
               titleSnapshot: stream.items.find((item) => item.pageId === pageId)?.title,

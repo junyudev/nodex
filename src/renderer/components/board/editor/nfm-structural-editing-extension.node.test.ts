@@ -315,7 +315,7 @@ describe("NFM structural editing session", () => {
         },
         preparePromotion: async (input) => ({
           operationId: "promotion:one",
-          projectId: input.projectId,
+          projectId: input.destination.projectId,
           storeEpoch: input.storeEpoch,
           mode,
           rootBlockIds: input.rootBlockIds,
@@ -397,7 +397,6 @@ describe("NFM structural editing session", () => {
               target: { kind: "page", pageId: "page:host" },
             })
           : session.promoteBlocks({
-              projectId: "project:test",
               storeEpoch: "epoch:test",
               sourcePageId: "page:host",
               sourceDocumentId: "document:test",

@@ -246,7 +246,6 @@ export function ReferencedCardRow({
               className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-token-description-foreground opacity-0 group-hover/reference-row:opacity-100 hover:bg-token-foreground/10 hover:text-token-text-primary focus-visible:opacity-100"
               onClick={() =>
                 void onOpenPage({
-                  routingContext,
                   pageId: card.id,
                   titleSnapshot: title,
                 })

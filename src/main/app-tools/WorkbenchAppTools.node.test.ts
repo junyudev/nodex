@@ -85,7 +85,7 @@ describe("WorkbenchAppTools", () => {
       id: "page:secret",
       kind: "page_stage",
       titleSnapshot: "Renderer secret",
-      config: { pageId: "page-A", routingContext: { kind: "library" } },
+      config: { pageId: "page-A" },
     },
   };
   const anchor: PresentationAnchor = {
@@ -182,7 +182,7 @@ describe("WorkbenchAppTools", () => {
                         surface: {
                           ...tab.surface!,
                           kind: "page_stage",
-                          config: { pageId: "page-B", routingContext: { kind: "library" } },
+                          config: { pageId: "page-B" },
                         },
                       },
                     ],
@@ -460,7 +460,7 @@ describe("WorkbenchControl", () => {
             id: "raw-page-id",
             titleSnapshot: "Page",
             kind: "page_stage",
-            config: { pageId: "page", routingContext: { kind: "library" } },
+            config: { pageId: "page" },
           },
         },
       ],
@@ -918,7 +918,7 @@ describe("WorkbenchObservation", () => {
             id: "page-tab",
             kind: "page_stage",
             titleSnapshot: "Original Page",
-            config: { pageId: "page-A", routingContext: { kind: "library" } },
+            config: { pageId: "page-A" },
           },
           auxiliary: null,
         },
@@ -1130,7 +1130,6 @@ describe("WorkbenchTabDescription", () => {
       kind: "page_file",
       titleSnapshot: "Stale",
       config: {
-        routingContext: { kind: "library" },
         pageId: "page",
         fileId: "file",
         logicalPath: "old.html",
