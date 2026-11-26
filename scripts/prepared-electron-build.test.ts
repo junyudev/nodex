@@ -395,10 +395,24 @@ describe("prepared Electron build", () => {
     );
   });
 
-  test("refuses to bind outputs to a different pre-build input digest", () => {
+  test("accepts TypeScript build metadata writes but rejects source edits during a build", () => {
     const fixture = makeFixture();
+    const { inputDigest } = recordPreparedElectronBuild(fixture);
+    const metadata = path.join(
+      fixture.repositoryRoot,
+      "packages/agent-runtime/tsconfig.tsbuildinfo",
+    );
 
-    expect(() => recordPreparedElectronBuild(fixture, "0".repeat(64))).toThrow(
+    fs.writeFileSync(metadata, "{}");
+    expect(recordPreparedElectronBuild(fixture, inputDigest).inputDigest).toBe(inputDigest);
+    fs.writeFileSync(metadata, '{"version":"7.0.0"}');
+    expect(recordPreparedElectronBuild(fixture, inputDigest).inputDigest).toBe(inputDigest);
+
+    fs.appendFileSync(
+      path.join(fixture.repositoryRoot, "packages/agent-runtime/value.ts"),
+      "changed\n",
+    );
+    expect(() => recordPreparedElectronBuild(fixture, inputDigest)).toThrow(
       "inputs changed while the production build was running",
     );
   });

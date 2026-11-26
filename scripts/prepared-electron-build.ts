@@ -162,7 +162,7 @@ const normalizeRelativePath = (root: string, filePath: string): string =>
 const collectFiles = (
   root: string,
   entryPath: string,
-  ignoreGeneratedInputDirectories = false,
+  ignoreGeneratedInputs = false,
 ): FileDigest[] => {
   const stats = lstatSync(entryPath);
   if (stats.isSymbolicLink()) {
@@ -183,8 +183,9 @@ const collectFiles = (
   }
   return readdirSync(entryPath, { withFileTypes: true })
     .filter((entry) => {
-      if (!ignoreGeneratedInputDirectories) return true;
+      if (!ignoreGeneratedInputs) return true;
       if (IGNORED_INPUT_DIRECTORY_NAMES.has(entry.name)) return false;
+      if (entry.isFile() && entry.name.endsWith(".tsbuildinfo")) return false;
       // Editor declarations are generated output; authored types elsewhere remain inputs.
       return !/^third_party\/blocknote\/packages\/[^/]+\/types$/u.test(
         normalizeRelativePath(root, path.join(entryPath, entry.name)),
@@ -192,7 +193,7 @@ const collectFiles = (
     })
     .sort((left, right) => left.name.localeCompare(right.name))
     .flatMap((entry) =>
-      collectFiles(root, path.join(entryPath, entry.name), ignoreGeneratedInputDirectories),
+      collectFiles(root, path.join(entryPath, entry.name), ignoreGeneratedInputs),
     );
 };
 
