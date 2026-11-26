@@ -24,6 +24,7 @@ fn order(
     } = read(
         module,
         Read::BuiltinSidebarOrder {
+            provenance: None,
             lane,
             window: CollectionWindowRequest {
                 after,
@@ -149,6 +150,7 @@ fn project_membership_changes_invalidate_order_and_continuations() {
                 ModuleReadRequest {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     read: Read::BuiltinSidebarOrder {
+                        provenance: None,
                         lane: Lane::Projects,
                         window: CollectionWindowRequest {
                             after: first.next_cursor,

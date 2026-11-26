@@ -493,8 +493,8 @@ its receipt without reapplying the order.
 
 `list_sidebar_order` reads a built-in order lane by canonical Section ID and item kind.
 The Projects Section has a Project lane; Pinned has separate Project and Session lanes.
-The Session lane includes all active root Session pins, including drafts and ACP Sessions,
-across the Profile. Pages and Chats do not expose manual item ordering through these tools.
+The Session lane includes every active root Session the calling Turn's Member pinned, including
+drafts and ACP Sessions. Pages and Chats do not expose manual item ordering through these tools.
 Each bounded page returns the same `orderRevision`; membership or position changes invalidate
 its continuation. `reorder_sidebar_projects` moves the supplied Projects to the front of the
 Projects or Pinned Project lane in the requested order; unlisted Projects retain their relative
@@ -505,6 +505,9 @@ The Pinned form of `reorder_section` accepts every current `sessionId` exactly o
 observed `expectedOrderRevision`. Stale or incomplete Session orders are rejected atomically.
 Title and activity changes leave the order revision valid. Pinning, placement and lifecycle
 changes update both windows through the same canonical Sidebar projections.
+All three Sidebar reads show the Sidebar of the Member the verified calling Turn represents, the
+same Member whose order the reorder tools change: Session pins and their order, settled chats and
+Section attention belong to each Member of a team Space.
 Organization and transcript reads use the same current Profile. Every admitted execution
 can read Sessions across its Library; Project placement is a routing coordinate. Core
 checks the captured execution identity, physical Library and Store epoch in the read

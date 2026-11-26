@@ -43388,6 +43388,17 @@
                       "sidebar_section_window"
                     ]
                   },
+                  "provenance": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/AgentTurnProvenance",
+                        "description": "A calling Agent reads the Sidebar of the Member its current Turn represents."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "window": {
                     "$ref": "#/components/schemas/CollectionWindowRequest"
                   }
@@ -43411,6 +43422,17 @@
                     "type": "string",
                     "enum": [
                       "sidebar_section_item_window"
+                    ]
+                  },
+                  "provenance": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/AgentTurnProvenance",
+                        "description": "A calling Agent reads the Sidebar of the Member its current Turn represents."
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   },
                   "section_id": {
@@ -43437,6 +43459,17 @@
                   },
                   "lane": {
                     "$ref": "#/components/schemas/ProjectWorkspaceBuiltinSidebarLane"
+                  },
+                  "provenance": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/AgentTurnProvenance",
+                        "description": "A calling Agent reads the Sidebar of the Member its current Turn represents."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "window": {
                     "$ref": "#/components/schemas/CollectionWindowRequest"

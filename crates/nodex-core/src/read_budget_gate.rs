@@ -599,6 +599,7 @@ fn assert_sidebar_section_window_budget(workspace: &ProjectWorkspaceModule) {
             ModuleReadRequest {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                 read: ProjectWorkspaceRead::SidebarSectionItemWindow {
+                    provenance: None,
                     section_id: SIDEBAR_SECTION_ID.to_owned(),
                     include_archived: Some(false),
                     window: CollectionWindowRequest {
@@ -637,6 +638,7 @@ fn assert_sidebar_section_window_budget(workspace: &ProjectWorkspaceModule) {
             ModuleReadRequest {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                 read: ProjectWorkspaceRead::SidebarSectionItemWindow {
+                    provenance: None,
                     section_id: SIDEBAR_SECTION_ID.to_owned(),
                     include_archived: Some(false),
                     window: CollectionWindowRequest {

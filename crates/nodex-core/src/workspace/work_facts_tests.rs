@@ -299,6 +299,7 @@ fn decision_run_sidebar_sections_and_pins_do_not_reveal_its_session() {
     let ProjectWorkspaceReadValue::SidebarSectionWindow { sections } = read(
         &w.module,
         ProjectWorkspaceRead::SidebarSectionWindow {
+            provenance: None,
             include_deleted: None,
             window: window.clone(),
         },
@@ -325,6 +326,7 @@ fn decision_run_sidebar_sections_and_pins_do_not_reveal_its_session() {
     let ProjectWorkspaceReadValue::SidebarSectionItemWindow { items } = read(
         &w.module,
         ProjectWorkspaceRead::SidebarSectionItemWindow {
+            provenance: None,
             section_id: "section:nodex".into(),
             include_archived: Some(true),
             window: window.clone(),

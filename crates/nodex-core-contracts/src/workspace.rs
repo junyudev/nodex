@@ -270,15 +270,24 @@ pub enum ProjectWorkspaceRead {
         pinned_window: CollectionWindowRequest,
     },
     SidebarSectionWindow {
+        /// A calling Agent reads the Sidebar of the Member its current Turn represents.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provenance: Option<Box<crate::agent::AgentTurnProvenance>>,
         include_deleted: Option<bool>,
         window: CollectionWindowRequest,
     },
     SidebarSectionItemWindow {
+        /// A calling Agent reads the Sidebar of the Member its current Turn represents.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provenance: Option<Box<crate::agent::AgentTurnProvenance>>,
         section_id: String,
         include_archived: Option<bool>,
         window: CollectionWindowRequest,
     },
     BuiltinSidebarOrder {
+        /// A calling Agent reads the Sidebar of the Member its current Turn represents.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provenance: Option<Box<crate::agent::AgentTurnProvenance>>,
         lane: ProjectWorkspaceBuiltinSidebarLane,
         window: CollectionWindowRequest,
     },
