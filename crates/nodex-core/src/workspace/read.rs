@@ -182,7 +182,8 @@ pub(super) fn read(
                 });
             };
             // The chat as the snoozed Member reads it, with their own pin and unread state.
-            let session = read_session(connection, library_id, &id, &owed)?.map(session_summary);
+            let session = read_session(connection, library_id, &id, &owed, DraftScope::Host)?
+                .map(session_summary);
             let delivery = delivery_id.map(|delivery_id| {
                 nodex_core_contracts::workspace::ProjectWorkspaceSessionSnoozeDelivery {
                     delivery_id,
@@ -664,16 +665,28 @@ pub(super) fn read(
         }
         ProjectWorkspaceRead::Session { session_id } => {
             validate_id("session_id", &session_id)?;
-            let row = read_session(connection, library_id, &session_id, &member)?
-                .ok_or_else(|| not_found("Project Session is unavailable"))?;
+            let row = read_session(
+                connection,
+                library_id,
+                &session_id,
+                &member,
+                DraftScope::of(context),
+            )?
+            .ok_or_else(|| not_found("Project Session is unavailable"))?;
             Ok(ProjectWorkspaceReadValue::Session {
                 session: session_summary(row),
             })
         }
         ProjectWorkspaceRead::SessionDetail { session_id } => {
             validate_id("session_id", &session_id)?;
-            let row = read_session(connection, library_id, &session_id, &member)?
-                .ok_or_else(|| not_found("Project Session is unavailable"))?;
+            let row = read_session(
+                connection,
+                library_id,
+                &session_id,
+                &member,
+                DraftScope::of(context),
+            )?
+            .ok_or_else(|| not_found("Project Session is unavailable"))?;
             let thread = read_linked_thread(connection, library_id, &row)?;
             // A remote Member sees which Agent runs the chat, never how the host executes it.
             let thread = if context.adapter == AdapterKind::RemoteMember {
@@ -688,8 +701,14 @@ pub(super) fn read(
         }
         ProjectWorkspaceRead::SessionStart { session_id } => {
             validate_id("session_id", &session_id)?;
-            read_session(connection, library_id, &session_id, &member)?
-                .ok_or_else(|| not_found("Project Session is unavailable"))?;
+            read_session(
+                connection,
+                library_id,
+                &session_id,
+                &member,
+                DraftScope::of(context),
+            )?
+            .ok_or_else(|| not_found("Project Session is unavailable"))?;
             Ok(ProjectWorkspaceReadValue::SessionStart {
                 start: super::inbox::session_start(connection, library_id, &session_id)?,
             })
@@ -805,8 +824,14 @@ pub(super) fn read(
         } => {
             let member = agent_member(connection, library_id, context, &provenance)?;
             validate_id("session_id", &session_id)?;
-            let row = read_session(connection, library_id, &session_id, &member)?
-                .ok_or_else(|| not_found("Project Session is unavailable"))?;
+            let row = read_session(
+                connection,
+                library_id,
+                &session_id,
+                &member,
+                DraftScope::Host,
+            )?
+            .ok_or_else(|| not_found("Project Session is unavailable"))?;
             let thread = read_linked_thread(connection, library_id, &row)?;
             let session = session_summary(row);
             let member_requests = super::host_response::member_requests(
@@ -840,8 +865,14 @@ pub(super) fn read(
                 &expected_execution_host_id,
                 std::slice::from_ref(session_id),
             )?;
-            let session = read_session(connection, library_id, session_id, &member)?
-                .ok_or_else(|| not_found("Conversation Session is unavailable"))?;
+            let session = read_session(
+                connection,
+                library_id,
+                session_id,
+                &member,
+                DraftScope::Host,
+            )?
+            .ok_or_else(|| not_found("Conversation Session is unavailable"))?;
             Ok(ProjectWorkspaceReadValue::CodexThreadSession {
                 thread: Box::new(thread),
                 session: session_summary(session),
@@ -1115,12 +1146,38 @@ fn agent_member(
     crate::infrastructure::actors::requesting_member(connection, &agent)
 }
 
+/// Whose default drafts a Session read returns. The host reads every chat; a remote Member reads
+/// another Member's default draft as missing, as their own chat lists do.
+#[derive(Clone, Copy)]
+enum DraftScope {
+    Host,
+    Opener,
+}
+
+impl DraftScope {
+    fn of(context: &nodex_core_contracts::BoundModuleContext) -> Self {
+        if context.adapter == AdapterKind::RemoteMember {
+            Self::Opener
+        } else {
+            Self::Host
+        }
+    }
+}
+
 fn read_session(
     connection: &Connection,
     library_id: &str,
     session_id: &str,
     member: &str,
+    drafts: DraftScope,
 ) -> Result<Option<SessionRow>, StoreError> {
+    let draft_filter = match drafts {
+        DraftScope::Host => String::new(),
+        DraftScope::Opener => format!(
+            " AND {}",
+            super::chat_stewardship::visible_draft_sql("session", "?3")
+        ),
+    };
     connection
         .query_row(
             &format!("SELECT session.id, session.project_id, session.no_thread_fallback_title, \
@@ -1140,7 +1197,7 @@ fn read_session(
                AND (session.project_id IS NULL OR EXISTS (\
                  SELECT 1 FROM projects owner \
                  WHERE owner.id = session.project_id AND owner.library_id = ?2\
-               ))",
+               )){}",
                 super::member_attention::pinned_sql("session.id", "?3"),
                 super::member_attention::pinned_order_sql("session.id", "?3"),
                 super::member_attention::unread_sql("session.id", "?3"),
@@ -1157,6 +1214,7 @@ fn read_session(
                 super::member_attention::snoozed_at_sql("session.id", "?3"),
                 super::member_attention::woke_at_sql("session.id", "?3"),
                 super::page_turn::chat_turn_column("session.id", "?2", "?3"),
+                draft_filter,
             ),
             params![session_id, library_id,member],
             session_row,
