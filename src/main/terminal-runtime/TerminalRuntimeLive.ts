@@ -48,8 +48,8 @@ const environment = TerminalEnvironment.live({
 });
 
 /**
- * Complete process-scoped Terminal graph. ACP client callbacks and desktop Terminal sessions share
- * one RuntimeMap, so a child process cannot outlive the same process-scoped owner used by the UI.
+ * Complete process-scoped Terminal graph. Every desktop Terminal session runs in one RuntimeMap,
+ * so no PTY outlives the application graph that owns it.
  */
 export const live: Layer.Layer<
   TerminalSessions.TerminalSessions | TerminalRuntimeMap.TerminalRuntimeMap,
