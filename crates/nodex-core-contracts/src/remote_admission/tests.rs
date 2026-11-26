@@ -129,6 +129,34 @@ fn members_can_resolve_logical_execution_bindings_without_agent_or_filesystem_au
 }
 
 #[test]
+fn members_can_read_session_details_without_thread_or_agent_access() {
+    let context = remote(MemberRole::Member);
+    admitted(
+        &context,
+        &[
+            Read::Session {
+                session_id: "chat".into(),
+            },
+            Read::SessionDetail {
+                session_id: "chat".into(),
+            },
+        ],
+    );
+    refused(
+        &context,
+        &[
+            Read::Thread {
+                thread_id: "thread".into(),
+            },
+            Read::AgentSession {
+                provenance: provenance(),
+                session_id: "chat".into(),
+            },
+        ],
+    );
+}
+
+#[test]
 fn chat_changes_reach_core_while_host_bookkeeping_stays_local() {
     let context = remote(MemberRole::Member);
     let session = |intent: Value| -> Intent {

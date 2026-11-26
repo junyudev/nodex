@@ -1108,6 +1108,23 @@ pub struct ProjectWorkspaceThread {
     pub linked_at: String,
 }
 
+impl ProjectWorkspaceThread {
+    /// The Thread as a remote Member reads it: which Agent runs it and how it is going, without
+    /// the host's folders, writable roots and tool catalogs, which only the host's execution uses.
+    #[must_use]
+    pub fn without_host_execution(self) -> Self {
+        Self {
+            cwd: None,
+            managed_worktree_path: None,
+            projectless_output_directory: None,
+            projectless_workspace_browser_root: None,
+            dynamic_tool_catalogs: Vec::new(),
+            writable_roots: Vec::new(),
+            ..self
+        }
+    }
+}
+
 /// Durable Agent session identity, separate from backend instance settings.
 /// Transcript content remains owned by the Agent runtime.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

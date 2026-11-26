@@ -3211,14 +3211,22 @@ fn a_member_reads_hosted_session_details_with_their_own_authority() {
         None,
         json!({"kind":"mutate_session","session_id":"chat",
         "intent":{"kind":"link_thread","thread_id":"native-thread","expected_project_id":null,
-            "thread_patch":{}}}),
+            "thread_patch":{},
+            "execution_location":{"execution_host_id":"local","cwd":"/host/checkout",
+                "managed_worktree_path":null,"runtime_workspace_roots":["/host/checkout"],
+                "projectless_output_directory":null,"projectless_workspace_browser_root":null}}}),
     );
     assert_eq!(linked["status"], "ok", "{linked}");
+    // A Member sees which Agent runs a connected chat, never the host's folders and tools.
     let native = chats.member_read(
         &chats.bob,
         json!({"kind":"session_detail","session_id":"chat"}),
     );
-    assert_eq!(native["payload"]["code"], "unauthorized", "{native}");
+    assert_eq!(native["status"], "ok", "{native}");
+    let thread = &native["payload"]["value"]["thread"];
+    assert_eq!(thread["thread_id"], "native-thread", "{native}");
+    assert!(thread["cwd"].is_null(), "{native}");
+    assert_eq!(thread["writable_roots"], json!([]), "{native}");
 }
 
 #[test]
