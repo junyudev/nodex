@@ -25,9 +25,12 @@ const agents = [
   { kind: "opencode", size: "size-[21px]" },
 ] as const;
 
+// The desktop app, then Nodex Mobile, which the same page offers.
 const platforms = [
   { platform: "macos", name: "macOS", detail: "Apple silicon, macOS 15 or later" },
   { platform: "windows", name: "Windows 11", detail: "x64" },
+  { platform: "phone", name: "iPhone", detail: "TestFlight beta" },
+  { platform: "android", name: "Android", detail: "APK" },
 ] as const;
 
 // Shipped entries with no version beside them: the image is not recorded again with each release.
@@ -69,17 +72,17 @@ const changes = [
           Nodex
         </h1>
         <p class={supporting}>Free and open source.</p>
-        <div slot="aside" class="flex h-full flex-col justify-center gap-9 px-12">
+        <div slot="aside" class="flex h-full flex-col justify-center gap-7 px-12">
           {platforms.map(({ platform, name, detail }) => (
             <div class="flex items-center gap-6">
-              <PlatformIcon platform={platform} class="size-12 shrink-0" />
+              <PlatformIcon platform={platform} class="size-11 shrink-0" />
               <div class="flex flex-col gap-1">
                 <p class="text-[34px] leading-tight font-semibold tracking-[-0.02em]">{name}</p>
                 <p class="text-[24px] leading-tight text-app-muted">{detail}</p>
               </div>
             </div>
           ))}
-          <code class="border-t-[0.5px] border-app-line pt-9 font-mono text-[23px] tracking-[-0.03em] whitespace-nowrap text-app-muted">
+          <code class="border-t-[0.5px] border-app-line pt-7 font-mono text-[23px] tracking-[-0.03em] whitespace-nowrap text-app-muted">
             {BREW_COMMAND}
           </code>
         </div>

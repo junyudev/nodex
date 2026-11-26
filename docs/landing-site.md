@@ -303,7 +303,9 @@ again with `vp run capture:landing` after changing a demo the README shows.
 
 A link to the site previews as a social card. A page names its card through `BaseLayout`'s
 `socialCard`, and `SOCIAL_CARDS` owns each card's published file and alt text, so the tags and the
-recorder read one list. Home, Download and Changelog each have a card; Privacy and Terms use Home's.
+recorder read one list. Home, Download and Changelog each have a card; Privacy and Terms use Home's. The Download card lists every
+build the page offers: the desktop app for macOS and Windows, and Nodex Mobile for iPhone and
+Android.
 
 The home card shows what sets Nodex apart: every agent at work together, in Aerial view. Two chats
 fill its window, each with its tree of subagents, so all four peers appear doing something: a
