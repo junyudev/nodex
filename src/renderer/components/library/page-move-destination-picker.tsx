@@ -1,4 +1,5 @@
 import { useIntl } from "@/lib/i18n";
+import { presentSpaceTopLevel } from "@/lib/resource-location-presentation";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 
@@ -117,7 +118,10 @@ function DestinationRowView({
 }) {
   const intl = useIntl();
   const entry = row.authority === "ready" ? row.entry : null;
-  const title = entry?.title ?? (row.authority === "preview" ? row.title : "");
+  const title =
+    entry?.kind === "library"
+      ? presentSpaceTopLevel(intl)
+      : (entry?.title ?? (row.authority === "preview" ? row.title : ""));
   const path = entry?.path ?? (row.authority === "preview" ? row.path : []);
   const expandable = row.context === "page" && entry?.kind === "page" && entry.hasChildren;
   const metadata = entry?.isCurrent
@@ -327,7 +331,7 @@ export function PageMoveDestinationPicker({
             },
             {
               destination:
-                row.entry.title ||
+                (row.entry.kind === "library" ? presentSpaceTopLevel(intl) : row.entry.title) ||
                 intl.formatMessage({
                   id: "components.pageMoveDestinationPicker.destination",
                   defaultMessage: "destination",

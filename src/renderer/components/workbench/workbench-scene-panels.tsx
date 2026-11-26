@@ -32,7 +32,11 @@ import {
   type WorkbenchSurfaceDescriptor,
 } from "../../../shared/workbench-scene";
 import type { AppShellTabItem } from "./app-shell-tabs";
-import { resolveContentTabLocation } from "./content-tab-location";
+import {
+  resolveContentTabLocation,
+  type ContentTabLocationLookup,
+  type LocatedTabSurface,
+} from "./content-tab-location";
 import { libraryContentRoute, projectContentRoute } from "../../../shared/content-routing-context";
 import type { PanelDestination } from "./panel-destination-picker-model";
 import { WorkbenchPanelHost } from "./workbench-panel-host";
@@ -42,6 +46,8 @@ export interface WorkbenchScenePanelsProps {
   readonly scene: WorkbenchSceneSnapshot;
   readonly project: Project | null;
   readonly projects: Project[];
+  /** Where each content tab lives, read by the Scene's host. */
+  readonly locationOf: ContentTabLocationLookup;
   readonly currentLibraryId: string | null;
   readonly browserViewScopeId: string;
   readonly browserTabSnapshotByKey: ReadonlyMap<string, BrowserSidebarTabSnapshot>;
@@ -77,6 +83,20 @@ export interface WorkbenchScenePanelsProps {
   readonly onPinPreview: (panelId: PanelId, leafId: string, surfaceId: string) => void;
 }
 
+/** Every surface a Scene's panels show as a tab, for reading their locations together. */
+export function listWorkbenchSceneTabSurfaces(
+  scene: WorkbenchSceneSnapshot,
+): readonly LocatedTabSurface[] {
+  return (["right", "bottom"] as const).flatMap((panelId) =>
+    listWorkbenchPanelLeaves(scene.panels[panelId].layout).flatMap((leaf) =>
+      leaf.tabIds.flatMap((surfaceId): LocatedTabSurface[] => {
+        const surface = resolveWorkbenchSceneSurface(scene, surfaceId);
+        return surface ? [surface] : [];
+      }),
+    ),
+  );
+}
+
 function makePanelItems(
   scene: WorkbenchSceneSnapshot,
   projects: readonly Project[],
@@ -88,6 +108,7 @@ function makePanelItems(
   previewSurfaceIds: ReadonlySet<string>,
   panelId: PanelId,
   renderSurface: WorkbenchScenePanelsProps["renderSurface"],
+  locationOf: ContentTabLocationLookup,
   intl: IntlShape,
 ): {
   readonly itemsByLeafId: Record<string, AppShellTabItem[]>;
@@ -135,7 +156,11 @@ function makePanelItems(
         id: surface.id,
         title,
         titleSource,
-        ...resolveContentTabLocation(surface, { projects, home }, intl),
+        ...resolveContentTabLocation(
+          surface,
+          { projects, home, location: locationOf(surface) },
+          intl,
+        ),
         icon: presentation.icon,
         iconElement:
           surface.kind === "browser" ? (
@@ -186,6 +211,7 @@ export function buildWorkbenchScenePanels({
   scene,
   project,
   projects,
+  locationOf,
   currentLibraryId,
   browserViewScopeId,
   browserTabSnapshotByKey,
@@ -223,6 +249,7 @@ export function buildWorkbenchScenePanels({
       previewSurfaceIds,
       panelId,
       renderSurface,
+      locationOf,
       intl,
     );
     return (

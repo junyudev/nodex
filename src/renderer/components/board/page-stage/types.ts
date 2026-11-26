@@ -6,7 +6,6 @@ import type { ReadyPageBlockDocumentDescriptor } from "@/lib/owned-block-documen
 import type { BlockDocumentSurfaceDependencies } from "@/components/block-documents/block-document-surface";
 import type { PageTitleResourceIdentity } from "@/lib/page-title-projection-context";
 import type { PageStagePageModel, PageStageMetadataMutationResult } from "@/lib/page-stage-page";
-import type { PageStageBreadcrumbProps } from "./breadcrumb";
 import type { DatabaseId } from "../../../../shared/database-identities";
 import type {
   ContentRoutingContext,
@@ -119,7 +118,6 @@ export interface PageStageProps {
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: (databaseId: DatabaseId) => void | Promise<void>;
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
-  breadcrumb?: PageStageBreadcrumbProps;
   onStartNewSessionThreadFromEditor?: (input: {
     projectId: string;
     targetSessionId?: string;

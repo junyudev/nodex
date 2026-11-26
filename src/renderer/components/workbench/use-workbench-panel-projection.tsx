@@ -77,7 +77,7 @@ import {
 } from "../../../shared/browser-sidebar";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import type { AppShellTabItem } from "./app-shell-tabs";
-import { resolveContentTabLocation } from "./content-tab-location";
+import { resolveContentTabLocation, useContentTabLocations } from "./content-tab-location";
 import { projectContentRoute } from "../../../shared/content-routing-context";
 import { buildAutomationsPath } from "@/lib/workbench-automations-routes";
 import {
@@ -356,6 +356,19 @@ export function useWorkbenchPanelProjection({
     return collectPanelPresentedPageIds(activeRenderSession, activeSessionPanelModel);
   }, [activeRenderSession, activeSessionPanelModel]);
 
+  const locatedTabs = useMemo(
+    () =>
+      activeSessionPanelModel
+        ? (["right", "bottom"] as const).flatMap((panelId) =>
+            Object.values(activeSessionPanelModel.renderableTabsByPanelLeaf[panelId]).flatMap(
+              (tabs) => tabs.flatMap((tab) => (isTransientPanelTab(tab) ? [] : [tab])),
+            ),
+          )
+        : [],
+    [activeSessionPanelModel],
+  );
+  const contentTabLocationOf = useContentTabLocations(locatedTabs, projects);
+
   const buildPanelGroupTabsForSession = (
     session: ProjectSession,
     model: SessionPanelRenderModel,
@@ -413,6 +426,7 @@ export function useWorkbenchPanelProjection({
             {
               projects,
               home: session.projectId ? projectContentRoute(session.projectId) : null,
+              location: contentTabLocationOf(tab),
             },
             intl,
           );

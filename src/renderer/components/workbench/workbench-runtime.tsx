@@ -63,7 +63,7 @@ import { buildSettledChatsPath } from "@/features/settled-chats/settled-chats-ro
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { inboxScopeProjectId, LIBRARY_INBOX, type InboxScope } from "../../../shared/inbox";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
-import { parseDatabaseId } from "../../../shared/database-identities";
+import { parseDatabaseId, type DatabaseId } from "../../../shared/database-identities";
 import { useInboxCounts, useInboxInvalidation } from "@/features/inbox/use-inbox";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
@@ -320,7 +320,8 @@ import { WorkbenchWindowTitle } from "./workbench-window-title";
 import { PagesTabPicker } from "./pages-tab-picker";
 import { SpaceHome } from "./space-home";
 import { TerminalPanel } from "./workbench-terminal-panel";
-import { buildWorkbenchScenePanels } from "./workbench-scene-panels";
+import { buildWorkbenchScenePanels, listWorkbenchSceneTabSurfaces } from "./workbench-scene-panels";
+import { useContentTabLocations } from "./content-tab-location";
 import { useWorkbenchRouteSurfaces } from "./use-workbench-route-surfaces";
 import {
   OpenAgentsTabContext,
@@ -1171,6 +1172,12 @@ export function WorkbenchRuntime({
       )
     : null;
   const activeOwnedScenePresentation = projectScenePresentation ?? libraryScenePresentation;
+  const sceneTabLocationOf = useContentTabLocations(
+    [projectScenePresentation, libraryScenePresentation].flatMap((presentation) =>
+      presentation ? listWorkbenchSceneTabSurfaces(presentation.scene) : [],
+    ),
+    projects,
+  );
   const projectScenePresentedPageIds = projectScenePresentation
     ? collectWorkbenchScenePresentedPageIds(projectScenePresentation.scene)
     : new Set<string>();
@@ -5122,6 +5129,29 @@ export function WorkbenchRuntime({
       browserTabId: null,
       ...(previewEntry ? { preview: true as const } : {}),
     };
+    // Every Page in this Scene opens a Database the same way: the Project's own Database opens
+    // as its Board, like the Board button; any other Database opens in the source group.
+    const openDatabaseInSourceGroup = (databaseId: DatabaseId) => {
+      const placement = { kind: "same-group", sourceSurfaceId: surface.id } as const;
+      if (databaseId === activeProject.databaseId) {
+        void presentProjectSceneSurface(
+          activeProject.id,
+          {
+            kind: "db_view",
+            config: {
+              routingContext: { kind: "project", projectId: activeProject.id },
+              target: { kind: "project-default" },
+            },
+          },
+          { panelId: context.panelId, placement },
+        );
+        return;
+      }
+      void presentLibraryTarget(
+        { kind: "database", databaseId },
+        { owner: activeProjectScene.owner, targetPanelId: context.panelId, placement },
+      );
+    };
     const closeSurface = () => {
       void executeSceneCommand(activeProjectScene.owner, {
         kind: "close_tab",
@@ -5220,6 +5250,10 @@ export function WorkbenchRuntime({
             });
           }}
           onOpenTarget={(target, options) => {
+            if (target.kind === "database" && !options?.placement) {
+              openDatabaseInSourceGroup(target.databaseId);
+              return;
+            }
             void presentLibraryTarget(target, {
               ...options,
               owner: activeProjectScene.owner,
@@ -5376,6 +5410,7 @@ export function WorkbenchRuntime({
           onRefreshSessions={refreshProjectSessions}
           onOpenPageTab={openProjectScenePage}
           onOpenCanvasStage={openProjectSceneCanvas}
+          onOpenDatabase={openDatabaseInSourceGroup}
           onOpenThread={async (threadId) => {
             await openAttachedThreadSessionById(threadId);
           }}
@@ -5717,6 +5752,7 @@ export function WorkbenchRuntime({
           scene: projectScenePresentation.scene,
           project: activeProject,
           projects,
+          locationOf: sceneTabLocationOf,
           currentLibraryId,
           browserViewScopeId: windowSessionId,
           browserTabSnapshotByKey,
@@ -5780,6 +5816,7 @@ export function WorkbenchRuntime({
           scene: libraryScenePresentation.scene,
           project: null,
           projects,
+          locationOf: sceneTabLocationOf,
           currentLibraryId,
           browserViewScopeId: windowSessionId,
           browserTabSnapshotByKey,

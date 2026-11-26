@@ -132,6 +132,10 @@ vi.mock("@/components/workbench/execution-hold-controls", () => ({
   PageExecutionHoldItem: () => null,
 }));
 
+vi.mock("./page-stage/breadcrumb", () => ({
+  PageStageBreadcrumb: () => null,
+}));
+
 vi.mock("./page-stage/properties-section", () => ({
   PageStagePropertiesSection: () => <div>Properties section</div>,
 }));
@@ -195,9 +199,7 @@ function documentAuthority(): PageStageDocumentAuthority {
 
 function renderStage(
   page: PageStagePageModel = toStageModel(buildPage()),
-  breadcrumbProps: Partial<
-    Pick<PageStageProps, "breadcrumb" | "isActivePanelTab" | "documentAuthority">
-  > = {},
+  stageProps: Partial<Pick<PageStageProps, "isActivePanelTab" | "documentAuthority">> = {},
   renderView = render,
 ) {
   const { PageStage } = requirePageStage();
@@ -210,11 +212,11 @@ function renderStage(
         projectName="Default"
         onUpdate={async () => ({ status: "updated", didMutate: true })}
         onUpdateProperty={async () => ({ status: "updated", didMutate: true })}
-        {...breadcrumbProps}
+        {...stageProps}
         documentAuthority={
-          breadcrumbProps.documentAuthority === undefined
+          stageProps.documentAuthority === undefined
             ? documentAuthority()
-            : breadcrumbProps.documentAuthority
+            : stageProps.documentAuthority
         }
         {...(page.databaseContext.kind === "member"
           ? {

@@ -184,7 +184,7 @@ export function WorkbenchLibraryPageSurface({
   );
 
   useApplicationPending(isActivePanelTab && detail.isPending);
-  if (detail.isPending) return <PageStageLoadingFrame />;
+  if (detail.isPending) return <PageStageLoadingFrame pageId={pageId} />;
 
   if (detail.isError || document.isError || !stagePage) {
     const error = detail.error ?? document.error;

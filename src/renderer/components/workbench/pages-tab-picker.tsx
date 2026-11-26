@@ -217,11 +217,9 @@ export function PagesTabPicker({
                       defaultMessage: "Untitled",
                     })}
                 </span>
-                {item.locationLabel ? (
-                  <span className="block truncate text-xs text-token-text-tertiary">
-                    {presentSpaceContentLocation(item, intl)}
-                  </span>
-                ) : null}
+                <span className="block truncate text-xs text-token-text-tertiary">
+                  {presentSpaceContentLocation(item, intl)}
+                </span>
               </span>
             </button>
           ))}

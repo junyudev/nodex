@@ -115,7 +115,7 @@ describe("PageMoveDestinationPicker", () => {
 
     expect(screen.getByText("Project Beta")).toBeTruthy();
     expect(
-      screen.getByRole("option", { name: /PagesCurrent/u }).getAttribute("aria-disabled"),
+      screen.getByRole("option", { name: /SpaceCurrent/u }).getAttribute("aria-disabled"),
     ).toBe("true");
     await act(async () => {
       fireEvent.click(screen.getByRole("option", { name: /BetaProject Beta/u }));

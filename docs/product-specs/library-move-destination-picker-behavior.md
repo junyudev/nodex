@@ -21,7 +21,7 @@ The submenu is portaled for collision handling but never creates a dialog, modal
 The surface starts with an autofocus search field and has no explanatory form copy, native select, confirmation footer, or second submit step.
 
 The idle view contains `Recent` destinations followed by a browsable `Pages` tree.
-The tree begins with a `Pages` row whose secondary label is `Top level`.
+The tree begins with a `Space` row whose secondary label is `Top level`.
 Expanded Page rows reveal their direct child Pages.
 Search replaces the idle sections with flat title matches whose secondary label is the complete owning path.
 

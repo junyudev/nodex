@@ -11,7 +11,7 @@ export function PageStage(props: PageStageProps) {
   const title = props.page?.page.title;
   return (
     <ApplicationSurface
-      fallback={<PageStageLoadingFrame titleSnapshot={title} breadcrumb={props.breadcrumb} />}
+      fallback={<PageStageLoadingFrame titleSnapshot={title} pageId={props.page?.page.id} />}
     >
       <PageStageView {...props} />
     </ApplicationSurface>

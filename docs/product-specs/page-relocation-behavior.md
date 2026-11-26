@@ -39,7 +39,7 @@ sections together. With an empty query they are:
   secondary context and participates in search.
 - `Recent`: up to eight eligible recently updated Page destinations. When the
   current parent is a Page it is first and labeled `Current`.
-- `Pages`: `Pages` top level plus a lazily expandable Page tree.
+- `Pages`: the `Space` top level plus a lazily expandable Page tree.
 
 Search removes `Recent` and replaces the Page tree with flat Page matches and
 complete ownership paths while continuing to search Databases. Query-fresh

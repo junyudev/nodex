@@ -1,4 +1,5 @@
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
+import { presentSpaceTopLevel } from "@/lib/resource-location-presentation";
 import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
 
 import { PageIcon, ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -393,10 +394,7 @@ export function DatabaseMoveDestinationPicker({
   const rootRow: DatabaseMoveDestinationPickerRow = {
     kind: "root",
     id: ROOT_ROW_ID,
-    label: intl.formatMessage({
-      id: "components.databaseMoveDestinationPicker.pages",
-      defaultMessage: "Pages",
-    }),
+    label: presentSpaceTopLevel(intl),
     metadata: rootIsCurrent
       ? intl.formatMessage({
           id: "components.databaseMoveDestinationPicker.current",

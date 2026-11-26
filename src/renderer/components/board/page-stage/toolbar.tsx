@@ -6,15 +6,10 @@ import {
   Link16Glyph,
 } from "@/components/shared/icons/outline-glyphs";
 import { CheckmarkMdIcon } from "@/components/shared/icons/plugin-detail-icons";
-import {
-  ViewerButton,
-  ViewerCapsule,
-  ViewerHeader,
-  ViewerIconButton,
-} from "@/components/ui/viewer-header";
+import { ViewerButton, ViewerHeader, ViewerIconButton } from "@/components/ui/viewer-header";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import type { NfmEditorCommands } from "../editor/nfm-editor-commands";
-import { PageStageBreadcrumb, type PageStageBreadcrumbProps } from "./breadcrumb";
+import { PageStageBreadcrumb, type PageStageLocationProps } from "./breadcrumb";
 import { PageStageInsertTools } from "./insert-tools";
 import { PageStageMenu, type PageStageMenuActions } from "./page-menu";
 
@@ -37,7 +32,8 @@ interface PageStageToolbarProps {
   readonly history?: PageStageHistoryToggle | null;
   /** Copies the Page's link, resolving whether it reached the clipboard. Absent while it opens. */
   readonly onCopyLink?: (() => Promise<boolean>) | null;
-  readonly breadcrumb?: PageStageBreadcrumbProps;
+  /** Where the Page lives, read from its ownership. */
+  readonly location?: PageStageLocationProps;
   readonly onNavigateBack?: () => void;
 }
 
@@ -81,7 +77,7 @@ function CopyLinkButton({ onCopy }: { readonly onCopy: () => Promise<boolean> })
 }
 
 /**
- * The Page's floating header. The leading side holds the Page itself (its ancestors and its
+ * The Page's floating header. The leading side holds the Page itself (where it lives and its
  * menu), then the tools that write into its body; the trailing side holds what is beside the
  * Page: its history and its link. A Page that is still opening renders the same leading controls.
  */
@@ -92,12 +88,11 @@ export function PageStageToolbar({
   editorCommands,
   history,
   onCopyLink,
-  breadcrumb,
+  location,
   onNavigateBack,
 }: PageStageToolbarProps) {
   const intl = useIntl();
 
-  const ancestors = breadcrumb?.ancestors ?? [];
   return (
     <ViewerHeader
       className="@container/page-toolbar w-full"
@@ -107,7 +102,7 @@ export function PageStageToolbar({
       leading={[
         {
           id: "page",
-          allowShrink: ancestors.length > 0,
+          allowShrink: location !== undefined,
           content: (
             <>
               {onNavigateBack ? (
@@ -121,11 +116,7 @@ export function PageStageToolbar({
                   <BackIcon className="icon-xs" />
                 </ViewerIconButton>
               ) : null}
-              {breadcrumb && ancestors.length > 0 ? (
-                <ViewerCapsule className="flex min-w-0 items-center">
-                  <PageStageBreadcrumb {...breadcrumb} />
-                </ViewerCapsule>
-              ) : null}
+              {location ? <PageStageBreadcrumb {...location} /> : null}
               <PageStageMenu actions={menu} pending={pending} />
             </>
           ),
