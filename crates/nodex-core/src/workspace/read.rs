@@ -1,3 +1,4 @@
+use nodex_core_contracts::AdapterKind;
 use nodex_core_contracts::workspace::{
     ChatFolder, PageTurn, ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap,
     ProjectWorkspaceBootstrapStatus, ProjectWorkspaceExecutionContext, ProjectWorkspaceProject,
@@ -673,6 +674,15 @@ pub(super) fn read(
             validate_id("session_id", &session_id)?;
             let row = read_session(connection, library_id, &session_id, &member)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
+            // A hosted chat has only a Runtime binding. Linked Native Threads also carry
+            // host-local workspace and tool metadata, which this Member read cannot disclose.
+            if context.adapter == AdapterKind::RemoteMember && row.thread_id.is_some() {
+                return Err(StoreError::new(
+                    StoreErrorCode::Unauthorized,
+                    "Native Thread details are unavailable to remote Members",
+                    false,
+                ));
+            }
             let thread = read_linked_thread(connection, library_id, &row)?;
             Ok(ProjectWorkspaceReadValue::SessionDetail {
                 session: session_summary(row),

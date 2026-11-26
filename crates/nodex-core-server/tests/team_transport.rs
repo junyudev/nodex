@@ -3172,6 +3172,56 @@ impl HostedChats {
 }
 
 #[test]
+fn a_member_reads_hosted_session_details_with_their_own_authority() {
+    let chats = HostedChats::start();
+    let fork = json!({"source":{"sessionId":"chat"},"sessionId":"alice-chat",
+        "requestId":"alice-chat:launch","acceptedAt":1,"environment":"same-directory"});
+    chats.admitted(&chats.alice, "session_fork", fork, |proof| {
+        let created = chats.launch(proof, "alice-chat", "alice-chat:launch", None);
+        assert_eq!(created["status"], "ok", "{created}");
+    });
+
+    let read = json!({"kind":"session_detail","session_id":"alice-chat"});
+    let direct = chats.member_read(&chats.bob, read.clone());
+    assert_eq!(direct["status"], "ok", "{direct}");
+    let detail = &direct["payload"]["value"];
+    assert_eq!(detail["session"]["can_manage"], false);
+    assert_eq!(
+        detail["session"]["execution_ref"]["thread_id"],
+        "thread:alice-chat"
+    );
+    assert!(detail["thread"].is_null());
+
+    let message = json!({"sessionId":"alice-chat","message":{"messageId":"reply","text":"Reply"},
+        "delivery":"send"});
+    chats.admitted(&chats.bob, "session_message", message, |proof| {
+        let (status, delegated) = chats.core.local_request_proof(
+            "/core/v1/modules/workspace/read",
+            chats.host_binding(),
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                "read":read}),
+            Some(proof),
+        );
+        assert_eq!(status, 200, "{delegated}");
+        assert_eq!(delegated["status"], "ok", "{delegated}");
+        assert_eq!(&delegated["payload"]["value"], detail);
+    });
+
+    let linked = chats.host_apply(
+        None,
+        json!({"kind":"mutate_session","session_id":"chat",
+        "intent":{"kind":"link_thread","thread_id":"native-thread","expected_project_id":null,
+            "thread_patch":{}}}),
+    );
+    assert_eq!(linked["status"], "ok", "{linked}");
+    let native = chats.member_read(
+        &chats.bob,
+        json!({"kind":"session_detail","session_id":"chat"}),
+    );
+    assert_eq!(native["payload"]["code"], "unauthorized", "{native}");
+}
+
+#[test]
 fn a_hosted_side_chat_answers_to_the_member_who_opened_it() {
     let chats = HostedChats::start();
     let alice = &chats.alice;

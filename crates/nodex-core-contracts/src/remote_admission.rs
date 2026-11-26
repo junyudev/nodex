@@ -205,6 +205,7 @@ pub fn authorize(
                 | "builtin_sidebar_order"
                 | "sidebar_section_placement"
                 | "session"
+                | "session_detail"
                 | "session_start"
                 | "inbox_entry"
                 | "inbox_message"
