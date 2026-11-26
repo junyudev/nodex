@@ -24,7 +24,7 @@ use rusqlite::OptionalExtension;
 
 use super::ProjectWorkspaceModule;
 use super::test_support::{
-    TestWorkspace, context, create_session_thread, request, seeded_workspace,
+    TestWorkspace, context, create_session_thread, enroll_remote_member, request, seeded_workspace,
 };
 
 fn host() -> BoundModuleContext {
@@ -4210,7 +4210,7 @@ fn prepare_stop_test_batch(module: &ProjectWorkspaceModule, id: &str) {
 }
 
 #[test]
-fn stopping_a_waiting_message_releases_it_without_asking_automatically() {
+fn a_member_stops_a_waiting_message_without_it_being_asked_automatically() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "waiting", "Stop before a request is made");
@@ -4218,7 +4218,18 @@ fn stopping_a_waiting_message_releases_it_without_asking_automatically() {
         item(module, "page:waiting").suggestion_state,
         ProjectWorkspaceInboxSuggestionState::Waiting
     );
-    stop_suggestion(module, "stop:waiting", "page:waiting");
+    let member = enroll_remote_member(&workspace, "Member");
+    module
+        .apply(
+            &member,
+            request(
+                "stop:waiting",
+                ProjectWorkspaceIntent::StopInboxSuggestion {
+                    page_id: "page:waiting".into(),
+                },
+            ),
+        )
+        .expect("a Member may stop a live Inbox suggestion");
     prepare_stop_test_batch(module, "request:unused");
     let message = item(module, "page:waiting");
     assert_eq!(

@@ -189,6 +189,7 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
             | Self::DispatchInboxEntries { .. }
             | Self::EnsureInboxNotes { .. }
             | Self::RequestInboxSuggestion { .. }
+            | Self::StopInboxSuggestion { .. }
             | Self::RetryInboxDispatch { .. }
             | Self::KeepInboxEntries { .. }
             | Self::SetInboxSnooze { .. }
@@ -280,7 +281,6 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
             | Self::StartInboxRoutingRun { .. }
             | Self::PublishDueInboxSnooze { .. }
             | Self::PrepareInboxSuggestions { .. }
-            | Self::StopInboxSuggestion { .. }
             | Self::SettleInboxSuggestion { .. }
             | Self::BeginInboxDispatch { .. }
             | Self::RecordInboxSuggestionFailure { .. }
