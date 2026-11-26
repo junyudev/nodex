@@ -90,9 +90,12 @@ export function SubagentAvatar({
 export function SubagentLine({
   subagents,
   cursorTarget,
+  targetIndex = 0,
 }: {
   readonly subagents: readonly Subagent[];
   readonly cursorTarget?: string;
+  /** The named subagent the demo's pointer aims at. */
+  readonly targetIndex?: number;
 }) {
   const copy = useReplicaCopy();
   const groupLabel = subagentGroupLabel(subagents, copy);
@@ -121,7 +124,7 @@ export function SubagentLine({
                 ? copy.subagentLastSeparator
                 : copy.subagentSeparator}
             <span
-              data-cursor-target={index === 0 ? cursorTarget : undefined}
+              data-cursor-target={index === targetIndex ? cursorTarget : undefined}
               className="inline-block max-w-[min(24ch,100%)] truncate rounded-sm align-bottom text-start"
             >
               {agent.name}
@@ -349,27 +352,31 @@ export function SubagentThread({
   prompt,
   sentBy,
   running,
+  backTarget,
   children,
 }: {
   readonly subagent: Pick<Subagent, "name" | "avatar" | "agent">;
   readonly prompt: string;
   readonly sentBy: { readonly chat: string; readonly agent: AgentChoice };
   readonly running: boolean;
+  /** Where the demo's pointer aims to go back to the map. */
+  readonly backTarget?: string;
   readonly children: ReactNode;
 }) {
   const copy = useReplicaCopy();
   return (
     <div className="absolute inset-0 flex flex-col bg-app">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-app-line px-4">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[rgb(13_13_13/0.117)] px-4 dark:border-[rgb(252_252_252/0.156)]">
         <span
           aria-label={copy.backToSubagents}
-          className="flex size-6 shrink-0 items-center justify-center text-app-muted"
+          data-cursor-target={backTarget}
+          className="flex size-6 shrink-0 items-center justify-center rounded-[10px] text-app-muted"
         >
-          <ArrowLeftIcon className="size-[13px]" />
+          <ArrowLeftIcon className="size-4" />
         </span>
         <SubagentAvatar avatar={subagent.avatar} className="size-6" />
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{subagent.name}</span>
-        <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-app-faint">
+        <span className="flex max-w-[50%] min-w-0 items-center gap-1.5 text-[12px] text-app-faint">
           <ProviderMark kind={subagent.agent.provider} className="size-3 shrink-0" />
           <span className="truncate">
             {subagent.agent.model} · {copy.effort[subagent.agent.effort]}

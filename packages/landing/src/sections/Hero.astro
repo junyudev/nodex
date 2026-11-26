@@ -2,11 +2,12 @@
 import type { Locale } from "../lib/locale";
 import HeroDemo from "../demos/HeroDemo";
 import {
+  AntigravityMark,
   BoardIcon,
   ClaudeMark,
+  DeepSeekMark,
   FolderIcon,
   OpenAIMark,
-  OpenCodeMark,
   PageIcon,
 } from "../replica/icons";
 import DownloadActions from "./DownloadActions.astro";
@@ -25,17 +26,18 @@ const chapters = [
   { line: zh ? "一个收件箱。" : "One inbox." },
   {
     line: zh ? "所有智能体。" : "Every agent.",
-    title: zh ? "Claude Code、Codex、OpenCode，以及 ACP Registry 中的 40 多个智能体" : "Claude Code, Codex, OpenCode, and 40+ agents in the ACP Registry",
+    title: zh ? "Claude Code、Codex、Antigravity，用你自己 API key 的 DeepSeek，还有 OpenCode 和 ACP Registry 中的 40 多个智能体" : "Claude Code, Codex, Antigravity and DeepSeek on your own API key, plus OpenCode and 40+ agents in the ACP Registry",
     marks: [
       { Icon: ClaudeMark, size: "size-[0.32em]" },
       { Icon: OpenAIMark, size: "size-[0.32em]" },
-      { Icon: OpenCodeMark, size: "size-[0.26em]" },
+      { Icon: AntigravityMark, size: "size-[0.32em]" },
+      { Icon: DeepSeekMark, size: "size-[0.34em]" },
     ],
     note: "after:content-['+40']",
   },
   {
     line: zh ? "一切存于本地。" : "All local.",
-    title: zh ? "页面、文件和数据库都存储在本地" : "Notion-style Pages, their files, and Databases, stored on your Mac",
+    title: zh ? "页面、文件和数据库都存储在本地" : "Notion-style Pages, their files and Databases, stored on your computer",
     marks: [
       { Icon: PageIcon, size: "size-[0.36em]" },
       { Icon: FolderIcon, size: "size-[0.3em]" },
@@ -96,7 +98,7 @@ const chapters = [
     </h1>
     <div class="flex flex-col gap-7">
       <p class="max-w-[480px] text-[18px] leading-[1.55] text-balance text-ink-2 sm:text-[20px] lg:text-[17px] xl:text-[19px]">
-        {zh ? "一个开源的本地工作空间，让 Claude Code、Codex 和 OpenCode 在同一套页面里协作。" : "The open-source workspace where Claude Code, Codex and OpenCode work from the same local\n        Pages."}
+        {zh ? "一个开源的本地工作空间，让 Claude Code、Codex、Antigravity 和 DeepSeek 在同一套页面里协作。" : "The open-source workspace where Claude Code, Codex, Antigravity and DeepSeek work from the same local Pages."}
       </p>
       <DownloadActions locale={locale} align="start" stamp={false} />
     </div>

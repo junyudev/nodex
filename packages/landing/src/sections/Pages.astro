@@ -17,7 +17,7 @@ const zh = locale === "zh-CN";
   wide
 >
   <Fragment slot="body">
-    {zh ? "收件箱里的每条消息都是看板上的一个页面。交给会话后，它会从「待分流」进入「进行中」。智能体能查询看板、更新属性，并直接把结果写入当前页面。报告、截图和追踪记录可以作为附件，在旁边的标签页打开。确认结果后，就可以将任务标为完成。" : "Every Inbox message is already a Page on your Board. Hand it to a chat and it moves from Triage to Doing; agents query the Board, update properties, and write findings straight into the Page while it’s open, attaching reports, screenshots and traces that open in a tab beside it. When you’re happy, mark it done and it ships."}
+    {zh ? "收件箱里的每条消息都已经是一个页面。交给某个项目的会话后，它会出现在该项目的看板上并进入「进行中」，卡片上写明是哪个智能体在处理。智能体能查询看板，把结果直接写入打开着的页面，再把报告、截图和追踪记录挂到页面的文件下。工作完成后，页面进入「审查中」，等你点「接受」。" : "Every Inbox message is already a Page. Hand it to a Project’s chat and it lands on that Project’s Board, In Progress, with the Agent at work named on its card. Agents query the Board, write findings straight into the Page while it’s open, and hang reports, screenshots and traces beneath its Files. When the work is ready, the Page moves to In Review and waits for you to Accept it."}
   </Fragment>
   <div lang={locale}><PagesDemo locale={locale} client:visible /></div>
 </Feature>

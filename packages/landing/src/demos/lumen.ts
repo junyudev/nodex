@@ -8,12 +8,16 @@ import { byLocale, localizer } from "../lib/locale";
 import type { BoardCard, Status } from "../replica/Board";
 import type { PageFolder } from "../replica/Page";
 
-export type ProviderKind = "codex" | "claude" | "antigravity" | "opencode";
+/** Built-in Agents, and DeepSeek connected with the reader's own API key. */
+export type ProviderKind = "codex" | "claude" | "antigravity" | "deepseek" | "opencode";
 
 /** The Agents whose plans report a weekly budget; OpenCode reports none. */
 export type MeteredProvider = Exclude<ProviderKind, "opencode">;
 
-/** What is left of each metered plan, as a share of its tightest window. */
+/**
+ * What is left of each metered plan, as a share of its tightest window; for DeepSeek's prepaid
+ * balance, the share of its last top-up.
+ */
 export type UsageLeft = Readonly<Record<MeteredProvider, number>>;
 
 export interface AgentChoice {
@@ -26,9 +30,12 @@ export interface AgentChoice {
 
 export const AGENTS = {
   opus: { provider: "claude", model: "Claude Opus 5.5", effort: "High" },
+  haiku: { provider: "claude", model: "Claude Haiku 5.5", effort: "High" },
   sol: { provider: "codex", model: "GPT-6.2 Sol", effort: "Extra High" },
   solHigh: { provider: "codex", model: "GPT-6.2 Sol", effort: "High" },
-  deepseek: { provider: "opencode", model: "DeepSeek V4.1 Flash Free", effort: "High", free: true },
+  neon: { provider: "antigravity", model: "Gemini 4 Neon", effort: "High" },
+  dsPro: { provider: "deepseek", model: "DeepSeek V4 Pro", effort: "High" },
+  dsFlash: { provider: "deepseek", model: "DeepSeek V4.1 Flash", effort: "High" },
   glm: { provider: "opencode", model: "GLM-5.3-Flash Free", effort: "High", free: true },
 } as const satisfies Record<string, AgentChoice>;
 
@@ -63,25 +70,28 @@ export const MODEL_CATALOG: readonly CatalogModel[] = [
   { name: "Gemini 4 Argon", provider: "antigravity" },
   { name: "Gemini 4 Hydrogen", provider: "antigravity" },
   { name: "Gemini 3.8 Flash", provider: "antigravity" },
+  { name: "DeepSeek V4 Pro", provider: "deepseek" },
+  { name: "DeepSeek V4.1 Flash", provider: "deepseek" },
 ];
 
 /** What is left of each paid plan's weekly budget, as the rail's meters and the Inbox read it. */
-export const WEEKLY_LEFT: UsageLeft = { claude: 0.62, codex: 0.71, antigravity: 0.84 };
+export const WEEKLY_LEFT: UsageLeft = {
+  claude: 0.62,
+  codex: 0.71,
+  antigravity: 0.84,
+  deepseek: 0.58,
+};
 
 export const PROVIDER_NAMES: Record<ProviderKind, string> = {
   codex: "Codex",
   claude: "Claude Code",
   antigravity: "Antigravity",
+  deepseek: "DeepSeek",
   opencode: "OpenCode",
 };
 
 export const PROJECTS = ["lumen-web", "lumen-api", "docs"] as const;
 export type ProjectName = (typeof PROJECTS)[number];
-
-export interface Delegate {
-  readonly work: string;
-  readonly agent: AgentChoice;
-}
 
 export type Dispatch =
   | {
@@ -89,8 +99,11 @@ export type Dispatch =
       readonly project: ProjectName;
       readonly prompt: string;
       readonly agent: AgentChoice;
-      readonly delegates?: readonly Delegate[];
-      readonly plan?: string;
+      /**
+       * Sentences the suggestion adds on its own, each with a checkbox; how to run the work, such
+       * as handing part of it to another model, is the receiving Agent's to decide.
+       */
+      readonly additions?: readonly string[];
       /** The chat's title once it starts. */
       readonly chat: string;
     }
@@ -100,7 +113,7 @@ export type Dispatch =
       readonly project: ProjectName;
       readonly prompt: string;
     }
-  | { readonly kind: "keep"; readonly summary: string };
+  | { readonly kind: "save_to_notes"; readonly summary: string };
 
 export type InboxMessageId =
   | "webhooks"
@@ -168,7 +181,7 @@ export const lumen = byLocale((locale) => {
         kind: "new_chat",
         project: "lumen-web",
         chat: titles.coldstart,
-        agent: AGENTS.deepseek,
+        agent: AGENTS.neon,
         prompt: t(
           "Profile the dashboard's cold start and report the three biggest costs. Don't change code.",
           "分析仪表盘的冷启动，找出最耗时的三项。先别改代码。",
@@ -197,10 +210,10 @@ export const lumen = byLocale((locale) => {
         "点子：给工作区所有者发每周摘要邮件",
       ),
       dispatch: {
-        kind: "keep",
+        kind: "save_to_notes",
         summary: t(
-          "Keep as a note — an idea, not work to start yet.",
-          "先留作笔记，这个点子暂时不用做。",
+          "An idea for later, not work to start yet. Save it to Notes.",
+          "这是之后的点子，暂时不用开始做。保存到笔记。",
         ),
       },
     },
@@ -212,7 +225,7 @@ export const lumen = byLocale((locale) => {
         kind: "new_chat",
         project: "docs",
         chat: titles.changelog,
-        agent: AGENTS.glm,
+        agent: AGENTS.dsFlash,
         prompt: t(
           "Draft the v2.4 changelog from PRs merged since v2.3, grouped by Added, Changed and Fixed.",
           "根据 v2.3 以来合并的 PR 草拟 v2.4 更新日志，按新增、变更和修复分组。",
@@ -222,9 +235,11 @@ export const lumen = byLocale((locale) => {
     {
       id: "passkeys",
       key: "LUM-41",
+      // A thought rather than a request, so the suggestion writes the prompt and offers its own
+      // additions; a clear request would go through in the person's words.
       text: t(
-        "Migrate sign-in to passkeys. Keep passwords as a fallback for one release.",
-        "改用通行密钥登录。密码登录再保留一个版本作为后备方案。",
+        "passkeys for sign-in? keep passwords one more release",
+        "登录改用通行密钥？密码再留一个版本",
       ),
       dispatch: {
         kind: "new_chat",
@@ -235,35 +250,31 @@ export const lumen = byLocale((locale) => {
           "Replace password sign-in with passkeys across web and API, keeping passwords as a fallback for one release.",
           "将网页端和 API 的登录方式改为通行密钥，密码登录作为后备方案保留一个版本。",
         ),
-        delegates: [
-          {
-            work: t("WebAuthn routes and challenge store", "WebAuthn 路由和挑战值存储"),
-            agent: AGENTS.sol,
-          },
-          {
-            work: t("Credentials table migration and backfill", "凭据表迁移和数据回填"),
-            agent: AGENTS.solHigh,
-          },
-          {
-            work: t("End-to-end tests for both sign-in paths", "两种登录方式的端到端测试"),
-            agent: AGENTS.solHigh,
-          },
-          {
-            work: t("Docs for passkeys and the password fallback", "通行密钥和密码后备方案的文档"),
-            agent: AGENTS.glm,
-          },
+        additions: [
+          t(
+            "Hand the WebAuthn routes to GPT-6.2 Sol in Codex.",
+            "把 WebAuthn 路由交给 Codex 里的 GPT-6.2 Sol。",
+          ),
+          t(
+            "Have Gemini 4 Neon in Antigravity write the end-to-end tests for both sign-in paths.",
+            "让 Antigravity 里的 Gemini 4 Neon 为两种登录方式编写端到端测试。",
+          ),
+          t("Give the docs to a free model.", "文档交给免费模型。"),
         ],
-        plan: t(
-          "Lead the UI and session flow yourself; merge the delegated parts behind one flag.",
-          "你负责界面和会话流程，用同一个功能开关整合委派出去的改动。",
-        ),
       },
     },
   ];
 
-  /** The passkey chat's delegated parts, as its transcript names them. */
+  /** A message's Page key, which stays with the Page wherever its work goes. */
+  const inboxKey = (id: InboxMessageId) => inbox.find((message) => message.id === id)!.key;
+
+  /**
+   * The passkey chat's subagents, one on each other harness, as its transcript names them. The
+   * Claude lead keeps the sign-in UI and the session flow for itself.
+   */
   const subagents = [
     {
+      id: "webauthn",
       name: t("WebAuthn routes", "WebAuthn 路由"),
       avatar: "04-aperture",
       agent: AGENTS.sol,
@@ -275,34 +286,25 @@ export const lumen = byLocale((locale) => {
         "Add WebAuthn registration and assertion routes under app/api/auth/webauthn, with a challenge store that expires after five minutes. Leave password sign-in untouched.",
         "在 app/api/auth/webauthn 下添加 WebAuthn 注册和验证路由，挑战值 5 分钟后过期。密码登录保持原样。",
       ),
+      diff: { added: 412, removed: 38 },
     },
     {
-      name: t("Credentials migration", "凭据迁移"),
-      avatar: "06-cube",
-      agent: AGENTS.solHigh,
-      objective: t(
-        "Create the credentials table and backfill existing accounts.",
-        "创建凭据表，为已有账户回填数据。",
-      ),
-      prompt: t(
-        "Add a credentials table for passkeys and backfill a row for every existing account, in one reversible migration.",
-        "用一次可回滚的迁移创建通行密钥凭据表，并为每个已有账户回填一条记录。",
-      ),
-    },
-    {
+      id: "tests",
       name: t("Sign-in tests", "登录测试"),
       avatar: "19-whirl",
-      agent: AGENTS.solHigh,
+      agent: AGENTS.neon,
       objective: t(
         "Cover passkey and password sign-in end to end.",
         "端到端覆盖通行密钥和密码两种登录方式。",
       ),
       prompt: t(
-        "Write end-to-end tests for signing in with a passkey and with a password, including the fallback.",
-        "为通行密钥和密码登录编写端到端测试，涵盖回退到密码登录的流程。",
+        "Write end-to-end tests for signing in with a passkey and with a password, including the fallback. Run them in Chromium and WebKit.",
+        "为通行密钥和密码登录编写端到端测试，涵盖回退到密码登录的流程，并在 Chromium 和 WebKit 中运行。",
       ),
+      diff: { added: 298 },
     },
     {
+      id: "docs",
       name: t("Passkey docs", "通行密钥文档"),
       avatar: "00-marigold",
       agent: AGENTS.glm,
@@ -314,8 +316,48 @@ export const lumen = byLocale((locale) => {
         "Document passkey sign-in for users and admins, and when the password fallback goes away.",
         "为用户和管理员说明如何用通行密钥登录，以及何时停用密码后备方案。",
       ),
+      diff: { added: 64, removed: 12 },
     },
   ] as const;
+
+  /**
+   * The other chats working while the passkeys are under way, as Aerial view shows them: a Codex
+   * chat that asks Claude to review its fix, and an Antigravity chat whose Codex subagent hands
+   * its screenshots to DeepSeek in turn.
+   */
+  const aerial = {
+    webhooks: {
+      line: t("Making the webhook handler idempotent", "正在让 webhook 处理逻辑支持幂等"),
+      review: {
+        id: "review",
+        name: t("Retry race review", "重试竞态审查"),
+        avatar: "10-compass",
+        agent: AGENTS.opus,
+        diff: { added: 18, removed: 6 },
+      },
+    },
+    settings: {
+      line: t("Retuning dark surfaces and secondary text", "正在调整深色背景和次要文字"),
+      question: t(
+        "Keep the accent brighter in dark mode, or match light?",
+        "深色模式的强调色要更亮一些，还是和浅色一致？",
+      ),
+      audit: {
+        id: "audit",
+        name: t("Contrast audit", "对比度检查"),
+        avatar: "18-quadrant",
+        agent: AGENTS.solHigh,
+        diff: { added: 46, removed: 31 },
+      },
+      shots: {
+        id: "shots",
+        parent: "audit",
+        name: t("Theme screenshots", "主题截图"),
+        avatar: "22-origami",
+        agent: AGENTS.dsFlash,
+      },
+    },
+  } as const;
 
   /**
    * What the cold-start chat finds and attaches to its Page. Durations keep a non-breaking space
@@ -330,25 +372,8 @@ export const lumen = byLocale((locale) => {
     t("Font request blocks render — 0.3 s", "字体请求阻塞渲染：0.3 秒"),
   ] as const;
 
+  /** The lumen-web Board while the passkeys are under way: everything in Triage and Todo is placed. */
   const cards: readonly BoardCard[] = [
-    {
-      id: "audit",
-      title: titles.audit,
-      body: t("CSV and JSON exports for workspace admins.", "让工作区管理员导出 CSV 和 JSON。"),
-      status: "Triage",
-    },
-    {
-      id: "onboarding",
-      title: titles.onboarding,
-      body: t("Shorter steps, one action each.", "缩短每个步骤，每步只做一件事。"),
-      status: "Triage",
-    },
-    {
-      id: "digest",
-      title: titles.digest,
-      body: t("A weekly snapshot for workspace owners.", "每周给工作区所有者发一份动态摘要。"),
-      status: "Plan",
-    },
     {
       id: "passkeys",
       title: titles.passkeys,
@@ -357,14 +382,16 @@ export const lumen = byLocale((locale) => {
         "改用通行密钥登录，密码登录再保留一个版本。",
       ),
       status: "Doing",
+      turn: { kind: "working", provider: "claude" },
       chat: { provider: "claude", working: true },
     },
     {
-      id: "webhooks",
-      title: titles.webhooks,
-      body: t("Overlapping retries must never charge twice.", "并发重试不能导致重复扣款。"),
+      id: "darkmode",
+      title: titles.darkmode,
+      body: t("Contrast on surfaces and secondary text.", "检查背景和次要文字的对比度。"),
       status: "Doing",
-      chat: { provider: "codex", working: true },
+      turn: { kind: "working", provider: "antigravity" },
+      chat: { provider: "antigravity", working: true },
     },
     {
       id: "coldstart",
@@ -374,33 +401,47 @@ export const lumen = byLocale((locale) => {
         "分析冷启动，找出最耗时的三项。",
       ),
       status: "Doing",
-      chat: { provider: "opencode", working: true },
+      turn: { kind: "working", provider: "antigravity" },
+      chat: { provider: "antigravity", working: true },
     },
     {
-      id: "settings",
-      title: t("Settings dark mode", "设置页深色模式"),
-      body: t("Contrast on surfaces and secondary text.", "检查背景和次要文字的对比度。"),
+      id: "onboarding",
+      title: titles.onboarding,
+      body: t("Shorter steps, one action each.", "缩短每个步骤，每步只做一件事。"),
       status: "Review",
+      turn: { kind: "review" },
     },
     {
-      id: "ratelimit",
-      title: titles.ratelimit,
-      body: t("Per-workspace limits on the public API.", "按工作区限制公共 API 的调用频率。"),
+      id: "marketing",
+      title: t("Dark mode for the marketing site", "官网深色模式"),
+      body: t("Follow the system theme on every page.", "每个页面都跟随系统主题。"),
       status: "Done",
     },
   ];
 
-  /** A backlog that piled up in Triage, newest first. */
+  /** The lumen-web backlog that piled up in Triage, newest first; Inbox Pages keep their keys. */
   const tasks: readonly Task[] = [
+    { key: inboxKey("coldstart"), title: titles.coldstart, priority: "medium", to: "Review" },
+    {
+      key: inboxKey("passkeys"),
+      title: titles.passkeys,
+      priority: "medium",
+      to: "Doing",
+      raise: true,
+    },
     { key: "LUM-40", title: t("Upgrade React to 20", "将 React 升级到 20"), priority: "low" },
-    { key: "LUM-38", title: titles.coldstart, priority: "medium", to: "Review" },
     {
       key: "LUM-36",
       title: t("Settings dark mode contrast", "设置页深色模式的对比度"),
       priority: "low",
       to: "Done",
     },
-    { key: "LUM-35", title: titles.webhooks, priority: "high", to: "Review" },
+    {
+      key: "LUM-35",
+      title: t("Passkey prompt flicker", "通行密钥提示闪烁"),
+      priority: "high",
+      to: "Review",
+    },
     { key: "LUM-33", title: titles.onboarding, priority: "low" },
     {
       key: "LUM-31",
@@ -418,7 +459,7 @@ export const lumen = byLocale((locale) => {
     },
     {
       key: "LUM-26",
-      title: t("Rate limiter for the public API", "公共 API 限流"),
+      title: t("Session timeout banner", "会话超时提示条"),
       priority: "medium",
       to: "Done",
     },
@@ -443,7 +484,6 @@ export const lumen = byLocale((locale) => {
       to: "Doing",
       raise: true,
     },
-    { key: "LUM-17", title: titles.passkeys, priority: "medium", to: "Doing", raise: true },
     {
       key: "LUM-12",
       title: t("Dark mode for the marketing site", "官网深色模式"),
@@ -477,11 +517,31 @@ export const lumen = byLocale((locale) => {
         },
       ],
     },
+    antigravity: {
+      title: "Antigravity",
+      plan: "",
+      windows: [
+        { label: t("5-hour", "5 小时"), left: 0.92, reset: t("Resets 1:20 PM", "13:20 重置") },
+        {
+          label: t("Weekly", "每周"),
+          left: 0.84,
+          reset: t("Resets Tue 7:00 AM", "周二 07:00 重置"),
+        },
+      ],
+    },
   } as const;
 
+  /** DeepSeek reports a prepaid balance rather than windows: what is left of the last top-up. */
+  const deepseekBalance = {
+    title: "DeepSeek",
+    amount: t("$12.40", "¥86.20"),
+  };
+
   return {
+    deepseekBalance,
     inbox,
     subagents,
+    aerial,
     findings,
     titles,
     cards,
@@ -492,22 +552,25 @@ export const lumen = byLocale((locale) => {
       InboxMessage
     >,
     passkeyIntro: t(
-      "I’ll build the sign-in UI and the session flow myself and hand the rest out in parallel: three parts to GPT-6.2 Sol, the docs to a free model.",
-      "我来做登录界面和会话流程，其余并行委派：三项交给 GPT-6.2 Sol，文档交给免费模型。",
+      "I’ll build the sign-in UI and the session flow myself and hand the rest out in parallel: the routes to GPT-6.2 Sol, the tests to Gemini 4 Neon, the docs to a free model.",
+      "我来做登录界面和会话流程，其余并行委派：路由交给 GPT-6.2 Sol，测试交给 Gemini 4 Neon，文档交给免费模型。",
     ),
     wiringPasskeys: t(
       "Wiring the passkey ceremony into the session",
       "正在将通行密钥验证接入会话流程",
     ),
-    routesDone: t(
-      "Registration and assertion routes are in, with a challenge store that expires after five minutes. 12 tests pass, and password sign-in is untouched.",
-      "注册和验证路由已就绪，挑战值 5 分钟后过期。12 项测试全部通过，密码登录保持原样。",
-    ),
     testingRoutes: t("Running the tests", "正在运行测试"),
-    writingRoutes: t("Writing the routes", "正在编写路由"),
+    writingTests: t("Writing the tests", "正在编写测试"),
+    testsDone: t(
+      "Both sign-in paths are covered: 14 tests pass in Chromium and WebKit, with passkeys and with the password fallback.",
+      "两种登录方式都已覆盖：14 项测试在 Chromium 和 WebKit 中全部通过，涵盖通行密钥和密码后备方案。",
+    ),
     wroteFindings: t("Findings into Dashboard cold start", "“仪表盘冷启动”的分析结果"),
     attachedReport: t("3 files to Dashboard cold start", "3 个文件到“仪表盘冷启动”"),
-    movedColdStart: t("Dashboard cold start to Review", "“仪表盘冷启动”至“审查中”"),
+    markedColdStart: t(
+      `${inboxKey("coldstart")} ready for review`,
+      `${inboxKey("coldstart")} 待审查`,
+    ),
     coldStartAnswer: t(
       "Cold start is 2.3 s, and 1.1 s of it is hydrating the whole workspace tree before first paint. The findings are on the page, with the report, flame graph and raw trace attached.",
       "冷启动耗时 2.3 秒，其中 1.1 秒花在首次绘制前对整个工作区树执行水合。结果已写入页面，报告、火焰图和原始追踪数据都已附上。",
@@ -535,13 +598,7 @@ export const lumen = byLocale((locale) => {
       "Account limits · read on this Mac just now",
       "账户限额 · 读取自这台 Mac，读取于刚刚",
     ),
-    mergedParts: t("Merged 4 parts · 214 tests pass", "已合并 4 项改动 · 214 项测试通过"),
     planningWork: t("Planning the work", "正在规划任务"),
-    agentsAndModels: t("4 agents · 31 models", "4 个智能体 · 31 个模型"),
-    settledTasks: t("4 settled", "4 个任务已结束"),
-    waitingTasks: t("4 tasks", "4 个任务"),
-    delegating: (finished: number, total: number) =>
-      t(`Delegating · ${finished}/${total} back`, `正在委派 · 已返回 ${finished}/${total} 项`),
     readingResult: (count: number) =>
       t(`Read ${count} Pages in lumen-web`, `已读取 lumen-web 中的 ${count} 个页面`),
     queryResult: (count: number) =>
@@ -568,16 +625,16 @@ export const lumen = byLocale((locale) => {
     reportPreview: t("Report attached to the Page.", "报告已附到页面。"),
     draftPreview: t("Draft ready for review.", "草稿可以审阅了。"),
     mobileDelegation: t(
-      "Handed the routes, migration, tests and docs to subagents. I’ll take the session flow.",
-      "路由、迁移、测试和文档都交给子智能体了。我来处理会话流程。",
+      "Handed the routes, tests and docs to subagents. I’ll take the session flow.",
+      "路由、测试和文档都交给子智能体了。我来处理会话流程。",
     ),
     mobileDelegationShort: t(
-      "Handed the routes, migration, tests and docs to subagents.",
-      "路由、迁移、测试和文档已交给子智能体。",
+      "Handed the routes, tests and docs to subagents.",
+      "路由、测试和文档已交给子智能体。",
     ),
     mobileMerged: t(
-      "Routes, migration and docs are merged. One check left: the sign-in suite.",
-      "路由、迁移和文档已合并。还差最后一步：跑一遍登录测试。",
+      "Routes and docs are merged. One check left: the sign-in suite.",
+      "路由和文档已合并。还差最后一步：跑一遍登录测试。",
     ),
     mobileTestsDone: t(
       "All 14 sign-in tests pass, with passkeys and with the password fallback. Ready for review.",
@@ -588,8 +645,8 @@ export const lumen = byLocale((locale) => {
       "14 项登录测试全部通过，涵盖通行密钥和密码后备方案。",
     ),
     mobileDigestSummary: t(
-      "An idea, not work to start yet. Keep it as a note.",
-      "先记下来，这个点子暂时不用做。",
+      "An idea, not work to start yet. Save it to Notes.",
+      "先记下来，这个点子暂时不用做。保存到笔记。",
     ),
     mobileSettingsSummary: t(
       "Check contrast on surfaces and secondary text.",
@@ -604,7 +661,7 @@ export const lumen = byLocale((locale) => {
     encryptedDirect: t("Direct, encrypted end to end", "直连，端到端加密"),
     encrypted: t("Encrypted", "已加密"),
     tidyRequest: t(
-      "Tidy up the backlog: finished work to Done, auth to Doing at P1, the rest where it belongs.",
+      "Tidy up the backlog: finished work to Done, auth to In Progress at P1, the rest where it belongs.",
       "整理一下积压任务：做完的移到“已完成”，身份验证相关的移到“进行中”并提到 P1，其余归到合适的状态。",
     ),
     readingBacklog: t("Reading the backlog", "正在读取积压任务"),
@@ -632,8 +689,8 @@ export const lumen = byLocale((locale) => {
     ),
     flamegraphTitle: t("Dashboard cold start · 2.3 s", "仪表盘冷启动 · 2.3 秒"),
     routingPreferences: t(
-      "Docs and changelogs go to free models. Investigations stay read-only.",
-      "文档和更新日志交给免费模型。排查问题时只读。",
+      "Docs go to free models, changelogs to DeepSeek. Investigations stay read-only.",
+      "文档交给免费模型，更新日志交给 DeepSeek。排查问题时只读。",
     ),
   };
 });

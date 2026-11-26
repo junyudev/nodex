@@ -2,7 +2,7 @@
 import { CHANGE_TONE } from "../../../changelog";
 import PlatformIcon from "../../../components/PlatformIcon.astro";
 import SocialCard from "../../../components/SocialCard.astro";
-import OgInbox from "../../../demos/OgInbox";
+import OgAerial from "../../../demos/OgAerial";
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import { BREW_COMMAND } from "../../../lib/site";
 import { SOCIAL_CARDS, type SocialCardId } from "../../../lib/social-cards";
@@ -21,6 +21,7 @@ const agents = [
   { kind: "claude", size: "size-[26px]" },
   { kind: "codex", size: "size-[26px]" },
   { kind: "antigravity", size: "size-[26px]" },
+  { kind: "deepseek", size: "size-[27px]" },
   { kind: "opencode", size: "size-[21px]" },
 ] as const;
 
@@ -55,7 +56,7 @@ const changes = [
             </li>
           ))}
         </ul>
-        <OgInbox slot="aside" client:load />
+        <OgAerial slot="aside" client:load />
       </SocialCard>
     )
   }

@@ -207,18 +207,29 @@ production custom-domain contract and must remain in the generated Pages tree;
 
 ## Content Notes
 
+Claude Code, Codex and Antigravity, the built-in Agents, and DeepSeek, connected with the reader's
+own API key, are the story's four peers: each has a mark beside the headline, a place in the
+tagline and real work in the demos, as a lead or a subagent, a route from the Inbox and its own
+usage meter. OpenCode's free models and the ACP Registry round them out. Keep that balance when a
+demo changes, in the marks, the copy and who does what. A DeepSeek key runs on Nodex's Codex, so
+its lines take Codex's color while its whale mark names it.
+
 The homepage tells one story in order. The hero headline's three lines are also the hero demo's
-chapters and jump to them: **One inbox.** captures a burst of messages and plans each one, the
-reader moves one plan's lead from GPT-6.2 Sol to Claude Opus before starting it, and the
-cleared Inbox shows how it plans; **Every agent.** opens that chat, where the reader points at
-its Claude lead, then opens one of its GPT subagents in the Subagents tab beside it and watches it
-finish in Codex; **All local.** opens a chat with its Page
-in the side tab group, where the agent attaches its report and the reader opens it beside the Page. Icons beside the last two lines show what they cover, and a line's short caption appears
-only while its chapter plays. The sentence beside the headline is the README's tagline; change
-both together.
-Sections then cover cross-provider delegation, every provider's models and plans in one menu,
-work landing in Pages on a Board, one plain request that has an agent file a whole backlog, and
-reaching all of it from a phone, followed by a feature grid and a final download call.
+chapters and jump to them: **One inbox.** captures a burst of messages and suggests a place for
+each one, routes to Codex, Antigravity, DeepSeek, a running chat and Notes, the reader moves
+one chat's model from GPT-6.2 Sol to Claude Opus before starting it, and the cleared Inbox shows
+how it plans; **Every agent.** opens that chat, where the reader points at its Claude lead, opens
+its Gemini subagent in the Subagents tab beside it, watches it finish in Antigravity, then steps
+back to the chat's Subagents map as the last part comes home; **All local.** opens a Gemini chat
+with its Page in the side tab group, where the agent writes its findings, attaches its report and
+marks the Page ready for review, and the reader opens the report beside the Page. Icons beside
+the last two lines show what they cover, and a line's short caption appears only while its
+chapter plays. The sentence beside the headline is the README's tagline; change both together.
+Sections then cover Aerial view, with every chat at work and its whole tree of subagents across
+the three peers, every provider's models and plans in one menu, work landing in Pages on a Board
+until it waits for the reader to accept it, one plain request that has an agent file a whole
+backlog, and reaching all of it from a phone, followed by a feature grid and a final download
+call.
 
 The hero reaches something worth watching within about a second. Its opening burst sweeps each
 message through the composer in a fraction of a second, and the Inbox plans each one while the
@@ -233,23 +244,35 @@ Product demos are scripted re-enactments built from replicas of the interface, n
 - Every capability a demo shows must ship with the release the site is published with. Plan
   the release and the site together when a demo leads the app.
 - Split tab groups follow the app: each group's tabs sit in the titlebar above its own pane,
-  and a chat's Page opens in the side group. A Page's Files read as a file tree across the Page's
-  width, naming the chat that attached them once beneath it, as the app draws them. A File opened
-  there becomes a preview tab right after its Page, with the path back to the Page above it:
-  HTML renders as the page it is and an image shows in its viewer.
+  and a chat's Page opens in the side group. A Page's Files hang beneath the Files property as an
+  outline across the Properties' width, with a guide for each open level and the chat that
+  attached them named beside the count, as the app draws them. An HTML File opened there becomes
+  a preview tab right after its Page, with the path back to the Page above it, and renders as the
+  page it is; an image opened with a double click keeps a tab of its own.
+- Work Pages read as the app's Board does: the workflow's Triage, Todo, In Progress, In Review
+  and Done, empty columns folded to a strip, and each card and Page Status naming whose move it
+  is, such as `Codex is working` or `Ready for your review` beside Accept.
 - The cleared Inbox copies the app's own summary of how it plans: the model it is Suggested by,
   each Model guide family the reader's Agents offer and then each other Agent by name, beside
   what is left of its plan's weekly budget, and the reader's Routing preferences, in the app's
   labels and with the guide's one-line notes from `src/shared/inbox-model-guide.ts`; change the
   replica when the app changes them.
 - Pointing at a chat's model button shows the model that leads it.
-- A plan's delegated parts read as one tree: a quiet rail runs beside them and curves into each
-  part, with no arrowheads, because the parts branch from one plan rather than point somewhere.
-  With nothing between a message and its parts, the rail grows from the message itself.
-- Subagents follow the app's Agent identity: a subagent's card names its Agent and model beside
-  the harness mark, the Subagents tab header marks the child's Agent beside its model and effort,
-  and its task reads "Sent by" with the sending chat's mark and title, so a Claude lead with
-  Codex subagents reads at a glance.
+- An Inbox suggestion reads as the app's: a new chat's prompt, then each sentence the suggestion
+  adds on its own beside a checked box, such as handing part of the work to another model. A
+  suggestion never plans subtasks; the receiving Agent decides how to delegate, and the chat
+  receives the prompt with each checked addition as its own paragraph. A message that is the
+  person's own clear request keeps their words with a short routing note and no additions, so a
+  card that shows additions starts from a thought rather than a request. The decision's model half
+  names the model only when it differs from the Inbox's own.
+- Subagents follow the app's Agent identity and its delegation map (`src/replica/Subagents.tsx`
+  keeps the app's geometry): a subagent's card names its Agent beside the harness mark, its
+  avatar and name, then its model and effort; each line takes the color of the harness the work
+  went to, runs dashes while it works and turns solid as the result comes home. The map sits beside
+  its lead when there is room and beneath it, on a rail, when there is not, and Aerial view stacks
+  one band per chat. The Subagents tab header marks the child's Agent beside its model and effort,
+  and its task reads "Sent by" with the sending chat's mark and title, so a Claude lead with a
+  Gemini subagent reads at a glance.
 - Nodex Mobile's replica draws the app at its real point sizes in its own colors and scales as one
   device, with a fingertip for a pointer. Its demo stands the phone in front of the computer running
   the same chats, joined through the routes Settings → Remote lists, because what sets it apart is
@@ -282,12 +305,13 @@ A link to the site previews as a social card. A page names its card through `Bas
 `socialCard`, and `SOCIAL_CARDS` owns each card's published file and alt text, so the tags and the
 recorder read one list. Home, Download and Changelog each have a card; Privacy and Terms use Home's.
 
-The home card shows what sets Nodex apart: one Inbox sending several messages each to its own
-place, across different models, above the composer that invites the next one. Never trade that for
-size; a single message reads as an ordinary chat. To make room, its cards leave out the suggestion's
-words and keep the message and its route, and a build test holds the card to its composer and at
-least three different routes and models. The agents' marks stand alone beneath its headline: they
-are known well enough to need no names, and the card's alt text says them.
+The home card shows what sets Nodex apart: every agent at work together, in Aerial view. Two chats
+fill its window, each with its tree of subagents, so all four peers appear doing something: a
+Claude Code lead with Codex, Antigravity and OpenCode subagents, and an Antigravity lead whose Codex
+subagent passes work to DeepSeek. Never trade that for size; a single chat reads as an ordinary
+one. The window is enlarged a little and holds still, as a card does. The agents' marks stand alone
+beneath its headline: they are known well enough to need no names, and the card's alt text says
+them.
 
 People see a card in a feed at about 500px wide, not at its 1200×630 design size:
 

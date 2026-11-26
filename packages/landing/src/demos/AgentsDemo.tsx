@@ -9,11 +9,18 @@ import { Stage } from "../replica/Stage";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { Cursor } from "./Cursor";
 import { byLocale } from "../lib/locale";
-import { AGENTS, lumen, MODEL_CATALOG, WEEKLY_LEFT, type ProviderKind } from "./lumen";
+import {
+  AGENTS,
+  lumen,
+  MODEL_CATALOG,
+  WEEKLY_LEFT,
+  type MeteredProvider,
+  type ProviderKind,
+} from "./lumen";
 import { useTimeline, useTyped, type TimelineScript } from "./timeline";
 
 const SEARCH = "free";
-const TYPE_START = 5300;
+const TYPE_START = 7500;
 const TYPE_MS = 110;
 const PICK = TYPE_START + SEARCH.length * TYPE_MS + 1300;
 
@@ -24,12 +31,16 @@ export const SCRIPTS = byLocale((locale): TimelineScript => {
   const send = FOLLOW_UP_AT + lumen[locale].followUp.length * FOLLOW_UP_MS + 250;
   const cues = [
     { id: "aim:claude", at: 300 },
-    { id: "card:claude", at: 800 },
-    { id: "aim:codex", at: 2400 },
-    { id: "card:codex", at: 2900 },
-    { id: "aim:model", at: 4300 },
-    { id: "press:model", at: 4750 },
-    { id: "menu", at: 4900 },
+    { id: "card:claude", at: 700 },
+    { id: "aim:codex", at: 1900 },
+    { id: "card:codex", at: 2300 },
+    { id: "aim:antigravity", at: 3500 },
+    { id: "card:antigravity", at: 3900 },
+    { id: "aim:deepseek", at: 5100 },
+    { id: "card:deepseek", at: 5500 },
+    { id: "aim:model", at: 6500 },
+    { id: "press:model", at: 6950 },
+    { id: "menu", at: 7100 },
     { id: "filtered", at: TYPE_START + SEARCH.length * TYPE_MS },
     { id: "aim:pick", at: TYPE_START + SEARCH.length * TYPE_MS + 500 },
     { id: "press:pick", at: TYPE_START + SEARCH.length * TYPE_MS + 1150 },
@@ -74,14 +85,18 @@ function AgentsPlayback() {
     [showFree],
   );
   const card =
-    reached("card:codex") && !reached("aim:model")
-      ? "codex"
-      : reached("card:claude") && !reached("aim:codex")
-        ? "claude"
-        : null;
+    reached("card:deepseek") && !reached("aim:model")
+      ? "deepseek"
+      : reached("card:antigravity") && !reached("aim:deepseek")
+        ? "antigravity"
+        : reached("card:codex") && !reached("aim:antigravity")
+          ? "codex"
+          : reached("card:claude") && !reached("aim:codex")
+            ? "claude"
+            : null;
   const menuOpen = reached("menu") && !reached("pick");
-  const chosen = reached("pick") ? "DeepSeek V4.1 Flash Free" : "Claude Opus 5.5";
-  const chosenProvider: ProviderKind = reached("pick") ? "opencode" : "claude";
+  const chosen = reached("pick") ? AGENTS.glm.model : AGENTS.neon.model;
+  const chosenProvider: ProviderKind = reached("pick") ? "opencode" : "antigravity";
   const target = reached("unexplain")
     ? null
     : reached("aim:handoff")
@@ -92,11 +107,15 @@ function AgentsPlayback() {
           ? "pick"
           : reached("aim:model")
             ? "model"
-            : reached("aim:codex")
-              ? "usage:codex"
-              : reached("aim:claude")
-                ? "usage:claude"
-                : null;
+            : reached("aim:deepseek")
+              ? "usage:deepseek"
+              : reached("aim:antigravity")
+                ? "usage:antigravity"
+                : reached("aim:codex")
+                  ? "usage:codex"
+                  : reached("aim:claude")
+                    ? "usage:claude"
+                    : null;
   const pressed =
     (reached("press:model") && !reached("menu")) || (reached("press:pick") && !reached("pick"));
 
@@ -113,7 +132,11 @@ function AgentsPlayback() {
             overlay={
               <>
                 <AnimatePresence mode="wait">
-                  {card ? <UsageCard key={card} kind={card} /> : null}
+                  {card === "deepseek" ? (
+                    <BalanceCard key={card} />
+                  ) : card ? (
+                    <UsageCard key={card} kind={card} />
+                  ) : null}
                 </AnimatePresence>
                 <Cursor target={target} pressed={pressed} rest={{ x: 660, y: 560 }} />
               </>
@@ -129,8 +152,8 @@ function AgentsPlayback() {
                 {reached("send") ? (
                   <>
                     <HandoffDivider
-                      from={AGENTS.opus}
-                      to={AGENTS.deepseek}
+                      from={AGENTS.neon}
+                      to={AGENTS.glm}
                       cursorTarget="handoff"
                       explained={reached("explain") && !reached("unexplain")}
                     />
@@ -164,7 +187,7 @@ function AgentsPlayback() {
                         listKey={showFree ? "free" : "all"}
                         chosen={chosen}
                         pick={{
-                          name: "DeepSeek V4.1 Flash Free",
+                          name: AGENTS.glm.model,
                           target: "pick",
                           hovered: reached("aim:pick"),
                         }}
@@ -183,7 +206,60 @@ function AgentsPlayback() {
   );
 }
 
-function UsageCard({ kind }: { readonly kind: "claude" | "codex" }) {
+const USAGE_CARD =
+  "absolute bottom-16 left-14 z-10 flex w-76 flex-col rounded-[15px] bg-app-menu/90 text-[13px] leading-[18.5714px] shadow-[0_8px_24px_rgb(0_0_0/0.12)] ring-[0.5px] ring-app-line backdrop-blur-sm [corner-shape:superellipse(1.5)]";
+
+/**
+ * A DeepSeek key's card: its prepaid balance, with a bar for what is left of the last top-up,
+ * since a balance has no full mark of its own.
+ */
+function BalanceCard() {
+  const story = useLumen();
+  const copy = useReplicaCopy();
+  const left = WEEKLY_LEFT.deepseek;
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      className={USAGE_CARD}
+    >
+      <div className="flex items-center gap-2.5 py-2.5 pr-2 pl-3">
+        <ProviderMark kind="deepseek" className="size-4" />
+        <span className="font-medium">{story.deepseekBalance.title}</span>
+      </div>
+      <div className="flex flex-col gap-1.5 border-t border-app-line p-3">
+        <div className="flex items-baseline gap-1.5 text-[12px] leading-4 text-app-muted">
+          <span className="shrink-0 text-[13px] leading-[18.5714px] font-medium text-app-fg">
+            {copy.balance}
+          </span>
+          <span className="min-w-0 truncate">{copy.sinceLastTopUp}</span>
+          <span className="ml-auto shrink-0 tabular-nums">
+            {copy.budgetPrefix}
+            <span className="text-[13px] font-medium text-app-fg">
+              {story.deepseekBalance.amount}
+            </span>
+            {copy.budgetSuffix}
+          </span>
+        </div>
+        <div className="h-1 overflow-hidden rounded-full bg-app-fg/10">
+          <motion.div
+            className="h-full rounded-full bg-app-fg/55"
+            initial={{ width: 0 }}
+            animate={{ width: `${left * 100}%` }}
+            transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
+          />
+        </div>
+      </div>
+      <div className="border-t border-app-line px-3 py-2 text-[12px] leading-4 text-app-muted">
+        {story.usageSource}
+      </div>
+    </motion.div>
+  );
+}
+
+function UsageCard({ kind }: { readonly kind: Exclude<MeteredProvider, "deepseek"> }) {
   const story = useLumen();
   const usage = story.usage[kind];
   const copy = useReplicaCopy();
@@ -193,13 +269,15 @@ function UsageCard({ kind }: { readonly kind: "claude" | "codex" }) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
-      className="absolute bottom-16 left-14 z-10 flex w-76 flex-col rounded-[15px] bg-app-menu/90 text-[13px] leading-[18.5714px] shadow-[0_8px_24px_rgb(0_0_0/0.12)] ring-[0.5px] ring-app-line backdrop-blur-sm [corner-shape:superellipse(1.5)]"
+      className={USAGE_CARD}
     >
       <div className="flex items-center gap-2.5 py-2.5 pr-2 pl-3">
         <ProviderMark kind={kind} className="size-4" />
         <div className="flex min-w-0 items-baseline gap-1.5">
           <span className="shrink-0 font-medium">{usage.title}</span>
-          <span className="truncate text-[12px] leading-4 text-app-muted">{usage.plan}</span>
+          {usage.plan ? (
+            <span className="truncate text-[12px] leading-4 text-app-muted">{usage.plan}</span>
+          ) : null}
         </div>
       </div>
       <div className="flex flex-col gap-3 border-t border-app-line p-3">

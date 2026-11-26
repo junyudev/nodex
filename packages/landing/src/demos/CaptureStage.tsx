@@ -1,8 +1,8 @@
 import type { Locale } from "../lib/locale";
 import type { DemoProps } from "./demo-locale";
+import AerialDemo from "./AerialDemo";
 import AgentsDemo from "./AgentsDemo";
 import { CAPTURE_DEMOS, type CaptureDemoId } from "./capture-demos";
-import FanOutDemo from "./FanOutDemo";
 import HeroDemo from "./HeroDemo";
 import MobileDemo from "./MobileDemo";
 import PagesDemo from "./PagesDemo";
@@ -10,7 +10,7 @@ import TidyDemo from "./TidyDemo";
 
 const DEMOS: Record<CaptureDemoId, (props: DemoProps) => React.ReactNode> = {
   hero: ({ locale }) => <HeroDemo locale={locale} controls={false} />,
-  fanout: FanOutDemo,
+  aerial: AerialDemo,
   agents: AgentsDemo,
   pages: PagesDemo,
   tidy: TidyDemo,

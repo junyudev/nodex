@@ -11,7 +11,7 @@
 <h3 align="center">One inbox. Every agent. All local.</h3>
 
 <p align="center">
-  The open-source workspace where Claude Code, Codex and OpenCode work from the same local Pages.
+  The open-source workspace where Claude Code, Codex, Antigravity and DeepSeek work from the same local Pages.
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
 <picture>
   <source srcset=".github/assets/readme/hero-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/hero-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/hero-light.avif" alt="Six messages dropped into the Nodex Inbox are planned onto the right agents, one moved to Claude Opus by hand, and the cleared Inbox shows how it plans; a Claude chat fans out to GPT subagents, and the reader opens one to watch it work in Codex; a profiling chat attaches an HTML report to its Page, which opens in a browser tab beside it" width="100%">
+  <img src=".github/assets/readme/hero-light.avif" alt="Six messages dropped into the Nodex Inbox each get a suggestion, across Codex, Antigravity, DeepSeek, a running chat and Notes, one moved to Claude Opus by hand; the Claude chat hands its routes, tests and docs to GPT, Gemini and a free model, the reader watches the Gemini subagent finish, then steps back to the chat's Subagents map; a Gemini chat writes its findings into its Page, attaches an HTML report and marks the Page ready for review" width="100%">
 </picture>
 
 Coding agents are good at the work. The part around it is still yours: turning ideas into prompts,
@@ -46,22 +46,24 @@ part**, and everything stays on your computer.
 ### One inbox that plans the work
 
 Drop in a burst of messages. Nodex suggests what to do with each: the Project, agent, model and
-effort for a new chat, or the chat that's already on it. Nothing runs until you confirm.
+effort for a new chat, or the chat that's already on it. Nothing runs until you confirm, unless you
+let Nodex start clear requests for you.
 
-### Let Claude lead. Let GPT build.
+### Any agent can lead. Any agent can help.
 
 <picture>
-  <source srcset=".github/assets/readme/fanout-dark.avif" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/fanout-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/fanout-light.avif" alt="A Claude Code chat delegating three parts to GPT-6.2 Sol in Codex and one to a free OpenCode model" width="100%">
+  <source srcset=".github/assets/readme/aerial-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/aerial-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/aerial-light.avif" alt="Aerial view of three chats at work: a Claude Code lead with Codex, Antigravity and OpenCode subagents, a Codex lead whose Claude reviewer reports back, and an Antigravity lead whose Codex subagent hands its screenshots to DeepSeek, each line in its harness's color" width="100%">
 </picture>
 
-Any chat can hand parts of its work to another provider. A Claude Code session fans out to
-GPT-6.2 Sol in Codex, watches every task and merges what comes back. Each subagent keeps a
-conversation you can open, follow up on or stop.
+Any chat can hand parts of its work to another provider: a Claude Code chat gives its tests to
+Gemini in Antigravity and its routes to GPT in Codex, while a Codex chat asks Claude to review.
+Aerial view shows every chat at work with its whole tree of subagents. Open a subagent beside its
+chat to follow along, and reply or stop it where its Agent allows.
 
 <details>
-<summary>Make Claude lead by default</summary>
+<summary>Make Claude lead and Codex build by default</summary>
 
 Add this to `~/.claude/CLAUDE.md`. It only applies inside Nodex.
 
@@ -93,24 +95,25 @@ yourself and spawning sparingly. Outside Nodex, ignore this section.
 <picture>
   <source srcset=".github/assets/readme/agents-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/agents-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/agents-light.avif" alt="The Nodex model menu filtered to free OpenCode models, beside Claude, Codex and Antigravity usage meters" width="100%">
+  <img src=".github/assets/readme/agents-light.avif" alt="The Nodex model menu filtered to free OpenCode models, beside Claude, Codex, Antigravity and DeepSeek usage meters" width="100%">
 </picture>
 
-Codex, Claude Code, Antigravity and OpenCode are built in, 40+ more agents install from the ACP
-Registry, and OpenCode's free models sit in the same menu. Usage meters show what's left of each
-plan, and the Inbox weighs it before it picks a model.
+Claude Code, Codex and Antigravity are built in, DeepSeek, Kimi, GLM and MiniMax connect with your
+own API key, OpenCode and 40+ more agents install from the ACP Registry, and OpenCode's free models
+sit in the same menu. Usage meters show what's left of each plan and each key's balance, and the
+Inbox weighs it before it picks a model.
 
 ### The work lands in Pages you both edit
 
 <picture>
   <source srcset=".github/assets/readme/pages-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/pages-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/pages-light.avif" alt="A Nodex Board where a task moves to Review while its agent writes findings into the Page, attaches its files, and the flame graph opens from the Page’s file tree in a tab beside it" width="100%">
+  <img src=".github/assets/readme/pages-light.avif" alt="A Nodex Board beside an open Page: the agent writes its findings into the Page and attaches its files, the Page moves to In Review and waits for Accept, and the flame graph opens from the Page's Files in a tab" width="100%">
 </picture>
 
-Every Inbox message is a Page that moves from Triage to Done on a Board. Agents read and write
-Pages through the `nodex` CLI and attach reports, screenshots and traces as files. Their edits
-appear live in the window you have open.
+Every Inbox message is a Page. Work you hand to a Project moves across its Board to Done, each card
+naming whose move it is. Agents read and write Pages through the `nodex` CLI and attach reports, screenshots and
+traces as files. When the work is ready, the Page waits In Review for you to accept it.
 
 ### Ask once. Watch the whole board sort itself out.
 
@@ -138,18 +141,20 @@ over your local network or Tailscale, encrypted end to end, with no Nodex server
 
 ## Everything around the agent
 
-- **Worktrees and Environments** give each chat its own isolated checkout.
+- **Automations** start work on a schedule, a heartbeat or a GitHub event, or ask you first.
+- **GitHub** issues and PRs follow their Page; reviews and CI results come back to its chat.
+- **Worktrees and Environments** give each Page's work its own isolated checkout.
 - **Review** shows unstaged, staged, branch and last-turn diffs beside the chat.
 - **Browser, Terminal and Files** open next to the conversation that needs them.
-- **Scheduled** runs cron tasks and heartbeats on your computer.
-- **Canvas, the command palette, split panes and multiple windows** keep a busy workspace navigable.
+- **Search, Canvas, split panes and multiple windows** keep a busy workspace navigable.
+- **Team Spaces** share Pages, Boards and an Inbox on a host your team runs.
 - **Page history and whole-workspace snapshots** let you restore anything.
 - **Conversation import** brings your existing Codex, Claude Code and Antigravity chats along.
 
 ## Install
 
-Nodex is in beta. Sign in with the Codex, Claude Code, Antigravity or OpenCode account you
-already have, or start with OpenCode's free models.
+Nodex is in beta. Sign in with the Claude Code, Codex, Antigravity or OpenCode account you
+already have, add a DeepSeek API key, or start with OpenCode's free models.
 
 - **macOS 15+** on Apple silicon: `brew install --cask junyudev/tap/nodex`, or the
   [disk image](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg).

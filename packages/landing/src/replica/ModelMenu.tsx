@@ -95,7 +95,8 @@ export function ModelMenu({
               <ProviderMark kind={model.provider} className="size-3.5" />
               <span className="flex min-w-0 items-baseline gap-1.5">
                 <span className="truncate">{model.name}</span>
-                {/* Codex and Claude are known by their marks; other Agents are named. */}
+                {/* Codex, Claude and a DeepSeek key are known by their marks and model names;
+                other Agents are named. */}
                 {model.provider === "opencode" || model.provider === "antigravity" ? (
                   <span className="min-w-0 truncate text-[12px] leading-4 text-app-muted">
                     {PROVIDER_NAMES[model.provider]}

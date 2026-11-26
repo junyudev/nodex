@@ -1,12 +1,13 @@
 import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { useReplicaCopy } from "./copy";
-import type { ProviderKind } from "../demos/lumen";
+import { PROVIDER_NAMES, type ProviderKind } from "../demos/lumen";
 import { cx } from "./Window";
 import {
   PlusIcon,
   PriorityValueIcon,
   SpinnerIcon,
+  SuccessCircleIcon,
   ChatIcon,
   WorkflowDoingIcon,
   WorkflowPlanIcon,
@@ -61,7 +62,44 @@ export interface BoardCard {
   readonly body: string;
   readonly status: Status;
   readonly priority?: ReplicaPriority;
+  readonly turn?: PageTurn;
   readonly chat?: { readonly provider: ProviderKind; readonly working: boolean };
+}
+
+/** Whose move a work Page is (page-turn-chip.tsx), worded for the reader. */
+export type PageTurn =
+  | { readonly kind: "working"; readonly provider: ProviderKind }
+  | { readonly kind: "review" };
+
+/** The Turn chip a card or row leads its footer with: a spinner while an Agent works. */
+export function TurnChip({
+  turn,
+  className,
+}: {
+  readonly turn: PageTurn;
+  readonly className?: string;
+}) {
+  const copy = useReplicaCopy();
+  return (
+    <span
+      className={cx(
+        "inline-flex min-w-0 items-center gap-[3.28px] truncate",
+        turn.kind === "review" ? "text-[#e25507] dark:text-[#ff8549]" : "text-app-muted",
+        className,
+      )}
+    >
+      {turn.kind === "working" ? (
+        <SpinnerIcon className="size-[11.48px]" />
+      ) : (
+        <SuccessCircleIcon className="size-[11.48px] shrink-0" />
+      )}
+      <span className="truncate">
+        {turn.kind === "working"
+          ? copy.isWorking(PROVIDER_NAMES[turn.provider])
+          : copy.readyForYourReview}
+      </span>
+    </span>
+  );
 }
 
 export function BoardColumn({
@@ -74,6 +112,30 @@ export function BoardColumn({
   readonly children: ReactNode;
 }) {
   const copy = useReplicaCopy();
+  // An empty column folds to a strip with its name set on end, as the app draws it.
+  if (count === 0)
+    return (
+      <div
+        className={cx(
+          "flex w-[33px] shrink-0 flex-col items-center gap-[6.56px] rounded-[10px] py-[9.84px] text-[11px] [corner-shape:superellipse(1.5)]",
+          STATUS_COLUMN[status],
+        )}
+      >
+        <StatusIcon status={status} className="size-[13px]" />
+        <span className="[writing-mode:vertical-rl]" style={{ color: STATUS_ACCENT[status] }}>
+          {copy.status[status]}
+        </span>
+        <span
+          className="flex size-[16.4px] items-center justify-center rounded-full text-[9.84px] tabular-nums"
+          style={{
+            color: STATUS_ACCENT[status],
+            background: `color-mix(in srgb, ${STATUS_ACCENT[status]} 12%, transparent)`,
+          }}
+        >
+          0
+        </span>
+      </div>
+    );
   return (
     <div
       className={cx(
@@ -137,11 +199,18 @@ export function BoardCardView({
       <p className="line-clamp-2 px-[7px] pb-[3px] text-[10px] leading-[15px] text-app-muted">
         {card.body}
       </p>
-      <div className="px-[7px] pb-[7px]">
-        <span className="flex size-5 items-center justify-center rounded-full border-[0.5px] border-app-line text-app-muted">
-          <PriorityValueIcon priority={card.priority ?? "high"} className="size-3" />
-        </span>
-      </div>
+      {card.turn || card.priority ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-[3.28px] px-[7px] pb-[7px] text-[9.84px] leading-[13.12px]">
+          {card.turn ? <TurnChip turn={card.turn} className="h-[19.68px] px-[1.64px]" /> : null}
+          {card.priority ? (
+            <span className="flex size-[19.68px] items-center justify-center rounded-full border-[0.5px] border-app-line text-app-muted">
+              <PriorityValueIcon priority={card.priority} className="size-3" />
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div className="h-1" />
+      )}
     </motion.div>
   );
 }

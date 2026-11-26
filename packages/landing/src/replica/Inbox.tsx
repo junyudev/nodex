@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useLumen } from "../demos/demo-locale";
 import { useReplicaCopy } from "./copy";
 import {
+  AGENTS,
   PROVIDER_NAMES,
   type AgentChoice,
   type Dispatch,
@@ -12,17 +13,23 @@ import {
 } from "../demos/lumen";
 import { AgentLabel, UsageRing, cx } from "./Window";
 import {
-  ArchiveIcon,
   ArrowUpIcon,
   CheckIcon,
   ChevronDownIcon,
+  ClockIcon,
   DispatchIcon,
   MoreIcon,
   NewChatActionIcon,
+  NoteIcon,
   PlusIcon,
+  RefreshIcon,
   SendToChatIcon,
   SpinnerIcon,
+  TodoIcon,
 } from "./icons";
+
+/** What every chat the Inbox starts runs on unless a suggestion or the reader picks another. */
+export const INBOX_DEFAULT = AGENTS.solHigh;
 
 export type CardPhase = "waiting" | "suggested" | "decided";
 
@@ -37,7 +44,6 @@ export function InboxCard({
   source = "user",
   agent,
   modelMenu,
-  routeOnly = false,
 }: {
   readonly message: InboxMessage;
   readonly phase: CardPhase;
@@ -47,13 +53,10 @@ export function InboxCard({
   readonly agent?: AgentChoice;
   /** The model menu, opening from the decision's model half. */
   readonly modelMenu?: ReactNode;
-  /** Say only where the message goes, leaving out the suggestion's own words. */
-  readonly routeOnly?: boolean;
 }) {
   const copy = useReplicaCopy();
-  const { dispatch } = message;
-  const fansOut = dispatch.kind === "new_chat" && Boolean(dispatch.delegates?.length);
-  const strip = (phase === "suggested" || phase === "decided") && (!routeOnly || fansOut);
+  const strip = phase === "suggested" || phase === "decided";
+  const notes = message.dispatch.kind === "save_to_notes";
   const fromUser = source === "user";
   return (
     <div className={cx("flex w-full flex-col gap-1", fromUser ? "items-end" : "items-start")}>
@@ -85,7 +88,7 @@ export function InboxCard({
                 {phase === "decided" ? (
                   <Outcome dispatch={message.dispatch} />
                 ) : (
-                  <Suggestion dispatch={message.dispatch} routeOnly={routeOnly} />
+                  <Suggestion dispatch={message.dispatch} />
                 )}
               </div>
             </motion.div>
@@ -95,25 +98,35 @@ export function InboxCard({
           <div className="flex min-h-6 items-center gap-2 pl-1">
             <div className="ml-auto flex shrink-0 items-center gap-0.5 text-app-muted">
               <IconButton label={copy.messageActions}>
-                <MoreIcon className="size-3.5" />
+                <MoreIcon className="size-4" />
               </IconButton>
-              {phase === "suggested" && message.dispatch.kind !== "keep" ? (
-                <IconButton label={copy.keep}>
-                  <ArchiveIcon className="size-3.5" />
-                </IconButton>
+              {phase === "suggested" ? (
+                <>
+                  <IconButton label={copy.suggestAgain}>
+                    <RefreshIcon className="size-4" />
+                  </IconButton>
+                  <IconButton label={copy.snooze}>
+                    <ClockIcon className="size-4" />
+                  </IconButton>
+                  {notes ? null : (
+                    <IconButton label={copy.addToTodo}>
+                      <TodoIcon className="size-4" />
+                    </IconButton>
+                  )}
+                </>
               ) : null}
               <IconButton label={copy.markDone}>
-                <CheckIcon className="size-3.5" />
+                <CheckIcon className="size-4" />
               </IconButton>
               {phase === "waiting" ? (
                 <IconButton label={copy.handleManually}>
-                  <DispatchIcon className="size-3.5" />
+                  <DispatchIcon className="size-4" />
                 </IconButton>
               ) : null}
             </div>
             {phase === "waiting" ? (
               <span className="mr-5 flex text-app-muted" aria-label={copy.findingDestination}>
-                <SpinnerIcon className="size-3.5" />
+                <SpinnerIcon className="size-4" />
               </span>
             ) : phase === "suggested" ? (
               <Decision
@@ -143,87 +156,49 @@ function IconButton({ children, label }: { readonly children: ReactNode; readonl
   );
 }
 
-function Suggestion({
-  dispatch,
-  routeOnly,
-}: {
-  readonly dispatch: Dispatch;
-  readonly routeOnly: boolean;
-}) {
-  if (dispatch.kind === "keep")
-    return <p className="text-[14px] leading-snug">{dispatch.summary}</p>;
+/**
+ * What a suggestion sends: the prompt, read like the message above it, then each sentence the
+ * suggestion adds on its own with a checkbox, all checked. Other decisions say what they do.
+ */
+function Suggestion({ dispatch }: { readonly dispatch: Dispatch }) {
+  if (dispatch.kind === "save_to_notes")
+    return <p className="text-[13px] leading-[1.375]">{dispatch.summary}</p>;
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      {routeOnly ? null : <p className="text-[14px] leading-[1.625]">{dispatch.prompt}</p>}
-      {dispatch.kind === "new_chat" && (dispatch.delegates?.length || dispatch.plan) ? (
-        <div className="flex min-w-0 flex-col gap-1 text-[13px] leading-5 text-app-muted">
-          {dispatch.delegates?.map((delegate, index, delegates) => (
-            <div key={delegate.work} className="relative min-w-0 pl-[19px]">
-              <DelegateBranch
-                index={index}
-                last={index === delegates.length - 1}
-                joinsMessage={routeOnly}
-              />
-              <motion.div
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: delegateDelay(index), duration: 0.3 }}
-                className="flex min-h-6 min-w-0 items-center gap-1.5"
+    <div className="flex min-w-0 flex-col gap-2 text-[14px] leading-[1.625]">
+      <p>{dispatch.prompt}</p>
+      {dispatch.kind === "new_chat" && dispatch.additions?.length ? (
+        <ul className="flex min-w-0 flex-col gap-1.5">
+          {dispatch.additions.map((addition, index) => (
+            <motion.li
+              key={addition}
+              role="checkbox"
+              aria-checked="true"
+              aria-readonly="true"
+              initial={{ opacity: 0, y: -3 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.12 + index * 0.08, duration: 0.22 }}
+              className="flex min-w-0 items-start gap-2"
+            >
+              <span
+                aria-hidden="true"
+                className="mt-[5px] flex size-3.5 shrink-0 items-center justify-center rounded-[3px] bg-app-primary text-app-on-primary"
               >
-                <span className="line-clamp-2 min-w-0 flex-1 text-app-fg">{delegate.work}</span>
-                <AgentLabel
-                  agent={delegate.agent}
-                  className="max-w-[45%] shrink-0 gap-1 [&>svg]:size-3.5"
-                />
-              </motion.div>
-            </div>
+                <svg viewBox="0 0 10 9" className="h-[9px] w-2.5" fill="none" aria-hidden="true">
+                  <path
+                    d="M1.5 4.6 3.9 7 8.5 1.8"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+              <span className="min-w-0">{addition}</span>
+            </motion.li>
           ))}
-          {dispatch.plan && !routeOnly ? (
-            <p className="line-clamp-3 whitespace-pre-line">{dispatch.plan}</p>
-          ) : null}
-        </div>
+        </ul>
       ) : null}
     </div>
-  );
-}
-
-const DELEGATE_STAGGER_S = 0.09;
-const delegateDelay = (index: number) => 0.18 + index * DELEGATE_STAGGER_S;
-
-/**
- * One delegated part's piece of the plan's tree: the rail beside it and the branch that curves in.
- * The rail draws down one part per stagger, so it stays whole while the parts arrive.
- */
-function DelegateBranch({
-  index,
-  last,
-  joinsMessage,
-}: {
-  readonly index: number;
-  readonly last: boolean;
-  /** With nothing between the message and its parts, the rail grows from the message itself. */
-  readonly joinsMessage: boolean;
-}) {
-  const delay = delegateDelay(index);
-  return (
-    <span aria-hidden="true" className="absolute inset-y-0 left-0 w-3.5">
-      <motion.span
-        initial={{ scaleY: 0 }}
-        animate={{ scaleY: 1 }}
-        transition={{ delay, duration: DELEGATE_STAGGER_S, ease: "linear" }}
-        className={cx(
-          "absolute left-0 origin-top border-l border-app-branch",
-          index > 0 ? "-top-0.5" : joinsMessage ? "-top-2.5" : "top-0",
-          last ? "bottom-[calc(50%+6px)]" : "-bottom-0.5",
-        )}
-      />
-      <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: delay + DELEGATE_STAGGER_S / 2, duration: 0.15 }}
-        className="absolute right-0 bottom-1/2 left-0 h-[7px] rounded-bl-[7px] border-b border-l border-app-branch"
-      />
-    </span>
   );
 }
 
@@ -244,8 +219,8 @@ function Decision({
 }) {
   const copy = useReplicaCopy();
   const icon =
-    dispatch.kind === "keep" ? (
-      <ArchiveIcon className="size-3.5" />
+    dispatch.kind === "save_to_notes" ? (
+      <NoteIcon className="size-3.5" />
     ) : dispatch.kind === "new_chat" ? (
       <NewChatActionIcon className="size-3.5" />
     ) : (
@@ -275,20 +250,23 @@ function Decision({
             aria-label={copy.chooseModel}
             className="flex h-6 min-w-0 items-center gap-1 rounded-e-[10px] bg-app-primary px-1.5 text-[12px] leading-4 text-app-on-primary"
           >
-            {/* A newly chosen model settles in where the suggested one was. */}
-            <motion.span
-              key={(agent ?? dispatch.agent).model}
-              initial={{ opacity: 0, y: 3 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.22 }}
-              className="flex min-w-0"
-            >
-              <AgentLabel
-                agent={agent ?? dispatch.agent}
-                className="max-w-44 gap-1 [&>svg]:size-3.5"
-              />
-            </motion.span>
-            <ChevronDownIcon className="size-3" />
+            {/* The menu half names the model only when it is not the Inbox's own; a newly
+            chosen one settles in where the suggested one was. */}
+            {sameAgent(agent ?? dispatch.agent, INBOX_DEFAULT) ? null : (
+              <motion.span
+                key={(agent ?? dispatch.agent).model}
+                initial={{ opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.22 }}
+                className="flex min-w-0"
+              >
+                <AgentLabel
+                  agent={agent ?? dispatch.agent}
+                  className="max-w-44 gap-1 [&>svg]:size-3.5"
+                />
+              </motion.span>
+            )}
+            <ChevronDownIcon className="size-3.5" />
           </span>
           {modelMenu}
         </span>
@@ -297,12 +275,15 @@ function Decision({
   );
 }
 
+const sameAgent = (a: AgentChoice, b: AgentChoice) =>
+  a.provider === b.provider && a.model === b.model && a.effort === b.effort;
+
 function Outcome({ dispatch }: { readonly dispatch: Dispatch }) {
   const copy = useReplicaCopy();
   return (
     <div className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-app-muted">
-      {dispatch.kind === "keep" ? (
-        <ArchiveIcon className="size-3.5" />
+      {dispatch.kind === "save_to_notes" ? (
+        <NoteIcon className="size-3.5" />
       ) : (
         <SpinnerIcon className="size-3.5" />
       )}
@@ -314,8 +295,9 @@ function Outcome({ dispatch }: { readonly dispatch: Dispatch }) {
 /**
  * The cleared Inbox, and how it plans the next burst, as the app shows it: the model that
  * suggests, each family of Nodex's model guide beside what is left of its plan this week, then
- * each other Agent by name, and the reader's own routing preferences, which suggestions follow
- * first. Antigravity is not a branded runtime, so its family names it.
+ * each other Agent the reader has connected by name, such as a DeepSeek key with its balance, and
+ * the reader's own routing preferences, which suggestions follow first. Antigravity is not a
+ * branded runtime, so its family names it.
  */
 export function InboxAllClear({
   usage,
@@ -331,6 +313,8 @@ export function InboxAllClear({
     readonly title: string;
     readonly left: number | null;
     readonly note?: string;
+    /** A prepaid balance reads the amount left rather than a share. */
+    readonly balance?: string;
   }[] = [
     { kind: "codex", title: "GPT-6.2 Sol", left: usage.codex, note: copy.gptNote },
     { kind: "claude", title: "Claude Opus 5.5", left: usage.claude, note: copy.opusNote },
@@ -340,7 +324,12 @@ export function InboxAllClear({
       left: usage.antigravity,
       note: copy.geminiNote,
     },
-    { kind: "opencode", title: PROVIDER_NAMES.opencode, left: null },
+    {
+      kind: "deepseek",
+      title: PROVIDER_NAMES.deepseek,
+      left: usage.deepseek,
+      balance: story.deepseekBalance.amount,
+    },
   ];
   return (
     <motion.div
@@ -386,9 +375,11 @@ export function InboxAllClear({
                   <span className="flex items-baseline gap-2">
                     <span className="truncate font-medium text-app-fg">{entry.title}</span>
                     <span className="ml-auto shrink-0 text-[11px] text-app-faint tabular-nums">
-                      {entry.left === null
-                        ? copy.notReported
-                        : copy.budgetLeft(Math.round(entry.left * 100))}
+                      {entry.balance
+                        ? copy.amountLeft(entry.balance)
+                        : entry.left === null
+                          ? copy.notReported
+                          : copy.budgetLeft(Math.round(entry.left * 100))}
                     </span>
                   </span>
                   {entry.note ? <span className="text-app-muted">{entry.note}</span> : null}

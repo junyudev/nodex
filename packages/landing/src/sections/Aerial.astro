@@ -1,0 +1,32 @@
+---
+import AerialDemo from "../demos/AerialDemo";
+import type { Locale } from "../lib/locale";
+import Feature from "./Feature.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const zh = locale === "zh-CN";
+---
+
+<Feature
+  eyebrow={zh ? "子智能体 · 鸟瞰" : "Subagents · Aerial view"}
+  title={zh ? "谁都能带队，谁都能帮忙" : "Any agent can lead. Any agent can help."}
+  wide
+  points={zh ? [
+    "任意会话都能用 <code class='font-mono text-[14px] text-ink'>delegate_task</code> 把部分工作交给其他服务商的模型，子智能体还能继续委派。",
+    "在会话旁打开子智能体查看进展；智能体支持时，还能追问或停止。",
+    "按任务挑选模型。关键环节用高阶模型，其他环节用免费模型。",
+  ] : [
+    "Any chat hands parts of its work to another provider’s model with <code class='font-mono text-[14px] text-ink'>delegate_task</code>, and a subagent can delegate again.",
+    "Open a subagent beside its chat to follow along, and reply or stop it where its Agent allows.",
+    "Pick per part: a frontier model where it matters, a free one where it doesn’t.",
+  ]}
+>
+  <Fragment slot="body">
+    {zh ? "Claude Code 的会话可以把测试交给 Antigravity 里的 Gemini，把路由交给 Codex 里的 GPT；Codex 的会话也能请 Claude 审查，子智能体还能把截图交给 DeepSeek。鸟瞰视图同时显示每个正在工作的会话和它的整棵子智能体树，连线按服务商着色，结果交回时随之变化。" : "A Claude Code chat can hand its tests to Gemini in Antigravity and its routes to GPT in Codex, while a Codex chat asks Claude to review and a subagent passes its screenshots to DeepSeek. Aerial view shows every chat at work with its whole tree of subagents, each line in its harness’s color, turning solid as results come home."}
+  </Fragment>
+  <div lang={locale}><AerialDemo locale={locale} client:visible /></div>
+</Feature>
