@@ -1,3 +1,4 @@
+import { createCommandKeymapState } from "../../../../shared/command-keybindings";
 import { describe, expect, test } from "vite-plus/test";
 import { resolveFindShortcutSeedQuery } from "./find-shortcut-seed";
 import { matchesNfmFindShortcut } from "./find-shortcut";
@@ -46,7 +47,9 @@ describe("resolveFindShortcutSeedQuery", () => {
 test.each(["macOS", "windows", "linux"] as const)(
   "local Find yields full-view and other modified F chords on %s",
   (platform) => {
+    const keymap = createCommandKeymapState({}, platform);
     const event = {
+      target: null,
       key: "f",
       code: "KeyF",
       metaKey: platform === "macOS",
@@ -54,12 +57,30 @@ test.each(["macOS", "windows", "linux"] as const)(
       altKey: false,
       shiftKey: false,
     };
-    expect(matchesNfmFindShortcut(event, platform)).toBe(true);
-    expect(matchesNfmFindShortcut({ ...event, key: "F", shiftKey: true }, platform)).toBe(false);
-    expect(matchesNfmFindShortcut({ ...event, altKey: true }, platform)).toBe(false);
-    expect(matchesNfmFindShortcut({ ...event, key: "g", code: "KeyG" }, platform)).toBe(false);
+    expect(matchesNfmFindShortcut(event, keymap)).toBe(true);
+    expect(matchesNfmFindShortcut({ ...event, key: "F", shiftKey: true }, keymap)).toBe(false);
+    expect(matchesNfmFindShortcut({ ...event, altKey: true }, keymap)).toBe(false);
+    expect(matchesNfmFindShortcut({ ...event, key: "g", code: "KeyG" }, keymap)).toBe(false);
   },
 );
+
+test("Page Find follows a replacement binding and releases the old chord", () => {
+  const oldChord = {
+    key: "f",
+    code: "KeyF",
+    target: null,
+    ctrlKey: true,
+    metaKey: false,
+    shiftKey: false,
+    altKey: false,
+  };
+  const replacement = { ...oldChord, key: "g", code: "KeyG", ctrlKey: false, altKey: true };
+  const custom = createCommandKeymapState({ findInThread: ["Alt+G"] }, "windows");
+  const cleared = createCommandKeymapState({ findInThread: [] }, "windows");
+  expect(matchesNfmFindShortcut(oldChord, custom)).toBe(false);
+  expect(matchesNfmFindShortcut(replacement, custom)).toBe(true);
+  expect(matchesNfmFindShortcut(oldChord, cleared)).toBe(false);
+});
 
 describe("search extension", () => {
   function makeBlockElement(collapsed: boolean): HTMLElement {

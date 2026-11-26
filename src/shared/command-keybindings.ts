@@ -25,12 +25,57 @@ export type CommandKeybindingUpdate =
   | { type: "remove"; keybinding: CommandKeybindingRecord }
   | { type: "reset" };
 
+export interface KeyboardActionPolicy {
+  readonly runWithEditableFocus: boolean;
+  readonly runInsideLocalSurface: boolean;
+  readonly runInsideTerminal: boolean;
+  readonly allowRepeat: boolean;
+  readonly editableContext?: "composer" | "panel-tab" | "page-selection";
+  readonly onlyInPage?: boolean;
+}
+
+const SURFACE_SHORTCUT: KeyboardActionPolicy = {
+  runWithEditableFocus: false,
+  runInsideLocalSurface: false,
+  runInsideTerminal: false,
+  allowRepeat: false,
+};
+const EDITABLE_SHORTCUT: KeyboardActionPolicy = {
+  ...SURFACE_SHORTCUT,
+  runWithEditableFocus: true,
+};
+const LOCAL_SHORTCUT: KeyboardActionPolicy = {
+  ...EDITABLE_SHORTCUT,
+  runInsideLocalSurface: true,
+};
+const TERMINAL_SHORTCUT: KeyboardActionPolicy = {
+  ...EDITABLE_SHORTCUT,
+  runInsideTerminal: true,
+};
+const PAGE_SHORTCUT: KeyboardActionPolicy = {
+  ...EDITABLE_SHORTCUT,
+  onlyInPage: true,
+};
+const PANEL_TAB_SHORTCUT: KeyboardActionPolicy = {
+  ...EDITABLE_SHORTCUT,
+  editableContext: "panel-tab",
+};
+
+/** Fixed Workbench gestures use the same admission rules as editable commands. */
+export const FIND_MATCH_SHORTCUTS = {
+  next: "CmdOrCtrl+G",
+  previous: "CmdOrCtrl+Shift+G",
+} as const;
+export const FIND_MATCH_SHORTCUT_POLICY = LOCAL_SHORTCUT;
+export const PROJECT_JUMP_SHORTCUT_POLICY = EDITABLE_SHORTCUT;
+
 export interface CommandRegistryEntry {
   id: string;
   title: string;
   description: string;
   order: number;
   shortcutScope: CommandShortcutScope;
+  keyboardActionPolicy: KeyboardActionPolicy;
   defaultKeybindings: CommandKeybindingRecord[];
   allowsMultiple?: boolean;
   allowsBareModifiers?: boolean;
@@ -528,15 +573,22 @@ export const DEFAULT_KEYBOARD_LAYOUT_SNAPSHOT: KeyboardLayoutSnapshot = {
 };
 
 export const CODEX_COMMAND_REGISTRY = [
-  command("archiveThread", "Archive chat", "Archive the current chat", 10, "app", [
-    "CmdOrCtrl+Shift+A",
-  ]),
+  command(
+    "archiveThread",
+    "Archive chat",
+    "Archive the current chat",
+    10,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Shift+A"],
+  ),
   command(
     "copyConversationMarkdown",
     "Copy as Markdown",
     "Copy the complete current chat as Markdown",
     15,
     "app",
+    EDITABLE_SHORTCUT,
     [],
   ),
   command(
@@ -545,75 +597,131 @@ export const CODEX_COMMAND_REGISTRY = [
     "Start a new chat",
     20,
     "app",
+    EDITABLE_SHORTCUT,
     ["CmdOrCtrl+N", "CmdOrCtrl+Shift+O"],
     {
       allowsMultiple: true,
     },
   ),
-  command("openInbox", "Open Inbox", "Open the Inbox and focus its composer", 25, "app", [
-    "CmdOrCtrl+Shift+D",
-  ]),
+  command(
+    "openInbox",
+    "Open Inbox",
+    "Open the Inbox and focus its composer",
+    25,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Shift+D"],
+  ),
   command(
     "captureToInbox",
     "Capture to Inbox",
     "Write a message to the Inbox where you are, without leaving",
     26,
     "app",
+    { ...EDITABLE_SHORTCUT, editableContext: "page-selection" },
     ["C", "CmdOrCtrl+Shift+C"],
     { allowsMultiple: true },
   ),
-  command("openSideChat", "Open side chat", "Open a side chat for the current chat", 30, "app", [
-    "CmdOrCtrl+Alt+S",
-  ]),
+  command(
+    "openSideChat",
+    "Open side chat",
+    "Open a side chat for the current chat",
+    30,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Alt+S"],
+  ),
   command(
     "openThreadInNewWindow",
     "Open chat in new window",
     "Open the current chat in a new window",
     40,
     "app",
+    EDITABLE_SHORTCUT,
     [],
   ),
-  command("quickChat", "New quick chat", "Start a quick chat", 50, "app", ["CmdOrCtrl+Alt+N"]),
-  command("toggleThreadPin", "Toggle pin", "Pin or unpin the current chat", 60, "app", [
-    "CmdOrCtrl+Alt+P",
+  command("quickChat", "New quick chat", "Start a quick chat", 50, "app", EDITABLE_SHORTCUT, [
+    "CmdOrCtrl+Alt+N",
   ]),
+  command(
+    "toggleThreadPin",
+    "Toggle pin",
+    "Pin or unpin the current chat",
+    60,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Alt+P"],
+  ),
   command(
     "toggleThreadUnread",
     "Toggle unread",
     "Mark the current chat unread to come back to it, or read",
     65,
     "app",
+    EDITABLE_SHORTCUT,
     ["CmdOrCtrl+Shift+U"],
   ),
-  command("settleThread", "Settle chat", "Settle the current chat, or reopen it", 66, "app", [
-    "CmdOrCtrl+Alt+E",
-  ]),
-  command("snoozeThread", "Snooze chat", "Choose when the current chat comes back", 66.5, "app", [
-    "CmdOrCtrl+Alt+Z",
-  ]),
-  command("nextThread", "Next chat", "Open the next chat in the sidebar", 67, "app", [
-    "CmdOrCtrl+Alt+Down",
-  ]),
-  command("previousThread", "Previous chat", "Open the previous chat in the sidebar", 68, "app", [
-    "CmdOrCtrl+Alt+Up",
-  ]),
+  command(
+    "settleThread",
+    "Settle chat",
+    "Settle the current chat, or reopen it",
+    66,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Alt+E"],
+  ),
+  command(
+    "snoozeThread",
+    "Snooze chat",
+    "Choose when the current chat comes back",
+    66.5,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Alt+Z"],
+  ),
+  command(
+    "nextThread",
+    "Next chat",
+    "Open the next chat in the sidebar",
+    67,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Alt+Down"],
+  ),
+  command(
+    "previousThread",
+    "Previous chat",
+    "Open the previous chat in the sidebar",
+    68,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Alt+Up"],
+  ),
   command(
     "nextThreadNeedingAttention",
     "Next chat needing you",
     "Open the next chat that is waiting on you or has news",
     69,
     "app",
+    EDITABLE_SHORTCUT,
     ["CmdOrCtrl+Alt+A"],
   ),
-  command("findInThread", "Find", "Find in the current chat, review, or project view", 70, "app", [
-    "CmdOrCtrl+F",
-  ]),
+  command(
+    "findInThread",
+    "Find",
+    "Find in the current chat, review, or project view",
+    70,
+    "app",
+    LOCAL_SHORTCUT,
+    ["CmdOrCtrl+F"],
+  ),
   command(
     "openModelPicker",
     "Select model",
     "Choose the model, effort, and speed for the next turn",
     75,
     "app",
+    LOCAL_SHORTCUT,
     ["Ctrl+Shift+M"],
   ),
   command(
@@ -622,6 +730,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Hold to dictate in the active composer",
     76,
     "app",
+    LOCAL_SHORTCUT,
     ["Ctrl+M"],
   ),
   command(
@@ -630,6 +739,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Toggle annotation mode in the active Browser tab",
     81,
     "app",
+    { ...TERMINAL_SHORTCUT, runInsideLocalSurface: true },
     ["CmdOrCtrl+Shift+."],
   ),
   command(
@@ -638,6 +748,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Focus the active Browser tab address bar",
     80,
     "app",
+    EDITABLE_SHORTCUT,
     ["CmdOrCtrl+L"],
   ),
   command(
@@ -646,6 +757,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Go back in the app window history",
     90,
     "app",
+    LOCAL_SHORTCUT,
     ["CmdOrCtrl+[", "MouseBack"],
     {
       allowsMultiple: true,
@@ -657,20 +769,28 @@ export const CODEX_COMMAND_REGISTRY = [
     "Go forward in the app window history",
     100,
     "app",
+    LOCAL_SHORTCUT,
     ["CmdOrCtrl+]", "MouseForward"],
     {
       allowsMultiple: true,
     },
   ),
-  command("toggleBottomPanel", "Toggle bottom panel", "Show or hide the bottom panel", 120, "app", [
-    "CmdOrCtrl+J",
-  ]),
+  command(
+    "toggleBottomPanel",
+    "Toggle bottom panel",
+    "Show or hide the bottom panel",
+    120,
+    "app",
+    LOCAL_SHORTCUT,
+    ["CmdOrCtrl+J"],
+  ),
   command(
     "toggleFullView",
     "Toggle full view",
     "Expand the content panel to fill the window, or return to split view",
     123,
     "app",
+    LOCAL_SHORTCUT,
     ["CmdOrCtrl+Shift+F"],
   ),
   command(
@@ -679,6 +799,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Select the previous tab in the focused panel group",
     121,
     "app",
+    PANEL_TAB_SHORTCUT,
     ["CmdOrCtrl+Shift+["],
   ),
   command(
@@ -687,6 +808,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Select the next tab in the focused panel group",
     122,
     "app",
+    PANEL_TAB_SHORTCUT,
     ["CmdOrCtrl+Shift+]"],
   ),
   command(
@@ -695,6 +817,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Show or hide the Browser panel",
     130,
     "app",
+    SURFACE_SHORTCUT,
     ["CmdOrCtrl+Shift+B"],
     {
       available: false,
@@ -706,103 +829,198 @@ export const CODEX_COMMAND_REGISTRY = [
     "Open a Browser tab in the active panel",
     140,
     "app",
+    EDITABLE_SHORTCUT,
     ["CmdOrCtrl+T"],
   ),
-  command("openReviewTab", "Open review tab", "Open a Review tab in the active panel", 150, "app", [
-    "Ctrl+Shift+G",
-  ]),
-  command("toggleTerminal", "Open terminal tab", "Focus or create a terminal tab", 160, "app", [
-    "Ctrl+`",
-  ]),
-  command("toggleSidebar", "Toggle sidebar", "Show or hide the sidebar", 170, "app", [
-    "CmdOrCtrl+B",
-  ]),
+  command(
+    "openReviewTab",
+    "Open review tab",
+    "Open a Review tab in the active panel",
+    150,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["Ctrl+Shift+G"],
+  ),
+  command(
+    "toggleTerminal",
+    "Open terminal tab",
+    "Focus or create a terminal tab",
+    160,
+    "app",
+    TERMINAL_SHORTCUT,
+    ["Ctrl+`"],
+  ),
+  command(
+    "toggleSidebar",
+    "Toggle sidebar",
+    "Show or hide the sidebar",
+    170,
+    "app",
+    { ...LOCAL_SHORTCUT, editableContext: "composer" },
+    ["CmdOrCtrl+B"],
+  ),
   command(
     "toggleSidebarOrganize",
     "Arrange chats by attention",
     "Arrange the sidebar's chats by attention, or group them by project",
     175,
     "app",
+    EDITABLE_SHORTCUT,
     ["CmdOrCtrl+Alt+U"],
   ),
-  command("toggleSidePanel", "Toggle side panel", "Show or hide the side panel", 180, "app", [
-    "CmdOrCtrl+Alt+B",
-  ]),
-  command("toggleFileTreePanel", "Toggle file tree panel", "Open the Files panel", 190, "app", [
-    "CmdOrCtrl+Shift+E",
-  ]),
-  command("searchChats", "Search chats", "Search chats in the command palette", 200, "app", []),
-  command("searchPages", "Search Pages", "Search Pages in the command palette", 210, "app", [
-    "CmdOrCtrl+P",
-  ]),
-  command("searchAll", "Search", "Search Pages and chats", 214, "app", ["/"], {
+  command(
+    "toggleSidePanel",
+    "Toggle side panel",
+    "Show or hide the side panel",
+    180,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Alt+B"],
+  ),
+  command(
+    "toggleFileTreePanel",
+    "Toggle file tree panel",
+    "Open the Files panel",
+    190,
+    "app",
+    EDITABLE_SHORTCUT,
+    ["CmdOrCtrl+Shift+E"],
+  ),
+  command(
+    "searchChats",
+    "Search chats",
+    "Search chats in the command palette",
+    200,
+    "app",
+    LOCAL_SHORTCUT,
+    [],
+  ),
+  command(
+    "searchPages",
+    "Search Pages",
+    "Search Pages in the command palette",
+    210,
+    "app",
+    LOCAL_SHORTCUT,
+    ["CmdOrCtrl+P"],
+  ),
+  command("searchAll", "Search", "Search Pages and chats", 214, "app", LOCAL_SHORTCUT, ["/"], {
     commandMenuGroupKey: "general",
   }),
-  command("searchFiles", "Search files", "Search files in the command palette", 215, "app", [], {
-    commandMenuGroupKey: "general",
-  }),
+  command(
+    "searchFiles",
+    "Search files",
+    "Search files in the command palette",
+    215,
+    "app",
+    LOCAL_SHORTCUT,
+    [],
+    {
+      commandMenuGroupKey: "general",
+    },
+  ),
   command(
     "openCommandMenu",
     "Open command palette",
     "Open the command palette",
     220,
     "app",
+    LOCAL_SHORTCUT,
     ["CmdOrCtrl+K", "CmdOrCtrl+Shift+P"],
     {
       allowsMultiple: true,
     },
   ),
-  command("settings", "Settings", "Open settings", 230, "app", ["CmdOrCtrl+,"]),
+  command("settings", "Settings", "Open settings", 230, "app", LOCAL_SHORTCUT, ["CmdOrCtrl+,"]),
   command(
     "showKeyboardShortcuts",
     "Keyboard shortcuts",
     "Show available keyboard shortcuts",
     240,
     "app",
+    LOCAL_SHORTCUT,
     ["Shift+/", "CmdOrCtrl+Shift+/"],
     {
       allowsMultiple: true,
       commandMenuGroupKey: "general",
     },
   ),
-  command("goToPages", "Go to Space", "Open Space", 241, "app", ["G P"], {
+  command("goToPages", "Go to Space", "Open Space", 241, "app", SURFACE_SHORTCUT, ["G P"], {
     allowsSequences: true,
     commandMenuGroupKey: "navigation",
   }),
-  command("goToInsights", "Go to Insights", "Open Insights", 241.5, "app", ["G I"], {
-    allowsSequences: true,
-    commandMenuGroupKey: "navigation",
-  }),
+  command(
+    "goToInsights",
+    "Go to Insights",
+    "Open Insights",
+    241.5,
+    "app",
+    SURFACE_SHORTCUT,
+    ["G I"],
+    {
+      allowsSequences: true,
+      commandMenuGroupKey: "navigation",
+    },
+  ),
   command(
     "goToSettled",
     "Go to Settled",
     "Browse and search settled chats",
     241.7,
     "app",
+    SURFACE_SHORTCUT,
     ["G E"],
     {
       allowsSequences: true,
       commandMenuGroupKey: "navigation",
     },
   ),
-  command("goToSettings", "Go to Settings", "Open Settings", 242, "app", ["G S"], {
-    allowsSequences: true,
-    commandMenuGroupKey: "navigation",
-  }),
-  command("openPage", "Open Page", "Search and open a Page", 243, "app", ["O P"], {
-    allowsSequences: true,
-    commandMenuGroupKey: "navigation",
-  }),
-  command("openChat", "Open chat", "Search and open a chat", 244, "app", ["O T"], {
-    allowsSequences: true,
-    commandMenuGroupKey: "navigation",
-  }),
+  command(
+    "goToSettings",
+    "Go to Settings",
+    "Open Settings",
+    242,
+    "app",
+    SURFACE_SHORTCUT,
+    ["G S"],
+    {
+      allowsSequences: true,
+      commandMenuGroupKey: "navigation",
+    },
+  ),
+  command(
+    "openPage",
+    "Open Page",
+    "Search and open a Page",
+    243,
+    "app",
+    SURFACE_SHORTCUT,
+    ["O P"],
+    {
+      allowsSequences: true,
+      commandMenuGroupKey: "navigation",
+    },
+  ),
+  command(
+    "openChat",
+    "Open chat",
+    "Search and open a chat",
+    244,
+    "app",
+    SURFACE_SHORTCUT,
+    ["O T"],
+    {
+      allowsSequences: true,
+      commandMenuGroupKey: "navigation",
+    },
+  ),
   command(
     "openLastToastAction",
     "Open latest notification action",
     "Run the action from the latest notification",
     245,
     "app",
+    EDITABLE_SHORTCUT,
     ["CmdOrCtrl+Alt+O"],
     {
       commandMenuGroupKey: "general",
@@ -814,6 +1032,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Start a new chat from the highlighted Page",
     246,
     "app",
+    SURFACE_SHORTCUT,
     ["W O"],
     {
       allowsSequences: true,
@@ -826,6 +1045,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Send the Page editor selection or current Prompt to chat",
     246,
     "app",
+    PAGE_SHORTCUT,
     ["CmdOrCtrl+Shift+Enter"],
     { commandMenuGroupKey: "page" },
   ),
@@ -835,6 +1055,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Add the Page editor selection to the beside chat's composer",
     246,
     "app",
+    PAGE_SHORTCUT,
     ["CmdOrCtrl+Alt+Enter"],
     { commandMenuGroupKey: "page" },
   ),
@@ -844,6 +1065,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move the Board highlight forward",
     246,
     "app",
+    SURFACE_SHORTCUT,
     ["J", "Down"],
     {
       allowsMultiple: true,
@@ -856,6 +1078,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move the Board highlight backward",
     247,
     "app",
+    SURFACE_SHORTCUT,
     ["K", "Up"],
     {
       allowsMultiple: true,
@@ -868,6 +1091,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move the Board highlight to the previous column",
     248,
     "app",
+    SURFACE_SHORTCUT,
     ["Left"],
     {
       commandMenuGroupKey: "board",
@@ -879,23 +1103,43 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move the Board highlight to the next column",
     249,
     "app",
+    SURFACE_SHORTCUT,
     ["Right"],
     {
       commandMenuGroupKey: "board",
     },
   ),
-  command("boardPeek", "Peek Page", "Preview the highlighted Page", 250, "app", ["Space"], {
-    commandMenuGroupKey: "board",
-  }),
-  command("boardOpen", "Open Page", "Open the highlighted Page", 251, "app", ["Enter"], {
-    commandMenuGroupKey: "board",
-  }),
+  command(
+    "boardPeek",
+    "Peek Page",
+    "Preview the highlighted Page",
+    250,
+    "app",
+    SURFACE_SHORTCUT,
+    ["Space"],
+    {
+      commandMenuGroupKey: "board",
+    },
+  ),
+  command(
+    "boardOpen",
+    "Open Page",
+    "Open the highlighted Page",
+    251,
+    "app",
+    SURFACE_SHORTCUT,
+    ["Enter"],
+    {
+      commandMenuGroupKey: "board",
+    },
+  ),
   command(
     "boardToggleSelection",
     "Select Page",
     "Toggle selection for the highlighted Page",
     252,
     "app",
+    SURFACE_SHORTCUT,
     ["X"],
     {
       commandMenuGroupKey: "board",
@@ -907,6 +1151,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Clear selected Pages or close Peek",
     253,
     "app",
+    SURFACE_SHORTCUT,
     ["Escape"],
     {
       commandMenuGroupKey: "board",
@@ -918,6 +1163,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Change status for the highlighted or selected Pages",
     254,
     "app",
+    SURFACE_SHORTCUT,
     ["S"],
     {
       commandMenuGroupKey: "page",
@@ -929,6 +1175,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Change priority for the highlighted or selected Pages",
     255,
     "app",
+    SURFACE_SHORTCUT,
     ["P"],
     {
       commandMenuGroupKey: "page",
@@ -940,6 +1187,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Change estimate for the highlighted or selected Pages",
     256,
     "app",
+    SURFACE_SHORTCUT,
     ["Shift+E"],
     {
       commandMenuGroupKey: "page",
@@ -951,6 +1199,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Change tags for the highlighted or selected Pages",
     257,
     "app",
+    SURFACE_SHORTCUT,
     ["L"],
     {
       commandMenuGroupKey: "page",
@@ -962,6 +1211,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move highlighted or selected Pages up",
     258,
     "app",
+    SURFACE_SHORTCUT,
     ["Alt+Up"],
     {
       commandMenuGroupKey: "board",
@@ -973,6 +1223,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move highlighted or selected Pages down",
     259,
     "app",
+    SURFACE_SHORTCUT,
     ["Alt+Down"],
     {
       commandMenuGroupKey: "board",
@@ -984,6 +1235,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move highlighted or selected Pages to the top",
     260,
     "app",
+    SURFACE_SHORTCUT,
     ["Alt+Shift+Up"],
     {
       commandMenuGroupKey: "board",
@@ -995,6 +1247,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move highlighted or selected Pages to the bottom",
     261,
     "app",
+    SURFACE_SHORTCUT,
     ["Alt+Shift+Down"],
     {
       commandMenuGroupKey: "board",
@@ -1006,6 +1259,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move highlighted or selected Pages to the previous column",
     262,
     "app",
+    SURFACE_SHORTCUT,
     ["Alt+Left"],
     {
       commandMenuGroupKey: "board",
@@ -1017,39 +1271,67 @@ export const CODEX_COMMAND_REGISTRY = [
     "Move highlighted or selected Pages to the next column",
     263,
     "app",
+    SURFACE_SHORTCUT,
     ["Alt+Right"],
     {
       commandMenuGroupKey: "board",
     },
   ),
-  command("renameThread", "Rename chat", "Rename the active chat", 270, "app", ["CmdOrCtrl+Alt+R"]),
-  command("closeTab", "Close tab", "Close the focused panel tab", 280, "app", ["CmdOrCtrl+W"]),
-  command("closeWindow", "Close window", "Close the active app window", 290, "electron", [
-    "CmdOrCtrl+Shift+W",
+  command("renameThread", "Rename chat", "Rename the active chat", 270, "app", EDITABLE_SHORTCUT, [
+    "CmdOrCtrl+Alt+R",
   ]),
-  command("newWindow", "New window", "Open a new app window", 280, "electron", [
+  command("closeTab", "Close tab", "Close the focused panel tab", 280, "app", PANEL_TAB_SHORTCUT, [
+    "CmdOrCtrl+W",
+  ]),
+  command(
+    "closeWindow",
+    "Close window",
+    "Close the active app window",
+    290,
+    "electron",
+    LOCAL_SHORTCUT,
+    ["CmdOrCtrl+Shift+W"],
+  ),
+  command("newWindow", "New window", "Open a new app window", 280, "electron", LOCAL_SHORTCUT, [
     "CmdOrCtrl+Shift+N",
   ]),
-  command("openFolder", "Open folder", "Open a local folder as a Project", 290, "app", [
-    "CmdOrCtrl+O",
-  ]),
+  command(
+    "openFolder",
+    "Open folder",
+    "Open a local folder as a Project",
+    290,
+    "app",
+    LOCAL_SHORTCUT,
+    ["CmdOrCtrl+O"],
+  ),
   command(
     "openProcessManager",
     "Open process manager",
     "Open the process manager",
     300,
     "electron",
+    EDITABLE_SHORTCUT,
     ["Ctrl+Alt+M"],
   ),
-  command("hotkeyWindow", "Hotkey window", "Show the global hotkey window", 310, "os-global", [], {
-    available: false,
-  }),
+  command(
+    "hotkeyWindow",
+    "Hotkey window",
+    "Show the global hotkey window",
+    310,
+    "os-global",
+    SURFACE_SHORTCUT,
+    [],
+    {
+      available: false,
+    },
+  ),
   command(
     "globalDictationHold",
     "Dictation shortcut",
     "Hold to dictate or double-tap for hands-free dictation",
     320,
     "os-global",
+    SURFACE_SHORTCUT,
     [],
     {
       available: false,
@@ -1062,6 +1344,7 @@ export const CODEX_COMMAND_REGISTRY = [
     "Press to start dictation, then press again to stop",
     330,
     "os-global",
+    SURFACE_SHORTCUT,
     [],
     {
       available: false,
@@ -1084,11 +1367,18 @@ function command<const Id extends string>(
   description: string,
   order: number,
   shortcutScope: CommandShortcutScope,
+  keyboardActionPolicy: KeyboardActionPolicy,
   defaultKeys: string[],
   options: Partial<
     Omit<
       CommandRegistryEntry,
-      "id" | "title" | "description" | "order" | "shortcutScope" | "defaultKeybindings"
+      | "id"
+      | "title"
+      | "description"
+      | "order"
+      | "shortcutScope"
+      | "keyboardActionPolicy"
+      | "defaultKeybindings"
     >
   > = {},
 ): CommandRegistryEntry & { id: Id } {
@@ -1098,6 +1388,7 @@ function command<const Id extends string>(
     description,
     order,
     shortcutScope,
+    keyboardActionPolicy,
     defaultKeybindings: defaultKeys.map((key) => ({ key: normalizeAccelerator(key) })),
     allowsMultiple: options.allowsMultiple ?? defaultKeys.length > 1,
     allowsBareModifiers: options.allowsBareModifiers ?? false,
@@ -2402,7 +2693,7 @@ export function matchKeyboardShortcutSequence(
     readonly commandId: CommandId;
     readonly chords: string[];
   }> = state.entries.flatMap((entry) => {
-    if (!isCommandId(entry.id) || !entry.available || !available(entry.id)) {
+    if (!entry.allowsSequences || !entry.available || !isCommandId(entry.id)) {
       return [];
     }
     const commandId = entry.id;
@@ -2414,9 +2705,10 @@ export function matchKeyboardShortcutSequence(
   });
 
   const exact = sequenceBindings.find(
-    ({ chords }) =>
+    ({ commandId, chords }) =>
       chords.length === candidate.length &&
-      chords.every((part, index) => part === candidate[index]),
+      chords.every((part, index) => part === candidate[index]) &&
+      available(commandId),
   );
   if (exact) {
     return {
@@ -2427,8 +2719,10 @@ export function matchKeyboardShortcutSequence(
   }
 
   const hasPrefix = sequenceBindings.some(
-    ({ chords }) =>
-      chords.length > candidate.length && candidate.every((part, index) => part === chords[index]),
+    ({ commandId, chords }) =>
+      chords.length > candidate.length &&
+      candidate.every((part, index) => part === chords[index]) &&
+      available(commandId),
   );
   if (hasPrefix) {
     return {

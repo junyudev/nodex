@@ -1,4 +1,10 @@
 import { getIntl } from "@/lib/i18n";
+import { handleContentSearchNavigationShortcut } from "@/features/content-search/content-search-keyboard";
+import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
+import {
+  classifyKeyboardActionSurface,
+  matchesKeyboardActionCommand,
+} from "./keyboard-action-runtime";
 import {
   useLayoutEffect,
   useCallback,
@@ -10,7 +16,7 @@ import {
 import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 import { toast } from "@/components/ui/toast";
 import { requestTerminalFocus, returnFocusFromPanel } from "./terminal-focus";
-import { sessionPanelOwner } from "./workbench-workspace-context";
+import { projectWorkspaceRootOrNull, sessionPanelOwner } from "./workbench-workspace-context";
 import {
   PANEL_NEW_TAB_ACTIONS,
   getPanelNewTabAction,
@@ -27,12 +33,9 @@ import { getRenderablePanelPreviewTab } from "./workbench-panel-projection";
 import { resolveWorkbenchPanelCapabilities } from "./workbench-panel-capabilities";
 import {
   resolveFocusedPanelTabCycleScope,
-  isCodexTerminalShortcutTarget,
-  isDialogShortcutTarget,
+  focusBrowserAddressBar,
   isDocumentLevelShortcutTarget,
-  isFocusedPanelTabShortcutTargetBlocked,
   isWorkbenchPanelTabShortcutTargetBlocked,
-  isWorkbenchShortcutTargetEditable,
   type PanelTabCycleScope,
 } from "./workbench-panel-shortcut-scope";
 import {
@@ -54,7 +57,10 @@ import type { useWorkbenchSessionCommands } from "./use-workbench-session-comman
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
 import type { PanelDestination } from "@/components/workbench/panel-destination-picker-model";
 import type { OpenPageStageOptions } from "@/components/board/open-page-stage";
-import type { CommandKeymapState } from "../../shared/command-keybindings";
+import {
+  createCommandKeymapState,
+  type CommandKeymapState,
+} from "../../shared/command-keybindings";
 import type { PanelId, Project, WorkbenchTabCreateInput, WorkbenchTabProjection } from "./types";
 import type {
   WorkbenchPanelTabShortcutFocus,
@@ -94,9 +100,14 @@ type SessionCommands = Pick<ReturnType<typeof useWorkbenchSessionCommands>, "cre
 interface WorkbenchPanelCommandRouterInput {
   readonly activeSession: ProjectSession | null;
   readonly activePanelOwnerKey: string | null;
+  readonly activeProjectSceneId: string | null;
+  readonly openProjectScenePanelAction: (
+    projectId: string,
+    action: PanelNewTabActionKind,
+    placement: { panelId: PanelId; leafId?: string },
+  ) => Promise<boolean>;
   readonly projects: readonly Project[];
   readonly windowSessionId: string;
-  readonly isMacPlatform: boolean;
   readonly sidePanelOpen: boolean;
   readonly bottomPanelOpen: boolean;
   readonly controller: WorkbenchPanelController;
@@ -168,9 +179,10 @@ function findDbViewTabForDatabaseView(
 export function useWorkbenchPanelCommandRouter({
   activeSession,
   activePanelOwnerKey,
+  activeProjectSceneId,
+  openProjectScenePanelAction,
   projects,
   windowSessionId,
-  isMacPlatform,
   sidePanelOpen,
   bottomPanelOpen,
   controller,
@@ -690,79 +702,96 @@ export function useWorkbenchPanelCommandRouter({
     [panelTabShortcutStateRef, resolvePanelShortcutScope],
   );
 
-  const handleTerminalToggleShortcut = (event: KeyboardEvent): boolean => {
-    if (!activeSession || isDialogShortcutTarget(event.target)) return false;
-    if (
-      !resolveActivePanelCapabilities(TERMINAL_ACTION.defaultPanelId).actions.terminal.available
-    ) {
-      return false;
+  const focusActiveBrowserAddress = useCallback((): boolean => {
+    if (!activePanelOwnerKey) return false;
+    return focusBrowserAddressBar(document, resolvePanelShortcutScope(null));
+  }, [activePanelOwnerKey, resolvePanelShortcutScope]);
+
+  const keymap =
+    commandKeymapState ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform());
+
+  const handlePanelNewTabShortcut = (event: KeyboardEvent, keymap: CommandKeymapState): boolean => {
+    const action = PANEL_NEW_TAB_ACTIONS.find((candidate) =>
+      matchesPanelActionShortcut(event, candidate, keymap),
+    );
+    if (!action) return false;
+    if (handleContentSearchNavigationShortcut(event, keymap.platform)) return true;
+
+    const browserScope =
+      action.kind === "browser" ? resolveFocusedPanelTabCycleScope(event.target) : null;
+    const panelId = browserScope?.panelId ?? action.defaultPanelId;
+    const leafId = browserScope?.leafId;
+    // The Terminal toggle targets a Session Terminal; Project Scenes can create one from New tab.
+    if (action.kind !== "terminal" && activeProjectSceneId) {
+      const project = projects.find((candidate) => candidate.id === activeProjectSceneId);
+      const capabilities = resolveWorkbenchPanelCapabilities({
+        panelId,
+        owner: {
+          kind: "project",
+          projectId: activeProjectSceneId,
+          projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
+        },
+      });
+      if (!capabilities.actions[action.kind].available) return false;
+      void openProjectScenePanelAction(activeProjectSceneId, action.kind, { panelId, leafId });
+      return true;
     }
-    if (event.repeat) return true;
-    void dispatchPanelAction("terminal", {
-      panelId: TERMINAL_ACTION.defaultPanelId,
+
+    const capability = resolveActivePanelCapabilities(panelId).actions[action.kind];
+    if (action.kind === "review" && capability.reason === "singleton_exists") {
+      void createManualTab("review", panelId, leafId);
+      return true;
+    }
+    if (!capability.available) return false;
+    void dispatchPanelAction(action.kind, {
+      panelId,
+      leafId,
       terminalBehavior: "focus_or_create",
     });
     return true;
   };
 
-  const handleRightPanelShortcut = useEffectEvent((event: KeyboardEvent): boolean => {
-    // Hiding returns the cursor to the editor and opening moves it into the Terminal, so the toggle
-    // has to answer from both places.
-    if (matchesPanelActionShortcut(event, TERMINAL_ACTION, isMacPlatform, commandKeymapState)) {
-      return handleTerminalToggleShortcut(event);
+  const handlePanelShortcut = useEffectEvent((event: KeyboardEvent): boolean => {
+    if (matchesKeyboardActionCommand(event, keymap, "focusBrowserAddressBar")) {
+      return focusActiveBrowserAddress();
     }
-    if (isCodexTerminalShortcutTarget(event.target)) return false;
 
-    const cycleDirection = resolvePanelTabCycleDirection(event, isMacPlatform, commandKeymapState);
-    if (cycleDirection) {
-      if (isFocusedPanelTabShortcutTargetBlocked(event.target)) return false;
+    const direction = resolvePanelTabCycleDirection(event, keymap);
+    const close = resolvePanelTabCloseShortcut(event, keymap);
+    if (direction || close) {
       const scope = resolveFocusedPanelTabCycleScope(event.target);
-      if (scope) {
-        rememberFocusedPanelGroup(scope.panelId, scope.leafId);
-        return cycleFocusedPanelTab(cycleDirection, scope);
-      }
-      if (!isDocumentLevelShortcutTarget(event.target)) return false;
-      return cycleFocusedPanelTab(cycleDirection, null);
+      if (scope) rememberFocusedPanelGroup(scope.panelId, scope.leafId);
+      if (!scope && !isDocumentLevelShortcutTarget(event.target)) return false;
+      return direction ? cycleFocusedPanelTab(direction, scope) : closeFocusedPanelTab(scope);
     }
 
-    if (resolvePanelTabCloseShortcut(event, isMacPlatform, commandKeymapState)) {
-      if (isFocusedPanelTabShortcutTargetBlocked(event.target)) return false;
-      const scope = resolveFocusedPanelTabCycleScope(event.target);
-      if (scope) {
-        rememberFocusedPanelGroup(scope.panelId, scope.leafId);
-        return closeFocusedPanelTab(scope);
-      }
-      if (!isDocumentLevelShortcutTarget(event.target)) return false;
-      return closeFocusedPanelTab(null);
-    }
+    return handlePanelNewTabShortcut(event, keymap);
+  });
 
-    if (isWorkbenchShortcutTargetEditable(event.target)) return false;
-
-    if (!activeSession) return false;
-
-    const action = PANEL_NEW_TAB_ACTIONS.find((candidate) =>
-      matchesPanelActionShortcut(event, candidate, isMacPlatform, commandKeymapState),
-    );
-    if (!action) return false;
-    if (!resolveActivePanelCapabilities(action.defaultPanelId).actions[action.kind].available) {
-      return false;
-    }
-    void dispatchPanelAction(action.kind, {
-      panelId: action.defaultPanelId,
-      terminalBehavior: "focus_or_create",
-    });
-    return true;
+  const handleTerminalShortcut = useEffectEvent((event: KeyboardEvent): boolean => {
+    if (classifyKeyboardActionSurface(event) !== "terminal") return false;
+    if (!matchesPanelActionShortcut(event, TERMINAL_ACTION, keymap)) return false;
+    return handlePanelNewTabShortcut(event, keymap);
   });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!handleRightPanelShortcut(event)) return;
+      if (handlePanelShortcut(event)) event.preventDefault();
+    };
+
+    // xterm owns its input. Claim the explicitly reserved toggle before xterm reads it.
+    const onTerminalKeyDown = (event: KeyboardEvent) => {
+      if (!handleTerminalShortcut(event)) return;
       event.preventDefault();
       event.stopPropagation();
     };
 
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onTerminalKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onTerminalKeyDown, true);
+    };
   }, []);
 
   return {
@@ -776,5 +805,6 @@ export function useWorkbenchPanelCommandRouter({
     rememberFocusedPanelGroup,
     cycleFocusedPanelTab,
     closeFocusedPanelTab,
+    focusActiveBrowserAddress,
   };
 }

@@ -29,10 +29,12 @@ function makeInputTarget(): EventTarget {
 }
 
 function makeNfmEditorTarget(): EventTarget {
-  return {
-    tagName: "DIV",
-    isContentEditable: true,
-  } as unknown as EventTarget;
+  const page = document.createElement("div");
+  page.className = "nfm-editor";
+  const editor = document.createElement("div");
+  editor.setAttribute("contenteditable", "true");
+  page.append(editor);
+  return editor;
 }
 
 function makeComposerTarget(): EventTarget {
@@ -59,7 +61,6 @@ function makeActions(overrides: Partial<WorkbenchShortcutActions> = {}): Workben
     onRequestContentSearch: () => {},
     onRequestSettingsToggle: () => {},
     onRequestKeyboardShortcuts: () => {},
-    onRequestProcessManager: () => {},
     ...overrides,
   };
 }
@@ -1093,31 +1094,6 @@ describe("handleWorkbenchShortcut", () => {
     expect(opened).toBe(true);
   });
 
-  test("Ctrl+Alt+M opens the process manager", () => {
-    let opened = false;
-    const actions = makeActions({
-      onRequestProcessManager: () => {
-        opened = true;
-      },
-    });
-
-    const handled = handleWorkbenchShortcut(
-      {
-        key: "m",
-        ctrlKey: true,
-        metaKey: false,
-        shiftKey: false,
-        altKey: true,
-        target: null,
-      },
-      actions,
-      true,
-    );
-
-    expect(handled).toBe(true);
-    expect(opened).toBe(true);
-  });
-
   test("Cmd+H remains available to the selected surface", () => {
     const handled = handleWorkbenchShortcut(
       {
@@ -1326,28 +1302,90 @@ describe("handleWorkbenchShortcut", () => {
     expect(called).toBe(true);
   });
 
-  test("Cmd+Alt+number remains unhandled inside NFM editor target", () => {
-    let selectedProjectIndex = -1;
-    const target = makeNfmEditorTarget();
+  test("project jumps honor Option-layer digits and stay out of local surfaces and Terminals", () => {
+    const switchToProjectIndex = vi.fn();
     const actions = makeActions({
-      switchToProjectIndex: (index) => (selectedProjectIndex = index),
+      projectOrder: ["a", "b", "c", "d", "e"],
+      switchToProjectIndex,
     });
+    const second = {
+      key: "™",
+      code: "Digit2",
+      ctrlKey: false,
+      metaKey: true,
+      shiftKey: false,
+      altKey: true,
+      target: makeInputTarget(),
+    };
+    expect(handleWorkbenchShortcut(second, actions, true)).toBe(true);
 
-    const handled = handleWorkbenchShortcut(
-      {
-        key: "1",
-        ctrlKey: false,
-        metaKey: true,
-        shiftKey: false,
-        altKey: true,
-        target,
-      },
-      actions,
-      true,
+    const page = makeNfmEditorTarget();
+    expect(handleWorkbenchShortcut({ ...second, target: page }, actions, true)).toBe(false);
+    expect(
+      handleWorkbenchShortcut({ ...second, target: page, key: "∞", code: "Digit5" }, actions, true),
+    ).toBe(true);
+
+    const palette = document.createElement("div");
+    palette.dataset.nodexKeyboardScope = "local";
+    const search = document.createElement("input");
+    palette.append(search);
+    expect(handleWorkbenchShortcut({ ...second, target: search }, actions, true)).toBe(false);
+    expect(
+      handleWorkbenchShortcut({ ...second, target: makeTerminalTarget() }, actions, true),
+    ).toBe(false);
+    expect(switchToProjectIndex.mock.calls).toEqual([[1], [4]]);
+  });
+
+  test("a live Alt-only Find binding works where it does not type a character", () => {
+    const open = vi.fn();
+    const keymap = createCommandKeymapState({ findInThread: ["Alt+F"] }, "macOS");
+    const actions = makeActions({ commandKeymapState: keymap, onRequestContentSearch: open });
+    const key = {
+      key: "ƒ",
+      code: "KeyF",
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      altKey: true,
+      target: null,
+    };
+    expect(handleWorkbenchShortcut(key, actions, true)).toBe(true);
+    expect(handleWorkbenchShortcut({ ...key, target: makeInputTarget() }, actions, true)).toBe(
+      false,
     );
+    expect(open).toHaveBeenCalledTimes(1);
+  });
 
-    expect(handled).toBe(false);
-    expect(selectedProjectIndex).toBe(-1);
+  test("modified Capture can seed selected Page text while bare C stays with the editor", () => {
+    const editor = makeNfmEditorTarget() as HTMLElement;
+    document.body.append(editor.parentElement!);
+    editor.textContent = "Capture this";
+    const selection = document.getSelection()!;
+    const capture = vi.fn(() => true);
+    const actions = makeActions({ onRequestInboxCapture: capture });
+    const key = {
+      key: "c",
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      altKey: false,
+      target: editor,
+    };
+    try {
+      selection.selectAllChildren(editor);
+      expect(handleWorkbenchShortcut(key, actions, true)).toBe(false);
+      expect(
+        handleWorkbenchShortcut({ ...key, metaKey: true, shiftKey: true }, actions, true),
+      ).toBe(true);
+      selection.collapseToEnd();
+      expect(
+        handleWorkbenchShortcut({ ...key, metaKey: true, shiftKey: true }, actions, true),
+      ).toBe(false);
+      expect(capture).toHaveBeenCalledTimes(1);
+    } finally {
+      selection.removeAllRanges();
+      editor.parentElement?.remove();
+    }
   });
 
   test("Cmd+number remains blocked for plain input targets", () => {

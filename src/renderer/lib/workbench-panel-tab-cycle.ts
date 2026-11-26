@@ -1,56 +1,31 @@
 import type { WorkbenchPanelTabCycleDirection } from "../../shared/window-navigation";
 import type { WorkbenchPanelTabShortcutItem } from "./workbench-panel-tab-shortcut";
 import {
-  createCommandKeymapState,
-  getCommandEntry,
-  matchesKeyboardEventToCommand,
-  type CommandKeymapState,
   NEXT_PANEL_TAB_COMMAND_ID,
   PREVIOUS_PANEL_TAB_COMMAND_ID,
+  type CommandKeymapState,
 } from "../../shared/command-keybindings";
+import {
+  matchesKeyboardActionCommand,
+  type KeyboardActionEventLike,
+} from "./keyboard-action-runtime";
 
 export type PanelTabCycleDirection = -1 | 1;
 
 export function resolvePanelTabCycleDirection(
-  event: Pick<KeyboardEvent, "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey">,
-  isMac: boolean,
-  commandKeymapState?: CommandKeymapState | null,
+  event: KeyboardActionEventLike,
+  keymap: CommandKeymapState,
 ): PanelTabCycleDirection | null {
-  const state = commandKeymapState ?? createCommandKeymapState({}, isMac ? "macOS" : "windows");
-  const previousEntry = getCommandEntry(state, PREVIOUS_PANEL_TAB_COMMAND_ID);
-  const nextEntry = getCommandEntry(state, NEXT_PANEL_TAB_COMMAND_ID);
-  if (matchesKeyboardEventToCommand(event, state, PREVIOUS_PANEL_TAB_COMMAND_ID)) {
-    return -1;
-  }
-  if (matchesKeyboardEventToCommand(event, state, NEXT_PANEL_TAB_COMMAND_ID)) {
-    return 1;
-  }
-
-  const modifier = isMac ? event.metaKey : event.ctrlKey;
-  if (!modifier || event.altKey || !event.shiftKey) return null;
-  if (event.code === "BracketLeft" || event.key === "[" || event.key === "{") {
-    if (previousEntry?.isCustom === true) return null;
-    return -1;
-  }
-  if (event.code === "BracketRight" || event.key === "]" || event.key === "}") {
-    if (nextEntry?.isCustom === true) return null;
-    return 1;
-  }
+  if (matchesKeyboardActionCommand(event, keymap, PREVIOUS_PANEL_TAB_COMMAND_ID)) return -1;
+  if (matchesKeyboardActionCommand(event, keymap, NEXT_PANEL_TAB_COMMAND_ID)) return 1;
   return null;
 }
 
 export function resolvePanelTabCloseShortcut(
-  event: Pick<KeyboardEvent, "altKey" | "ctrlKey" | "key" | "metaKey" | "shiftKey">,
-  isMac: boolean,
-  commandKeymapState?: CommandKeymapState | null,
+  event: KeyboardActionEventLike,
+  keymap: CommandKeymapState,
 ): boolean {
-  const state = commandKeymapState ?? createCommandKeymapState({}, isMac ? "macOS" : "windows");
-  const closeEntry = getCommandEntry(state, "closeTab");
-  if (matchesKeyboardEventToCommand(event, state, "closeTab")) return true;
-  if (closeEntry?.isCustom === true) return false;
-
-  const modifier = isMac ? event.metaKey : event.ctrlKey;
-  return modifier && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "w";
+  return matchesKeyboardActionCommand(event, keymap, "closeTab");
 }
 
 export function resolveNextPanelTabId(

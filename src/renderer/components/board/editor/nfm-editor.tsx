@@ -98,6 +98,7 @@ import { NfmTableHandlesController } from "./nfm-table-handles";
 import { NfmHeadingNavigationRail } from "./nfm-heading-navigation-rail";
 import { resolveFindShortcutSeedQuery } from "./find-shortcut-seed";
 import { matchesNfmFindShortcut } from "./find-shortcut";
+import { useResolvedCommandKeymapState } from "@/lib/use-command-keymap-state";
 import { deferCollapsedToggleVerticalArrowToBrowser } from "./inline-view-arrow-nav";
 import {
   focusEmbeddedEditorBoundary,
@@ -556,6 +557,7 @@ function NfmEditorInstance({
   const projectThreadSummaries = useProjectThreadSummaries(executionProjectId);
   const contentSearch = useContentSearchOptional();
   const requestFind = contentSearch?.requestOpen;
+  const findKeymap = useResolvedCommandKeymapState();
   const pageFindSource = useMemo(
     () => createPageContentSearchSource(editor, source.clientSessionId, onSearchScroll),
     [editor, source.clientSessionId, onSearchScroll],
@@ -1389,9 +1391,14 @@ function NfmEditorInstance({
           return;
         }
       }
+    };
 
-      if (!matchesNfmFindShortcut(event, isMac ? "macOS" : "windows") || !requestFind) return;
+    const handleFindKeyDown = (event: KeyboardEvent) => {
+      if (!requestFind || !ownsNfmEditorEvent(el, event.target)) return;
+      if (!matchesNfmFindShortcut(event, findKeymap)) return;
       event.preventDefault();
+      const targetIsTextField =
+        event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
       const seedQuery = targetIsTextField ? "" : resolveFindShortcutSeedQuery(editor);
       requestFind({
         preferredDomain: "page",
@@ -1402,11 +1409,21 @@ function NfmEditorInstance({
 
     el.addEventListener("beforeinput", handleBeforeInput, true);
     el.addEventListener("keydown", handleKeyDown, true);
+    el.addEventListener("keydown", handleFindKeyDown);
     return () => {
       el.removeEventListener("beforeinput", handleBeforeInput, true);
       el.removeEventListener("keydown", handleKeyDown, true);
+      el.removeEventListener("keydown", handleFindKeyDown);
     };
-  }, [editor, embeddedBoundary, openImagePreview, requestFind, pageFindSource.contextId, owner]);
+  }, [
+    editor,
+    embeddedBoundary,
+    findKeymap,
+    openImagePreview,
+    requestFind,
+    pageFindSource.contextId,
+    owner,
+  ]);
 
   useEffect(() => {
     const el = containerRef.current;

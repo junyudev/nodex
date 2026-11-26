@@ -18,7 +18,7 @@ The palette is a transient overlay and does not become part of durable navigatio
 
 ## Launch and Scope
 
-- `Cmd/Ctrl+K` opens the command palette from anywhere in the app with All selected, including editable surfaces.
+- `Cmd/Ctrl+K` opens the command palette with All selected, including from editors and dialogs. A focused Terminal uses this chord to clear its output.
 - `Cmd/Ctrl+Shift+P` opens the same All scope.
 - Chats opens from its scope tab, `O T`, or the configurable `Search chats` command, which has no default shortcut. `Cmd/Ctrl+G` and `Cmd/Ctrl+Shift+G` navigate Workbench Find.
 - `Cmd/Ctrl+P` opens Pages.

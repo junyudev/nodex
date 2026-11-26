@@ -1,4 +1,4 @@
-import { navigateContentSearch } from "@/features/content-search/content-search-keyboard";
+import { handleContentSearchNavigationShortcut } from "@/features/content-search/content-search-keyboard";
 import { useEffect } from "react";
 import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
 import {
@@ -16,22 +16,21 @@ import type { ContentSearchDomain } from "@/features/content-search/content-sear
 import {
   createCommandKeymapState,
   EMPTY_KEYBOARD_SHORTCUT_SEQUENCE_STATE,
+  getCommandEntry,
   matchKeyboardShortcutSequence,
-  matchesKeyboardEventToCommand,
+  PROJECT_JUMP_SHORTCUT_POLICY,
   matchesKeyboardEventToAccelerator,
   matchesMouseEventToCommand,
   type CommandId,
   type CommandKeymapState,
   type KeyboardShortcutSequenceState,
-  type KeyboardShortcutEventLike,
 } from "../../shared/command-keybindings";
 import type { CommandMenuOpenRequest } from "./command-palette";
 import {
-  classifyKeyboardActionSurface,
   keyboardActionHasContext,
   keyboardActionMayRun,
+  matchesKeyboardActionCommand,
   type KeyboardActionEventLike,
-  type KeyboardActionPolicy,
 } from "./keyboard-action-runtime";
 import {
   canExecuteContextualKeyboardAction,
@@ -51,7 +50,6 @@ export interface WorkbenchShortcutActions {
   onRequestGoToSettled?: () => void;
   onRequestGoToSettings?: () => void;
   onRequestLatestToastAction?: () => boolean;
-  onRequestProcessManager?: () => void;
   onRequestInboxCapture?: () => boolean;
   onRequestWorkbenchCommand?: (commandId: WorkbenchCommandId) => void;
   navigateBack?: (source: WorkbenchNavigationCommandSource) => void;
@@ -75,55 +73,9 @@ export function shouldUseRendererWorkbenchCommandFallback(
   return !hasNativeWorkbenchCommandIngress;
 }
 
-type WorkbenchKeyboardEventLike = KeyboardShortcutEventLike & {
-  target: EventTarget | null;
-  defaultPrevented?: boolean;
-  isComposing?: boolean;
-  repeat?: boolean;
-  keyCode?: number;
-  composedPath?: () => readonly EventTarget[];
-};
-
-const APP_COMMAND_POLICY: KeyboardActionPolicy = {
-  runWithEditableFocus: true,
-  runInsideLocalSurface: true,
-  runInsideTerminal: false,
-  allowRepeat: false,
-};
-
-const BARE_KEY_COMMAND_POLICY: KeyboardActionPolicy = {
-  runWithEditableFocus: false,
-  runInsideLocalSurface: false,
-  runInsideTerminal: false,
-  allowRepeat: false,
-};
-
-function toKeyboardActionEvent(event: WorkbenchKeyboardEventLike): KeyboardActionEventLike {
-  return {
-    target: event.target,
-    defaultPrevented: event.defaultPrevented ?? false,
-    isComposing: event.isComposing ?? false,
-    repeat: event.repeat ?? false,
-    keyCode: event.keyCode ?? 0,
-    composedPath: event.composedPath ? () => event.composedPath?.() ?? [] : undefined,
-  };
-}
-
 function fallbackCommandKeymapState(isMac: boolean): CommandKeymapState {
-  return createCommandKeymapState({}, isMac ? "macOS" : "windows");
-}
-
-function matchesCommandShortcut(
-  e: KeyboardShortcutEventLike,
-  actions: WorkbenchShortcutActions,
-  commandId: string,
-  isMac: boolean,
-): boolean {
-  return matchesKeyboardEventToCommand(
-    e,
-    actions.commandKeymapState ?? fallbackCommandKeymapState(isMac),
-    commandId,
-  );
+  const platform = isMac ? "macOS" : resolveCodexRendererCommandPlatform();
+  return createCommandKeymapState({}, platform === "macOS" && !isMac ? "windows" : platform);
 }
 
 const CONTEXTUAL_COMMAND_IDS = [
@@ -198,36 +150,27 @@ function executeShortcutCommand(commandId: CommandId, actions: WorkbenchShortcut
 }
 
 export function handleWorkbenchShortcut(
-  e: WorkbenchKeyboardEventLike,
+  e: KeyboardActionEventLike,
   actions: WorkbenchShortcutActions,
   isMac: boolean,
   runtimeState: WorkbenchShortcutRuntimeState = createWorkbenchShortcutRuntimeState(),
 ): boolean {
-  const actionEvent = toKeyboardActionEvent(e);
-  if (!keyboardActionMayRun(actionEvent, APP_COMMAND_POLICY)) return false;
-
-  if (matchesKeyboardEventToAccelerator(e, "CmdOrCtrl+G", isMac ? "macOS" : "windows")) {
-    if (navigateContentSearch("next")) {
-      runtimeState.sequence = EMPTY_KEYBOARD_SHORTCUT_SEQUENCE_STATE;
-      return true;
-    }
-  }
-  if (matchesKeyboardEventToAccelerator(e, "CmdOrCtrl+Shift+G", isMac ? "macOS" : "windows")) {
-    if (navigateContentSearch("previous")) {
-      runtimeState.sequence = EMPTY_KEYBOARD_SHORTCUT_SEQUENCE_STATE;
-      return true;
-    }
-  }
-
-  const isBareGesture = !e.metaKey && !e.ctrlKey && !e.altKey;
-  if (isBareGesture && !keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) {
+  const keymap = actions.commandKeymapState ?? fallbackCommandKeymapState(isMac);
+  const matches = (commandId: CommandId) => matchesKeyboardActionCommand(e, keymap, commandId);
+  if (handleContentSearchNavigationShortcut(e, keymap.platform)) {
     runtimeState.sequence = EMPTY_KEYBOARD_SHORTCUT_SEQUENCE_STATE;
-    return false;
+    return true;
   }
 
-  const keymapState = actions.commandKeymapState ?? fallbackCommandKeymapState(isMac);
-  const sequence = matchKeyboardShortcutSequence(e, keymapState, runtimeState.sequence, {
-    commandAvailable: (commandId) => canExecuteShortcutCommand(commandId, actions),
+  const sequence = matchKeyboardShortcutSequence(e, keymap, runtimeState.sequence, {
+    commandAvailable: (commandId) => {
+      const entry = getCommandEntry(keymap, commandId);
+      return (
+        entry !== null &&
+        keyboardActionMayRun(e, entry.keyboardActionPolicy, keymap.platform) &&
+        canExecuteShortcutCommand(commandId, actions)
+      );
+    },
   });
   runtimeState.sequence = sequence.state;
   if (sequence.kind === "pending") return true;
@@ -235,131 +178,110 @@ export function handleWorkbenchShortcut(
     return executeShortcutCommand(sequence.commandId, actions);
   }
 
-  const modifier = isMac ? e.metaKey : e.ctrlKey;
-  const targetIsEditable = classifyKeyboardActionSurface(actionEvent) === "editable";
-  const targetIsComposerSurface = keyboardActionHasContext(actionEvent, "composer");
-
-  if (matchesCommandShortcut(e, actions, "newWindow", isMac)) {
+  if (matches("newWindow")) {
     actions.onRequestNewWindow?.();
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "openCommandMenu", isMac)) {
+  if (matches("openCommandMenu")) {
     actions.onRequestCommandPalette?.({ mode: "root" });
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "searchChats", isMac)) {
+  if (matches("searchChats")) {
     actions.onRequestCommandPalette?.({ mode: "chats" });
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "searchFiles", isMac)) {
+  if (matches("searchFiles")) {
     actions.onRequestCommandPalette?.({ mode: "files" });
     return true;
   }
-  if (matchesCommandShortcut(e, actions, "searchPages", isMac)) {
+  if (matches("searchPages")) {
     actions.onRequestCommandPalette?.({ mode: "pages" });
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "searchAll", isMac)) {
+  if (matches("searchAll")) {
     actions.onRequestCommandPalette?.({ mode: "root" });
     return Boolean(actions.onRequestCommandPalette);
   }
 
-  if (matchesCommandShortcut(e, actions, CAPTURE_TO_INBOX_COMMAND_ID, isMac)) {
-    if (!keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) return false;
+  if (matches(CAPTURE_TO_INBOX_COMMAND_ID)) {
     if (!actions.onRequestInboxCapture) return false;
     return actions.onRequestInboxCapture();
   }
 
-  if (matchesCommandShortcut(e, actions, "openModelPicker", isMac)) {
+  if (matches("openModelPicker")) {
     return executeContextualKeyboardAction("openModelPicker");
   }
 
   for (const commandId of CONTEXTUAL_COMMAND_IDS) {
     if (commandId === "openModelPicker") continue;
-    if (!matchesCommandShortcut(e, actions, commandId, isMac)) continue;
-    if (!keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) return false;
+    if (!matches(commandId)) continue;
     return executeContextualKeyboardAction(commandId);
   }
 
-  if (matchesCommandShortcut(e, actions, "navigateBack", isMac)) {
+  if (matches("navigateBack")) {
     actions.navigateBack?.("keyboard_shortcut");
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "navigateForward", isMac)) {
+  if (matches("navigateForward")) {
     actions.navigateForward?.("keyboard_shortcut");
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "toggleSidebar", isMac)) {
-    if (targetIsEditable && !targetIsComposerSurface) return false;
+  if (matches("toggleSidebar")) {
+    const targetIsComposerSurface = keyboardActionHasContext(e, "composer");
     actions.onToggleSidebar?.(
       targetIsComposerSurface ? "composer_sidebar_shortcut" : "keyboard_shortcut",
     );
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "renameThread", isMac)) {
+  if (matches("renameThread")) {
     if (!actions.onRequestRenameThread) return false;
     actions.onRequestRenameThread("keyboard_shortcut");
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "settings", isMac) && actions.onRequestSettingsToggle) {
+  if (matches("settings") && actions.onRequestSettingsToggle) {
     actions.onRequestSettingsToggle();
     return true;
   }
 
-  if (
-    matchesCommandShortcut(e, actions, "showKeyboardShortcuts", isMac) &&
-    actions.onRequestKeyboardShortcuts
-  ) {
+  if (matches("showKeyboardShortcuts") && actions.onRequestKeyboardShortcuts) {
     actions.onRequestKeyboardShortcuts();
     return true;
   }
 
-  if (
-    matchesCommandShortcut(e, actions, "openProcessManager", isMac) &&
-    actions.onRequestProcessManager
-  ) {
-    actions.onRequestProcessManager();
-    return true;
-  }
-
-  if (matchesCommandShortcut(e, actions, "openLastToastAction", isMac)) {
+  if (matches("openLastToastAction")) {
     return actions.onRequestLatestToastAction?.() ?? false;
   }
 
   for (const commandId of [TOGGLE_BOTTOM_PANEL_COMMAND_ID, TOGGLE_FULL_VIEW_COMMAND_ID] as const) {
-    if (!matchesCommandShortcut(e, actions, commandId, isMac)) continue;
+    if (!matches(commandId)) continue;
     if (!actions.onRequestWorkbenchCommand) return false;
     actions.onRequestWorkbenchCommand(commandId);
     return true;
   }
 
-  if (matchesCommandShortcut(e, actions, "focusBrowserAddressBar", isMac)) {
-    return false;
-  }
-
-  if (!modifier) return false;
-
-  if (e.altKey && e.key >= "1" && e.key <= "9") {
-    if (targetIsEditable) return false;
-    const index = Number.parseInt(e.key, 10) - 1;
-    if (index < actions.projectOrder.length) {
-      actions.switchToProjectIndex(index);
-    }
-    return true;
-  }
-
-  if (matchesCommandShortcut(e, actions, "findInThread", isMac)) {
+  if (matches("findInThread")) {
     if (!actions.onRequestContentSearch) return false;
     actions.onRequestContentSearch();
     return true;
+  }
+
+  if (e.altKey && (e.ctrlKey || e.metaKey)) {
+    for (let index = 0; index < Math.min(actions.projectOrder.length, 9); index++) {
+      if (!matchesKeyboardEventToAccelerator(e, `CmdOrCtrl+Alt+${index + 1}`, keymap.platform)) {
+        continue;
+      }
+      if (!keyboardActionMayRun(e, PROJECT_JUMP_SHORTCUT_POLICY, keymap.platform)) return false;
+      actions.switchToProjectIndex(index);
+      return true;
+    }
   }
 
   return false;
@@ -401,17 +323,18 @@ export function handleWorkbenchMouseNavigationShortcut(
 
 export function useWorkbenchShortcuts(actions: WorkbenchShortcutActions): void {
   useEffect(() => {
-    const isMac = navigator.platform.toUpperCase().includes("MAC");
+    const platform = resolveCodexRendererCommandPlatform();
+    const isMac = platform === "macOS";
+    const keymap = actions.commandKeymapState ?? createCommandKeymapState({}, platform);
+    const resolvedActions = { ...actions, commandKeymapState: keymap };
     const runtimeState = createWorkbenchShortcutRuntimeState();
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!handleWorkbenchShortcut(e, actions, isMac, runtimeState)) return;
+      if (!handleWorkbenchShortcut(e, resolvedActions, isMac, runtimeState)) return;
       e.preventDefault();
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (!matchesCommandShortcut(e, actions, "boardPeek", isMac)) return;
-      const actionEvent = toKeyboardActionEvent(e);
-      if (!keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) return;
+      if (!matchesKeyboardActionCommand(e, keymap, "boardPeek")) return;
       if (!executeContextualKeyboardAction("boardPeek", "keyup")) return;
       e.preventDefault();
     };

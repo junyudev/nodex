@@ -1067,7 +1067,8 @@ creates a second message, and does not count against the Agent budget again.
   and closes it with `Sent to <Inbox>` and an `Open` action; `Escape` closes it
   and keeps the draft. A message that cannot be saved waits in that Inbox to be
   retried or recovered. When the Inbox's composer is already on screen, `C`
-  focuses it instead. Text selected on an app surface starts the message. A
+  focuses it instead. Text selected on an app surface starts the message.
+  `⌘/Ctrl+Shift+C` also starts the message with selected Page text. A
   capture is never linked to the chat it was written in: the Inbox is for
   deciding later where it belongs.
 - The Inbox header offers:
