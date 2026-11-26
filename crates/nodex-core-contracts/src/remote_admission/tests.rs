@@ -140,6 +140,10 @@ fn members_can_read_session_details_without_thread_or_agent_access() {
             Read::SessionDetail {
                 session_id: "chat".into(),
             },
+            Read::SessionSideChats {
+                source_session_id: "chat".into(),
+                window: Default::default(),
+            },
         ],
     );
     refused(

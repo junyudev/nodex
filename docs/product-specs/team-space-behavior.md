@@ -360,8 +360,8 @@ work, so a desktop and a phone offer only what Core allows. The rest is each Mem
   the same directory or in a new worktree the host prepares; a worktree environment
   chosen on the desktop does not apply.
 - **Side chat.** Any Member who may reply to a hosted chat opens a side chat of it,
-  which they own. It persists across closing its tab and restarting, as any Agent Runtime
-  side chat does. A Member deletes only their own side chat, through the Space host,
+  which they own. Members can reopen a closed side chat from its source chat, including
+  after restarting. A Member deletes only their own side chat, through the Space host,
   which retires its execution. An archived chat takes no new side chat.
 - **Edit message.** A Member edits a message they sent, while no other Member has
   posted after it; a message waiting in the queue counts. Otherwise their message

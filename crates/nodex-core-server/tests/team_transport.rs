@@ -3379,6 +3379,22 @@ fn a_hosted_side_chat_answers_to_the_member_who_opened_it() {
             assert_eq!(created["status"], "ok", "{created}");
         },
     );
+    // Bob can reopen a hosted side chat in the shared Space even though Alice owns it.
+    let read = chats.member_read(
+        &chats.bob,
+        json!({"kind":"session_side_chats","source_session_id":"chat","window":{"first":50}}),
+    );
+    assert_eq!(read["status"], "ok", "{read}");
+    let children = read["payload"]["value"]["side_chats"]["items"]
+        .as_array()
+        .unwrap();
+    assert_eq!(children.len(), 2);
+    assert!(
+        children
+            .iter()
+            .any(|item| item["session_id"] == "alice-side")
+    );
+
     // The live invocation proof authorizes exactly the named side chat, not another Alice owns.
     chats.admitted(alice, "session_side_chat_delete", delete, |proof| {
         let sibling = chats.host_apply(

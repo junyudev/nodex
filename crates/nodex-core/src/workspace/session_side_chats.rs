@@ -7,9 +7,9 @@ use nodex_core_contracts::{
     collection::{CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest},
     workspace::ProjectWorkspaceSessionSideChatSummary,
 };
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
-use super::{read::read_session_summary, session_mutation::validate_id};
+use super::{chat_stewardship::visible_draft_sql, session_mutation::validate_id};
 
 /// Capture the whole attachment tree before deleting edges or moving any Session.
 /// UNION also terminates safely if a damaged Store contains an attachment cycle.
@@ -38,7 +38,21 @@ pub(super) fn read_window(
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceSessionSideChatSummary>, StoreError> {
     validate_id("source_session_id", source_session_id)?;
-    let source = read_session_summary(connection, library_id, source_session_id, member)?
+    let source_visible = visible_draft_sql("session", "?3");
+    let project_id: Option<String> = connection
+        .query_row(
+            &format!(
+                "SELECT session.project_id FROM project_sessions session
+                 WHERE session.id = ?1 AND {source_visible}
+                   AND (session.project_id IS NULL OR EXISTS (
+                     SELECT 1 FROM projects project
+                     WHERE project.id = session.project_id AND project.library_id = ?2
+                   ))"
+            ),
+            params![source_session_id, library_id, member],
+            |row| row.get(0),
+        )
+        .optional()?
         .ok_or_else(|| {
             StoreError::new(
                 StoreErrorCode::NotFound,
@@ -48,9 +62,10 @@ pub(super) fn read_window(
         })?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "session_side_chats_v1",
+        "session_side_chats_v2",
         source_session_id,
-        &source.project_id,
+        &project_id,
+        member,
     ))?;
     let subject = CollectionCursorSubject {
         kind: "session_side_chats",
@@ -72,13 +87,14 @@ pub(super) fn read_window(
         })
         .transpose()?;
     let (after_created, after_id) = after.unzip();
-    let rows = connection.prepare(
+    let child_visible = visible_draft_sql("session", "?6");
+    let rows = connection.prepare(&format!(
         "SELECT session.id, session.no_thread_fallback_title, session.created_at, session.updated_at, session.archived \
          FROM project_session_side_chats side JOIN project_sessions session ON session.id = side.session_id \
-         WHERE side.source_session_id = ?1 AND session.project_id IS ?2 \
+         WHERE side.source_session_id = ?1 AND session.project_id IS ?2 AND {child_visible} \
            AND (?3 IS NULL OR session.created_at < ?3 OR (session.created_at = ?3 AND session.id > ?4)) \
          ORDER BY session.created_at DESC, session.id LIMIT ?5",
-    )?.query_map(params![source_session_id, source.project_id, after_created, after_id, (normalized.first + 1) as i64], |row| {
+    ))?.query_map(params![source_session_id, project_id, after_created, after_id, (normalized.first + 1) as i64, member], |row| {
         Ok(ProjectWorkspaceSessionSideChatSummary {
             session_id: row.get(0)?, display_title: row.get(1)?, created_at: row.get(2)?,
             updated_at: row.get(3)?, archived: row.get(4)?,
@@ -425,6 +441,38 @@ mod tests {
                 .code,
             CoreErrorCode::InvalidInput
         );
+    }
+
+    #[test]
+    fn a_member_cannot_list_side_chats_of_another_members_draft() {
+        let workspace = seeded_workspace();
+        let opener = test_support::enroll_remote_member(&workspace, "Opener");
+        let reader = test_support::enroll_remote_member(&workspace, "Reader");
+        workspace
+            .module
+            .apply(
+                &opener,
+                request(
+                    "draft",
+                    ProjectWorkspaceIntent::EnsureDefaultDraftSession {
+                        session_id: "draft".into(),
+                        project_id: Some("project:default".into()),
+                        title: "Private draft".into(),
+                    },
+                ),
+            )
+            .unwrap();
+        let read = |caller| {
+            workspace.module.read(
+                caller,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: list_request("draft", None, 50),
+                },
+            )
+        };
+        assert!(read(&opener).is_ok());
+        assert_eq!(read(&reader).unwrap_err().code, CoreErrorCode::NotFound);
     }
 
     #[test]
