@@ -6,7 +6,7 @@ import { measureMainPreWindowClosure, measureWorkbenchClosure } from "./lib/star
 const MAX_WORKBENCH_JAVASCRIPT_BYTES = Math.round(10.99 * 1024 * 1024);
 const MAX_WORKBENCH_CSS_BYTES = 712 * 1024;
 /** What Main evaluates before its startup window; the application graph loads behind the window. */
-const MAX_MAIN_PRE_WINDOW_BYTES = Math.round(1.38 * 1024 * 1024);
+const MAX_MAIN_PRE_WINDOW_BYTES = Math.round(1.28 * 1024 * 1024);
 
 // Packages whose surfaces load them on demand. None may enter the ordinary Workbench.
 const ON_DEMAND_PACKAGES = [

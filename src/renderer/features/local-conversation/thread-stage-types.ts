@@ -519,7 +519,7 @@ export interface ThreadStageActions {
       readonly acceptedAt: number;
     };
     submittedPresentation?: WorkbenchSubmitPresentation;
-    presentationTicket?: import("../../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+    presentationTicket?: import("../../../shared/schemas/agent-runtime-api").CodexTurnPresentationTicket;
     projectId: string | null;
     sessionId: string;
     projectDraftId?: string;
@@ -552,7 +552,7 @@ export interface ThreadStageActions {
       untrustedAppMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage;
       submittedPresentation?: WorkbenchSubmitPresentation;
       submissionIdentity?: { readonly clientUserMessageId: string };
-      presentationTicket?: import("../../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+      presentationTicket?: import("../../../shared/schemas/agent-runtime-api").CodexTurnPresentationTicket;
       collaborationMode?: CodexCollaborationModeKind;
       promptInput?: CodexPromptInput;
       model?: string;

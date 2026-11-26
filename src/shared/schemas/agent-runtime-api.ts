@@ -11,7 +11,6 @@ import type {
   RuntimeMode,
 } from "../agent-runtime-api";
 import { AGENT_RUNTIME_CONTROL_EVENT_TYPES } from "../agent-runtime-api";
-import { CodexTurnPresentationTicketSchema } from "../nodex-app-tools/turn-presentation";
 import { WorktreeStartingStateSchema } from "./worktree-starting-state";
 
 const id = z
@@ -19,6 +18,9 @@ const id = z
   .min(1)
   .max(512)
   .refine((value) => value.trim() === value);
+/** Main-issued receipt for one originating renderer submission, carried by the turn it starts. */
+export const CodexTurnPresentationTicketSchema = z.strictObject({ ticketId: z.uuid() });
+export type CodexTurnPresentationTicket = z.infer<typeof CodexTurnPresentationTicketSchema>;
 export const AgentRuntimeTargetSchema = z
   .object({
     sessionId: id,

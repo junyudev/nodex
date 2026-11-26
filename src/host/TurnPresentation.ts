@@ -4,8 +4,8 @@ import type * as Effect from "effect/Effect";
 import type {
   CodexTurnPresentationCaptureInput,
   CodexTurnPresentationTarget,
-  CodexTurnPresentationTicket,
 } from "../shared/nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTicket } from "../shared/schemas/agent-runtime-api";
 import type { PresentationAnchor } from "../shared/nodex-app-tools/workbench";
 
 export class CodexTurnPresentationError extends Schema.TaggedError<CodexTurnPresentationError>()(

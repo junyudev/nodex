@@ -5,10 +5,10 @@ import path from "node:path";
 import type { CodexSshExecutionHostConfig } from "../../shared/types";
 import {
   buildCodexSshArguments,
-  normalizeCodexSshExecutionHostConfig,
   quotePosixShellArgument,
   CodexSshExecutionHostTransport,
 } from "./codex-ssh-execution-host";
+import { normalizeCodexSshExecutionHostConfig } from "./codex-ssh-execution-host-config";
 import {
   isExecutionWorkspacePathWithinRoot,
   rewriteExecutionWorkspacePath,

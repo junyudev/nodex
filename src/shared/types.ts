@@ -5,7 +5,7 @@ import type { PageAssignee, PageWork, WorkSummary } from "./work-graph";
 import type { RemoteSignalBlock } from "./product-analytics/remote-signals";
 import type { WorkflowStatusValue } from "./workflow-status";
 import type { components as CoreProtocolComponents } from "@nodex/core-protocol";
-import type { CodexTurnPresentationTicket } from "./nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTicket } from "./schemas/agent-runtime-api";
 import type {
   ApprovalsReviewer as CodexAppServerApprovalsReviewer,
   AdditionalContextEntry as CodexAppServerAdditionalContextEntry,

@@ -297,7 +297,7 @@ import {
   type ConversationReconnectOptions,
 } from "../../../shared/codex-conversation-recovery";
 import { createAsyncQuestionRuntime } from "./async-question-runtime";
-import type { CodexTurnPresentationTicket } from "../../../shared/nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTicket } from "../../../shared/schemas/agent-runtime-api";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import {
   captureCodexTurnPresentation,

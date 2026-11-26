@@ -75,7 +75,7 @@ export interface SideChatCreation {
   /** The opening message, sent once by the side chat's panel after the Session exists. */
   readonly initialSubmission?: import("../features/conversation-launch/session-first-submission-owner").FirstSubmissionIdentity & {
     readonly acceptedAt: number;
-    readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+    readonly presentationTicket?: import("../../shared/schemas/agent-runtime-api").CodexTurnPresentationTicket;
   };
 }
 

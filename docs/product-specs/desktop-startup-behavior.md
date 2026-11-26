@@ -130,8 +130,9 @@ Windows storage and loader evidence are specified in the
   in the build.
 - Main evaluates only its lifecycle, configuration, foundation services and the pre-Core window
   shell before the startup window appears. The application graph, which is most of Main's code
-  and includes Markdown, loads once that shell exists. The same check measures what Main
-  evaluates first and enforces 1.38 MiB, about 2% above the measured size.
+  and includes Markdown and the Terminal runtime with its native PTY addon, loads once that shell
+  exists. The same check measures what Main evaluates first and enforces 1.28 MiB, about 2%
+  above the measured size.
 - A packaged Nodex compiles its Main code from Node's compile cache once it has run: the
   bootstrap entry enables the cache in the account's own cache folder, then loads the Main
   application. The first launch of each version compiles from source and fills the cache;

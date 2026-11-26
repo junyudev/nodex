@@ -77,8 +77,8 @@ import { ElectronIpc, ElectronSyncIpc, ElectronSpaceIpc } from "../platform/elec
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
-import { TerminalRuntimeMap } from "../terminal-runtime/TerminalRuntimeMap";
-import type { ProcessTelemetry } from "../platform/node/ProcessTelemetry";
+import * as TerminalRuntimeLive from "../terminal-runtime/TerminalRuntimeLive";
+import * as ProcessTelemetry from "../platform/node/ProcessTelemetry";
 import { MainApplication, MainApplicationError } from "./MainApplication";
 import { MainCleanup } from "./MainCleanup";
 import { MainConfig } from "./MainConfig";
@@ -109,7 +109,7 @@ import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import * as CodexConversationPeerRuntime from "../platform/node/CodexConversationPeerRuntime";
-import { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
+import { live as hostShellEnvironmentLive } from "../host-runtime/HostShellEnvironment";
 import { live as profilePersistedAtomsLive } from "../local-store/ProfilePersistedAtoms";
 import { live as codexVisualizationStateLive } from "../codex-application/CodexVisualizationState";
 import { WindowsTrayRuntime } from "../host-runtime/WindowsTrayRuntime";
@@ -123,6 +123,25 @@ const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
 
 const applicationLogger = getLogger({ subsystem: "app" });
+
+/**
+ * Process-scoped host services shared by Terminals, Agents and provider probes. They belong to
+ * the graph, so the Terminal stack and its native PTY addon load after the startup window.
+ */
+const hostProcessServices = TerminalRuntimeLive.live.pipe(
+  Layer.provideMerge(ProcessTelemetry.live),
+  Layer.provideMerge(
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const config = yield* MainConfig;
+        return hostShellEnvironmentLive({
+          baseEnvironment: config.environment,
+          platform: config.platform as NodeJS.Platform,
+        });
+      }),
+    ),
+  ),
+);
 // A failed external navigation must not tear down the desktop's other Spaces.
 const reportSpaceLinkFailure = (cause: unknown) =>
   Effect.sync(() => applicationLogger.warn("Could not open Space link", { cause }));
@@ -217,7 +236,6 @@ export const live: Layer.Layer<
   | ExecutionHostRuntimeError
   | CodexComposerPredictionError
   | MainApplicationError,
-  | HostShellEnvironment
   | SpacePageFileHosts
   | ElectronApp
   | ApplicationSettings
@@ -235,9 +253,6 @@ export const live: Layer.Layer<
   | MainCleanup
   | MainShutdown
   | ScopedCallbackRuntime
-  | TerminalSessions
-  | TerminalRuntimeMap
-  | ProcessTelemetry
   | ApplicationInitializationRuntime
   | ApplicationWindowShellRuntime
   | AppProtocolRuntime.AppProtocolRuntime
@@ -516,4 +531,5 @@ export const live: Layer.Layer<
   Layer.provide(applicationGraph.pipe(Layer.provide(scopedAgentCore))),
   // Markdown loads at the base of the graph that owns every reader and writer of it.
   Layer.provide(HostMarkdown.live),
+  Layer.provide(hostProcessServices),
 );

@@ -20,7 +20,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import type { CodexTurnPresentationTicket } from "../../shared/nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTicket } from "../../shared/schemas/agent-runtime-api";
 import type {
   CodexCollaborationModeKind,
   CodexPromptInput,

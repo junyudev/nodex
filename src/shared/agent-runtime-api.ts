@@ -72,7 +72,7 @@ export interface AgentRuntimeLaunch {
     readonly onlyIfAgentWork?: boolean;
     readonly joinsWorkspace?: boolean;
   };
-  readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+  readonly presentationTicket?: import("./schemas/agent-runtime-api").CodexTurnPresentationTicket;
   readonly sourceRoot?: string;
   readonly modelSelection: CreateThread["modelSelection"];
   readonly runtimeMode?: RuntimeMode;
@@ -187,7 +187,7 @@ export type AgentRuntimeMessageInput = AgentRuntimeSessionTarget & {
   readonly automationExecution?: AgentRuntimeAutomationExecution;
   readonly message: AgentRuntimeMessage;
   readonly intent?: DispatchMessage["deliveryIntent"];
-  readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+  readonly presentationTicket?: import("./schemas/agent-runtime-api").CodexTurnPresentationTicket;
 };
 
 export type AgentRuntimeSendMessageResult = AgentRuntimeOperations["thread.send"]["output"] & {
@@ -302,7 +302,7 @@ export type AgentRuntimeQueueInput = AgentRuntimeSessionTarget & { readonly requ
         readonly action: "edit";
         readonly runId: string;
         readonly message: AgentRuntimeMessage;
-        readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+        readonly presentationTicket?: import("./schemas/agent-runtime-api").CodexTurnPresentationTicket;
       }
     | { readonly action: "steer"; readonly runId: string; readonly targetRunId: string }
   );

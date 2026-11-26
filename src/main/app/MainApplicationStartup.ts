@@ -3,11 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationInitializationRuntime";
-import { live as shellEnvironmentLive } from "../host-runtime/HostShellEnvironment";
 import { WindowsTrayRuntime } from "../host-runtime/WindowsTrayRuntime";
 import { getLogger } from "../logging/logger";
-import * as ProcessTelemetry from "../platform/node/ProcessTelemetry";
-import * as TerminalRuntimeLive from "../terminal-runtime/TerminalRuntimeLive";
 import { isWindowsStartupActivation } from "../windows-desktop-policy";
 import { ApplicationWindowShellRuntime } from "../window-runtime/ApplicationWindowShellRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
@@ -24,16 +21,6 @@ const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
 
 const applicationLogger = getLogger({ subsystem: "app" });
-
-const shellEnvironment = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    return shellEnvironmentLive({
-      baseEnvironment: config.environment,
-      platform: config.platform as NodeJS.Platform,
-    });
-  }),
-);
 
 /**
  * The application graph is most of Main's code. It loads once the pre-Core shell exists, so the
@@ -135,7 +122,4 @@ const startupFailureLive = (
 export const productionLive = applicationGraph.pipe(
   Layer.catch(startupFailureLive),
   Layer.provideMerge(ApplicationStateLive.live),
-  Layer.provideMerge(TerminalRuntimeLive.live),
-  Layer.provideMerge(ProcessTelemetry.live),
-  Layer.provideMerge(shellEnvironment),
 );

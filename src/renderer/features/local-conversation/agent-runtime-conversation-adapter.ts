@@ -171,10 +171,8 @@ import {
   captureCodexTurnPresentation,
   readCodexSubmissionPresentation,
 } from "../../lib/codex-turn-presentation";
-import type {
-  CodexTurnPresentationTarget,
-  CodexTurnPresentationTicket,
-} from "../../../shared/nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTarget } from "../../../shared/nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTicket } from "../../../shared/schemas/agent-runtime-api";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import { projectMessageText } from "../../../shared/message-agent-input";
 import { materializeWrittenImages } from "../../lib/prompt-file-images";

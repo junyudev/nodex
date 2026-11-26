@@ -60,10 +60,8 @@ import type {
   ThreadExecutionHandoffInput,
   ThreadExecutionLocationView,
 } from "./codex-thread-handoff";
-import type {
-  CodexTurnPresentationCaptureInput,
-  CodexTurnPresentationTicket,
-} from "./nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationCaptureInput } from "./nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTicket } from "./schemas/agent-runtime-api";
 import type {
   WorkbenchAgentCancel,
   WorkbenchAgentReply,

@@ -168,7 +168,7 @@ export function AgentRuntimeSideChatPanel(input: {
   readonly initialPrompt: Pick<CodexComposerIntent, "prompt" | "promptInput"> | null;
   readonly initialSubmission?: FirstSubmissionIdentity & {
     readonly acceptedAt: number;
-    readonly presentationTicket?: import("../../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+    readonly presentationTicket?: import("../../../shared/schemas/agent-runtime-api").CodexTurnPresentationTicket;
   };
   readonly onRefresh: (projectId: string | null) => Promise<unknown>;
   readonly onOpenThread: ThreadStageActions["onOpenThread"];

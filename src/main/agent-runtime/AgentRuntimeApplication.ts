@@ -3317,7 +3317,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         readonly modeLimit?: AgentDispatchModeLimit;
         readonly messageFingerprint?: string;
         readonly automationExecution?: import("../../shared/agent-runtime-api").AgentRuntimeAutomationExecution;
-        readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+        readonly presentationTicket?: import("../../shared/schemas/agent-runtime-api").CodexTurnPresentationTicket;
       },
       queueAfterActive = false,
       checkedDecisionInput = false,

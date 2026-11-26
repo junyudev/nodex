@@ -1,7 +1,5 @@
-import type {
-  CodexTurnPresentationTarget,
-  CodexTurnPresentationTicket,
-} from "../../shared/nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTarget } from "../../shared/nodex-app-tools/turn-presentation";
+import type { CodexTurnPresentationTicket } from "../../shared/schemas/agent-runtime-api";
 import {
   unavailableWorkbenchSubmission,
   WorkbenchSubmitPresentationSchema,
