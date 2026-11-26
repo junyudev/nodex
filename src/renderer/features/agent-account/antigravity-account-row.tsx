@@ -63,20 +63,32 @@ function useKnownProvider(instanceId: string | null) {
 export function AntigravityAccountRow({
   backend,
   authMethod,
+  signInOnOpen = false,
 }: {
   readonly backend: Backend;
   /** The saved method determines whether the account opens Google or connects directly. */
   readonly authMethod: AntigravityAuthMethod;
+  /** Opened by asking to sign in, as setup does, so the request needs no second press. */
+  readonly signInOnOpen?: boolean;
 }) {
-  return <AntigravityAccount key={backend.instanceId} backend={backend} authMethod={authMethod} />;
+  return (
+    <AntigravityAccount
+      key={backend.instanceId}
+      backend={backend}
+      authMethod={authMethod}
+      signInOnOpen={signInOnOpen}
+    />
+  );
 }
 
 function AntigravityAccount({
   backend,
   authMethod,
+  signInOnOpen,
 }: {
   readonly backend: Backend;
   readonly authMethod: AntigravityAuthMethod;
+  readonly signInOnOpen: boolean;
 }) {
   const intl = useIntl();
   const owner = accountFor(backend);
@@ -85,6 +97,10 @@ function AntigravityAccount({
   const provider = useKnownProvider(backend.instanceId);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => owner.read(), [owner]);
+  // The owner ignores a second request while one is starting or in progress.
+  useEffect(() => {
+    if (signInOnOpen) owner.signIn();
+  }, [owner, signInOnOpen]);
 
   const computer = authMethod === "computer";
   const browser = computer || authMethod === "oauth-personal" || authMethod === "oauth-business";

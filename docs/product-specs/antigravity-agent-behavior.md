@@ -95,6 +95,10 @@ executable path.
 
 The managed runtime publishes installation facts for [Agent readiness](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer).
 Setup and the composer combine those facts with the selected profile's account and model state.
+Where the runtime can be downloaded, both offer **Install** in place and show its progress there, and
+a failed download offers **Try again**; only a computer without automatic installation support is
+sent to Settings to set an executable path. Setup signs a profile in with the same account controls
+Settings shows, opened beneath its row.
 
 ## Chats
 

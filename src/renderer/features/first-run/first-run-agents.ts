@@ -3,9 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastFailure } from "@/lib/failure-toast";
 import { useFirstRunBrowserSignIn } from "../agent-readiness/use-browser-agent-sign-in";
-import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
-import { buildSettingsAnchorPath } from "@/components/workbench/workbench-settings-routes";
-import { APP_COMPONENTS_SETTINGS_ANCHOR } from "@/features/app-components/app-components-settings-section";
 import { useAppComponents } from "@/features/app-components/use-app-components";
 import { useModelPolicy } from "@/features/model-policy/model-policy";
 import { resolveNodexAccountView } from "@/features/nodex-account/nodex-account-identity";
@@ -84,7 +81,6 @@ export function useFirstRunAgents() {
   const intl = useIntl();
   const client = useQueryClient();
   const appHandle = useScopeHandle(appScope);
-  const workbench = useWorkbenchWindowOwner();
   const providers = useAgentRuntimeProviders();
   const components = useAppComponents();
   const policy = useModelPolicy();
@@ -230,6 +226,8 @@ export function useFirstRunAgents() {
       case "installer":
         if (action.sourceId === openCodeAgent.setup.installation.id)
           openOpenCodeInstallDialog(appHandle, { owner: openCodeSetupOwner });
+        else if (action.sourceId === antigravityAgent.setup.installation.id)
+          await antigravityRuntimeOwner.run("install");
         return;
       case "use-free-models":
         await policy.updateSettings(
@@ -245,20 +243,15 @@ export function useFirstRunAgents() {
       case "check-again":
         await checkAgain();
         return;
-      case "component-settings":
-        workbench.openRoute({
-          kind: "settings",
-          path: buildSettingsAnchorPath("general-settings", APP_COMPONENTS_SETTINGS_ANCHOR),
-        });
-        return;
       case "component-retry":
         if (action.componentId) await components.retry(action.componentId);
         return;
       case "agent-settings":
+      case "component-settings":
       case "terminal-sign-in":
       case "terminal-install":
       case "inline-sign-in":
-
+      case "account-sign-in":
       case "api-key-add":
         return;
     }
