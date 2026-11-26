@@ -118,15 +118,14 @@ describe("mcp tool call", () => {
 
   test("returned images open full size in one viewer that moves between those that decode", async () => {
     await page.viewport(900, 700);
-    const second = btoa(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="160" height="90" fill="#2876d8"/></svg>',
-    );
+    const second =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
     const content = [
       { type: "image" as const, mimeType: "image/svg+xml", data: preview },
       { type: "text" as const, text: "Two previews captured." },
       // Bytes no picture decodes from take no place in the sequence.
       { type: "image" as const, mimeType: "image/png", data: btoa("not a picture") },
-      { type: "image" as const, mimeType: "image/svg+xml", data: second },
+      { type: "image" as const, mimeType: "image/png", data: second },
     ];
     const view = renderWithMaitai(
       <TestQueryProvider>
@@ -171,7 +170,7 @@ describe("mcp tool call", () => {
       await act(async () => {
         await userEvent.keyboard("{ArrowRight}");
       });
-      await waitFor(() => expect(shown(dialog)).toBe(`data:image/svg+xml;base64,${second}`));
+      await waitFor(() => expect(shown(dialog)).toBe(`data:image/png;base64,${second}`));
       expect(within(dialog).queryByRole("button", { name: "Next image" })).toBeNull();
       expect(within(dialog).getByRole("button", { name: "Previous image" })).toBeVisible();
 
