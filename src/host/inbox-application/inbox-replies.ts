@@ -12,6 +12,12 @@ type Details = NonNullable<
 >["details"];
 export type ReplyDispatch = components["schemas"]["InboxReplyDispatch"];
 
+/** Native chats keep their execution on the connected desktop. */
+export const nativeInboxReplyUnavailableReason = (
+  chat: { readonly thread_id?: string | null; readonly execution_ref?: unknown } | null | undefined,
+): string | null =>
+  chat?.thread_id && !chat.execution_ref ? "Continue this chat on its desktop." : null;
+
 /** A queued message cannot resolve a provider's live question or approval. */
 export const decideInboxReply = (
   purpose: "result" | "attention" | "problem",

@@ -440,6 +440,7 @@ export type InboxStreamInput = Omit<InboxWindowInput, "filter"> & {
 
 export interface InboxReplyDestination {
   readonly kind: "send" | "answer" | "nodex" | "unavailable";
+  readonly reason?: string;
   readonly chat: { readonly sessionId: string; readonly title: string } | null;
 }
 

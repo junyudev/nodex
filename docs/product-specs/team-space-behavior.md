@@ -267,8 +267,9 @@ Inbox decisions also travel to the host from a desktop or phone: Start chat,
 accepting a suggestion, choosing an existing chat to send to, asking for or
 stopping a suggestion, and retrying a delivery. The host resolves the Agent from
 its own catalog and confirms with the requesting Member's authority, so the chat
-answers to them. The provider picker reads the host's catalog and configured
-instances using the host's credentials. The host selects its own executable.
+answers to them. An Inbox Turn for a connected native chat directs Members to
+continue on that chat's desktop. The provider picker reads the host's catalog and
+configured instances using the host's credentials. The host selects its own executable.
 
 Hosted conversation reads and text replies travel through the selected Space's
 authenticated Core connection to its execution owner. They never use the
