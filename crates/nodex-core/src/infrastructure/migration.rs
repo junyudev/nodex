@@ -10,6 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::SecondsFormat;
 #[cfg(test)]
 use rusqlite::backup::Backup;
+use rusqlite::functions::FunctionFlags;
 use rusqlite::{Connection, MAIN_DB, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -38,7 +39,8 @@ use super::sqlite::{
     StoreError, StoreErrorCode, open_immutable_reader, validate_store, with_immediate_transaction,
 };
 use super::store_validation::{
-    DatabaseViewStorageContract, validate_core_metadata, validate_current_store,
+    DatabaseViewStorageContract, LEGACY_SNOOZE_TIMESTAMP_COLUMNS, SNOOZE_MILLIS_STORE_REVISION,
+    legacy_snooze_timestamp, validate_core_metadata, validate_current_store,
     validate_current_store_data, validate_migration_source_semantics,
 };
 use super::store_validation_receipt::{self, StoreValidationReceipt};
@@ -516,6 +518,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 220,
         apply: migrate_v219_to_v220,
     },
+    MigrationStep {
+        from_revision: 220,
+        to_revision: SNOOZE_MILLIS_STORE_REVISION,
+        apply: migrate_v220_to_v221,
+    },
 ];
 
 fn resolve_migration_path(
@@ -803,6 +810,7 @@ fn validate_migration_source(
         view_contract,
         source_revision >= LIBRARY_FILES_STORE_REVISION,
         materialization_derivation_for_store_revision(source_revision)?,
+        source_revision,
     )?;
     if source_revision >= INBOX_FROZEN_CONTENT_STORE_REVISION {
         crate::workspace::validate_inbox_markdown_serialization(connection, true)?;
@@ -2904,6 +2912,44 @@ fn migrate_v219_to_v220(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"nodex_decision_runs":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v220_to_v221(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    const NORMALIZE: &str = "normalize_legacy_snooze_timestamp";
+    connection.create_scalar_function(
+        NORMALIZE,
+        1,
+        FunctionFlags::SQLITE_DETERMINISTIC | FunctionFlags::SQLITE_DIRECTONLY,
+        |context| Ok(legacy_snooze_timestamp(context.get_raw(0).as_str()?)),
+    )?;
+    let normalized =
+        LEGACY_SNOOZE_TIMESTAMP_COLUMNS
+            .iter()
+            .try_fold(0, |total, (table, column)| {
+                connection
+                    .execute(
+                        &format!(
+                            "UPDATE {table} SET {column}={NORMALIZE}({column})
+                         WHERE length({column})=30 AND {NORMALIZE}({column}) IS NOT NULL"
+                        ),
+                        [],
+                    )
+                    .map(|changed| total + changed)
+            });
+    let removed_function = connection.remove_function(NORMALIZE, 1);
+    let normalized = normalized?;
+    removed_function?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"normalized_snooze_timestamps": normalized}).to_string()],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -9463,6 +9509,69 @@ mod tests {
                 )
                 .is_err(),
             "native Turn authorities stay immutable"
+        );
+    }
+
+    #[test]
+    fn inbox_snooze_migration_preserves_deadlines_and_return_notifications() {
+        let directory = tempdir().expect("Profile");
+        let path = directory.path().join("nodex.db");
+        nodex_platform::private_fs::write(
+            &path,
+            include_bytes!("../../tests/fixtures/store-v220.db"),
+        )
+        .expect("v220 Profile with Inbox snoozes written by Core");
+        let mut connection = open_writer(&path).expect("open v220 Store");
+        let deferrals = |store: &Connection| {
+            store
+                .prepare("SELECT page_id, set_at, until_at FROM inbox_deferrals ORDER BY until_at")
+                .unwrap()
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+        };
+        let before = deferrals(&connection);
+        assert_eq!(before.len(), 2);
+        assert_eq!(before[1].2, "2099-01-02T02:00:00.123456789Z");
+
+        let migrated = prepare_profile_store(&mut connection, directory.path())
+            .expect("repair timestamps during Profile upgrade");
+        assert_eq!(migrated.migrated_from_version, Some(220));
+        let after = deferrals(&connection);
+        assert_eq!(after.len(), before.len());
+        for ((page, set_at, until_at), (old_page, old_set_at, old_until_at)) in
+            after.iter().zip(&before)
+        {
+            assert_eq!(page, old_page);
+            assert_eq!(set_at, &format!("{}Z", &old_set_at[..23]));
+            assert_eq!(until_at, &format!("{}Z", &old_until_at[..23]));
+        }
+        let notification = connection
+            .query_row(
+                "SELECT page_id, returned_at, claimed, push_claimed FROM inbox_snooze_notifications",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, bool>(2)?, row.get::<_, bool>(3)?)),
+            )
+            .expect("the already queued Inbox notification survives");
+        assert_eq!(
+            notification,
+            (after[0].0.clone(), after[0].2.clone(), false, false)
+        );
+
+        drop(connection);
+        let mut reopened = open_writer(&path).expect("reopen");
+        assert_eq!(
+            prepare_profile_store(&mut reopened, directory.path())
+                .expect("deep validation on reopen")
+                .migrated_from_version,
+            None
         );
     }
 

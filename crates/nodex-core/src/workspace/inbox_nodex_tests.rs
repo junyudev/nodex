@@ -294,7 +294,7 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
                     .writer()
                     .call(|c| {
                         c.execute(
-                            "UPDATE inbox_deferrals SET until_at='2001-01-01T00:00:00.000000000Z'",
+                            "UPDATE inbox_deferrals SET until_at='2001-01-01T00:00:00.000Z'",
                             [],
                         )?;
                         Ok(())

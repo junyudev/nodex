@@ -4,7 +4,7 @@ use nodex_core_contracts::inbox::InboxConfirmedBy;
 use nodex_core_contracts::sources::ActivityFilter;
 
 const FUTURE: &str = "2099-01-01T00:00:00Z";
-const PAST: &str = "2001-01-02T00:00:00.000000000Z";
+const PAST: &str = "2001-01-02T00:00:00.000Z";
 
 fn snooze(pages: &[&str], until: &str) -> ProjectWorkspaceIntent {
     ProjectWorkspaceIntent::SetInboxSnooze {
@@ -96,11 +96,11 @@ fn snooze_window_orders_replaces_and_pages_within_its_scope() {
     );
     assert_eq!(
         items.items[0].snooze.as_ref().unwrap().until,
-        "2099-01-01T02:00:00.000000000Z"
+        "2099-01-01T02:00:00.000Z"
     );
     assert_eq!(
         items.items[1].snooze.as_ref().unwrap().until,
-        "2099-01-01T03:00:00.000000000Z"
+        "2099-01-01T03:00:00.000Z"
     );
     let cursor = items.next_cursor.unwrap();
     let ProjectWorkspaceReadValue::InboxWindow { items } =
@@ -180,14 +180,17 @@ fn membership_and_order_follow_the_deadline_without_a_due_write() {
         panic!("Inbox counts")
     };
     assert_eq!(counts.projects[0].inbox_count, 1);
-    // The read clock uses milliseconds. Wait past the first millisecond after the deadline.
+    // Wait for the deadline to pass on the millisecond Store clock.
     let remaining = (until - chrono::Utc::now()).to_std().unwrap_or_default();
     std::thread::sleep(remaining + std::time::Duration::from_millis(5));
 
     let stream = window_in(m, project_scope(), ProjectWorkspaceInboxWindowFilter::Inbox);
     assert_eq!(stream[0].page_id, "page:timed");
     assert!(stream[0].waiting);
-    assert_eq!(stream[0].snooze.as_ref().unwrap().until, deadline);
+    assert_eq!(
+        stream[0].snooze.as_ref().unwrap().until,
+        until.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    );
     assert!(stream[0].important);
     let after = summary_in(m, project_scope());
     assert_eq!(
