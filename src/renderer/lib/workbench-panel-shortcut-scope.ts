@@ -26,7 +26,12 @@ export function isDialogShortcutTarget(target: EventTarget | null): boolean {
   return Boolean(element?.closest?.("[role='dialog']"));
 }
 
-export function isWorkbenchNewChatShortcutTargetEditable(target: EventTarget | null): boolean {
+/** New chat works while typing, as a native menu item would; dialogs and Terminals keep their keys. */
+export function isNewChatShortcutTargetBlocked(target: EventTarget | null): boolean {
+  return isDialogShortcutTarget(target) || isCodexTerminalShortcutTarget(target);
+}
+
+export function isWorkbenchShortcutTargetEditable(target: EventTarget | null): boolean {
   const element = target as ShortcutTargetLike | null;
   if (!element) return false;
   if (element.isContentEditable) return true;

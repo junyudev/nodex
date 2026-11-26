@@ -3,8 +3,9 @@ import {
   isCodexTerminalShortcutTarget,
   isDocumentLevelShortcutTarget,
   isFocusedPanelTabShortcutTargetBlocked,
+  isNewChatShortcutTargetBlocked,
   isWorkbenchPanelTabShortcutTargetBlocked,
-  isWorkbenchNewChatShortcutTargetEditable,
+  isWorkbenchShortcutTargetEditable,
   resolveFocusedPanelTabCycleScope,
 } from "./workbench-panel-shortcut-scope";
 
@@ -63,8 +64,8 @@ describe("workbench panel shortcut scope", () => {
     markdown.append(nfmChild);
     document.body.append(input, dialog, blockNote, markdown);
 
-    expect(isWorkbenchNewChatShortcutTargetEditable(input)).toBe(true);
-    expect(isWorkbenchNewChatShortcutTargetEditable(dialogChild)).toBe(true);
+    expect(isWorkbenchShortcutTargetEditable(input)).toBe(true);
+    expect(isWorkbenchShortcutTargetEditable(dialogChild)).toBe(true);
     expect(isFocusedPanelTabShortcutTargetBlocked(input)).toBe(true);
     expect(isFocusedPanelTabShortcutTargetBlocked(dialogChild)).toBe(true);
     expect(isFocusedPanelTabShortcutTargetBlocked(blockNoteChild)).toBe(true);
@@ -83,5 +84,12 @@ describe("workbench panel shortcut scope", () => {
     document.body.append(terminal);
     expect(isWorkbenchPanelTabShortcutTargetBlocked(terminalChild)).toBe(true);
     expect(isWorkbenchPanelTabShortcutTargetBlocked(nfmChild)).toBe(false);
+
+    // New chat starts from a composer or a Page, but a dialog or a Terminal keeps the keys.
+    expect(isNewChatShortcutTargetBlocked(input)).toBe(false);
+    expect(isNewChatShortcutTargetBlocked(blockNoteChild)).toBe(false);
+    expect(isNewChatShortcutTargetBlocked(nfmChild)).toBe(false);
+    expect(isNewChatShortcutTargetBlocked(dialogChild)).toBe(true);
+    expect(isNewChatShortcutTargetBlocked(terminalChild)).toBe(true);
   });
 });

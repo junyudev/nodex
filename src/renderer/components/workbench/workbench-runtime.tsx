@@ -4930,7 +4930,7 @@ export function WorkbenchRuntime({
             closePendingWorktreeRoute();
             setAutomationsPath(null);
             setSettingsPath(null);
-            await sessionCommands.startNewChatInProject(projectId, { focusComposer: true });
+            await sessionCommands.startNewChatInProject(projectId);
           },
         })
       }

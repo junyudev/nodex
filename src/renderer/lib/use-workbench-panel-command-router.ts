@@ -32,7 +32,7 @@ import {
   isDocumentLevelShortcutTarget,
   isFocusedPanelTabShortcutTargetBlocked,
   isWorkbenchPanelTabShortcutTargetBlocked,
-  isWorkbenchNewChatShortcutTargetEditable,
+  isWorkbenchShortcutTargetEditable,
   type PanelTabCycleScope,
 } from "./workbench-panel-shortcut-scope";
 import {
@@ -736,7 +736,7 @@ export function useWorkbenchPanelCommandRouter({
       return closeFocusedPanelTab(null);
     }
 
-    if (isWorkbenchNewChatShortcutTargetEditable(event.target)) return false;
+    if (isWorkbenchShortcutTargetEditable(event.target)) return false;
 
     if (!activeSession) return false;
 

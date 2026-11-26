@@ -31,10 +31,7 @@ export interface FirstRunOverlayProps {
     readonly projectId: string | null;
     readonly prompt: string;
   }) => Promise<void>;
-  readonly onStartNewChat: (
-    projectId: string | null,
-    options: { readonly focusComposer: boolean },
-  ) => Promise<void>;
+  readonly onStartNewChat: (projectId: string | null) => Promise<void>;
 }
 
 function FirstRunFlow({
@@ -78,7 +75,7 @@ function FirstRunFlow({
           prompt: firstTaskPrompt(landing.task, team?.teammate ?? null, intl),
         });
       } else if (entry === "first-run") {
-        await onStartNewChat(firstProjectId, { focusComposer: true });
+        await onStartNewChat(firstProjectId);
       }
     });
   const skip = () => land(null);

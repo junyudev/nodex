@@ -36,7 +36,10 @@ import {
   matchesKeyboardEventToCommand,
   type CommandKeymapState,
 } from "../../shared/command-keybindings";
-import { isWorkbenchNewChatShortcutTargetEditable } from "./workbench-panel-shortcut-scope";
+import {
+  isNewChatShortcutTargetBlocked,
+  isWorkbenchShortcutTargetEditable,
+} from "./workbench-panel-shortcut-scope";
 import { getDefaultPanelIdForTabKind } from "./workbench-panel-actions";
 import {
   resolveLeafIdForPanelTab,
@@ -772,8 +775,9 @@ export function useWorkbenchSessionCommands({
     ],
   );
 
+  /** Opens the Project's new chat with its composer focused, keeping any draft it already has. */
   const startNewChatInProject = useCallback(
-    async (projectId: string | null, options?: { focusComposer?: boolean }) => {
+    async (projectId: string | null) => {
       const session = await ensureDefaultDraftSessionForProject(projectId);
       panelControllerRef.current.durable.patchPanel(session, "right", {
         size: {
@@ -781,7 +785,6 @@ export function useWorkbenchSessionCommands({
           fullWidth: false,
         },
       });
-      if (!options?.focusComposer) return;
       composerDraftIntents.set(
         { kind: "session", sessionId: session.id },
         {
@@ -889,18 +892,22 @@ export function useWorkbenchSessionCommands({
       createCommandKeymapState({}, isMacPlatformForShortcut ? "macOS" : "windows");
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isWorkbenchNewChatShortcutTargetEditable(event.target)) return;
+      if (
+        (matchesKeyboardEventToCommand(event, shortcutState, "newThread") ||
+          matchesKeyboardEventToCommand(event, shortcutState, "quickChat")) &&
+        !isNewChatShortcutTargetBlocked(event.target)
+      ) {
+        event.preventDefault();
+        void startNewChatInProject(activeProjectId);
+        return;
+      }
+
+      if (isWorkbenchShortcutTargetEditable(event.target)) return;
 
       if (matchesKeyboardEventToCommand(event, shortcutState, "archiveThread")) {
         if (!activeSession) return;
         event.preventDefault();
         void archiveSession(activeSession);
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "newThread")) {
-        event.preventDefault();
-        void startNewChatInProject(activeProjectId);
         return;
       }
 
@@ -914,12 +921,6 @@ export function useWorkbenchSessionCommands({
         if (!activeSession) return;
         event.preventDefault();
         void onOpenProjectSessionInNewWindow?.(activeSession);
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "quickChat")) {
-        event.preventDefault();
-        void startNewChatInProject(activeProjectId);
         return;
       }
 
