@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { readUnreleasedChangesWithMedia } from "../../src/shared/change-media";
 import { addChangeMedia } from "./add";
+import { describeMedia, imageVariantWidths } from "./encode";
+import { orphanedMedia, referencedMedia, storedMedia } from "./prune";
 import { checkLocalChangeMedia, readMediaFile, storeMediaFile } from "./store";
 
 let fixture: string;
@@ -22,6 +24,34 @@ const path = "changes/added/2026-11-26-example.md";
 const body = "An entry with **detail**.  \r\n  Wrapped line.\r\n\r\n";
 const png = Buffer.from("89504e470d0a1a0a", "hex");
 const mp4 = Buffer.from("000000146674797069736f6d0000000069736f6d", "hex");
+
+test("keeps full image width and adds a half-width variant at the capture threshold", () => {
+  expect(imageVariantWidths(1199)).toEqual([1199]);
+  expect(imageVariantWidths(1200)).toEqual([1200, 600]);
+  expect(imageVariantWidths(1201)).toEqual([1201, 600]);
+});
+
+test("describes the original with widest-first image variants or a video poster", () => {
+  const hash = "a".repeat(64);
+  const original = { width: 1200, height: 640, bytes: 100 };
+  const full = { file: `${hash}.1200w.webp`, width: 1200, height: 640 };
+  const half = { file: `${hash}.600w.webp`, width: 600, height: 320 };
+  expect(describeMedia(`${hash}.png`, original, { variants: [half, full] })).toEqual({
+    version: 1,
+    type: "image",
+    ...original,
+    variants: [full, half],
+  });
+
+  const poster = { file: `${hash}.poster.webp`, width: 1200, height: 640 };
+  expect(describeMedia(`${hash}.mp4`, original, { poster })).toEqual({
+    version: 1,
+    type: "video",
+    ...original,
+    variants: [],
+    poster,
+  });
+});
 
 beforeEach(() => {
   fixture = mkdtempSync(join(tmpdir(), "nodex-release-media-"));
@@ -135,4 +165,57 @@ test("checks for referenced files when the local store exists and CI is unset", 
   vi.stubEnv("CI", undefined);
   rmSync(store, { recursive: true });
   expect(() => checkLocalChangeMedia(fixture, changes)).not.toThrow();
+});
+
+test("prunes only pictures that no worktree, branch or tag mentions once their grace period ends", () => {
+  const name = (digit: string, extension = "png") => `${digit.repeat(64)}.${extension}`;
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        ...args,
+      ],
+      { cwd, stdio: "ignore" },
+    );
+  const change = (media: string) =>
+    `---\nmedia:\n  - caption: A picture\n    light: ${media}\n---\nAn entry.\n`;
+  const other = `${fixture}-worktree`;
+  try {
+    git(fixture, "init", "-q", "-b", "main");
+    git(fixture, "commit", "-q", "--allow-empty", "-m", "Start");
+    // A branch that is not checked out anywhere still holds its pictures.
+    git(fixture, "checkout", "-q", "-b", "draft");
+    writeFileSync(join(fixture, "changes/added/2026-11-26-branch.md"), change(name("a")));
+    git(fixture, "add", "changes");
+    git(fixture, "commit", "-q", "-m", "Draft");
+    git(fixture, "checkout", "-q", "main");
+    // So does an edit not committed yet in another worktree.
+    git(fixture, "worktree", "add", "-q", "-b", "work", other);
+    mkdirSync(join(other, "changes/fixed"), { recursive: true });
+    writeFileSync(join(other, "changes/fixed/2026-11-26-work.md"), change(name("b", "mp4")));
+
+    mkdirSync(store, { recursive: true });
+    for (const file of [name("a"), name("b", "mp4"), name("c"), name("d")]) {
+      writeFileSync(join(store, file), "picture");
+    }
+    const now = Date.now();
+    const ages = { [name("d")]: 0 } as Record<string, number>;
+    const stored = storedMedia(store).map((file) => ({
+      ...file,
+      stored: now - (ages[file.name] ?? 30) * 86_400_000,
+    }));
+
+    expect(referencedMedia(fixture)).toEqual(new Set([name("a"), name("b", "mp4")]));
+    expect(
+      orphanedMedia(stored, referencedMedia(fixture), now, 14).map(({ name }) => name),
+    ).toEqual([name("c")]);
+  } finally {
+    rmSync(other, { recursive: true, force: true });
+  }
 });

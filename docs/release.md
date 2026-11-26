@@ -585,14 +585,15 @@ Apple signing, updater, Agent runtime, Browser runtime, or provenance changes.
    through the ordinary source workflow. `vp run release:check` validates the
    version sources, `CHANGELOG.md` and every change file, including media references.
 2. Wait for **Nightly Release** to succeed and test the published Nightly.
-3. Read what the Nightly would publish, write the release's headline, and
-   dispatch **Release** with both. A blank tag selects the newest published
-   Nightly. Without `--headline`, the local command prints the tag, source, age,
-   version and entries and stops; with one, it dispatches and returns the run
-   URL.
+3. Preview the Nightly and publish its media before writing the headline. A
+   blank tag selects the newest published Nightly. The preview includes the
+   source SHA, release entries, Added and Changed entries without media, and
+   media still to publish. Promotion dispatches **Release** and returns the run
+   URL once all referenced media is published.
 
    ```bash
    vp run release:promote -- v0.5.5-nightly.20261111.2531
+   python3 notes.local/secrets/use.py run cloudflare.r2_media -- vp run media:publish -- <source-sha> --report notes.local/artifacts/release-media/publish.json
    vp run release:promote -- v0.5.5-nightly.20261111.2531 --headline "Team Spaces and coordinated Agent work"
    ```
 
