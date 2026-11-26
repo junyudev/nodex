@@ -1071,7 +1071,7 @@ creates a second message, and does not count against the Agent budget again.
   capture is never linked to the chat it was written in: the Inbox is for
   deciding later where it belongs.
 - The Inbox header offers:
-  - the `Inbox` and `Activity` views, as pills with their glyphs like a
+  - the `Inbox`, `Snoozed` and `Activity` views, as pills with their glyphs like a
     Database's views, the Inbox showing its count;
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox, then `Open Notes` beside it: the two places a decided
@@ -1088,6 +1088,15 @@ creates a second message, and does not count against the Agent budget again.
 
   Each Inbox is a tab, so its header spans the tab like a Board's: views at
   the start and tools at the end, in the same places as on every other tab.
+  A narrow tab never overlaps them. The header folds only as far as it must:
+  first `Pause all Agent work`, `Aerial view`, the Board or Database and
+  `Open Notes` gather, in that order, into `More actions`; then the views other
+  than the current one show only their glyphs and counts, and last the current
+  one does too. A folded view names itself on hover. `Paused · Resume` and
+  `Inbox settings` stay in view at every width. Below the header, a message's
+  decision moves under its icons before it shortens its target, which its
+  tooltip keeps whole, and the `How the Inbox plans` card moves each label
+  above its value.
 
 - `Settings → Inbox` holds these Profile preferences:
   - under `Nodex`:

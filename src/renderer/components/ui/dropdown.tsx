@@ -295,6 +295,7 @@ export interface NodexDropdownMenuProps {
   triggerTooltipShortcutLabel?: string;
   triggerTooltipDelay?: number;
   triggerTooltipSideOffset?: number;
+  triggerTooltipSide?: "top" | "right" | "bottom" | "left";
   children: ReactNode;
   disabled?: boolean;
   open?: boolean;
@@ -320,6 +321,7 @@ export function NodexDropdownMenu({
   triggerTooltipShortcutLabel,
   triggerTooltipDelay,
   triggerTooltipSideOffset = 4,
+  triggerTooltipSide = "top",
   children,
   disabled = false,
   open,
@@ -351,7 +353,7 @@ export function NodexDropdownMenu({
         <NodexTooltip
           tooltipContent={triggerTooltipContent}
           shortcutLabel={triggerTooltipShortcutLabel}
-          side="top"
+          side={triggerTooltipSide}
           sideOffset={triggerTooltipSideOffset}
           delay={triggerTooltipDelay}
         >

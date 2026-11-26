@@ -2,7 +2,10 @@ import { FormattedMessage, useIntl, type MessageDescriptor, defineMessage } from
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
 import { InboxProblemRow } from "./inbox-problem-row";
-import { SpaceExecutionHoldControl } from "@/components/workbench/execution-hold-controls";
+import {
+  SpaceExecutionPause,
+  SpaceExecutionResume,
+} from "@/components/workbench/execution-hold-controls";
 import { useInboxClock } from "./use-inbox-clock";
 import { consumeInboxEntryOpen, useInboxEntryOpen } from "../../lib/inbox-entry-navigation";
 import { InboxTurnRow } from "./inbox-turn-row";
@@ -42,16 +45,24 @@ import {
   DispatchIcon,
   ListLayoutIcon,
   InboxIcon,
+  MoreActionsIcon,
   RefreshIcon,
 } from "@/components/shared/icons";
 import { useApplicationPending } from "@/bootstrap/application-surface";
 import { NodexButton } from "@/components/ui/button";
+import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   SURFACE_TOOLBAR_ROW_CLASS,
   surfaceViewPillClassName,
 } from "@/components/workbench/surface-toolbar";
 import { AERIAL_VIEW_TITLE } from "@/lib/workbench-panel-actions";
 import { ToolbarIconButton } from "@/components/workbench/workbench-panel-controls";
+import {
+  TOOLBAR_BUTTON_BASE_CLASS,
+  TOOLBAR_BUTTON_GHOST_CLASS,
+} from "@/lib/workbench-toolbar-control-styles";
+import { useRowFolds } from "@/lib/use-row-folds";
 import type { ShowPagesInChatInput } from "@/lib/page-chat-actions";
 import { usePageChatActivitySummaries } from "@/lib/use-page-chat-activity-summaries";
 import { cn } from "@/lib/utils";
@@ -115,6 +126,32 @@ const INBOX_VIEWS = {
   },
 } as const satisfies Record<InboxView, { label: MessageDescriptor; icon: unknown }>;
 
+/**
+ * How the header gives way as its tab narrows: first its tools gather into a menu, then the other
+ * views show only their glyphs and counts, and last the current view does too, so the reader sees
+ * where they are for as long as there is room. Inbox settings and a paused Space stay in view.
+ */
+const INBOX_HEADER_FOLDS = ["fold-tools", "fold-other-views", "fold-current-view"] as const;
+
+/**
+ * When a view's name folds, by whether the view is current: how many folds the header needs by
+ * then, and its pill, name and count after; whole class names, for Tailwind.
+ */
+const VIEW_FOLD = {
+  current: {
+    folds: INBOX_HEADER_FOLDS.indexOf("fold-current-view") + 1,
+    pill: "group-data-fold-current-view/inbox-header:px-2",
+    name: "group-data-fold-current-view/inbox-header:sr-only",
+    count: "group-data-fold-current-view/inbox-header:ml-1",
+  },
+  other: {
+    folds: INBOX_HEADER_FOLDS.indexOf("fold-other-views") + 1,
+    pill: "group-data-fold-other-views/inbox-header:px-2",
+    name: "group-data-fold-other-views/inbox-header:sr-only",
+    count: "group-data-fold-other-views/inbox-header:ml-1",
+  },
+} as const;
+
 export interface InboxRouteProps {
   /**
    * Which Inbox to show. Each is the Home tab of its Scene: the Library Inbox of its own Scene,
@@ -169,60 +206,133 @@ function InboxHeader({
   readonly onOpenSettings: () => void;
 }) {
   const intl = useIntl();
+  const headerRef = useRef<HTMLElement>(null);
+  const viewsRef = useRef<HTMLDivElement>(null);
+  const folded = useRowFolds(headerRef, viewsRef, INBOX_HEADER_FOLDS);
+  // The Agents at a glance, then where decided messages go: todos to the Board, notes to Notes.
+  // Inline while they fit, gathered into the menu once the header folds them.
+  const tools = [
+    {
+      id: "aerial",
+      label: intl.formatMessage(AERIAL_VIEW_TITLE),
+      Icon: AerialViewIcon,
+      open: onOpenAgents,
+    },
+    ...(databaseId
+      ? [
+          {
+            id: "database",
+            label: databaseLabel,
+            Icon: BoardIcon,
+            open: () => onOpenDatabase(databaseId),
+          },
+        ]
+      : []),
+    {
+      id: "notes",
+      label: intl.formatMessage({ id: "inbox.inboxRoute.openNotes", defaultMessage: "Open Notes" }),
+      Icon: NoteIcon,
+      open: onOpenNotes,
+    },
+  ];
+  const moreLabel = intl.formatMessage({
+    id: "inbox.inboxRoute.moreActions",
+    defaultMessage: "More actions",
+  });
   return (
     // An Inbox is its Scene's Home tab, so it tops the tab like a Board's views do.
-    <header className={cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0")}>
+    <header
+      ref={headerRef}
+      className={cn(SURFACE_TOOLBAR_ROW_CLASS, "group/inbox-header shrink-0")}
+    >
       <div
+        ref={viewsRef}
         role="tablist"
         aria-label={intl.formatMessage({
           id: "inbox.inboxRoute.inboxView",
           defaultMessage: "Inbox view",
         })}
-        className="-ml-1 flex min-w-0 items-center"
+        // As tall as the row and inset at its ends, so a scrolling tab list keeps focus rings whole.
+        className="hide-scrollbar -ml-1.5 flex min-w-0 flex-1 items-center self-stretch overflow-x-auto px-0.5"
       >
         {(["inbox", "snoozed", "activity"] as const).map((option) => {
           const ViewIcon = INBOX_VIEWS[option].icon;
+          const label = intl.formatMessage(INBOX_VIEWS[option].label);
           const count = option === "inbox" ? inboxCount : option === "snoozed" ? snoozedCount : 0;
+          const current = view === option;
+          const viewFold = VIEW_FOLD[current ? "current" : "other"];
           return (
-            <button
+            // A folded view keeps its name for assistive technology and a pointer's hover.
+            <NodexTooltip
               key={option}
-              type="button"
-              role="tab"
-              aria-selected={view === option}
-              onClick={() => onViewChange(option)}
-              className={cn(surfaceViewPillClassName({ active: view === option }), "mx-0.5")}
+              tooltipContent={label}
+              side="bottom"
+              disabled={folded < viewFold.folds}
             >
-              <ViewIcon className="size-4 shrink-0 text-current" />
-              <span className="ml-1.5">{intl.formatMessage(INBOX_VIEWS[option].label)}</span>
-              {count > 0 ? (
-                <span className="ml-1.5 font-normal text-token-text-tertiary tabular-nums">
-                  {count}
-                </span>
-              ) : null}
-            </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={current}
+                onClick={() => onViewChange(option)}
+                className={cn(
+                  surfaceViewPillClassName({ active: current }),
+                  "mx-0.5 group-data-fold-other-views/inbox-header:mx-0",
+                  viewFold.pill,
+                )}
+              >
+                <ViewIcon className="size-4 shrink-0 text-current" />
+                <span className={cn("ml-1.5", viewFold.name)}>{label}</span>
+                {count > 0 ? (
+                  <span
+                    className={cn(
+                      "ml-1.5 font-normal text-token-text-tertiary tabular-nums",
+                      viewFold.count,
+                    )}
+                  >
+                    {count}
+                  </span>
+                ) : null}
+              </button>
+            </NodexTooltip>
           );
         })}
       </div>
-      <div className="ml-auto flex items-center gap-0.5">
-        <SpaceExecutionHoldControl />
-        <ToolbarIconButton label={intl.formatMessage(AERIAL_VIEW_TITLE)} onClick={onOpenAgents}>
-          <AerialViewIcon className="icon-sm" />
-        </ToolbarIconButton>
-        {/* Where decided messages go: todos to the Board, notes to Notes. */}
-        {databaseId ? (
-          <ToolbarIconButton label={databaseLabel} onClick={() => onOpenDatabase(databaseId)}>
-            <BoardIcon className="icon-sm" />
-          </ToolbarIconButton>
-        ) : null}
-        <ToolbarIconButton
-          label={intl.formatMessage({
-            id: "inbox.inboxRoute.openNotes",
-            defaultMessage: "Open Notes",
-          })}
-          onClick={onOpenNotes}
+      <div className="flex shrink-0 items-center gap-0.5">
+        <SpaceExecutionResume />
+        <div className="flex items-center gap-0.5 group-data-fold-tools/inbox-header:hidden">
+          <SpaceExecutionPause />
+          {tools.map(({ id, label, Icon, open }) => (
+            <ToolbarIconButton key={id} label={label} onClick={open}>
+              <Icon className="icon-sm" />
+            </ToolbarIconButton>
+          ))}
+        </div>
+        <NodexDropdownMenu
+          align="end"
+          side="bottom"
+          triggerTooltipContent={moreLabel}
+          triggerTooltipSide="bottom"
+          triggerButton={
+            <button
+              type="button"
+              aria-label={moreLabel}
+              className={cn(
+                TOOLBAR_BUTTON_BASE_CLASS,
+                TOOLBAR_BUTTON_GHOST_CLASS,
+                "hidden group-data-fold-tools/inbox-header:flex",
+              )}
+            >
+              <MoreActionsIcon className="icon-sm" />
+            </button>
+          }
         >
-          <NoteIcon className="icon-sm" />
-        </ToolbarIconButton>
+          <SpaceExecutionPause item />
+          {tools.map(({ id, label, Icon, open }) => (
+            <NodexDropdownItem key={id} leftSlot={<Icon className="icon-xs" />} onSelect={open}>
+              {label}
+            </NodexDropdownItem>
+          ))}
+        </NodexDropdownMenu>
         {!isRemoteSpace() ? (
           <InboxAgentsPopover agents={agents} onOpenSettings={onOpenSettings} />
         ) : null}

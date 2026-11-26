@@ -121,10 +121,11 @@ export function InboxTurnRow({
         className="flex w-fit max-w-[80%] min-w-[min(18rem,80%)] flex-col overflow-hidden rounded-2xl border border-token-border"
       >
         <div className="flex flex-col gap-1 border-b border-token-border px-3 py-2">
-          <div className="flex min-w-0 items-center gap-3">
+          {/* A narrow card moves its state below the title rather than cutting the title short. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
             <button
               type="button"
-              className="min-w-0 flex-1 truncate text-left text-sm font-medium"
+              className="min-w-0 flex-[1_1_10rem] truncate text-left text-sm font-medium"
               onClick={onOpenPage}
             >
               {item.title}

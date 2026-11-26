@@ -97,7 +97,8 @@ export function InboxActivityFilters({
         id: "inbox.inboxActivity.activityFilter",
         defaultMessage: "Activity filter",
       })}
-      className="mx-auto flex w-full max-w-(--thread-content-max-width) shrink-0 items-center gap-0.5 px-toolbar pt-2 pb-1"
+      // A narrow Inbox wraps whole filters to another line rather than breaking a name.
+      className="mx-auto flex w-full max-w-(--thread-content-max-width) shrink-0 flex-wrap items-center gap-0.5 px-toolbar pt-2 pb-1"
     >
       {(Object.keys(ACTIVITY_FILTER_LABELS) as ActivityFilter[]).map((option) => (
         <button
@@ -106,7 +107,7 @@ export function InboxActivityFilters({
           aria-pressed={filter === option}
           onClick={() => onChange(option)}
           className={cn(
-            "cursor-interaction rounded-md px-2 py-1 text-xs",
+            "cursor-interaction shrink-0 rounded-md px-2 py-1 text-xs whitespace-nowrap",
             filter === option
               ? "bg-token-foreground/5 text-token-foreground"
               : "text-token-description-foreground hover:text-token-foreground",

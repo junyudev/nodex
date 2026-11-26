@@ -5,7 +5,11 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexDropdownMenu } from "@/components/ui/dropdown";
 import { openNodexMenu } from "@/test/dom";
 import type { ExecutionHold } from "../../../shared/work-application";
-import { PageExecutionHoldItem, SpaceExecutionHoldControl } from "./execution-hold-controls";
+import {
+  PageExecutionHoldItem,
+  SpaceExecutionPause,
+  SpaceExecutionResume,
+} from "./execution-hold-controls";
 import { useComposerExecutionHold } from "@/features/local-conversation/view/composer/use-composer-execution-hold";
 const state = vi.hoisted(() => ({
   holds: [] as ExecutionHold[],
@@ -43,7 +47,12 @@ beforeEach(() => {
 });
 describe("execution hold controls", () => {
   test("the Inbox pauses all work and offers a quiet Resume action", async () => {
-    wrap(<SpaceExecutionHoldControl />);
+    wrap(
+      <>
+        <SpaceExecutionResume />
+        <SpaceExecutionPause />
+      </>,
+    );
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Pause all Agent work" }));
       await Promise.resolve();

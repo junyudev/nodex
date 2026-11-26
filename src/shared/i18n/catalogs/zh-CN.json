@@ -5634,6 +5634,7 @@
   "inbox.inboxRoute.inboxView": "收件箱视图",
   "inbox.inboxRoute.loading": "正在加载…",
   "inbox.inboxRoute.markDone": "标记为完成",
+  "inbox.inboxRoute.moreActions": "更多操作",
   "inbox.inboxRoute.nothingInValueYet": "{value1} 还没有消息",
   "inbox.inboxRoute.nothingInYourInboxYet": "你的收件箱还没有消息",
   "inbox.inboxRoute.openBoard": "打开看板",

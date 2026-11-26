@@ -27,11 +27,12 @@ import { INBOX_ROUTING_PREFERENCES_PLACEHOLDER } from "./inbox-presentation";
 
 function Row({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
-    <>
-      {/* A label sits on the first line of its value, whose controls are a row tall. */}
-      <dt className="py-[3.5px] text-token-description-foreground">{label}</dt>
+    // A label sits beside its value while the card is wide enough for both, else above it.
+    <div className="flex flex-col gap-1 @xs/planning:grid @xs/planning:grid-cols-[7.75rem_minmax(0,1fr)] @xs/planning:gap-x-3">
+      {/* Beside its value, a label sits on the value's first line, whose controls are a row tall. */}
+      <dt className="text-token-description-foreground @xs/planning:py-[3.5px]">{label}</dt>
       <dd className="min-w-0 text-token-foreground">{children}</dd>
-    </>
+    </div>
   );
 }
 
@@ -179,11 +180,12 @@ function ModelRow({
     <li data-inbox-planning-model={model.key} className="flex min-w-0 items-start gap-2.5">
       <BudgetRing model={model} nowMs={nowMs} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-6 items-center gap-2">
-          <span className="min-w-0 truncate font-medium">{model.title}</span>
+        {/* A narrow card moves the budget under the title rather than cutting the title short. */}
+        <div className="flex min-h-6 flex-wrap items-center gap-x-2">
+          <span className="min-w-0 flex-[1_1_6rem] truncate font-medium">{model.title}</span>
           <span
             className={cn(
-              "ml-auto shrink-0 text-token-description-foreground tabular-nums",
+              "shrink-0 text-token-description-foreground tabular-nums",
               (budget.kind === "left" || budget.kind === "balance") && BUDGET_TONE[budget.severity],
               budget.kind === "left" && budget.readAgo && "opacity-60",
               budget.kind === "spent" && "text-(--red-text)",
@@ -433,11 +435,11 @@ export function InboxPlanningSummary({
       })}
       data-testid="inbox-planning"
       className={cn(
-        "flex w-full max-w-124 flex-col gap-2.5 rounded-2xl bg-token-foreground/[0.025] px-4 pt-3.5 pb-3 text-left text-xs leading-[17px] ring-[0.5px] ring-token-border [corner-shape:superellipse(1.5)]",
+        "@container/planning flex w-full max-w-124 flex-col gap-2.5 rounded-2xl bg-token-foreground/[0.025] px-4 pt-3.5 pb-3 text-left text-xs leading-[17px] ring-[0.5px] ring-token-border [corner-shape:superellipse(1.5)]",
         className,
       )}
     >
-      <dl className="grid grid-cols-[7.75rem_minmax(0,1fr)] gap-x-3 gap-y-3">
+      <dl className="flex flex-col gap-3">
         {planning.kind === "off" ? (
           <Row
             label={intl.formatMessage({

@@ -98,9 +98,16 @@ function Settle({ id, children }: { readonly id: string; readonly children: Reac
   );
 }
 
-/** One line of the strip, or the action row beneath the card. */
+/**
+ * The action row beneath the card. A decision too wide for what is left beside the icons moves
+ * under them, still at the trailing edge, before it shortens its target.
+ */
 function Row({ children }: { readonly children: ReactNode }) {
-  return <div className="flex min-h-6 items-center gap-2">{children}</div>;
+  return (
+    <div className="flex min-h-6 flex-wrap items-center justify-end gap-x-2 gap-y-1">
+      {children}
+    </div>
+  );
 }
 
 function Notice({
@@ -229,9 +236,10 @@ function Decision({
     <NodexButton
       size="xs"
       variant={variant}
+      // A narrow row shortens its target rather than overflowing; the tooltip keeps it whole.
       // An outlined split shares one border between its halves.
       className={cn(
-        "min-w-0 gap-1.5",
+        "min-w-0 shrink gap-1.5",
         menu && "rounded-e-none",
         menu && variant === "outline" && "border-e-0",
       )}
@@ -244,7 +252,7 @@ function Decision({
   );
   const decision = disabledReason ? (
     <NodexTooltip tooltipContent={disabledReason} side="top">
-      <span>{button}</span>
+      <span className="flex min-w-0">{button}</span>
     </NodexTooltip>
   ) : target ? (
     <NodexTooltip
@@ -353,7 +361,8 @@ function ChatAgentMenu({
               defaultMessage: "Choose the model for this chat",
             })
           }
-          className="min-w-0 gap-1 rounded-s-none px-1.5"
+          // The model gives way before the decision's target does.
+          className="min-w-0 shrink-[3] gap-1 rounded-s-none px-1.5"
         >
           {changed ? (
             <InboxAgentLabel
