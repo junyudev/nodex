@@ -37,8 +37,7 @@ import { NodexMenuRowContent, nodexMenuRowClassName } from "@/components/ui/menu
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { NodexOverflowTooltip, NodexTooltip } from "@/components/ui/tooltip";
-import { useIntl, type IntlShape } from "@/lib/i18n";
-import type { Project } from "@/lib/types";
+import { useIntl } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
   reorderNewTabShortcuts,
@@ -58,8 +57,6 @@ import {
   TOOLBAR_BUTTON_GHOST_CLASS,
 } from "@/lib/workbench-toolbar-control-styles";
 import type { CommandKeymapState } from "../../../shared/command-keybindings";
-import { PanelDestinationPicker } from "./panel-destination-picker";
-import type { PanelDestination } from "./panel-destination-picker-model";
 
 /** The stored arrangement a New tab reads and writes; see `useNewTabShortcutPreference`. */
 export interface NewTabShortcutBinding {
@@ -74,10 +71,7 @@ export interface NewTabOpenSectionProps {
   readonly shortcuts: NewTabShortcutBinding;
   readonly isMac: boolean;
   readonly commandKeymapState?: CommandKeymapState | null;
-  readonly projects: readonly Project[];
-  readonly currentProjectId: string | null;
   readonly onSelectAction: (kind: PanelNewTabActionKind) => void;
-  readonly onOpenDestination: (destination: PanelDestination) => void;
   /** Present when Terminal can also open in the bottom panel. */
   readonly bottomTerminal: { readonly shortcut: string | null; readonly onOpen: () => void } | null;
 }
@@ -89,7 +83,6 @@ const TILE_SHELL_CLASS =
 const TILE_FOCUS_CLASS =
   "cursor-interaction rounded-2xl outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-token-border-xstrong";
 const TILE_LABEL_CLASS = "max-w-full truncate text-sm text-token-text-primary";
-const PAGE_PICKER_CONTENT_CLASS = "w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0";
 
 type SectionMode = "tiles" | "menu" | "customize";
 
@@ -102,17 +95,12 @@ export function NewTabOpenSection({
   shortcuts,
   isMac,
   commandKeymapState,
-  projects,
-  currentProjectId,
   onSelectAction,
-  onOpenDestination,
   bottomTerminal,
 }: NewTabOpenSectionProps) {
   const intl = useIntl();
   const headingId = useId();
   const [mode, setMode] = useState<SectionMode>("tiles");
-  const [menuPagePickerOpen, setMenuPagePickerOpen] = useState(false);
-  const [moreButton, setMoreButton] = useState<HTMLButtonElement | null>(null);
   const deferredSelectionRef = useRef<PanelNewTabActionKind | null>(null);
   // Switching between the menu button and Done swaps the focused control; focus follows it.
   const focusHeaderButtonRef = useRef(false);
@@ -132,32 +120,6 @@ export function NewTabOpenSection({
     resolvePanelActionShortcutLabel(tool, isMac, commandKeymapState);
   const togglePin = (kind: PanelNewTabActionKind) =>
     update(toggleNewTabShortcutPin(layout, preference, kind));
-  const pagePicker = (onDone: () => void) => (
-    <PanelDestinationPicker
-      projects={projects}
-      scope="page-only"
-      ariaLabel={intl.formatMessage({
-        id: "workbench.newTabOpenSection.openPage",
-        defaultMessage: "Open Page",
-      })}
-      placeholder={intl.formatMessage({
-        id: "workbench.newTabOpenSection.openPagePlaceholder",
-        defaultMessage: "Open Page…",
-      })}
-      currentProjectId={currentProjectId}
-      onClose={onDone}
-      onAccept={(destination) => {
-        onDone();
-        onOpenDestination(destination);
-      }}
-    />
-  );
-  // A menu choice that opens its own surface waits until the menu has closed and returned
-  // focus, so the new surface keeps it.
-  const runSelection = (kind: PanelNewTabActionKind) => {
-    if (kind === "page_stage") setMenuPagePickerOpen(true);
-    else onSelectAction(kind);
-  };
   const exitCustomize = () => {
     focusHeaderButtonRef.current = true;
     setMode("tiles");
@@ -210,15 +172,12 @@ export function NewTabOpenSection({
               const deferred = deferredSelectionRef.current;
               if (open || deferred === null) return;
               deferredSelectionRef.current = null;
-              runSelection(deferred);
+              onSelectAction(deferred);
             }}
           >
             <NodexPopoverTrigger>
               <button
-                ref={(node) => {
-                  setMoreButton(node);
-                  takeFocusOnMount(node);
-                }}
+                ref={takeFocusOnMount}
                 type="button"
                 aria-label={intl.formatMessage({
                   id: "workbench.newTabOpenSection.options",
@@ -236,6 +195,7 @@ export function NewTabOpenSection({
               bottomTerminal={bottomTerminal}
               canReset={preference !== null}
               onSelect={(kind) => {
+                // Open the surface after the menu returns focus so the surface keeps it.
                 deferredSelectionRef.current = kind;
                 setMode("tiles");
               }}
@@ -252,19 +212,6 @@ export function NewTabOpenSection({
             />
           </NodexPopover>
         )}
-        {/* `Open page…` chosen from the menu shows its picker beneath the menu button. */}
-        <NodexPopover
-          open={menuPagePickerOpen}
-          onOpenChange={(open) => setMenuPagePickerOpen(open)}
-        >
-          <NodexPopoverContent
-            anchor={moreButton}
-            align="end"
-            className={PAGE_PICKER_CONTENT_CLASS}
-          >
-            {menuPagePickerOpen ? pagePicker(() => setMenuPagePickerOpen(false)) : null}
-          </NodexPopoverContent>
-        </NodexPopover>
       </div>
       {customizing ? (
         <CustomizeGrid
@@ -275,29 +222,15 @@ export function NewTabOpenSection({
         />
       ) : layout.pinned.length > 0 ? (
         <div className={GRID_CLASS}>
-          {layout.pinned.map((tool) =>
-            tool.kind === "page_stage" ? (
-              <PageTile key={tool.kind} tool={tool} renderPicker={pagePicker} />
-            ) : (
-              <NodexOverflowTooltip key={tool.kind} content={tool.label}>
-                <ToolTile tool={tool} onClick={() => onSelectAction(tool.kind)} />
-              </NodexOverflowTooltip>
-            ),
-          )}
+          {layout.pinned.map((tool) => (
+            <NodexOverflowTooltip key={tool.kind} content={tool.label}>
+              <ToolTile tool={tool} onClick={() => onSelectAction(tool.kind)} />
+            </NodexOverflowTooltip>
+          ))}
         </div>
       ) : null}
     </section>
   );
-}
-
-/** `Open page…` names the Page picker it opens. */
-function toolTitle(tool: PanelNewTabAction, intl: IntlShape): string {
-  return tool.kind === "page_stage"
-    ? intl.formatMessage(
-        { id: "workbench.newTabOpenSection.openPageTool", defaultMessage: "{label}…" },
-        { label: tool.label },
-      )
-    : tool.label;
 }
 
 function TileShell({
@@ -323,38 +256,15 @@ function ToolTile({
   tool,
   ...buttonProps
 }: { readonly tool: PanelNewTabAction } & ComponentProps<"button">) {
-  const intl = useIntl();
-  const title = toolTitle(tool, intl);
   return (
     <button
       type="button"
-      aria-label={title}
+      aria-label={tool.label}
       className={cn("min-w-0", TILE_FOCUS_CLASS)}
       {...buttonProps}
     >
-      <TileShell leading={<tool.Icon className="icon-xs" />}>{title}</TileShell>
+      <TileShell leading={<tool.Icon className="icon-xs" />}>{tool.label}</TileShell>
     </button>
-  );
-}
-
-/** A pinned `Open page…` opens the Page picker beneath its tile. */
-function PageTile({
-  tool,
-  renderPicker,
-}: {
-  readonly tool: PanelNewTabAction;
-  readonly renderPicker: (onDone: () => void) => ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <NodexPopover open={open} onOpenChange={setOpen}>
-      <NodexPopoverTrigger>
-        <ToolTile tool={tool} />
-      </NodexPopoverTrigger>
-      <NodexPopoverContent align="start" className={PAGE_PICKER_CONTENT_CLASS}>
-        {open ? renderPicker(() => setOpen(false)) : null}
-      </NodexPopoverContent>
-    </NodexPopover>
   );
 }
 
@@ -414,16 +324,16 @@ function ShortcutMenu({
       <div className="flex flex-col gap-px">
         {tools.map((tool) => {
           const pinned = pinnedKinds.has(tool.kind);
-          const title = toolTitle(tool, intl);
+          const { label } = tool;
           const shortcut = shortcutFor(tool);
           const pinLabel = pinned
             ? intl.formatMessage(
                 { id: "workbench.newTabOpenSection.unpin", defaultMessage: "Unpin {tool}" },
-                { tool: title },
+                { tool: label },
               )
             : intl.formatMessage(
                 { id: "workbench.newTabOpenSection.pin", defaultMessage: "Pin {tool}" },
-                { tool: title },
+                { tool: label },
               );
           return (
             <div
@@ -448,7 +358,7 @@ function ShortcutMenu({
                     ) : null
                   }
                 >
-                  {title}
+                  {label}
                 </NodexMenuRowContent>
               </button>
               <NodexTooltip tooltipContent={pinLabel} side="right">
@@ -595,7 +505,7 @@ function CustomizeTile({
   readonly onToggle: () => void;
 }) {
   const intl = useIntl();
-  const title = toolTitle(tool, intl);
+  const { label } = tool;
   const {
     attributes,
     listeners,
@@ -616,7 +526,7 @@ function CustomizeTile({
         type="button"
         role="checkbox"
         aria-checked={checked}
-        aria-label={title}
+        aria-label={label}
         // The whole tile drags; a press that never travels stays a toggle.
         onPointerDown={(event) => listeners?.onPointerDown?.(event)}
         onClick={onToggle}
@@ -629,7 +539,7 @@ function CustomizeTile({
             />
           }
         >
-          {title}
+          {label}
         </TileShell>
       </button>
       <button
@@ -639,7 +549,7 @@ function CustomizeTile({
         ref={setActivatorNodeRef}
         aria-label={intl.formatMessage(
           { id: "workbench.newTabOpenSection.move", defaultMessage: "Move {tool}" },
-          { tool: title },
+          { tool: label },
         )}
         className="absolute end-2.5 top-3.5 flex size-7 cursor-grab touch-none items-center justify-center rounded-md text-token-text-tertiary outline-none focus-visible:outline-2 focus-visible:outline-token-border-xstrong active:cursor-grabbing @md:end-4.5"
       >

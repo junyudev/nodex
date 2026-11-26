@@ -1,6 +1,5 @@
 import { runWithCleanup } from "./run-with-cleanup";
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { PanelDestination } from "@/components/workbench/panel-destination-picker-model";
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import type { LibraryRouteTarget } from "../../shared/library-module";
 import type { WorkbenchSceneOwner } from "../../shared/workbench-scene";
@@ -10,13 +9,12 @@ import { planNewTabReplacement } from "./workbench-new-tab-model";
 import type { PanelNewTabAction, PanelNewTabActionKind } from "./workbench-panel-actions";
 import type { ExecuteWorkbenchUiCommand } from "./use-workbench-scene-commands";
 import type { WorkbenchWindowOwner } from "./workbench-window-owner";
-import type { PanelId, Project } from "./types";
+import type { PanelId } from "./types";
 
 /** What a New tab can become. */
 export type WorkbenchNewTabIntent =
   | { readonly kind: "action"; readonly action: PanelNewTabActionKind }
   | { readonly kind: "tab"; readonly tabId: string }
-  | { readonly kind: "destination"; readonly destination: PanelDestination }
   | {
       readonly kind: "library-target";
       readonly target: LibraryRouteTarget;
@@ -35,6 +33,7 @@ export interface WorkbenchNewTabPlacement {
 /** The owner-specific capabilities a New tab presents. */
 export interface WorkbenchNewTabOwnerContext {
   readonly actions: readonly PanelNewTabAction[];
+  /** New tab search ranks Pages from this Project first. */
   readonly currentProjectId: string | null;
   /** True when Terminal can also open in the closed bottom panel. */
   readonly canOpenBottomTerminal: boolean;
@@ -43,7 +42,6 @@ export interface WorkbenchNewTabOwnerContext {
 export interface WorkbenchNewTabPort {
   readonly isMac: boolean;
   readonly commandKeymapState: CommandKeymapState | null;
-  readonly projects: readonly Project[];
   readonly resolveOwnerContext: (
     owner: WorkbenchSceneOwner,
     panelId: PanelId,
@@ -64,10 +62,6 @@ export interface WorkbenchNewTabOwnerCommands {
   /** Opens an action in the placement; resolves false when nothing opened. */
   readonly runAction: (
     action: PanelNewTabActionKind,
-    placement: WorkbenchNewTabPlacement,
-  ) => Promise<boolean>;
-  readonly openDestination: (
-    destination: PanelDestination,
     placement: WorkbenchNewTabPlacement,
   ) => Promise<boolean>;
   readonly openLibraryTarget: (
@@ -106,17 +100,15 @@ export function useWorkbenchNewTabPortValue({
   executeSceneCommand,
   isMac,
   commandKeymapState,
-  projects,
   commands,
 }: {
   readonly windowOwner: WorkbenchWindowOwner;
   readonly executeSceneCommand: ExecuteWorkbenchUiCommand;
   readonly isMac: boolean;
   readonly commandKeymapState: CommandKeymapState | null;
-  readonly projects: readonly Project[];
   readonly commands: WorkbenchNewTabOwnerCommands;
 }): WorkbenchNewTabPort {
-  const { resolveOwnerContext, runAction, openDestination, openLibraryTarget } = commands;
+  const { resolveOwnerContext, runAction, openLibraryTarget } = commands;
   // One intent per New tab at a time: a second click while a Page is being created must not
   // create another one.
   const [pendingSurfaceIds] = useState(() => new Set<string>());
@@ -153,9 +145,7 @@ export function useWorkbenchNewTabPortValue({
     const opened =
       intent.kind === "action"
         ? await runAction(intent.action, placement)
-        : intent.kind === "destination"
-          ? await openDestination(intent.destination, placement)
-          : await openLibraryTarget(intent.target, { ...placement, title: intent.title });
+        : await openLibraryTarget(intent.target, { ...placement, title: intent.title });
     if (!opened) return;
 
     const plan = planNewTabReplacement({ newTabId: surfaceId, before, after: observe(owner) });
@@ -173,7 +163,6 @@ export function useWorkbenchNewTabPortValue({
   return {
     isMac,
     commandKeymapState,
-    projects,
     resolveOwnerContext,
     open: async ({ owner, surfaceId, intent }) => {
       if (pendingSurfaceIds.has(surfaceId)) return;

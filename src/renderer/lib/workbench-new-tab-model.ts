@@ -13,12 +13,16 @@ export const NEW_TAB_TOOL_RANK: readonly PanelNewTabActionKind[] = [
   "files",
   "review",
   "agents",
-  "page_stage",
   "db_view",
   "canvas_stage",
 ];
 
 const toolRanks = new Map(NEW_TAB_TOOL_RANK.map((kind, index) => [kind, index]));
+
+/** A New tab already is a Browser, and its search field opens Pages directly. */
+export function isNewTabToolKind(kind: PanelNewTabActionKind): boolean {
+  return kind !== "browser" && kind !== "page_stage";
+}
 
 /** A person's chosen order and pins for one panel's New tabs. */
 export interface NewTabShortcutPreference {
@@ -35,14 +39,14 @@ export interface NewTabShortcutLayout {
   readonly pinned: readonly PanelNewTabAction[];
 }
 
-/** Resolves the tools and pins available in this Scene. A New tab already is a Browser. */
+/** Resolves the New tab tools and pins available in this Scene. */
 export function resolveNewTabShortcutLayout(
   actions: readonly PanelNewTabAction[],
   preference: NewTabShortcutPreference | null,
 ): NewTabShortcutLayout {
   const available = new Map<PanelNewTabActionKind, PanelNewTabAction>();
   for (const action of actions) {
-    if (action.kind === "browser" || available.has(action.kind)) continue;
+    if (!isNewTabToolKind(action.kind) || available.has(action.kind)) continue;
     available.set(action.kind, action);
   }
 
@@ -61,7 +65,7 @@ export function resolveNewTabShortcutLayout(
   return { tools, pinned: tools.filter(({ kind }) => pinnedKinds.has(kind)) };
 }
 
-/** Fills visible slots in the saved order, keeping hidden tools and their pins in place. */
+/** Fills visible slots while preserving the order and pins of tools offered in other Scenes. */
 function mergeNewTabShortcutPreference(
   layout: NewTabShortcutLayout,
   preference: NewTabShortcutPreference | null,
@@ -69,11 +73,13 @@ function mergeNewTabShortcutPreference(
   nextPins: Iterable<PanelNewTabActionKind>,
 ): NewTabShortcutPreference {
   const visible = new Set(layout.tools.map(({ kind }) => kind));
-  const order = new Set([...(preference?.order ?? []), ...visible]);
+  const order = new Set([...(preference?.order ?? []).filter(isNewTabToolKind), ...visible]);
   const newVisibleOrder = [
     ...new Set([...nextKinds.filter((kind) => visible.has(kind)), ...visible]),
   ];
-  const hiddenPins = (preference?.pinned ?? []).filter((kind) => !visible.has(kind));
+  const hiddenPins = (preference?.pinned ?? []).filter(
+    (kind) => isNewTabToolKind(kind) && !visible.has(kind),
+  );
   const visiblePins = [...nextPins].filter((kind) => visible.has(kind));
   let nextIndex = 0;
 

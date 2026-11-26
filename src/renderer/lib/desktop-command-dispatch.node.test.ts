@@ -263,16 +263,16 @@ describe("decodeNewTabShortcutPreferences", () => {
     expect(decodeNewTabShortcutPreferences(value)).toEqual(value);
   });
 
-  test("keeps the first occurrence of each recognized tool and drops Browser", () => {
+  test("keeps the first occurrence of each recognized New tab tool", () => {
     expect(
       decodeNewTabShortcutPreferences({
         right: {
           order: ["browser", "files", 3, "files", "unknown", "new_page", "page_stage"],
-          pinned: ["terminal", null, "browser", "terminal", "new_page", "unknown"],
+          pinned: ["terminal", null, "browser", "terminal", "new_page", "unknown", "page_stage"],
         },
       }),
     ).toEqual({
-      right: { order: ["files", "new_page", "page_stage"], pinned: ["terminal", "new_page"] },
+      right: { order: ["files", "new_page"], pinned: ["terminal", "new_page"] },
     });
   });
 

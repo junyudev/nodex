@@ -20,7 +20,7 @@ describe("browser address suggestions", () => {
     title: string,
     quality: "exact" | "prefix" | "typo" = "exact",
   ) => ({
-    ...candidate(id, "page", title),
+    ...candidate(id, "content", title),
     pageMatches: [{ source: "title" as const, quality, parts: [] }],
   });
 
@@ -34,13 +34,18 @@ describe("browser address suggestions", () => {
           candidate("tool", "launch-action", "Terminal"),
           candidate("tab", "switch-tab", "My—Terminal"),
           candidate("middle", "switch-tab", "Notes"),
-          candidate("page", "page", "Notes"),
         ]),
       ).toEqual(["tool", "tab", "typed"]);
       expect(rowIds("ÉD", [candidate("accented", "switch-tab", "Mon Éditeur")])).toEqual([
         "accented",
         "typed",
       ]);
+      expect(
+        rowIds("new pa", [
+          candidate("tool", "launch-action", "New page"),
+          candidate("tab", "switch-tab", "Renew page"),
+        ]),
+      ).toEqual(["tool", "typed"]);
     });
 
     test("orders exact, prefix and word-substring matches, then tools before tabs, preserving source order", () => {
@@ -68,7 +73,7 @@ describe("browser address suggestions", () => {
 
     test("keeps body-only Page evidence and ranks strong hits ahead of typos", () => {
       const bodyOnly = {
-        ...candidate("body", "page", "Storage notes"),
+        ...candidate("body", "content", "Storage notes"),
         pageMatches: [
           {
             source: "body" as const,
@@ -80,6 +85,16 @@ describe("browser address suggestions", () => {
         ],
       };
       expect(rowIds("迁移", [bodyOnly])).toEqual(["typed", "body"]);
+      // A title match leads even when the body matches too.
+      const titleAndBody = {
+        ...bodyOnly,
+        id: "title-and-body",
+        pageMatches: [
+          { source: "title" as const, quality: "prefix" as const, parts: [] },
+          ...bodyOnly.pageMatches,
+        ],
+      };
+      expect(rowIds("迁移", [bodyOnly, titleAndBody])).toEqual(["title-and-body", "typed", "body"]);
       expect(
         rowIds("Ｍｉｇｒａｔｉｏｎ", [
           titlePage("loose", "Migartion", "typo"),
@@ -89,13 +104,14 @@ describe("browser address suggestions", () => {
       ).toEqual(["title", "typed", "body", "loose"]);
     });
 
-    test("keeps the first five Pages in relevance order", () => {
+    test("keeps Space content in relevance order, counting title-only catalog matches as strong", () => {
       expect(
-        rowIds(
-          "plan",
-          Array.from({ length: 6 }, (_, i) => titlePage(`page-${i}`, `Plan ${i}`)),
-        ),
-      ).toEqual(["page-0", "page-1", "page-2", "page-3", "page-4", "typed"]);
+        rowIds("plan", [
+          titlePage("loose", "Plna", "typo"),
+          candidate("database", "content", "Plans"),
+          ...Array.from({ length: 7 }, (_, i) => titlePage(`page-${i}`, `Plan ${i}`)),
+        ]),
+      ).toEqual(["database", "page-0", "page-1", "page-2", "page-3", "page-4", "page-5", "typed"]);
     });
 
     test("puts URL navigation first even when workspace titles match", () => {
@@ -132,17 +148,22 @@ describe("browser address suggestions", () => {
         expect(
           rowIds(query, [
             candidate("tool", "launch-action", query),
-            candidate("page", "page", query),
+            candidate("page", "content", query),
           ]),
         ).toEqual(["typed"]);
       },
     );
 
-    test("returns no suggestions for empty input and caps the result at eight without dropping the typed row", () => {
+    test("lists an empty address's own suggestions in order and caps a query at eight without dropping the typed row", () => {
       const tools = Array.from({ length: 12 }, (_, i) =>
         candidate(`tool-${i}`, "launch-action", `Tool ${i}`),
       );
-      expect(rowIds("  ", tools)).toEqual([]);
+      expect(
+        rowIds("  ", [
+          candidate("recent-2", "content", "B"),
+          candidate("recent-1", "content", "A"),
+        ]),
+      ).toEqual(["recent-2", "recent-1"]);
       expect(rowIds("tool", tools)).toEqual([
         "tool-0",
         "tool-1",

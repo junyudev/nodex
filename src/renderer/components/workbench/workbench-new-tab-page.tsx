@@ -3,6 +3,7 @@ import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons"
 import {
   createContext,
   useContext,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -11,7 +12,6 @@ import {
 } from "react";
 import {
   CanvasIcon,
-  ClockIcon,
   ChevronDownIcon,
   BoardIcon,
   PageIcon,
@@ -24,19 +24,32 @@ import {
   type BrowserAddressWorkspaceOption,
 } from "@/features/browser-sidebar/browser-sidebar-panel";
 import { readBrowserAddressWorkspaceQuery } from "@/features/browser-sidebar/browser-address-suggestions";
-import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
+import {
+  BrowserNewTabList,
+  type BrowserNewTabSuggestions,
+} from "@/features/browser-sidebar/browser-new-tab-list";
+import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
+import { StatusIcon } from "@/lib/status-presentation";
+import type { PageSearchTextPart } from "@/lib/types";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
 import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
-import { getPanelNewTabAction } from "@/lib/workbench-panel-actions";
+import {
+  getPanelNewTabAction,
+  resolvePanelActionShortcutLabel,
+} from "@/lib/workbench-panel-actions";
 import { presentWorkbenchPanelTabTitle } from "@/lib/workbench-panel-tab-title";
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { presentPageTitle } from "@/lib/page-title-projection-store";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
-import { NodexOverflowTooltip } from "@/components/ui/tooltip";
-import { formatNewTabRecentTime, resolveNewTabRecentsHeight } from "@/lib/workbench-new-tab-model";
+import {
+  formatNewTabRecentTime,
+  isNewTabToolKind,
+  resolveNewTabRecentsHeight,
+} from "@/lib/workbench-new-tab-model";
 import { useNewTabShortcutPreference } from "@/lib/workbench-new-tab-shortcuts";
 import { useWorkbenchNewTabPort, type WorkbenchNewTabIntent } from "@/lib/workbench-new-tab-port";
 import {
+  PANEL_TOOL_KEYCAP_CLASS,
   TOOLBAR_BUTTON_BASE_CLASS,
   TOOLBAR_BUTTON_GHOST_CLASS,
 } from "@/lib/workbench-toolbar-control-styles";
@@ -44,45 +57,56 @@ import type { PanelId } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCommandShortcutLabel } from "../../../shared/command-keybindings";
 import type { LibraryRouteTarget } from "../../../shared/library-module";
+import type { WorkbenchSurfaceReference } from "../../../shared/nodex-app-tools/workbench";
 import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
+import { NEW_TAB_SECTION_HEADING_CLASS, NewTabOpenSection } from "./new-tab-open-section";
 import {
-  NEW_TAB_SECTION_HEADING_CLASS,
-  NewTabOpenSection,
-  type NewTabOpenSectionProps,
-} from "./new-tab-open-section";
-import {
-  DEFAULT_SPACE_CONTENT_DATA_SOURCE,
   presentSpaceContentLocation,
   useSpaceContentResults,
-  type SpaceContentDataSource,
   type SpaceContentItem,
 } from "./space-content";
 
-export interface WorkbenchNewTabPageProps extends NewTabOpenSectionProps {
-  /** The page's search field: the Browser's address bar, which also finds tools, tabs and Pages. */
-  readonly search?: ReactNode;
-  readonly onOpenRecent: (item: SpaceContentItem) => void;
-  readonly recentsDataSource?: SpaceContentDataSource;
+export interface WorkbenchNewTabPageProps {
+  /** The page's search field: the Browser's address bar, which also finds tools, tabs and Space content. */
+  readonly search: ReactNode;
+  /** The search field's list: Recents before typing, matches while typing. */
+  readonly suggestions: BrowserNewTabSuggestions;
+  /** The `Open` section, when the New tab's Scene offers tools. */
+  readonly open?: ReactNode;
   /** Sections between Open and Recents, such as local servers. */
   readonly children?: ReactNode;
 }
 
 /**
- * The page a New tab shows: a search field, the tools pinned under `Open`, whatever else the
- * tab can open, then recent Space content. Every choice takes the New tab's place.
+ * The page a New tab shows. The list under its search field is the field's own: before typing,
+ * the tools pinned under `Open`, whatever else the tab can open, then Recents; while typing,
+ * only what the query matches, in their place. Every choice takes the New tab's place.
  */
 export function WorkbenchNewTabPage({
   search,
-  onOpenRecent,
-  recentsDataSource = DEFAULT_SPACE_CONTENT_DATA_SOURCE,
+  suggestions,
+  open,
   children,
-  ...openSection
 }: WorkbenchNewTabPageProps) {
+  const intl = useIntl();
+  if (suggestions.query) {
+    return (
+      <NewTabPageColumn search={search} typing>
+        <BrowserNewTabList
+          suggestions={suggestions}
+          aria-label={intl.formatMessage({
+            id: "workbench.workbenchNewTabPage.results",
+            defaultMessage: "Results",
+          })}
+        />
+      </NewTabPageColumn>
+    );
+  }
   return (
     <NewTabPageColumn search={search}>
-      <NewTabOpenSection {...openSection} />
+      {open}
       {children}
-      <NewTabRecents dataSource={recentsDataSource} onOpen={onOpenRecent} />
+      <NewTabRecents suggestions={suggestions} />
     </NewTabPageColumn>
   );
 }
@@ -90,23 +114,57 @@ export function WorkbenchNewTabPage({
 /**
  * One narrow column, centered in the tab, that every New tab section shares. The search sits a
  * quarter of the way down; when the sections need the room, that space gives way first, down
- * to its minimum, so Recents keeps its rows. The Browser panel hosting the page already ends
- * above a floating composer, so the page needs no clearance of its own.
+ * to its minimum, so Recents keeps its rows. While typing, results sit right under the search.
+ * The Browser panel hosting the page already ends above a floating composer, so the page needs
+ * no clearance of its own.
  */
 function NewTabPageColumn({
   search,
+  typing = false,
   children,
 }: {
-  readonly search?: ReactNode;
+  readonly search: ReactNode;
+  readonly typing?: boolean;
   readonly children: ReactNode;
 }) {
+  const topSpaceRef = useRef<HTMLDivElement>(null);
+  const typingRef = useRef(typing);
+  const settledTopRef = useRef<number | null>(null);
+  // The search stays where it was when typing began, however few results follow it: the space
+  // above it keeps the height it settled at before typing, still giving way if the tab shrinks,
+  // until the search is cleared.
+  useLayoutEffect(() => {
+    typingRef.current = typing;
+    const topSpace = topSpaceRef.current;
+    if (!topSpace) return undefined;
+    if (typing && settledTopRef.current !== null) {
+      topSpace.style.flex = `0 1 ${settledTopRef.current}px`;
+      return undefined;
+    }
+    topSpace.style.removeProperty("flex");
+    settledTopRef.current = topSpace.offsetHeight;
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      if (!typingRef.current) settledTopRef.current = topSpace.offsetHeight;
+    });
+    observer.observe(topSpace);
+    return () => observer.disconnect();
+  }, [typing]);
   return (
     <div
       data-new-tab-scroll-root=""
       className="@container-size flex h-full min-h-0 flex-col overflow-x-hidden overflow-y-auto bg-token-main-surface-primary px-panel pb-8 select-none [scrollbar-gutter:stable_both-edges]"
     >
-      <div aria-hidden data-new-tab-top-space="" className="min-h-8 shrink basis-[25cqh]" />
-      <div data-new-tab-column="" className="mx-auto flex w-full max-w-xl shrink-0 flex-col gap-8">
+      <div
+        ref={topSpaceRef}
+        aria-hidden
+        data-new-tab-top-space=""
+        className="min-h-8 shrink basis-[25cqh]"
+      />
+      <div
+        data-new-tab-column=""
+        className={cn("mx-auto flex w-full max-w-xl shrink-0 flex-col", typing ? "gap-2" : "gap-8")}
+      >
         {search}
         {children}
       </div>
@@ -118,23 +176,11 @@ export function NewTabSectionHeading({ children }: { readonly children: ReactNod
   return <h3 className={NEW_TAB_SECTION_HEADING_CLASS}>{children}</h3>;
 }
 
-const RECENT_ROW_CLASS =
-  "snap-start rounded-xl border-b border-token-border-light hover:border-transparent hover:bg-token-list-hover-background focus-within:border-transparent focus-within:bg-token-list-hover-background [&:has(+li:hover)]:border-transparent [&:has(+li:focus-within)]:border-transparent";
-
-function NewTabRecents({
-  dataSource,
-  onOpen,
-}: {
-  readonly dataSource: SpaceContentDataSource;
-  readonly onOpen: (item: SpaceContentItem) => void;
-}) {
+function NewTabRecents({ suggestions }: { readonly suggestions: BrowserNewTabSuggestions }) {
   const intl = useIntl();
-  const { items } = useSpaceContentResults({ query: "", dataSource });
   const listRef = useRef<HTMLUListElement>(null);
   const [edges, setEdges] = useState({ top: true, bottom: true });
   const [interacted, setInteracted] = useState(false);
-  // Edit times are relative to when the page appeared.
-  const [now] = useState(() => new Date());
 
   const measureEdges = (list: HTMLElement) => {
     const top = list.scrollTop < 1;
@@ -179,7 +225,7 @@ function NewTabRecents({
     return () => observer.disconnect();
   };
 
-  if (items.length === 0) return null;
+  if (suggestions.rows.length === 0) return null;
 
   const scrollByRows = (direction: 1 | -1) => {
     setInteracted(true);
@@ -195,15 +241,14 @@ function NewTabRecents({
     });
   };
 
+  const heading = intl.formatMessage({
+    id: "workbench.workbenchNewTabPage.recents",
+    defaultMessage: "Recents",
+  });
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <NewTabSectionHeading>
-          {intl.formatMessage({
-            id: "workbench.workbenchNewTabPage.recents",
-            defaultMessage: "Recents",
-          })}
-        </NewTabSectionHeading>
+        <NewTabSectionHeading>{heading}</NewTabSectionHeading>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -231,12 +276,10 @@ function NewTabRecents({
           </button>
         </div>
       </div>
-      <ul
+      <BrowserNewTabList
         ref={attachList}
-        aria-label={intl.formatMessage({
-          id: "workbench.workbenchNewTabPage.recentPages",
-          defaultMessage: "Recent pages",
-        })}
+        suggestions={suggestions}
+        aria-label={heading}
         data-at-bottom={edges.bottom}
         data-interacted={interacted}
         className={cn(
@@ -247,73 +290,94 @@ function NewTabRecents({
         onScroll={(event) => measureEdges(event.currentTarget)}
         onWheel={() => setInteracted(true)}
         onTouchStart={() => setInteracted(true)}
-        onKeyDown={() => setInteracted(true)}
-      >
-        {items.map((item) => (
-          <li key={recentItemKey(item.target)} className={RECENT_ROW_CLASS}>
-            <NodexOverflowTooltip
-              content={
-                item.title.trim() ||
-                intl.formatMessage({
-                  id: "workbench.workbenchNewTabPage.untitled",
-                  defaultMessage: "Untitled",
-                })
-              }
-            >
-              <button
-                type="button"
-                aria-label={
-                  item.title.trim() ||
-                  intl.formatMessage({
-                    id: "workbench.workbenchNewTabPage.untitled",
-                    defaultMessage: "Untitled",
-                  })
-                }
-                className="cursor-interaction flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-start text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset"
-                onClick={() => onOpen(item)}
-              >
-                <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--color-surface-elevated)]">
-                  <RecentGlyph target={item.target} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span
-                    data-tooltip-overflow-target=""
-                    className="block truncate text-sm text-token-text-primary"
-                  >
-                    {item.title.trim() ||
-                      intl.formatMessage({
-                        id: "workbench.workbenchNewTabPage.untitled",
-                        defaultMessage: "Untitled",
-                      })}
-                  </span>
-                  <span className="block truncate text-xs text-token-text-secondary">
-                    {recentSubtitle(item, intl)}
-                  </span>
-                </span>
-                {item.updatedAt ? (
-                  <time
-                    className="shrink-0 text-xs whitespace-nowrap text-token-text-secondary tabular-nums"
-                    dateTime={item.updatedAt}
-                  >
-                    {formatNewTabRecentTime(new Date(item.updatedAt), now, intl.locale)}
-                  </time>
-                ) : null}
-              </button>
-            </NodexOverflowTooltip>
-          </li>
-        ))}
-      </ul>
+      />
     </section>
   );
 }
 
-function recentItemKey(target: LibraryRouteTarget): string {
+function contentItemKey(target: LibraryRouteTarget): string {
   return `${target.kind}:${JSON.stringify(target)}`;
 }
 
-function recentSubtitle(item: SpaceContentItem, intl: IntlShape): string {
-  const kind =
-    item.target.kind === "page"
+/** The Space content a tab shows, keyed the way search results name it. */
+function openContentTarget(surface: WorkbenchSurfaceReference): LibraryRouteTarget | null {
+  if (surface.kind === "page_stage") return { kind: "page", pageId: surface.config.pageId };
+  if (surface.kind === "canvas_stage") {
+    return { kind: "canvas", canvasId: surface.config.canvasBlockId };
+  }
+  if (surface.kind === "db_view" && surface.config.target.kind === "database-default") {
+    return { kind: "database", databaseId: surface.config.target.databaseId };
+  }
+  return null;
+}
+
+/** A workflow Page shows its Status; other content shows its kind. */
+function ContentGlyph({ item }: { readonly item: SpaceContentItem }) {
+  if (item.target.kind === "page") {
+    return item.status ? (
+      <StatusIcon statusId={item.status.optionId} className="size-4" />
+    ) : (
+      <PageIcon className="icon-sm text-token-charts-blue" />
+    );
+  }
+  if (item.target.kind === "canvas") {
+    return <CanvasIcon className="icon-xs text-token-charts-orange" />;
+  }
+  return <BoardIcon className="icon-xs text-token-charts-green" />;
+}
+
+/** Matched text gains weight and full contrast; the rest keeps its line's colour. */
+function MatchText({ parts }: { readonly parts: readonly PageSearchTextPart[] }) {
+  let offset = 0;
+  return parts.map(({ text, highlighted }) => {
+    const start = offset;
+    offset += text.length;
+    return highlighted ? (
+      <span key={start} className="font-medium text-token-text-primary">
+        {text}
+      </span>
+    ) : (
+      text
+    );
+  });
+}
+
+const hasHighlight = (parts: readonly PageSearchTextPart[] | undefined) =>
+  parts?.some((part) => part.highlighted) === true;
+
+/**
+ * One Space content row. Its glyph and the first word of its second line always agree: a
+ * Status for a workflow Page, otherwise Page, Database or Canvas. The rest of the line says
+ * where it lives, or, when a query matched its content rather than its title, what matched.
+ * A Page key appears only when the query matched it.
+ */
+function toContentOption(
+  item: SpaceContentItem,
+  { intl, now, onSelect }: { intl: IntlShape; now: Date; onSelect: () => void },
+): BrowserAddressWorkspaceOption {
+  const title = item.title.trim()
+    ? item.title
+    : intl.formatMessage({
+        id: "workbench.workbenchNewTabPage.untitled",
+        defaultMessage: "Untitled",
+      });
+  const matches = item.searchMatches ?? [];
+  const keyMatch = matches.find((match) => match.source === "page_key");
+  const titleParts =
+    hasHighlight(item.titleParts) && item.titleParts?.map((part) => part.text).join("") === title
+      ? item.titleParts
+      : null;
+  // An excerpt explains a match the title cannot.
+  const excerptParts =
+    hasHighlight(item.excerptParts) &&
+    !matches.some(
+      ({ source }) => source === "title" || source === "identity" || source === "page_key",
+    )
+      ? item.excerptParts
+      : null;
+  const lead =
+    item.status?.label ??
+    (item.target.kind === "page"
       ? intl.formatMessage({ id: "workbench.workbenchNewTabPage.page", defaultMessage: "Page" })
       : item.target.kind === "canvas"
         ? intl.formatMessage({
@@ -323,22 +387,48 @@ function recentSubtitle(item: SpaceContentItem, intl: IntlShape): string {
         : intl.formatMessage({
             id: "workbench.workbenchNewTabPage.database",
             defaultMessage: "Database",
-          });
-  return item.locationLabel
-    ? intl.formatMessage(
-        {
-          id: "workbench.workbenchNewTabPage.locationSubtitle",
-          defaultMessage: "{kind} · {location}",
-        },
-        { kind, location: presentSpaceContentLocation(item, intl) },
-      )
-    : kind;
-}
-
-function RecentGlyph({ target }: { readonly target: LibraryRouteTarget }) {
-  if (target.kind === "page") return <PageIcon className="icon-sm text-token-charts-blue" />;
-  if (target.kind === "canvas") return <CanvasIcon className="icon-xs text-token-charts-orange" />;
-  return <BoardIcon className="icon-xs text-token-charts-green" />;
+          }));
+  const context = excerptParts ? (
+    <MatchText parts={excerptParts} />
+  ) : item.locationLabel ? (
+    presentSpaceContentLocation(item, intl)
+  ) : null;
+  const updatedAt = item.updatedAt ? new Date(item.updatedAt) : null;
+  return {
+    id: `content:${contentItemKey(item.target)}`,
+    kind: "content",
+    title,
+    pageMatches: item.searchMatches,
+    icon: <ContentGlyph item={item} />,
+    label:
+      keyMatch || titleParts ? (
+        <>
+          {keyMatch ? (
+            <>
+              <span className="text-token-text-secondary tabular-nums">
+                <MatchText parts={keyMatch.parts} />
+              </span>{" "}
+            </>
+          ) : null}
+          {titleParts ? <MatchText parts={titleParts} /> : title}
+        </>
+      ) : undefined,
+    detail:
+      context === null
+        ? lead
+        : intl.formatMessage(
+            {
+              id: "workbench.workbenchNewTabPage.locationSubtitle",
+              defaultMessage: "{kind} · {location}",
+            },
+            { kind: lead, location: context },
+          ),
+    trailing:
+      updatedAt && Number.isFinite(updatedAt.getTime()) ? (
+        <time dateTime={item.updatedAt}>{formatNewTabRecentTime(updatedAt, now, intl.locale)}</time>
+      ) : undefined,
+    onSelect,
+  };
 }
 
 /** Binds Browser chrome and its blank page to the same Scene and New tab port. */
@@ -358,12 +448,13 @@ export function WorkbenchBrowserSidebarPanel(
       <BrowserSidebarPanel
         {...props}
         addressSuggestions={WORKBENCH_ADDRESS_SUGGESTIONS}
-        renderNewTabPage={({ search, localServers }) => (
+        renderNewTabPage={({ search, suggestions, localServers }) => (
           <WorkbenchNewTabSurface
             owner={owner}
             surfaceId={surfaceId}
             panelId={panelId}
             search={search}
+            suggestions={suggestions}
           >
             {localServers}
           </WorkbenchNewTabSurface>
@@ -385,44 +476,73 @@ const WORKBENCH_ADDRESS_SUGGESTIONS: BrowserAddressSuggestionsSource = {
 
 const subscribeToNothing = () => () => undefined;
 
-/** Workspace candidates remain presentation data; the port owns every accepted intent. */
+/**
+ * What a New tab's search lists. An empty field suggests recent Space content. A draft matches
+ * tools, other tabs in the Scene, and Space content that is not already open, with the current
+ * Project's Pages ranked first. Candidates remain presentation data; the port owns every
+ * accepted intent.
+ */
 export function useWorkbenchNewTabAddressSuggestions(
-  query: string,
+  query: string | null,
 ): readonly BrowserAddressWorkspaceOption[] {
   const intl = useIntl();
   const binding = useContext(WorkbenchNewTabAddressContext);
   const port = useWorkbenchNewTabPort();
   const windowOwner = useWorkbenchWindowOwner();
-  const workspaceQuery = readBrowserAddressWorkspaceQuery(query);
-  // Every Browser tab mounts this hook; only a New tab with a typed query observes the Scene
-  // and reads Pages, so loaded pages never rerender for unrelated window changes.
-  const active = binding !== null && workspaceQuery !== null;
+  // Edit times are relative to when the page appeared.
+  const [now] = useState(() => new Date());
+  const draft = query?.trim() ?? "";
+  // Explicit web addresses do not compete with workspace destinations.
+  const workspaceQuery = draft ? readBrowserAddressWorkspaceQuery(draft) : "";
+  const active = binding !== null && query !== null && workspaceQuery !== null;
+  // Every Browser tab mounts this hook; only a shown New tab reads Space content, and only a
+  // draft observes the Scene for tabs, so loaded pages never rerender for window changes.
+  const matchesTabs = active && draft !== "";
   const state = useSyncExternalStore(
-    active ? windowOwner.subscribe : subscribeToNothing,
+    matchesTabs ? windowOwner.subscribe : subscribeToNothing,
     windowOwner.read,
   );
-  const observation = active ? readWorkbenchAgentContext(state, binding.owner) : null;
+  const context = binding && port ? port.resolveOwnerContext(binding.owner, binding.panelId) : null;
   const results = useSpaceContentResults({
     query: workspaceQuery ?? "",
-    kinds: ["page"],
+    preferredProjectId: context?.currentProjectId ?? null,
     enabled: active,
   });
-  if (!port || !binding || !workspaceQuery) return [];
-  const { owner, surfaceId, panelId } = binding;
+  if (!port || !binding || !active) return [];
+  const { owner, surfaceId } = binding;
 
   const open = (intent: WorkbenchNewTabIntent) => {
     void port.open({ owner, surfaceId, intent });
   };
-  // A suggestion runs directly, so picker-only destinations such as Open page stay out.
-  const tools = (port.resolveOwnerContext(owner, panelId)?.actions ?? [])
-    .filter((action) => action.kind !== "browser" && action.kind !== "page_stage")
-    .map((action): BrowserAddressWorkspaceOption => ({
-      id: `action:${action.kind}`,
-      kind: "launch-action",
-      title: action.label,
-      icon: <action.Icon className="icon-xs" />,
-      onSelect: () => open({ kind: "action", action: action.kind }),
-    }));
+  const contentOption = (item: SpaceContentItem) =>
+    toContentOption(item, {
+      intl,
+      now,
+      onSelect: () => open({ kind: "library-target", target: item.target, title: item.title }),
+    });
+  if (!draft) return results.items.map(contentOption);
+
+  // The New tab's own tools; each runs directly when chosen.
+  const tools = (context?.actions ?? [])
+    .filter((action) => isNewTabToolKind(action.kind))
+    .map((action): BrowserAddressWorkspaceOption => {
+      const shortcut = resolvePanelActionShortcutLabel(action, port.isMac, port.commandKeymapState);
+      return {
+        id: `action:${action.kind}`,
+        kind: "launch-action",
+        title: action.label,
+        icon: <action.Icon className="icon-xs" />,
+        detail: intl.formatMessage({
+          id: "workbench.workbenchNewTabPage.tool",
+          defaultMessage: "Tool",
+        }),
+        trailing: shortcut ? (
+          <ShortcutKeycaps aria-hidden keys={[shortcut]} className={PANEL_TOOL_KEYCAP_CLASS} />
+        ) : undefined,
+        onSelect: () => open({ kind: "action", action: action.kind }),
+      };
+    });
+  const observation = readWorkbenchAgentContext(state, owner);
   const tabs = (observation?.tabs ?? [])
     .filter((tab) => tab.tabId !== surfaceId)
     .map((tab): BrowserAddressWorkspaceOption => {
@@ -453,48 +573,24 @@ export function useWorkbenchNewTabAddressSuggestions(
                 ? presentSessionTitle(tab.auxiliary.title, intl)
                 : (tab.auxiliary?.title ?? ""),
         icon: <Icon className="icon-xs" />,
-        trailing: intl.formatMessage({
+        detail: intl.formatMessage({
           id: "workbench.workbenchNewTabPage.switchToTab",
           defaultMessage: "Switch to tab",
         }),
         onSelect: () => open({ kind: "tab", tabId: tab.tabId }),
       };
     });
-  const openPageIds = new Set(
-    observation?.tabs.flatMap((tab) =>
-      tab.surface?.kind === "page_stage" ? [tab.surface.config.pageId] : [],
-    ),
+  // Content open in a tab is already offered as that tab.
+  const openContent = new Set(
+    observation?.tabs.flatMap((tab) => {
+      const target = tab.surface ? openContentTarget(tab.surface) : null;
+      return target ? [contentItemKey(target)] : [];
+    }),
   );
-  // Content-search hits can omit edit times; the title catalog retains their metadata.
-  const catalogEditTimes = new Map(
-    results.catalog.data?.pages.flatMap((page) =>
-      page.items.map(
-        (item) => [item.target.kind === "page" ? item.target.pageId : "", item.updatedAt] as const,
-      ),
-    ),
-  );
-  const pages = results.items.flatMap((item): BrowserAddressWorkspaceOption[] => {
-    if (item.target.kind !== "page" || !item.searchMatches || openPageIds.has(item.target.pageId))
-      return [];
-    const updatedAt = Date.parse(item.updatedAt ?? catalogEditTimes.get(item.target.pageId) ?? "");
-    return [
-      {
-        id: `page:${item.target.pageId}`,
-        kind: "page",
-        title: presentPageTitle(item.title, intl),
-        pageMatches: item.searchMatches,
-        icon: <PageIcon className="icon-xs" />,
-        trailing: Number.isFinite(updatedAt) ? (
-          <span className="flex items-center gap-1">
-            <ClockIcon className="icon-2xs" />
-            {formatCompactRelativeTime(updatedAt)}
-          </span>
-        ) : undefined,
-        onSelect: () => open({ kind: "library-target", target: item.target, title: item.title }),
-      },
-    ];
-  });
-  return [...tools, ...tabs, ...pages];
+  const content = results.items
+    .filter((item) => !openContent.has(contentItemKey(item.target)))
+    .map(contentOption);
+  return [...tools, ...tabs, ...content];
 }
 
 /**
@@ -506,45 +602,46 @@ export function WorkbenchNewTabSurface({
   surfaceId,
   panelId,
   search,
+  suggestions,
   children,
 }: {
   readonly owner: WorkbenchSceneOwner;
   readonly surfaceId: string;
   readonly panelId: PanelId;
-  readonly search?: ReactNode;
+  readonly search: ReactNode;
+  readonly suggestions: BrowserNewTabSuggestions;
   readonly children?: ReactNode;
 }) {
   const port = useWorkbenchNewTabPort();
   const shortcuts = useNewTabShortcutPreference(panelId);
   const context = port?.resolveOwnerContext(owner, panelId) ?? null;
-  if (!port || !context) {
-    return <NewTabPageColumn search={search}>{children}</NewTabPageColumn>;
-  }
   const open = (intent: WorkbenchNewTabIntent) => {
-    void port.open({ owner, surfaceId, intent });
+    if (port) void port.open({ owner, surfaceId, intent });
   };
   return (
     <WorkbenchNewTabPage
       search={search}
-      tools={context.actions}
-      shortcuts={shortcuts}
-      isMac={port.isMac}
-      commandKeymapState={port.commandKeymapState}
-      projects={port.projects}
-      currentProjectId={context.currentProjectId}
-      onSelectAction={(action) => open({ kind: "action", action })}
-      onOpenDestination={(destination) => open({ kind: "destination", destination })}
-      bottomTerminal={
-        context.canOpenBottomTerminal
-          ? {
-              shortcut:
-                formatCommandShortcutLabel(port.commandKeymapState, "toggleBottomPanel") ?? null,
-              onOpen: () => void port.openBottomTerminal(owner),
+      suggestions={suggestions}
+      open={
+        port && context ? (
+          <NewTabOpenSection
+            tools={context.actions}
+            shortcuts={shortcuts}
+            isMac={port.isMac}
+            commandKeymapState={port.commandKeymapState}
+            onSelectAction={(action) => open({ kind: "action", action })}
+            bottomTerminal={
+              context.canOpenBottomTerminal
+                ? {
+                    shortcut:
+                      formatCommandShortcutLabel(port.commandKeymapState, "toggleBottomPanel") ??
+                      null,
+                    onOpen: () => void port.openBottomTerminal(owner),
+                  }
+                : null
             }
-          : null
-      }
-      onOpenRecent={(item) =>
-        open({ kind: "library-target", target: item.target, title: item.title })
+          />
+        ) : null
       }
     >
       {children}

@@ -52,11 +52,9 @@ describe("New tab port", () => {
         executeSceneCommand: vi.fn<ExecuteWorkbenchUiCommand>(),
         isMac: true,
         commandKeymapState: null,
-        projects: [],
         commands: {
           resolveOwnerContext: () => null,
           runAction,
-          openDestination: async () => false,
           openLibraryTarget: async () => false,
         },
       }),
@@ -161,11 +159,9 @@ describe("New tab port", () => {
           executeSceneCommand,
           isMac: true,
           commandKeymapState: null,
-          projects: [],
           commands: {
             resolveOwnerContext: () => null,
             runAction: async () => false,
-            openDestination: async () => false,
             openLibraryTarget: async () => false,
           },
         }),

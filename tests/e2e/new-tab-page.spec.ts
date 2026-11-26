@@ -68,7 +68,8 @@ test("replaces Project New tabs with Pages and keeps the action menu on right-cl
         await expect(
           newTabPage.getByRole("heading", { name: "Recents", exact: true }),
         ).toBeVisible();
-        await expect(newTabPage.getByRole("list", { name: "Recent pages" })).toBeVisible();
+        await expect(newTabPage.getByRole("listbox", { name: "Recents" })).toBeVisible();
+        await expect(newTabPage.getByRole("button", { name: /^Open page/u })).toHaveCount(0);
       });
 
       await test.step("creates a Project Page in place and selects its title for typing", async () => {
@@ -86,24 +87,33 @@ test("replaces Project New tabs with Pages and keeps the action menu on right-cl
         await expect(title).toHaveText("Draft notes");
       });
 
-      await test.step("lists the new Page with the Project's Pages", async () => {
+      const search = newTabPage.getByRole("combobox", { name: "Search pages or enter a URL" });
+      await test.step("replaces Open and Recents with search results until Escape clears them", async () => {
         await newTabButton.click();
         await expect(newTab).toHaveAttribute("aria-selected", "true");
-        await newTabPage.getByRole("button", { name: "Open page…", exact: true }).click();
-        const picker = page.getByRole("dialog", { name: "Open Page" });
-        await expect(picker.getByRole("option", { name: /Draft notes/u })).toBeVisible();
+        await expect(search).toBeFocused();
+        await page.keyboard.type("Draft notes");
+        await expect(
+          newTabPage.getByRole("listbox", { name: "Results" }).getByRole("option", {
+            name: "Draft notes",
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(newTabPage.getByRole("heading", { name: "Open", exact: true })).toHaveCount(0);
         await page.keyboard.press("Escape");
-        await expect(picker).toHaveCount(0);
+        await expect(search).toHaveValue("");
+        await expect(search).toBeFocused();
+        await expect(newTabPage.getByRole("listbox", { name: "Recents" })).toBeVisible();
       });
 
-      await test.step("opens a recent Page in the same tab position", async () => {
-        await expect(newTab).toHaveAttribute("aria-selected", "true");
+      await test.step("opens a searched Page with Enter in the same tab position", async () => {
         await expect(tabs).toHaveCount(initialTabCount + 2);
         const newTabIndex = await readNewTabIndex();
-        await newTabPage
-          .getByRole("list", { name: "Recent pages" })
-          .getByRole("button", { name: "Keyboard shortcuts", exact: true })
-          .click();
+        await page.keyboard.type("Keyboard shortcuts");
+        await expect(
+          newTabPage.getByRole("listbox", { name: "Results" }).getByRole("option").first(),
+        ).toHaveAccessibleName("Keyboard shortcuts");
+        await page.keyboard.press("Enter");
         await expect(newTab).toHaveCount(0);
         await expect(tabs).toHaveCount(initialTabCount + 2);
         await expect(tabs.nth(newTabIndex)).toHaveAccessibleName(/Keyboard shortcuts/u);

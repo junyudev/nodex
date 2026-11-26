@@ -105,21 +105,37 @@ describe("New tab address combobox", () => {
     },
   );
 
-  test("wraps keyboard selection, ignores composition, accepts a tool, and dismisses with Escape before restoring on a second Escape", async () => {
+  test("wraps a query's keyboard selection, ignores composition, accepts a tool, and clears the search with Escape before leaving the field", async () => {
     const selectTool = vi.fn();
     const selectTab = vi.fn();
     const view = renderAddress({
-      useWorkspaceSuggestions: () => [
-        { id: "tool", kind: "launch-action", title: "Terminal", icon: null, onSelect: selectTool },
-        {
-          id: "tab",
-          kind: "switch-tab",
-          title: "Terminal docs",
-          icon: null,
-          trailing: "Switch to tab",
-          onSelect: selectTab,
-        },
-      ],
+      useWorkspaceSuggestions: (query) =>
+        query?.trim()
+          ? [
+              {
+                id: "tool",
+                kind: "launch-action",
+                title: "Terminal",
+                icon: null,
+                onSelect: selectTool,
+              },
+              {
+                id: "tab",
+                kind: "switch-tab",
+                title: "Terminal docs",
+                icon: null,
+                onSelect: selectTab,
+              },
+            ]
+          : [
+              {
+                id: "recent",
+                kind: "content",
+                title: "Recent notes",
+                icon: null,
+                onSelect: vi.fn(),
+              },
+            ],
     });
     await settleAsyncRender();
     const input = view.getByRole("combobox") as HTMLInputElement;
@@ -128,6 +144,7 @@ describe("New tab address combobox", () => {
       fireEvent.change(input, { target: { value: "term" } });
     });
     const options = await view.findAllByRole("option");
+    expect(options.map(optionName)).toEqual(["Terminal", "Terminal docs", "term"]);
     expect(options[0]?.getAttribute("aria-selected")).toBe("true");
     expect(input.getAttribute("aria-controls")).toBe(view.getByRole("listbox").id);
     await interact(() => fireEvent.keyDown(input, { key: "ArrowUp" }));
@@ -143,7 +160,9 @@ describe("New tab address combobox", () => {
     await interact(() => fireEvent.keyDown(input, { key: "Enter" }));
     expect(selectTool).toHaveBeenCalledOnce();
     expect(selectTab).not.toHaveBeenCalled();
-    expect(view.queryByRole("listbox")).toBeNull();
+    // Accepting clears the search, so the list returns to what an empty field suggests.
+    expect(input.value).toBe("");
+    expect(view.getByRole("option", { name: "Recent notes" })).toBeTruthy();
     await interact(() => input.blur());
     expect(navigations()).toEqual([]);
 
@@ -151,14 +170,57 @@ describe("New tab address combobox", () => {
       input.focus();
       fireEvent.change(input, { target: { value: "term" } });
     });
-    await view.findByRole("listbox");
-    await interact(() => fireEvent.keyDown(input, { key: "Escape" }));
-    expect(view.queryByRole("listbox")).toBeNull();
-    expect(input.value).toBe("term");
-    expect(document.activeElement).toBe(input);
+    await view.findByRole("option", { name: "Terminal" });
     await interact(() => fireEvent.keyDown(input, { key: "Escape" }));
     expect(input.value).toBe("");
+    expect(document.activeElement).toBe(input);
+    expect(view.getByRole("option", { name: "Recent notes" })).toBeTruthy();
+    await interact(() => fireEvent.keyDown(input, { key: "Escape" }));
     expect(document.activeElement).not.toBe(input);
+    expect(navigations()).toEqual([]);
+  });
+
+  test("lists an empty field's suggestions unselected; arrows enter and leave them, and Escape lets go before leaving", async () => {
+    const openFirst = vi.fn();
+    const view = renderAddress({
+      useWorkspaceSuggestions: (query) =>
+        query?.trim()
+          ? []
+          : [
+              { id: "first", kind: "content", title: "First", icon: null, onSelect: openFirst },
+              { id: "second", kind: "content", title: "Second", icon: null, onSelect: vi.fn() },
+            ],
+    });
+    await settleAsyncRender();
+    const input = view.getByRole("combobox") as HTMLInputElement;
+    await interact(() => input.focus());
+    const [first, second] = await view.findAllByRole("option");
+    const selected = () =>
+      view
+        .getAllByRole("option")
+        .flatMap((option) =>
+          option.getAttribute("aria-selected") === "true" ? [optionName(option)] : [],
+        );
+    expect(selected()).toEqual([]);
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+    // Enter on an untouched empty field opens nothing.
+    await interact(() => fireEvent.keyDown(input, { key: "Enter" }));
+    expect(openFirst).not.toHaveBeenCalled();
+    await interact(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    expect(input.getAttribute("aria-activedescendant")).toBe(first?.id);
+    await interact(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    await interact(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    expect(input.getAttribute("aria-activedescendant")).toBe(second?.id);
+    await interact(() => fireEvent.keyDown(input, { key: "ArrowUp" }));
+    await interact(() => fireEvent.keyDown(input, { key: "ArrowUp" }));
+    expect(selected()).toEqual([]);
+    await interact(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    await interact(() => fireEvent.keyDown(input, { key: "Escape" }));
+    expect(selected()).toEqual([]);
+    expect(document.activeElement).toBe(input);
+    await interact(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    await interact(() => fireEvent.keyDown(input, { key: "Enter" }));
+    expect(openFirst).toHaveBeenCalledOnce();
     expect(navigations()).toEqual([]);
   });
 
@@ -168,7 +230,7 @@ describe("New tab address combobox", () => {
       useWorkspaceSuggestions: () => [
         {
           id: "page",
-          kind: "page",
+          kind: "content",
           title: "Sprint plan",
           icon: null,
           onSelect: selectPage,
@@ -227,12 +289,18 @@ describe("New tab address combobox", () => {
     });
     const navigationCount = navigations().length;
     await interact(() => blankInput.blur());
-    // Leaving the New tab's search, for example to pick a tool, neither searches nor clears it.
+    // Leaving the New tab's search, for example to pick a tool, neither searches nor clears it,
+    // and its results stay on the page.
     expect(navigations()).toHaveLength(navigationCount);
     expect(blankInput.value).toBe("a search");
-    expect(blank.queryByRole("listbox")).toBeNull();
+    expect(blank.getByRole("option", { name: "a search" })).toBeTruthy();
   });
 });
+
+/** An option's name: the title line its `aria-labelledby` points at. */
+function optionName(option: HTMLElement) {
+  return document.getElementById(option.getAttribute("aria-labelledby") ?? "")?.textContent;
+}
 
 function navigations() {
   return invoke.mock.calls

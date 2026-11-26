@@ -4140,7 +4140,6 @@ export function WorkbenchRuntime({
     [activeProject, activeSession, bottomPanelOpen, projects, resolveActivePanelCapabilities],
   );
   const { createManualTab: createSessionManualTab } = sessionCommands;
-  const { openPanelDestinationFromPicker } = panelCommands;
   const runNewTabAction = async (
     action: PanelNewTabActionKind,
     { owner, panelId, leafId, isCurrent }: WorkbenchNewTabPlacement,
@@ -4159,20 +4158,6 @@ export function WorkbenchRuntime({
     if (action === "review") return await createSessionManualTab("review", panelId, leafId);
     return await dispatchPanelAction(action, { panelId, leafId });
   };
-  const openNewTabDestination = useCallback(
-    async (destination: PanelDestination, { owner, panelId, leafId }: WorkbenchNewTabPlacement) => {
-      if (owner.kind === "project") {
-        return await openProjectSceneDestination(owner.projectId, destination, {
-          panelId,
-          leafId,
-        });
-      }
-      if (owner.kind !== "session" || activeSession?.id !== owner.sessionId) return false;
-      await openPanelDestinationFromPicker(destination, panelId, leafId);
-      return true;
-    },
-    [activeSession?.id, openPanelDestinationFromPicker, openProjectSceneDestination],
-  );
   const openNewTabLibraryTarget = useCallback(
     async (
       target: LibraryRouteTarget,
@@ -4192,11 +4177,9 @@ export function WorkbenchRuntime({
     executeSceneCommand,
     isMac: isMacPlatform,
     commandKeymapState: commandKeymapState ?? null,
-    projects,
     commands: {
       resolveOwnerContext: resolveNewTabOwnerContext,
       runAction: runNewTabAction,
-      openDestination: openNewTabDestination,
       openLibraryTarget: openNewTabLibraryTarget,
     },
   });

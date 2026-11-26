@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ComponentProps, type ReactNode } from "react";
+import { useId, useRef, type ComponentProps, type ReactNode } from "react";
 import { SearchIcon, SidePanelBrowserIcon } from "@/components/shared/icons";
 import { ViewerCapsule, ViewerInputCapsule } from "@/components/ui/viewer-header";
 import { useIntl } from "@/lib/i18n";
@@ -12,23 +12,29 @@ import { shouldSkipBrowserAddressCommit } from "./browser-sidebar-ui-model";
 
 export interface BrowserAddressWorkspaceOption extends BrowserAddressWorkspaceCandidate {
   readonly icon: ReactNode;
+  /** The title as shown, such as with its matched text emphasized; `title` stays its name. */
+  readonly label?: ReactNode;
+  /** A New tab row's second line: what the option is and where, or why it matched. */
+  readonly detail?: ReactNode;
   readonly trailing?: ReactNode;
   readonly onSelect: () => void;
 }
 
-type AddressSuggestion = BrowserAddressSuggestion<BrowserAddressWorkspaceOption>;
+export type BrowserAddressRow = BrowserAddressSuggestion<BrowserAddressWorkspaceOption>;
+
+export function browserAddressOptionId(listId: string, index: number): string {
+  return `${listId}-${index}`;
+}
 
 type BrowserAddressFieldProps = {
   readonly value: string;
   readonly focused: boolean;
   readonly isCombobox: boolean;
   readonly suggestions: {
-    readonly rows: readonly AddressSuggestion[];
-    readonly open: boolean;
+    readonly rows: readonly BrowserAddressRow[];
     readonly highlightedIndex: number;
     readonly onHighlight: (id: string | null) => void;
-    readonly onDismiss: () => void;
-    readonly onSelect: (row: AddressSuggestion) => void;
+    readonly onSelect: (row: BrowserAddressRow) => void;
   };
   readonly onChange: (value: string) => void;
   readonly onFocusChange: (focused: boolean) => void;
@@ -37,22 +43,33 @@ type BrowserAddressFieldProps = {
 } & (
   | {
       readonly variant: "toolbar";
+      /** The toolbar shows its suggestions in a dropdown beneath the field. */
+      readonly dropdown: { readonly open: boolean; readonly onDismiss: () => void };
       readonly siteInfo: ReactNode;
       readonly openExternally: ReactNode;
       readonly permission: Omit<ComponentProps<typeof BrowserPermissionPromptPopover>, "anchor">;
     }
-  | { readonly variant: "new-tab" }
+  | {
+      readonly variant: "new-tab";
+      /** The New tab page lays out the field's list itself; see `BrowserNewTabList`. */
+      readonly listId: string;
+    }
 );
 
 export function BrowserAddressField(props: BrowserAddressFieldProps) {
   const { value, focused, isCombobox, suggestions, onChange, onFocusChange, onCommit, onReset } =
     props;
   const intl = useIntl();
-  const listId = useId();
-  const listRef = useRef<HTMLDivElement>(null);
+  const dropdownId = useId();
   const addressBarRef = useRef<HTMLDivElement>(null);
   const skipCommitRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const isNewTab = props.variant === "new-tab";
+  const listId = props.variant === "new-tab" ? props.listId : dropdownId;
+  // A New tab's list is always on its page; the toolbar's opens beneath the field.
+  const listShown = props.variant === "new-tab" ? suggestions.rows.length > 0 : props.dropdown.open;
+  // An empty New tab field suggests without preselecting; a query always has a row to accept.
+  const hasQuery = value.trim().length > 0;
   const toolbarHasValue = !isNewTab && value.trim().length > 0;
   const placeholder = isNewTab
     ? intl.formatMessage({
@@ -64,38 +81,55 @@ export function BrowserAddressField(props: BrowserAddressFieldProps) {
         defaultMessage: "Search or enter a URL",
       });
 
-  const highlightedRow = suggestions.rows[suggestions.highlightedIndex];
-  const activeOptionId = suggestions.open ? `${listId}-${suggestions.highlightedIndex}` : undefined;
+  const highlightedRow = listShown ? suggestions.rows[suggestions.highlightedIndex] : undefined;
+  const activeOptionId = highlightedRow
+    ? browserAddressOptionId(listId, suggestions.highlightedIndex)
+    : undefined;
 
-  useEffect(() => {
-    if (!activeOptionId) return;
-    listRef.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [activeOptionId]);
-
-  const selectSuggestion = (row: AddressSuggestion) => {
+  const selectSuggestion = (row: BrowserAddressRow) => {
     if (row.kind === "workspace") skipCommitRef.current = true;
     suggestions.onSelect(row);
   };
 
   const submitAddress = () => {
-    if (suggestions.open && highlightedRow) {
+    if (highlightedRow) {
       selectSuggestion(highlightedRow);
       return;
     }
     onCommit();
   };
 
+  // Arrow keys wrap through a query's rows. Before typing, the list starts unselected and
+  // Up from its first row returns there.
+  const moveHighlight = (delta: 1 | -1) => {
+    const count = suggestions.rows.length;
+    const current = suggestions.highlightedIndex;
+    const next = hasQuery
+      ? (current + delta + count) % count
+      : Math.min(Math.max(current + delta, -1), count - 1);
+    suggestions.onHighlight(suggestions.rows[next]?.id ?? null);
+    // Keyboard moves keep their row, or the field they return to, in view; pointer highlights
+    // never scroll the list.
+    revealRow(next);
+  };
+  const revealRow = (index: number) => {
+    const target =
+      index >= 0
+        ? document.getElementById(browserAddressOptionId(listId, index))
+        : inputRef.current;
+    target?.scrollIntoView?.({ block: "nearest" });
+  };
+
   const input = (
     <input
+      ref={inputRef}
       data-browser-sidebar-address-input="true"
       // Like a browser's address bar, Close tab and tab switching still work while typing here.
       data-panel-tab-shortcuts-pass-through=""
       role={isCombobox ? "combobox" : undefined}
       aria-label={placeholder}
-      aria-expanded={isCombobox ? suggestions.open : undefined}
-      aria-controls={suggestions.open ? listId : undefined}
+      aria-expanded={isCombobox ? listShown : undefined}
+      aria-controls={listShown ? listId : undefined}
       aria-activedescendant={activeOptionId}
       aria-autocomplete={isCombobox ? "list" : undefined}
       className={
@@ -138,15 +172,12 @@ export function BrowserAddressField(props: BrowserAddressFieldProps) {
       }}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
-        if (suggestions.open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        if (listShown && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
           event.preventDefault();
-          const delta = event.key === "ArrowDown" ? 1 : -1;
-          const count = suggestions.rows.length;
-          const nextRow = suggestions.rows[(suggestions.highlightedIndex + delta + count) % count];
-          suggestions.onHighlight(nextRow?.id ?? null);
+          moveHighlight(event.key === "ArrowDown" ? 1 : -1);
           return;
         }
-        if (suggestions.open && event.key === "Enter" && highlightedRow) {
+        if (event.key === "Enter" && highlightedRow) {
           event.preventDefault();
           submitAddress();
           return;
@@ -154,8 +185,19 @@ export function BrowserAddressField(props: BrowserAddressFieldProps) {
         if (event.key !== "Escape") return;
         event.preventDefault();
         event.stopPropagation();
-        if (suggestions.open) {
-          suggestions.onDismiss();
+        // A New tab clears its search first, then lets go of a highlighted suggestion, then
+        // leaves the field. The toolbar closes its dropdown first, then restores the address.
+        if (props.variant === "new-tab" && hasQuery) {
+          onChange("");
+          return;
+        }
+        if (props.variant === "new-tab" && highlightedRow) {
+          suggestions.onHighlight(null);
+          revealRow(-1);
+          return;
+        }
+        if (props.variant === "toolbar" && props.dropdown.open) {
+          props.dropdown.onDismiss();
           return;
         }
         skipCommitRef.current = true;
@@ -212,9 +254,8 @@ export function BrowserAddressField(props: BrowserAddressFieldProps) {
             <BrowserPermissionPromptPopover {...props.permission} anchor={addressBarRef} />
           </>
         )}
-        {suggestions.open ? (
+        {props.variant === "toolbar" && props.dropdown.open ? (
           <div
-            ref={listRef}
             id={listId}
             role="listbox"
             aria-label={intl.formatMessage({
@@ -223,13 +264,12 @@ export function BrowserAddressField(props: BrowserAddressFieldProps) {
             })}
             className={cn(
               "absolute top-full left-0 z-30 flex max-h-[min(360px,60vh)] w-full flex-col overflow-y-auto rounded-xl border border-token-border bg-token-dropdown-background p-1 text-token-text-primary shadow-lg",
-              isNewTab && "mt-1.5",
             )}
           >
             {suggestions.rows.map((row, index) => (
               <div
                 key={row.id}
-                id={`${listId}-${index}`}
+                id={browserAddressOptionId(listId, index)}
                 role="option"
                 aria-selected={index === suggestions.highlightedIndex}
                 className={cn(
@@ -252,7 +292,9 @@ export function BrowserAddressField(props: BrowserAddressFieldProps) {
                   )}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-token-text-primary">
-                  {row.kind === "workspace" ? row.candidate.title : row.title}
+                  {row.kind === "workspace"
+                    ? (row.candidate.label ?? row.candidate.title)
+                    : row.title}
                 </span>
                 <span className="shrink-0 text-token-description-foreground">
                   {row.kind === "workspace"

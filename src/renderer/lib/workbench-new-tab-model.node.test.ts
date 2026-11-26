@@ -33,16 +33,7 @@ describe("New tab shortcut layout", () => {
         "page_stage",
         "canvas_stage",
       ),
-      tools: [
-        "new_page",
-        "side_chat",
-        "terminal",
-        "files",
-        "review",
-        "page_stage",
-        "db_view",
-        "canvas_stage",
-      ],
+      tools: ["new_page", "side_chat", "terminal", "files", "review", "db_view", "canvas_stage"],
       pinned: ["new_page", "side_chat", "terminal", "files"],
     },
     {
@@ -56,8 +47,8 @@ describe("New tab shortcut layout", () => {
         "terminal",
         "page_stage",
       ),
-      tools: ["new_page", "terminal", "files", "page_stage", "db_view", "canvas_stage"],
-      pinned: ["new_page", "terminal", "files", "page_stage"],
+      tools: ["new_page", "terminal", "files", "db_view", "canvas_stage"],
+      pinned: ["new_page", "terminal", "files", "db_view"],
     },
     {
       scene: "the bottom panel",
@@ -95,6 +86,16 @@ describe("New tab shortcut layout", () => {
     expect(kinds(layout.pinned)).toEqual(["db_view", "terminal"]);
   });
 
+  test("discards the Page picker from a stored order and pins", () => {
+    const layout = resolveNewTabShortcutLayout(actions("files", "page_stage", "terminal"), {
+      order: ["page_stage", "terminal", "files"],
+      pinned: ["files", "page_stage"],
+    });
+
+    expect(kinds(layout.tools)).toEqual(["terminal", "files"]);
+    expect(kinds(layout.pinned)).toEqual(["files"]);
+  });
+
   test("shows no pinned tools when the person unpins them all", () => {
     const layout = resolveNewTabShortcutLayout(actions("files", "terminal"), {
       order: ["files", "terminal"],
@@ -118,10 +119,10 @@ describe("New tab shortcut edits", () => {
     );
 
     const withAnotherTool = resolveNewTabShortcutLayout(
-      [...available, getPanelNewTabAction("page_stage")],
+      [...available, getPanelNewTabAction("canvas_stage")],
       next,
     );
-    expect(kinds(withAnotherTool.tools)).toEqual([...next.order, "page_stage"]);
+    expect(kinds(withAnotherTool.tools)).toEqual([...next.order, "canvas_stage"]);
     expect(kinds(withAnotherTool.pinned)).toEqual([
       "new_page",
       "side_chat",
@@ -134,12 +135,14 @@ describe("New tab shortcut edits", () => {
   test("pinning and unpinning leave the menu order and hidden pins in place", () => {
     const available = actions("terminal", "db_view", "files");
     const saved: NewTabShortcutPreference = {
-      order: ["db_view", "side_chat", "files"],
-      pinned: ["files", "side_chat"],
+      order: ["db_view", "side_chat", "page_stage", "files"],
+      pinned: ["files", "side_chat", "page_stage"],
     };
     const layout = resolveNewTabShortcutLayout(available, saved);
 
     const pinned = toggleNewTabShortcutPin(layout, saved, "db_view");
+    expect(pinned.order).toEqual(["db_view", "side_chat", "files", "terminal"]);
+    expect(new Set(pinned.pinned)).toEqual(new Set(["db_view", "files", "side_chat"]));
     const afterPin = resolveNewTabShortcutLayout(available, pinned);
     expect(kinds(afterPin.tools)).toEqual(kinds(layout.tools));
     expect(kinds(afterPin.pinned)).toEqual(["db_view", "files"]);
@@ -178,19 +181,12 @@ describe("New tab shortcut edits", () => {
     const available = actions("files", "terminal", "page_stage", "db_view");
     const saved: NewTabShortcutPreference = {
       order: ["files", "side_chat", "terminal", "review", "review", "page_stage"],
-      pinned: ["review", "review", "side_chat", "files", "new_page"],
+      pinned: ["review", "review", "side_chat", "files", "new_page", "page_stage"],
     };
     const layout = resolveNewTabShortcutLayout(available, saved);
     const next = reorderNewTabShortcuts(layout, saved, ["db_view", "side_chat", "db_view"]);
 
-    expect(next.order).toEqual([
-      "db_view",
-      "side_chat",
-      "files",
-      "review",
-      "terminal",
-      "page_stage",
-    ]);
+    expect(next.order).toEqual(["db_view", "side_chat", "files", "review", "terminal"]);
     expect(next.pinned).toHaveLength(4);
     expect(new Set(next.pinned)).toEqual(new Set(["side_chat", "review", "files", "new_page"]));
 

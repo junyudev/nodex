@@ -3,7 +3,8 @@ import { normalizeBrowserAddressInput } from "../../../shared/browser-address-in
 
 export interface BrowserAddressWorkspaceCandidate {
   readonly id: string;
-  readonly kind: "launch-action" | "switch-tab" | "page";
+  /** Space content is a Page, Database or Canvas; Pages may carry their search evidence. */
+  readonly kind: "launch-action" | "switch-tab" | "content";
   readonly title: string;
   readonly pageMatches?: readonly PageSearchMatch[];
 }
@@ -37,21 +38,36 @@ function workspaceRow<T extends BrowserAddressWorkspaceCandidate>(candidate: T) 
   return { id: candidate.id, kind: "workspace" as const, candidate };
 }
 
-// Page rows already carry kernel relevance order. Keep whole-title/identity
-// evidence ahead of other fields within each strength tier.
-function pageTier(matches: readonly PageSearchMatch[]): number {
-  const loose = matches.some(({ quality }) => quality === "typo" || quality === "infix");
-  const otherField = matches.some(({ source }) => source === "property" || source === "body");
-  return Number(loose) * 2 + Number(otherField);
+// Content rows already carry relevance order. Strong evidence in the key, identity or title
+// leads; strong evidence only elsewhere (body, properties, context) follows web search, and
+// loose (typo or infix) evidence comes last. Title-only catalog matches carry no evidence and
+// count as strong.
+function contentTier(matches: readonly PageSearchMatch[] = []): number {
+  if (matches.length === 0) return 0;
+  const strong = matches.filter(({ quality }) => quality !== "typo" && quality !== "infix");
+  if (strong.some(({ source }) => TITLE_SOURCES.has(source))) return 0;
+  return strong.length > 0 ? 1 : 2;
 }
 
-/** Ranks workspace matches around an always-present web navigation/search choice. */
+const TITLE_SOURCES: ReadonlySet<PageSearchMatch["source"]> = new Set([
+  "page_key",
+  "identity",
+  "title",
+]);
+
+/** The most rows a typed query lists, including the typed navigation or search choice. */
+const MAX_TYPED_ROWS = 8;
+
+/**
+ * An empty address lists the workspace's own suggestions in their order. A typed one ranks
+ * workspace matches around an always-present web navigation/search choice.
+ */
 export function buildBrowserAddressSuggestions<T extends BrowserAddressWorkspaceCandidate>(
   value: string,
   candidates: readonly T[],
 ): readonly BrowserAddressSuggestion<T>[] {
   const title = value.trim();
-  if (!title) return [];
+  if (!title) return candidates.map(workspaceRow);
   const url = normalizeBrowserAddressInput(value);
   const typed: BrowserAddressSuggestion<T> = {
     id: "typed",
@@ -67,11 +83,12 @@ export function buildBrowserAddressSuggestions<T extends BrowserAddressWorkspace
   const toolQuery = query.toLocaleLowerCase();
   const toolsAndTabs = candidates
     .flatMap((candidate) => {
-      if (candidate.kind === "page") return [];
+      if (candidate.kind === "content") return [];
       const title = candidate.title.toLocaleLowerCase();
+      // The query may span words, as in "new page", but must start where a word starts.
       if (
         !Array.from(wordSegmenter.segment(title)).some(
-          (word) => word.isWordLike && word.segment.startsWith(toolQuery),
+          (word) => word.isWordLike && title.startsWith(toolQuery, word.index),
         )
       )
         return [];
@@ -84,21 +101,20 @@ export function buildBrowserAddressSuggestions<T extends BrowserAddressWorkspace
           Number(right.candidate.kind === "switch-tab"),
     );
 
-  const pages = candidates
-    .flatMap((candidate) => {
-      if (candidate.kind !== "page" || !candidate.pageMatches) return [];
-      const rank = pageTier(candidate.pageMatches);
-      return [{ ...workspaceRow(candidate), rank }];
-    })
-    .toSorted((left, right) => left.rank - right.rank)
-    .slice(0, 5);
-  const leadingPages = pages.filter((row) => row.rank === 0);
-  const trailingPages = pages.filter((row) => row.rank !== 0);
+  const content = candidates
+    .flatMap((candidate) =>
+      candidate.kind === "content"
+        ? [{ ...workspaceRow(candidate), rank: contentTier(candidate.pageMatches) }]
+        : [],
+    )
+    .toSorted((left, right) => left.rank - right.rank);
+  const leadingContent = content.filter((row) => row.rank === 0);
+  const trailingContent = content.filter((row) => row.rank !== 0);
   const ordered =
     typed.kind === "url"
-      ? [typed, ...toolsAndTabs, ...leadingPages, ...trailingPages]
-      : [...toolsAndTabs, ...leadingPages, typed, ...trailingPages];
-  const bounded = ordered.slice(0, 8);
+      ? [typed, ...toolsAndTabs, ...leadingContent, ...trailingContent]
+      : [...toolsAndTabs, ...leadingContent, typed, ...trailingContent];
+  const bounded = ordered.slice(0, MAX_TYPED_ROWS);
   if (bounded.some((row) => row.id === "typed")) return bounded;
-  return [...bounded.slice(0, 7), typed];
+  return [...bounded.slice(0, MAX_TYPED_ROWS - 1), typed];
 }

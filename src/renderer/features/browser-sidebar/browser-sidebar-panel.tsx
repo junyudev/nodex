@@ -27,6 +27,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -185,6 +186,7 @@ import {
   type BrowserAddressSuggestion,
 } from "./browser-address-suggestions";
 import { BrowserAddressField, type BrowserAddressWorkspaceOption } from "./browser-address-field";
+import { BrowserNewTabList, type BrowserNewTabSuggestions } from "./browser-new-tab-list";
 import {
   NodexDropdownButtonTrigger,
   NodexDropdownItem,
@@ -278,7 +280,13 @@ const ignoreBrowserTabUpdate = (): null => null;
 export type { BrowserAddressWorkspaceOption } from "./browser-address-field";
 
 export interface BrowserAddressSuggestionsSource {
-  readonly useWorkspaceSuggestions: (query: string) => readonly BrowserAddressWorkspaceOption[];
+  /**
+   * The workspace options for a New tab's search: what an empty field suggests, or what a
+   * draft matches. `null` while the tab shows a site rather than its New tab page.
+   */
+  readonly useWorkspaceSuggestions: (
+    query: string | null,
+  ) => readonly BrowserAddressWorkspaceOption[];
 }
 
 const EMPTY_ADDRESS_SUGGESTIONS: BrowserAddressSuggestionsSource = {
@@ -747,15 +755,19 @@ export function BrowserSidebarPanel({
   const shouldMountWebview = !isBlank || activeBrowserUseTab !== null;
   const showsNewTabPage = !downloadsOpen && !snapshot.failure && !shouldMountWebview;
   const workspaceAddressCandidates = addressSuggestions.useWorkspaceSuggestions(
-    !shouldMountWebview && addressFocused ? addressValue : "",
+    showsNewTabPage ? addressValue : null,
   );
   const addressRows = buildBrowserAddressSuggestions(addressValue, workspaceAddressCandidates);
+  // The New tab page always shows its list; a toolbar over a blank tab opens a dropdown.
   const addressSuggestionsOpen =
     !shouldMountWebview && addressFocused && !addressSuggestionsDismissed && addressRows.length > 0;
+  // A query preselects its first row for Enter; an empty New tab field preselects nothing.
   const highlightedAddressIndex = findHighlightedAddressIndex(
     addressRows,
     highlightedAddressSuggestionId,
+    addressValue.trim() ? 0 : -1,
   );
+  const newTabListId = useId();
   const browserPagePersistence = exactBrowserUseTab ? "browser-use" : "durable";
 
   useEffect(() => {
@@ -1433,18 +1445,17 @@ export function BrowserSidebarPanel({
     setHighlightedAddressSuggestionId(null);
   };
 
+  const addressSuggestionRows = {
+    rows: addressRows,
+    highlightedIndex: highlightedAddressIndex,
+    onHighlight: setHighlightedAddressSuggestionId,
+    onSelect: acceptAddressSuggestion,
+  };
   const addressFieldProps = {
     value: addressValue,
     focused: addressFocused,
     isCombobox: !shouldMountWebview,
-    suggestions: {
-      rows: addressRows,
-      open: addressSuggestionsOpen,
-      highlightedIndex: highlightedAddressIndex,
-      onHighlight: setHighlightedAddressSuggestionId,
-      onDismiss: () => setAddressSuggestionsDismissed(true),
-      onSelect: acceptAddressSuggestion,
-    },
+    suggestions: addressSuggestionRows,
     onChange: (value: string) => {
       setAddressValue(value);
       resetAddressSuggestions();
@@ -1663,6 +1674,10 @@ export function BrowserSidebarPanel({
             <BrowserAddressField
               {...addressFieldProps}
               variant="toolbar"
+              dropdown={{
+                open: addressSuggestionsOpen,
+                onDismiss: () => setAddressSuggestionsDismissed(true),
+              }}
               siteInfo={
                 <BrowserSiteInfoMenu
                   url={snapshot.url}
@@ -2005,7 +2020,14 @@ export function BrowserSidebarPanel({
         ) : showsNewTabPage ? (
           <BrowserNewTabSurface
             renderNewTabPage={renderNewTabPage}
-            search={<BrowserAddressField {...addressFieldProps} variant="new-tab" />}
+            search={
+              <BrowserAddressField {...addressFieldProps} variant="new-tab" listId={newTabListId} />
+            }
+            suggestions={{
+              ...addressSuggestionRows,
+              listId: newTabListId,
+              query: addressValue.trim(),
+            }}
           >
             <BrowserLocalServersSection
               projectId={tab.projectId}
@@ -3629,6 +3651,8 @@ function BrowserViewportResizeHandles({
 export interface BrowserNewTabSections {
   /** The New tab search field, displayed first in the page column. */
   readonly search: ReactNode;
+  /** The search field's list, which the page places with `BrowserNewTabList`. */
+  readonly suggestions: BrowserNewTabSuggestions;
   /** Local development servers found for the tab's Project, or null when there are none. */
   readonly localServers: ReactNode;
 }
@@ -3636,21 +3660,33 @@ export interface BrowserNewTabSections {
 function BrowserNewTabSurface({
   renderNewTabPage,
   search,
+  suggestions,
   children,
 }: {
   readonly renderNewTabPage?: (sections: BrowserNewTabSections) => ReactNode;
   readonly search: ReactNode;
+  readonly suggestions: BrowserNewTabSuggestions;
   readonly children: ReactNode;
 }) {
+  const intl = useIntl();
   return (
     <div className="absolute inset-0 z-10 bg-token-main-surface-primary">
       {renderNewTabPage ? (
-        renderNewTabPage({ search, localServers: children })
+        renderNewTabPage({ search, suggestions, localServers: children })
       ) : (
         <div className="@container h-full overflow-y-auto px-panel py-8 select-none">
           <div className="mx-auto flex w-full max-w-xl flex-col gap-8">
             {search}
-            {children}
+            {suggestions.rows.length > 0 ? (
+              <BrowserNewTabList
+                suggestions={suggestions}
+                aria-label={intl.formatMessage({
+                  id: "browser.browserSidebarPanel.addressSuggestions",
+                  defaultMessage: "Address suggestions",
+                })}
+              />
+            ) : null}
+            {suggestions.query ? null : children}
           </div>
         </div>
       )}
@@ -4610,9 +4646,10 @@ function readWebviewHostBounds(element: HTMLElement) {
 function findHighlightedAddressIndex(
   rows: readonly { id: string }[],
   highlightedId: string | null,
+  fallback: 0 | -1,
 ): number {
   const index = rows.findIndex((row) => row.id === highlightedId);
-  return index < 0 ? 0 : index;
+  return index < 0 ? fallback : index;
 }
 
 function BrowserAnnotationDiscardAction({

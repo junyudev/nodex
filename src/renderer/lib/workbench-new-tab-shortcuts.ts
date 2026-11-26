@@ -1,7 +1,7 @@
 import { persistedAtom, usePersistedAtomValue, useSetPersistedAtom } from "@/lib/maitai";
 import type { PanelId } from "@/lib/types";
 import { omitRecordKey } from "@/lib/utils";
-import type { NewTabShortcutPreference } from "./workbench-new-tab-model";
+import { isNewTabToolKind, type NewTabShortcutPreference } from "./workbench-new-tab-model";
 import { PANEL_NEW_TAB_ACTIONS, type PanelNewTabActionKind } from "./workbench-panel-actions";
 
 /** Each panel's New tab arrangement. A missing panel uses the default. */
@@ -10,7 +10,7 @@ export type NewTabShortcutPreferences = Readonly<
 >;
 
 const toolKinds = new Set<string>(
-  PANEL_NEW_TAB_ACTIONS.map(({ kind }) => kind).filter((kind) => kind !== "browser"),
+  PANEL_NEW_TAB_ACTIONS.map(({ kind }) => kind).filter(isNewTabToolKind),
 );
 
 function decodeToolKinds(values: readonly unknown[]): PanelNewTabActionKind[] {
