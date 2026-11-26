@@ -33,7 +33,7 @@ jobs:
     needs: guard
     uses: ./.github/workflows/_static-checks.yml
     with:
-      groups_json: '["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"]'
+      groups_json: '["types","source-ownership","ui-contracts","startup-bundles","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"]'
       source_sha: ${{ inputs.source_sha }}
       timing_prefix: certify-static
 
@@ -53,7 +53,7 @@ jobs:
     needs: guard
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"draft":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"staticGroups":["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"],"testMode":"full","windowsChecks":false}'
+      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"draft":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"staticGroups":["types","source-ownership","ui-contracts","startup-bundles","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"],"testMode":"full","windowsChecks":false}'
       source_sha: ${{ inputs.source_sha }}
       suites_json: '["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"]'
       timing_prefix: certify-app

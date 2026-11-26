@@ -74,6 +74,25 @@ const isElectronMainPath = (path: string): boolean =>
   path === ELECTRON_BUILDER_CONFIG ||
   path.startsWith("scripts/scenarios/");
 
+/**
+ * Inputs of the production Electron bundles whose startup budgets the startup-bundles group
+ * enforces: application and package source, dependencies, bundler configuration and the checks.
+ */
+const isProductionBundlePath = (path: string): boolean =>
+  !/\.(?:test|spec|integration)\.[cm]?[jt]sx?$/u.test(path) &&
+  !path.startsWith("packages/landing/") &&
+  (isRendererPath(path) ||
+    isElectronMainPath(path) ||
+    isJavaScriptDependencyPath(path) ||
+    path.startsWith("packages/") ||
+    path.startsWith("third_party/blocknote/packages/") ||
+    path.startsWith("crates/nodex-search-kernel/generated/") ||
+    (path.startsWith("config/") && !/^config\/(?:vitest|playwright)/u.test(path)) ||
+    path === "scripts/verify-renderer-bootstrap.ts" ||
+    path === "scripts/verify-startup-closure.ts" ||
+    path === "scripts/lib/startup-closure.ts" ||
+    path === "scripts/lib/emitted-module-graph.ts");
+
 const isRustPath = (path: string): boolean =>
   path === "Cargo.toml" ||
   path === "Cargo.lock" ||
@@ -468,6 +487,7 @@ const sourcePlan = (
   const appTestSuites = testSuitesForPaths(paths);
   const staticGroups = new Set<StaticGroup>(["types"]);
   if (renderer || paths.some(isRendererCompilerCheckPath)) staticGroups.add("ui-contracts");
+  if (paths.some(isProductionBundlePath)) staticGroups.add("startup-bundles");
   if (electronMain || protocol || paths.some(shouldCheckSearchKernelWasm)) {
     staticGroups.add("repository-contracts");
   }

@@ -67,6 +67,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "renderer UI dependency boundaries",
   },
   {
+    command: ["run", "startup-bundles:verify"],
+    group: "startup-bundles",
+    id: "startup-bundles",
+    name: "production startup bundle budgets",
+  },
+  {
     command: ["run", "ci:workflow-contracts"],
     group: "ci-contracts",
     id: "workflow-contracts",

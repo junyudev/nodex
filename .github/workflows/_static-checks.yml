@@ -68,7 +68,7 @@ jobs:
           groups="${STATIC_GROUP}"
           if [[ "${STATIC_GROUP}" == "quick-contracts" ]]; then
             groups="$(node -e '
-              const dedicated = ["types", "ui-contracts", "repository-contracts", "tooling-contracts"];
+              const dedicated = ["types", "ui-contracts", "startup-bundles", "repository-contracts", "tooling-contracts"];
               for (const group of JSON.parse(process.env.STATIC_GROUPS_JSON)) {
                 if (!dedicated.includes(group)) console.log(group);
               }

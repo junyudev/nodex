@@ -18,7 +18,7 @@ jobs:
     name: nightly static contracts
     uses: ./.github/workflows/_static-checks.yml
     with:
-      groups_json: '["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"]'
+      groups_json: '["types","source-ownership","ui-contracts","startup-bundles","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"]'
       timing_prefix: nightly-static
 
   rust-checks:
@@ -34,7 +34,7 @@ jobs:
     name: nightly application and browser tests
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: &full_gate_plan '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"draft":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"staticGroups":["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"],"testMode":"full","windowsChecks":false}'
+      gate_plan_json: &full_gate_plan '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"draft":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"staticGroups":["types","source-ownership","ui-contracts","startup-bundles","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"],"testMode":"full","windowsChecks":false}'
       suites_json: &all_application_suites '["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"]'
       timing_prefix: nightly-app
 

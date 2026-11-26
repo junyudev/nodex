@@ -141,18 +141,27 @@ export function planCheckSteps(
     })),
     ...groups
       .filter((group) => group !== "types")
-      .map((group): CheckStep => ({
-        name: `static ${group}`,
-        kind: "command",
-        commands: selectStaticChecks(STATIC_CHECKS, [group]).flatMap((check): StepCommand[] => {
-          if (check.id === "display-language-catalogs") return [];
-          if (check.id === "react-compiler-coverage")
-            return focusedCompilerCommands(
-              present.filter((file) => file.startsWith("src/renderer/") && isCodeFile(file)),
-            ).map((item) => ({ ...item, label: check.name }));
-          return [{ args: check.command, label: check.name }];
-        }),
-      })),
+      .map((group): CheckStep =>
+        // The production build replaces the checkout's out/, which a running dev app serves.
+        group === "startup-bundles"
+          ? skip(`static ${group}`, "production build: run `vp run build`, or left to CI")
+          : {
+              name: `static ${group}`,
+              kind: "command",
+              commands: selectStaticChecks(STATIC_CHECKS, [group]).flatMap(
+                (check): StepCommand[] => {
+                  if (check.id === "display-language-catalogs") return [];
+                  if (check.id === "react-compiler-coverage")
+                    return focusedCompilerCommands(
+                      present.filter(
+                        (file) => file.startsWith("src/renderer/") && isCodeFile(file),
+                      ),
+                    ).map((item) => ({ ...item, label: check.name }));
+                  return [{ args: check.command, label: check.name }];
+                },
+              ),
+            },
+      ),
     ...rustSteps(plan),
   ];
   return { steps, rustEnv: plan && rustGateEnvironment(plan, files) };
