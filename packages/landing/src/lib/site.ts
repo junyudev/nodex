@@ -1,18 +1,7 @@
 import changelog from "../../../../CHANGELOG.md?raw";
-import { releasesToShow } from "../changelog";
+import { parseChangelog } from "../../../../src/shared/changelog";
 
-const changeSources = import.meta.glob<string>("../../../../changes/*/*.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-const changeFiles = Object.entries(changeSources).map(([path, content]) => ({
-  path: path.slice("../../../../".length),
-  content,
-}));
-
-export const CHANGELOG_RELEASES = releasesToShow(changelog, changeFiles);
-const version = CHANGELOG_RELEASES.find((release) => release.version !== null)?.version;
+const version = parseChangelog(changelog)[0]?.version;
 if (!version) throw new Error("The landing page requires a dated release in CHANGELOG.md.");
 
 export const VERSION_LABEL: `v${string}` = `v${version}`;
