@@ -1481,7 +1481,12 @@ describe("ManagedWorktreeHandoff", () => {
         const prepared = yield* fixture.handoff.prepare(missingWorktree, "relocate", (step) =>
           Effect.sync(() => void progress.push(`${step.phase}:${step.status}`)),
         );
-        assert.strictEqual(prepared.prepared.direction, "relocate");
+        // Descendants map from the managed checkout, not from the nested cwd listed first.
+        assert.deepEqual(prepared.prepared, {
+          direction: "relocate",
+          sourceWorkspaceRoot: "/old-worktrees/abcd/repo",
+          destinationWorkspaceRoot: "/repo",
+        });
         assert.deepEqual(prepared.destination, {
           ...missingWorktree.source,
           cwd: "/repo/packages/app",

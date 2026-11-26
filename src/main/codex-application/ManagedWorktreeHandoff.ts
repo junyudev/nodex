@@ -4,7 +4,7 @@ import {
   STALE_THREAD_HANDOFF_LOCATION,
   type ThreadHandoffStrategy,
 } from "../../shared/codex-thread-handoff";
-import { planWorkspaceRelocation } from "../codex/codex-workspace-relocation";
+import { planWorkspaceRelocation, relocationSourceRoot } from "../codex/codex-workspace-relocation";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { makeThreadWorkspaceInspection } from "./ThreadWorkspaceInspection";
 import { localProjectSourceRoots } from "../../shared/project-sources";
@@ -274,7 +274,7 @@ export const live: Layer.Layer<
       return {
         prepared: {
           direction: "relocate",
-          sourceWorkspaceRoot: entry.source.workspaceRoots[0] ?? entry.source.cwd,
+          sourceWorkspaceRoot: relocationSourceRoot(entry.source),
           destinationWorkspaceRoot: checkout,
         },
         destination: {
