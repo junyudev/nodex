@@ -266,6 +266,7 @@ export interface AgentRootActivity {
   readonly awaitingCommands: boolean;
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
+  readonly pendingRequestIds?: readonly string[];
   /** When the latest currently pending question or approval was opened. */
   readonly latestRequestAt?: string | null;
   readonly activeFlags?: readonly import("@nodex/codex-app-server-protocol/v2").ThreadActiveFlag[];

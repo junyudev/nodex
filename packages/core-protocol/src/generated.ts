@@ -1100,6 +1100,15 @@ export interface components {
             /** @enum {string} */
             readonly kind: "temporary";
         };
+        /** @description Core's answer entitlement for the Agent's Member, without request contents or other Members' IDs. */
+        readonly AgentSessionMemberRequests: {
+            readonly pending: readonly components["schemas"]["AgentSessionPendingRequest"][];
+            readonly personal: boolean;
+        };
+        readonly AgentSessionPendingRequest: {
+            readonly id: string;
+            readonly kind: components["schemas"]["SessionExecutionRequestKind"];
+        };
         readonly AgentTurnProvenance: {
             readonly authority: components["schemas"]["ProjectWorkspaceTurnAuthority"];
             readonly profile_id: string;
@@ -2710,6 +2719,7 @@ export interface components {
                 /** @description Continue after this item when a consumer merges or shortens the window. */
                 readonly cursor: string;
                 readonly direct_section_id?: string | null;
+                readonly member_requests?: components["schemas"]["AgentSessionMemberRequests"] | null;
                 readonly opens?: components["schemas"]["ProjectWorkspaceSessionOpenStats"] | null;
                 readonly project_name?: string | null;
                 readonly project_pinned: boolean;
@@ -14979,6 +14989,7 @@ export interface components {
                 } | {
                     /** @enum {string} */
                     readonly kind: "agent_session";
+                    readonly member_requests: components["schemas"]["AgentSessionMemberRequests"];
                     readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
                     readonly thread?: components["schemas"]["ProjectWorkspaceThread"] | null;
                 } | {

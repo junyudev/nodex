@@ -1,3 +1,8 @@
+import {
+  compareChatAttention,
+  resolveChatAttentionLane,
+  type ChatAttentionPlacement,
+} from "../chat-attention-lane";
 import { describe, expect, it } from "vite-plus/test";
 import { sessionControlSchemas, sessionQueueSchema } from "./session-control-schemas";
 import { readSessionQueue, reorderedQueueIds } from "./session-queue";
@@ -237,5 +242,73 @@ describe("Session discovery scope", () => {
         .success,
     ).toBe(false);
     expect(sessionObservationSchemas.list_sessions.parse({}).includeSubagents).toBe(true);
+  });
+  it("accepts lane filtering and attention ordering only for open chats", () => {
+    const args = { lanes: ["pinned", "working"], order: "attention" };
+    expect(sessionObservationSchemas.list_sessions.parse(args)).toMatchObject(args);
+    expect(sessionObservationSchemas.list_sessions.parse({}).order).toBe("recency");
+    expect(sessionObservationSchemas.list_archived_sessions.safeParse(args).success).toBe(false);
+  });
+});
+
+describe("chat attention lanes", () => {
+  const chat = {
+    pinned: false,
+    settledAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    attentionAt: 0,
+    stopped: false,
+    working: false,
+  };
+  it("defers old requests until an elapsed deadline or a new request brings the chat back", () => {
+    const snoozed = {
+      ...chat,
+      snoozedUntil: new Date(100).toISOString(),
+      snoozedAt: 50,
+      attentionAt: 50,
+      stopped: true,
+      working: true,
+    };
+    expect(resolveChatAttentionLane(snoozed, 99)).toBe("snoozed");
+    expect(resolveChatAttentionLane(snoozed, 100)).toBe("active");
+    expect(resolveChatAttentionLane({ ...snoozed, attentionAt: 51 }, 99)).toBe("active");
+    expect(resolveChatAttentionLane({ ...snoozed, stopped: false }, 100)).toBe("working");
+    expect(resolveChatAttentionLane({ ...snoozed, pinned: true }, 99)).toBe("pinned");
+    expect(resolveChatAttentionLane({ ...snoozed, settledAt: 80 }, 99)).toBe("settled");
+  });
+
+  it("orders each lane by its own attention rule", () => {
+    const entry = (
+      id: string,
+      lane: ChatAttentionPlacement["lane"],
+      detail: Partial<ChatAttentionPlacement>,
+    ): ChatAttentionPlacement => ({ ...chat, id, lane, ...detail });
+    const rows = [
+      entry("later pin", "pinned", { pinnedOrder: 1 }),
+      entry("quiet", "active", { attentionAt: 100 }),
+      entry("older stop", "active", { stopped: true, attentionAt: 1 }),
+      entry("older work", "working", { attentionAt: 1 }),
+      entry("far snooze", "snoozed", { snoozedUntil: new Date(300).toISOString() }),
+      entry("older settled", "settled", { settledAt: 2 }),
+      entry("newer settled", "settled", { settledAt: 3 }),
+      entry("first pin", "pinned", { pinnedOrder: 0 }),
+      entry("newer work", "working", { attentionAt: 2 }),
+      entry("newer stop", "active", { stopped: true, attentionAt: 2 }),
+      entry("near snooze", "snoozed", { snoozedUntil: new Date(200).toISOString() }),
+    ];
+    expect(rows.sort(compareChatAttention).map(({ id }) => id)).toEqual([
+      "first pin",
+      "later pin",
+      "newer stop",
+      "older stop",
+      "quiet",
+      "newer work",
+      "older work",
+      "near snooze",
+      "far snooze",
+      "newer settled",
+      "older settled",
+    ]);
   });
 });

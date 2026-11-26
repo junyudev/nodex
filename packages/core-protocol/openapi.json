@@ -4280,6 +4280,40 @@
           }
         ]
       },
+      "AgentSessionMemberRequests": {
+        "type": "object",
+        "description": "Core's answer entitlement for the Agent's Member, without request contents or other Members' IDs.",
+        "required": [
+          "personal",
+          "pending"
+        ],
+        "properties": {
+          "pending": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentSessionPendingRequest"
+            }
+          },
+          "personal": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentSessionPendingRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionExecutionRequestKind"
+          }
+        }
+      },
       "AgentTurnProvenance": {
         "type": "object",
         "required": [
@@ -11072,6 +11106,17 @@
                   "type": [
                     "string",
                     "null"
+                  ]
+                },
+                "member_requests": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentSessionMemberRequests",
+                      "description": "Present only for a verified Agent's discovery request."
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 },
                 "opens": {
@@ -63644,6 +63689,7 @@
                         "type": "object",
                         "required": [
                           "session",
+                          "member_requests",
                           "kind"
                         ],
                         "properties": {
@@ -63652,6 +63698,9 @@
                             "enum": [
                               "agent_session"
                             ]
+                          },
+                          "member_requests": {
+                            "$ref": "#/components/schemas/AgentSessionMemberRequests"
                           },
                           "session": {
                             "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"

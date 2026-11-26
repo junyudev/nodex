@@ -1441,6 +1441,10 @@ it.effect(
       assert.deepEqual(activity.activeFlags, ["waitingOnApproval", "waitingOnUserInput"]);
       const details = yield* readSessionDetails(root, 1);
       assert.equal(details.pendingRequestCount, 2);
+      assert.deepEqual(
+        activity.pendingRequestIds,
+        details.pendingRequests.map(({ id }) => id).sort(),
+      );
       assert.equal(
         details.pendingRequests.find((request) => request.id === "tree:question")?.questions[0]
           ?.question,

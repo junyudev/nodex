@@ -515,47 +515,47 @@ pub(super) fn read(
             session_ids,
             window,
         } => {
-            let member = match provenance {
-                Some(provenance) => {
-                    super::agent_command::admit_read_caller(
-                        connection,
-                        library_id,
-                        context,
-                        &provenance,
-                    )?;
-                    let agent = crate::infrastructure::actors::verified_turn(
-                        connection,
-                        context,
-                        &provenance,
-                    )?;
-                    crate::infrastructure::actors::requesting_member(connection, &agent)?
-                }
+            let member = match provenance.as_deref() {
+                Some(provenance) => agent_member(connection, library_id, context, provenance)?,
                 None => member,
             };
+            let mut sessions = super::session_listing::read_session_window(
+                connection,
+                library_id,
+                &member,
+                commit_head,
+                super::session_listing::SessionListingFilter {
+                    archived,
+                    order: order.unwrap_or_default(),
+                    projectless_only: projectless_only.unwrap_or(false),
+                    exclude_drafts: exclude_drafts.unwrap_or(false),
+                    project_id: project_id.as_deref(),
+                    query: query.as_deref(),
+                    native_only: native_only.unwrap_or(false),
+                    execution_refs: execution_refs.as_deref(),
+                    session_ids: session_ids.as_deref(),
+                },
+                &window,
+            )?;
+            if provenance.is_some() {
+                let personal = crate::infrastructure::actors::is_personal(connection, library_id)?;
+                for item in &mut sessions.items {
+                    item.member_requests = Some(super::host_response::member_requests(
+                        connection,
+                        library_id,
+                        &item.task.session,
+                        &member,
+                        personal,
+                    )?);
+                }
+            }
             Ok(ProjectWorkspaceReadValue::SessionWindow {
                 search_revision: connection.query_row(
                     "SELECT revision FROM session_search_revision WHERE id = 1",
                     [],
                     |row| row.get(0),
                 )?,
-                sessions: super::session_listing::read_session_window(
-                    connection,
-                    library_id,
-                    &member,
-                    commit_head,
-                    super::session_listing::SessionListingFilter {
-                        archived,
-                        order: order.unwrap_or_default(),
-                        projectless_only: projectless_only.unwrap_or(false),
-                        exclude_drafts: exclude_drafts.unwrap_or(false),
-                        project_id: project_id.as_deref(),
-                        query: query.as_deref(),
-                        native_only: native_only.unwrap_or(false),
-                        execution_refs: execution_refs.as_deref(),
-                        session_ids: session_ids.as_deref(),
-                    },
-                    &window,
-                )?,
+                sessions,
             })
         }
         ProjectWorkspaceRead::TaskWindow {
@@ -794,13 +794,22 @@ pub(super) fn read(
             provenance,
             session_id,
         } => {
-            super::agent_command::admit_read_caller(connection, library_id, context, &provenance)?;
+            let member = agent_member(connection, library_id, context, &provenance)?;
             validate_id("session_id", &session_id)?;
             let row = read_session(connection, library_id, &session_id, &member)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
             let thread = read_linked_thread(connection, library_id, &row)?;
+            let session = session_summary(row);
+            let member_requests = super::host_response::member_requests(
+                connection,
+                library_id,
+                &session,
+                &member,
+                crate::infrastructure::actors::is_personal(connection, library_id)?,
+            )?;
             Ok(ProjectWorkspaceReadValue::AgentSession {
-                session: session_summary(row),
+                session,
+                member_requests,
                 thread,
             })
         }
@@ -1093,6 +1102,17 @@ fn read_linked_thread(
         .transpose()?
         .flatten()
         .map(Box::new))
+}
+
+fn agent_member(
+    connection: &Connection,
+    library_id: &str,
+    context: &nodex_core_contracts::BoundModuleContext,
+    provenance: &nodex_core_contracts::agent::AgentTurnProvenance,
+) -> Result<String, StoreError> {
+    super::agent_command::admit_read_caller(connection, library_id, context, provenance)?;
+    let agent = crate::infrastructure::actors::verified_turn(connection, context, provenance)?;
+    crate::infrastructure::actors::requesting_member(connection, &agent)
 }
 
 fn read_session(

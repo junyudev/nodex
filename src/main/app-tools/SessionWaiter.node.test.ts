@@ -1,3 +1,4 @@
+import type { SessionActivity } from "../agent-runtime/AgentRuntimeSessionActivity";
 import { describe } from "vite-plus/test";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -880,6 +881,8 @@ describe("SessionDiscovery", () => {
           activity_at: Date.parse(at(day)),
           display_title: id,
           pinned: false,
+          unread: false,
+          attention_at: Date.parse(at(day)),
           archived: false,
         },
         thread: {
@@ -942,6 +945,7 @@ describe("SessionDiscovery", () => {
     runtime?: readonly RuntimeItem[];
     bindings?: readonly Item[];
     runtimePageSize?: number;
+    activity?: ReadonlyMap<string, SessionActivity>;
     runtimeId?: string;
     unavailable?: "core" | "runtime";
   }) => {
@@ -990,6 +994,7 @@ describe("SessionDiscovery", () => {
     } as never as CoreModules["Service"];
     const list = make({
       core,
+      sessionActivity: Effect.succeed(options.activity ?? new Map()),
       sessionCatalog: (input) => {
         if (options.unavailable === "runtime") return Effect.fail(new Error("Runtime unavailable"));
         const rows = (options.runtime ?? []).filter(
@@ -1326,8 +1331,7 @@ describe("SessionDiscovery", () => {
           archived: false,
           limit: 10,
           statuses: ["completed"],
-          settled: true,
-          snoozed: false,
+          lanes: ["settled"],
         });
         assert.equal(first.sessions.length, 0);
         assert.isNotNull(first.nextCursor);
@@ -1335,12 +1339,11 @@ describe("SessionDiscovery", () => {
           archived: false,
           limit: 10,
           statuses: ["completed"],
-          settled: true,
-          snoozed: false,
+          lanes: ["settled"],
           cursor: first.nextCursor!,
         });
         assert.equal(second.sessions[0]?.sessionId, "session:settled");
-        assert.equal(second.sessions[0]?.settledAt, at(8));
+        assert.equal(second.sessions[0]?.attention.settledAt, at(8));
         assert.equal(second.sessions[0]?.branch, "feature/search");
         assert.equal(second.sessions[0]?.itemCountCoverage, "complete");
         assert.equal(
@@ -1348,6 +1351,101 @@ describe("SessionDiscovery", () => {
             .list({ archived: false, limit: 10, statuses: ["running"], cursor: first.nextCursor! })
             .pipe(Effect.result))._tag,
           "Failure",
+        );
+      }),
+  );
+
+  it.effect(
+    "filters and sorts the full attention result before paging, and detects changed membership",
+    () =>
+      Effect.gen(function* () {
+        const pinBinding = bound("pin", "pin-thread");
+        const pin = {
+          ...pinBinding,
+          task: {
+            ...pinBinding.task,
+            session: { ...pinBinding.task.session, pinned: true, pinned_order: 0 },
+          },
+          member_requests: { personal: false, pending: [] },
+        };
+        const background = bound("background", "background-thread");
+        const waiting = {
+          ...bound("waiting", "waiting-thread"),
+          member_requests: {
+            personal: false,
+            pending: [{ id: "mine", kind: "question" as const }],
+          },
+        };
+        const live = (
+          sessionId: string,
+          status: SessionActivity["status"],
+          facts: Partial<SessionActivity> = {},
+        ): SessionActivity => ({
+          sessionId,
+          status,
+          threadId: sessionId + "-thread",
+          activeRunId: null,
+          pendingRequestCount: 0,
+          backgroundTasks: [],
+          providerInstanceId: "test",
+          model: "test",
+          updatedAt: at(1),
+          ...facts,
+        });
+        const activity = new Map([
+          ["background", live("background", "background")],
+          [
+            "waiting",
+            live("waiting", "waiting", {
+              pendingRequestCount: 2,
+              activeFlags: ["waitingOnUserInput", "waitingOnApproval"],
+              pendingRequestIds: ["mine", "not-mine"],
+            }),
+          ],
+        ]);
+        const f = fixture({
+          native: [native("quiet", 9)],
+          runtime: [
+            runtime("background-thread", 8),
+            runtime("waiting-thread", 7),
+            runtime("pin-thread", 2),
+          ],
+          bindings: [pin, background, waiting],
+          runtimePageSize: 1,
+          activity,
+        });
+        const request = { archived: false, order: "attention", limit: 2 } as const;
+        const first = yield* f.list(request);
+        assert.deepEqual(
+          first.sessions.map(({ sessionId }) => sessionId),
+          ["pin", "waiting"],
+        );
+        assert.equal(first.sessions[1]?.attention.waitingOn, "input");
+        const next = yield* f.list({ ...request, cursor: first.entryCursors[0]! });
+        assert.deepEqual(
+          next.sessions.map(({ sessionId }) => sessionId),
+          ["waiting", "quiet"],
+        );
+        const working = yield* f.list({ ...request, lanes: ["working"] });
+        assert.deepEqual(
+          working.sessions.map(({ sessionId }) => sessionId),
+          ["background"],
+        );
+        assert.equal(working.sessions[0]?.attention.working, "background");
+        activity.set(
+          "waiting",
+          live("waiting", "waiting", {
+            pendingRequestCount: 1,
+            activeFlags: ["waitingOnUserInput"],
+            pendingRequestIds: ["another-request"],
+          }),
+        );
+        const stale = yield* f.list({ ...request, cursor: first.nextCursor! }).pipe(Effect.flip);
+        assert.equal(stale.reason, "cursor_stale");
+        const refreshed = yield* f.list(request);
+        assert.deepEqual(
+          refreshed.sessions.map(({ sessionId }) => sessionId),
+          ["pin", "quiet"],
         );
       }),
   );

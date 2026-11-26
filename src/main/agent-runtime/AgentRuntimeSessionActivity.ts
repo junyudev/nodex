@@ -12,7 +12,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import type {
   AgentRuntimeConnectionState,
-  AgentRuntimeSessionActivity as SessionActivity,
+  AgentRuntimeSessionActivity as SidebarActivity,
   AgentRuntimeSessionActivityChange,
   AgentRuntimeSessionActivitySnapshot,
 } from "../../shared/agent-runtime-api";
@@ -24,6 +24,13 @@ import type {
   AgentRuntimeProcessDelivery,
 } from "../platform/node/AgentRuntimeProcess";
 
+/** Request identities stay on the Host for its join with Core's answer entitlement. */
+export type SessionActivity = SidebarActivity & Pick<AgentRootActivity, "pendingRequestIds">;
+const sidebarActivity = ({
+  pendingRequestIds: _pendingRequestIds,
+  ...activity
+}: SessionActivity): SidebarActivity => activity;
+
 /**
  * Live execution facts for Runtime-bound Sessions, keyed by product Session.
  * The Runtime owns these live facts; Main records revisioned observations in Core for Page Turn.
@@ -32,6 +39,8 @@ import type {
 export interface AgentRuntimeSessionActivityShape {
   /** Bounded snapshot of non-idle Sessions. Reading never starts an idle Runtime. */
   readonly read: Effect.Effect<AgentRuntimeSessionActivitySnapshot>;
+  /** Host-only snapshot for joining live request identities with Core Member entitlement. */
+  readonly readAll: Effect.Effect<ReadonlyMap<string, SessionActivity>>;
   readonly connection: Effect.Effect<AgentRuntimeConnectionState>;
   /** Changes published after subscription; a `reset` requires a fresh snapshot. */
   readonly activityChanges: Stream.Stream<AgentRuntimeSessionActivityChange>;
@@ -46,6 +55,7 @@ export class AgentRuntimeSessionActivity extends Context.Service<
 /** A Main graph without an execution owner reports no live work. */
 export const inactive: AgentRuntimeSessionActivityShape = {
   read: Effect.succeed({ sequence: 0, items: [], complete: true }),
+  readAll: Effect.succeed(new Map()),
   connection: Effect.succeed({ status: "idle" }),
   activityChanges: Stream.never,
   connectionChanges: Stream.never,
@@ -109,6 +119,8 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
     left.readback?.text === right.readback?.text &&
     left.readback?.startedByPerson === right.readback?.startedByPerson &&
     left.pendingRequestCount === right.pendingRequestCount &&
+    JSON.stringify(left.pendingRequestIds ?? []) ===
+      JSON.stringify(right.pendingRequestIds ?? []) &&
     left.latestRequestAt === right.latestRequestAt &&
     JSON.stringify(left.activeFlags ?? []) === JSON.stringify(right.activeFlags ?? []) &&
     left.approvalPrompt === right.approvalPrompt &&
@@ -149,6 +161,7 @@ const toSessionActivity = (
   activeRunId: root.activeRunId,
   ...(root.readback === undefined ? {} : { readback: root.readback }),
   pendingRequestCount: root.pendingRequestCount,
+  ...(root.pendingRequestIds === undefined ? {} : { pendingRequestIds: root.pendingRequestIds }),
   ...(root.latestRequestAt === undefined ? {} : { latestRequestAt: root.latestRequestAt }),
   ...(root.activeFlags === undefined ? {} : { activeFlags: root.activeFlags }),
   ...(root.approvalPrompt === undefined ? {} : { approvalPrompt: root.approvalPrompt }),
@@ -233,7 +246,7 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
       );
       return {
         sequence: current.sequence,
-        items: items.slice(0, snapshotLimit),
+        items: items.slice(0, snapshotLimit).map(sidebarActivity),
         complete: items.length <= snapshotLimit,
       };
     }),
@@ -422,7 +435,7 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
                   sequence += 1;
                   if (next) {
                     sessions.set(sessionId, next);
-                    published.push({ type: "upsert", sequence, activity: next });
+                    published.push({ type: "upsert", sequence, activity: sidebarActivity(next) });
                   } else {
                     sessions.delete(sessionId);
                     published.push({ type: "remove", sequence, sessionId });

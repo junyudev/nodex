@@ -1,3 +1,4 @@
+import { CHAT_ATTENTION_LANES } from "../chat-attention-lane";
 import { sessionExecutionSchema } from "./session-execution-target";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -7,7 +8,7 @@ import { sessionWaitLimits } from "@nodex/app-tools-mcp/manifest";
 import { sessionScopeSchema } from "./session-scope";
 import { toolInputSchema } from "./tool-input-schema";
 
-const listSchema = z
+const listArchivedSchema = z
   .strictObject({
     scope: sessionScopeSchema,
     cursor: z
@@ -51,13 +52,16 @@ const listSchema = z
       )
       .max(10)
       .optional(),
-    settled: z.boolean().optional(),
-    snoozed: z.boolean().optional(),
   })
   .refine((input) => input.scope !== "profile" || input.projectId === undefined, {
     message: "Choose a Project or Profile scope, not both",
     path: ["projectId"],
   });
+
+const listSchema = listArchivedSchema.safeExtend({
+  lanes: z.array(z.enum(CHAT_ATTENTION_LANES)).max(CHAT_ATTENTION_LANES.length).optional(),
+  order: z.enum(["recency", "attention"]).default("recency"),
+});
 
 const waitSchema = z
   .strictObject({
@@ -125,7 +129,7 @@ const waitSchema = z
 export const sessionObservationSchemas = {
   wait_sessions: waitSchema,
   list_sessions: listSchema,
-  list_archived_sessions: listSchema,
+  list_archived_sessions: listArchivedSchema,
   read_session: z
     .strictObject({
       execution: sessionExecutionSchema.optional(),
@@ -202,16 +206,24 @@ export const sessionObservationToolCatalog: readonly Tool[] = [
     inputSchema: toolInputSchema(waitSchema),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
-  ...(["list_sessions", "list_archived_sessions"] as const).map((name): Tool => ({
-    name,
-    description: `List ${name === "list_sessions" ? "active" : "archived"} Sessions in the calling Project, or its projectless lane, in conversation-recency order. Use scope: profile for every Project, or projectId for an explicit Project. Runtime child executions are included by default; set includeSubagents: false for roots. Filter by title/preview query. Results include bounded previews, placement, source availability and a continuation cursor. Attention flags are waitingOnApproval or waitingOnUserInput across backends. A short or empty page may still have nextCursor; continue until null. If a source is unavailable, stop and retry later.`,
+  {
+    name: "list_sessions",
+    description:
+      'List chats in conversation-recency order by default. Use scope: "profile" for every Project or projectId for one Project. Use includeSubagents: false for chat roots only. Each row has the calling Member’s attention, including lane, waitingOn, working and unread. Working lane: {scope:"profile", lanes:["working"]}. Snoozed soonest first: {scope:"profile", lanes:["snoozed"], order:"attention"}. To review what’s on the person’s plate: {scope:"profile", lanes:["active","working","snoozed"], order:"attention"}. Pins have their own lane, so inspect attention.working or attention.waitingOn across lanes to include them. Filter by title/preview query or status. Continue short or empty pages until nextCursor is null. If a source is unavailable, retry later.',
     inputSchema: toolInputSchema(listSchema),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  })),
+  },
+  {
+    name: "list_archived_sessions",
+    description:
+      'List archived chats in conversation-recency order. Use scope: "profile" for every Project or projectId for one Project. Use includeSubagents: false for chat roots only. Filter by title/preview query or status. Each row has the calling Member’s attention marks and a null lane. Continue short or empty pages until nextCursor is null. If a source is unavailable, retry later.',
+    inputSchema: toolInputSchema(listArchivedSchema),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  },
   {
     name: "read_session",
     description:
-      "Read a Session without opening or resuming it; omit sessionId for your calling Session. Attention flags are waitingOnApproval or waitingOnUserInput across backends. messages returns messages and plans; activity returns complete typed JSON including tools, file changes and attachments. Default newest_first pages older items; oldest_first reads forward and its tailCursor resumes future appends. Preserve history.page.nextCursor separately from each content.nextCursor for exact text/JSON continuation. Execution metadata includes provenance, lineage, counts and recent Runs; execution.runsPage.nextCursor continues Run summaries via runCursor. Pass itemId and optional sourceThreadId/runId/textOffset to read a search hit directly. Sources without point lookup return page.locating and a nextCursor until found. execution.threadId selects a Runtime child within this Session. Positive quantity budgets normalize to safe limits, and the complete response budget remains fixed. Changed content reports cursor_stale. A direct parent reading a complete terminal child result acknowledges its task delivery.",
+      "Read a Session without opening or resuming it; omit sessionId for your calling Session. The attention block describes the whole chat for the calling Member, including when reading a child execution. messages returns messages and plans; activity returns complete typed JSON including tools, file changes and attachments. Default newest_first pages older items; oldest_first reads forward and its tailCursor resumes future appends. Preserve history.page.nextCursor separately from each content.nextCursor for exact text/JSON continuation. Execution metadata includes provenance, lineage, counts and recent Runs; execution.runsPage.nextCursor continues Run summaries via runCursor. Pass itemId and optional sourceThreadId/runId/textOffset to read a search hit directly. Sources without point lookup return page.locating and a nextCursor until found. execution.threadId selects a Runtime child within this Session. Positive quantity budgets normalize to safe limits, and the complete response budget remains fixed. Changed content reports cursor_stale. A direct parent reading a complete terminal child result acknowledges its task delivery.",
     inputSchema: toolInputSchema(sessionObservationSchemas.read_session),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },

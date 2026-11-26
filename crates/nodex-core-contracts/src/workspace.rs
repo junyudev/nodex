@@ -658,6 +658,7 @@ pub enum ProjectWorkspaceReadValue {
     },
     AgentSession {
         session: ProjectWorkspaceSessionSummary,
+        member_requests: AgentSessionMemberRequests,
         thread: Option<Box<ProjectWorkspaceThread>>,
     },
     Thread {
@@ -2045,6 +2046,22 @@ pub struct ProjectWorkspaceSessionListingItem {
     pub project_section_id: Option<String>,
     pub project_pinned: bool,
     pub opens: Option<ProjectWorkspaceSessionOpenStats>,
+    /// Present only for a verified Agent's discovery request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_requests: Option<AgentSessionMemberRequests>,
+}
+
+/// Core's answer entitlement for the Agent's Member, without request contents or other Members' IDs.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+pub struct AgentSessionMemberRequests {
+    pub personal: bool,
+    pub pending: Vec<AgentSessionPendingRequest>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+pub struct AgentSessionPendingRequest {
+    pub id: String,
+    pub kind: SessionExecutionRequestKind,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
