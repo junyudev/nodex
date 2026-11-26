@@ -9,7 +9,12 @@ import type { ActivityWindowInput, ActivityWindow, RetryProblemInput } from "../
 import { ActivityWindowInputSchema, RetryProblemInputSchema } from "../../shared/schemas/inbox";
 import { effectiveHolds, scopeHeld, spaceHeld } from "../work-application/execution-holds";
 import { inboxRoutingDeadline, inboxRoutingIdentity } from "./inbox-suggestions";
-import { decideInboxReply, inboxReplyDestination, type ReplyDispatch } from "./inbox-replies";
+import {
+  decideInboxReply,
+  inboxReplyDestination,
+  nativeInboxReplyUnavailableReason,
+  type ReplyDispatch,
+} from "./inbox-replies";
 import * as Context from "effect/Context";
 import { HostInvocation } from "../HostInvocation";
 import * as Effect from "effect/Effect";
@@ -464,6 +469,10 @@ export const make = Effect.gen(function* () {
     );
     if (!session || session.archived) return { chat: null, dispatch: null };
     const chat = { sessionId, title: session.display_title || "chat" };
+    if (yield* HostInvocation) {
+      const reason = nativeInboxReplyUnavailableReason(session);
+      if (reason) return { chat, dispatch: null, reason };
+    }
     if (!session.execution_ref && session.thread_id) {
       const thread = yield* read("reply-thread", {
         kind: "thread",
@@ -498,7 +507,8 @@ export const make = Effect.gen(function* () {
   const replyDestination = (pageId: string, body: string) =>
     Effect.gen(function* () {
       const row = yield* entry(pageId);
-      const { chat, dispatch } = yield* resolveReply(pageId, body);
+      const { chat, dispatch, reason } = yield* resolveReply(pageId, body);
+      if (reason) return { kind: "unavailable" as const, chat, reason };
       if (row?.rowKind === "turn" && !dispatch) return { kind: "unavailable" as const, chat };
       return inboxReplyDestination(chat, dispatch);
     });
@@ -508,6 +518,12 @@ export const make = Effect.gen(function* () {
     const reply = parsed.replyToPageId
       ? yield* resolveReply(parsed.replyToPageId, parsed.body)
       : null;
+    if (reply?.reason)
+      return yield* new InboxApplicationError({
+        operation: "send",
+        cause: null,
+        message: reply.reason,
+      });
     if (parsed.turnEpisode) {
       if (!parsed.replyToPageId)
         return yield* new InboxApplicationError({

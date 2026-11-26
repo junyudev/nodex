@@ -23,6 +23,7 @@ import {
   type InboxApplicationError,
 } from "../inbox-application/InboxApplication";
 import { WorkApplication } from "../work-application/WorkApplication";
+import { nativeInboxReplyUnavailableReason } from "../inbox-application/inbox-replies";
 import { PhoneFiles } from "../../main/platform/node/PhoneFiles";
 import {
   capabilityUnavailable,
@@ -105,10 +106,10 @@ const projectAction = (
 /** Connected native chats retain their desktop execution owner. */
 export const projectTurnReplyCapability = (
   chat: NonNullable<InboxItem["turn"]>["active_chat"],
-): Extract<InboxEntry, { rowKind: "turn" }>["turn"]["replyCapability"] =>
-  chat?.thread_id && !chat.execution_ref
-    ? { kind: "unavailable", reason: "Continue this chat on its desktop." }
-    : { kind: "available" };
+): Extract<InboxEntry, { rowKind: "turn" }>["turn"]["replyCapability"] => {
+  const reason = nativeInboxReplyUnavailableReason(chat);
+  return reason ? { kind: "unavailable", reason } : { kind: "available" };
+};
 
 export const projectInboxEntry = (item: InboxItem): InboxEntry => {
   const source = {

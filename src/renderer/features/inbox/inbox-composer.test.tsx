@@ -250,3 +250,38 @@ test("the reply bar waits for typing to settle before asking where a reply goes"
   expect(replyDestination).not.toHaveBeenCalledWith("post", "Sm");
   expect(view.getByLabelText("Reply destination").textContent).toBe("· goes to Review work");
 });
+
+test("a reply the host cannot deliver says where to continue instead of offering Send", async () => {
+  const props = { onDraftChange: vi.fn(), images: null, onSend: async () => {} };
+  const reply = (turnEpisode?: string) => ({
+    ...EMPTY_INBOX_DRAFT,
+    text: "Use the release branch",
+    replyTo: { pageId: "post", label: "Question", ...(turnEpisode ? { turnEpisode } : {}) },
+  });
+
+  replyDestination.mockResolvedValue({
+    kind: "unavailable",
+    reason: "Continue this chat on its desktop.",
+    chat: null,
+  });
+  const view = render(<InboxComposer draft={reply()} {...props} />);
+  await waitFor(() =>
+    expect(view.getByLabelText("Reply destination").textContent).toBe(
+      "· Continue this chat on its desktop.",
+    ),
+  );
+  expect((view.getByRole("button", { name: "Send to Inbox" }) as HTMLButtonElement).disabled).toBe(
+    true,
+  );
+  view.unmount();
+
+  // A Turn reply has no Nodex destination to fall back to.
+  replyDestination.mockResolvedValue({ kind: "nodex", chat: null });
+  const turn = render(<InboxComposer draft={reply("episode")} {...props} />);
+  await waitFor(() =>
+    expect(turn.getByLabelText("Reply destination").textContent).toBe("· Open chat to continue"),
+  );
+  expect((turn.getByRole("button", { name: "Send reply" }) as HTMLButtonElement).disabled).toBe(
+    true,
+  );
+});

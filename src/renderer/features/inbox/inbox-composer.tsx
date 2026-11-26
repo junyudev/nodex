@@ -81,7 +81,12 @@ export function InboxComposer({
     onImported: (added: readonly MessageDraftImage[]) =>
       onDraftChange((current) => ({ ...current, images: [...current.images, ...added] })),
   });
-  const canSend = !disabled && !input.importing && !isEmptyInboxDraft(draft);
+  // A reply the host says it cannot deliver names where to continue instead of offering Send.
+  const canSend =
+    !disabled &&
+    replyDestination?.kind !== "unavailable" &&
+    !input.importing &&
+    !isEmptyInboxDraft(draft);
 
   const focusedTokenRef = useRef<{ token: number | undefined } | null>(null);
   useLayoutEffect(() => {
@@ -341,6 +346,7 @@ function ReplyDestinationPhrase({ destination }: { readonly destination: InboxRe
   const chat = destination.chat ? (
     <span className="text-token-foreground">{destination.chat.title}</span>
   ) : null;
+  if (destination.kind === "unavailable" && destination.reason) return <>· {destination.reason}</>;
   if (destination.kind === "unavailable")
     return (
       <>
