@@ -58,6 +58,7 @@ describe("Workbench profile preferences", () => {
         },
         chatOrder: "manual",
         hiddenShelves: ["settled", "active", "working"],
+        previewLines: 0,
       },
       recentPageSessions: [
         {
@@ -91,11 +92,11 @@ describe("Workbench profile preferences", () => {
         pages: false,
         projects: false,
         chats: true,
-        // Lanes a stored Profile never chose start as a new one does: set aside and finished
-        // chats stay folded.
+        // Lanes a stored Profile never chose start as a new one does: finished chats stay
+        // folded, while Snoozed folds only the chats returning later.
         active: false,
         working: false,
-        snoozed: true,
+        snoozed: false,
         settled: true,
       },
       listExtraPages: { pages: 2, "project:alpha": 1 },
@@ -106,6 +107,8 @@ describe("Workbench profile preferences", () => {
       scopeProjectId: null,
       // Active always shows, so only the lists that can hide stay hidden.
       hiddenShelves: ["working", "settled"],
+      // Turning previews off is a choice of its own, not a missing value.
+      previewLines: 0,
       autoSettleDays: 7,
     });
     expect(preferences.recentPageSessions).toHaveLength(1);

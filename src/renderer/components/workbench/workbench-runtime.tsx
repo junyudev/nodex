@@ -265,8 +265,10 @@ import {
 } from "@/lib/use-workbench-session-catalog";
 import {
   DEFAULT_SIDEBAR_AUTO_SETTLE_DAYS,
+  DEFAULT_SIDEBAR_CHAT_PREVIEW_LINES,
   resolveAutoSettleIdleBefore,
   type SidebarAutoSettleDays,
+  type SidebarChatPreviewLines,
   type SidebarOptionalShelf,
   type SidebarOrganize,
 } from "@/lib/sidebar-chat-lifecycle";
@@ -568,6 +570,7 @@ export interface WorkbenchRuntimeProps {
     organize?: SidebarOrganize;
     scopeProjectId?: string | null;
     hiddenShelves?: readonly SidebarOptionalShelf[];
+    previewLines?: SidebarChatPreviewLines;
     autoSettleDays?: SidebarAutoSettleDays;
   };
   pageStageCloseRef: React.RefObject<(() => Promise<void>) | null>;
@@ -610,6 +613,7 @@ export interface WorkbenchRuntimeProps {
   setSidebarOrganize?: (organize: SidebarOrganize) => void;
   setSidebarScopeProjectId?: (projectId: string | null) => void;
   setSidebarHiddenShelves?: (shelves: readonly SidebarOptionalShelf[]) => void;
+  setSidebarPreviewLines?: (lines: SidebarChatPreviewLines) => void;
   setSidebarAutoSettleDays?: (days: SidebarAutoSettleDays) => void;
   recentPageSessions?: readonly RecentPageSession[];
   projectPickerOpenTick?: number;
@@ -625,6 +629,7 @@ const ignoreSidebarOrganizeChange = (_organize: SidebarOrganize) => {};
 const ignoreSidebarScopeChange = (_projectId: string | null) => {};
 const ignoreSidebarHiddenShelvesChange = (_shelves: readonly SidebarOptionalShelf[]) => {};
 const NO_HIDDEN_SHELVES: readonly SidebarOptionalShelf[] = [];
+const ignoreSidebarPreviewLinesChange = (_lines: SidebarChatPreviewLines) => {};
 const ignoreSidebarAutoSettleDaysChange = (_days: SidebarAutoSettleDays) => {};
 /** How often an open window settles long-idle chats. */
 const IDLE_CHAT_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
@@ -671,6 +676,7 @@ export function WorkbenchRuntime({
   setSidebarOrganize,
   setSidebarScopeProjectId,
   setSidebarHiddenShelves,
+  setSidebarPreviewLines,
   setSidebarAutoSettleDays,
   onNavigationStateChange,
   onRegisterCommandPort,
@@ -2729,6 +2735,8 @@ export function WorkbenchRuntime({
     onScopeChange: setSidebarScopeProjectId ?? ignoreSidebarScopeChange,
     hiddenShelves: sidebar?.hiddenShelves ?? NO_HIDDEN_SHELVES,
     onHiddenShelvesChange: setSidebarHiddenShelves ?? ignoreSidebarHiddenShelvesChange,
+    previewLines: sidebar?.previewLines ?? DEFAULT_SIDEBAR_CHAT_PREVIEW_LINES,
+    onPreviewLinesChange: setSidebarPreviewLines ?? ignoreSidebarPreviewLinesChange,
     autoSettleDays: sidebarAutoSettleDays,
     onAutoSettleDaysChange: setSidebarAutoSettleDays ?? ignoreSidebarAutoSettleDaysChange,
     openLane: sidebarOpenLane,

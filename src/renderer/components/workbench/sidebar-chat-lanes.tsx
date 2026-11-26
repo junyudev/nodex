@@ -106,7 +106,9 @@ export function SidebarChatLaneSection({
   extraPages,
   onExtraPagesChange,
   forcedVisibleKey,
+  fold = null,
   actions,
+  tool,
   total,
   onOpenPage,
   renderThread,
@@ -134,7 +136,14 @@ export function SidebarChatLaneSection({
   extraPages: number;
   onExtraPagesChange: (extraPages: number) => void;
   forcedVisibleKey: string | null;
+  /**
+   * Folds the rows from `from` on behind one row that counts the chats it hides and says when they
+   * return, as the Snoozed lane does with chats returning later.
+   */
+  fold?: { readonly from: number; readonly count: number; readonly range: string | null } | null;
   actions?: ReactNode;
+  /** A control the lane's heading keeps in reach, such as the arrangement's view options. */
+  tool?: ReactNode;
   renderThread: (threadKey: string) => ReactNode;
   /** Renders the visible rows together, for a lane whose rows drag into a new order. */
   renderRows?: (visibleThreadKeys: readonly string[]) => ReactNode;
@@ -144,12 +153,27 @@ export function SidebarChatLaneSection({
   const settled = state.kind === "ready";
   if (threadKeys.length === 0 && settled && !SHELF_EMPTY_TEXT[shelf]) return null;
   if (threadKeys.length === 0 && !settled && shelf !== "active" && shelf !== "settled") return null;
+  const foldLabel = fold
+    ? fold.range
+      ? intl.formatMessage(
+          {
+            id: "workbench.sidebarChatLanes.laterUntil",
+            defaultMessage: "{count} later · {range}",
+          },
+          { count: fold.count, range: fold.range },
+        )
+      : intl.formatMessage(
+          { id: "workbench.sidebarChatLanes.later", defaultMessage: "{count} later" },
+          { count: fold.count },
+        )
+    : null;
 
   return (
     <CodexSidebarSection
       heading={heading}
       collapsed={collapsed}
       onToggle={onToggle}
+      tool={tool}
       actions={
         onOpenPage ? (
           <>
@@ -176,10 +200,15 @@ export function SidebarChatLaneSection({
           items={threadKeys as string[]}
           getKey={(threadKey) => threadKey}
           maxItems={
-            shelf === "settled"
-              ? SIDEBAR_SETTLED_SHELF_MAX_ITEMS
-              : CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS
+            fold
+              ? fold.from
+              : shelf === "settled"
+                ? SIDEBAR_SETTLED_SHELF_MAX_ITEMS
+                : CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS
           }
+          // The later chats unfold together, and fold back together with Show less.
+          pageIncrement={fold ? Math.max(1, threadKeys.length - fold.from) : undefined}
+          showMoreLabel={foldLabel}
           extraPages={extraPages}
           onExtraPagesChange={onExtraPagesChange}
           forcedVisibleKey={forcedVisibleKey}
@@ -210,10 +239,14 @@ export function SidebarChatLaneSection({
               </CodexSidebarPagerButton>
             ) : undefined
           }
-          endNote={intl.formatMessage({
-            id: "workbench.sidebarChatLanes.endOfLane",
-            defaultMessage: "That’s all",
-          })}
+          endNote={
+            fold
+              ? undefined
+              : intl.formatMessage({
+                  id: "workbench.sidebarChatLanes.endOfLane",
+                  defaultMessage: "That’s all",
+                })
+          }
         >
           {(pagination, pager) => (
             <div className="isolate flex flex-col [contain:layout]">

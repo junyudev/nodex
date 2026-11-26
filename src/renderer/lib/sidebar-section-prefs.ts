@@ -9,8 +9,11 @@ export const SIDEBAR_COLLAPSIBLE_SECTION_IDS = [
   "settled",
 ] as const;
 
-/** Chats set aside or finished stay out of the way until the person opens their shelf. */
-const SIDEBAR_SECTIONS_COLLAPSED_BY_DEFAULT: ReadonlySet<string> = new Set(["snoozed", "settled"]);
+/**
+ * Finished chats stay out of the way until the person opens their shelf. Snoozed stays open: it
+ * shows the chats returning soon and folds the ones returning later by itself.
+ */
+const SIDEBAR_SECTIONS_COLLAPSED_BY_DEFAULT: ReadonlySet<string> = new Set(["settled"]);
 
 export type SidebarCollapsibleSectionId = (typeof SIDEBAR_COLLAPSIBLE_SECTION_IDS)[number];
 

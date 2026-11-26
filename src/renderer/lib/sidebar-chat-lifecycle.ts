@@ -305,3 +305,16 @@ export type SidebarOrganize = "attention" | "project";
 export function normalizeSidebarOrganize(value: unknown): SidebarOrganize {
   return value === "attention" ? "attention" : "project";
 }
+
+/**
+ * How many lines a row in `Pinned`, `Active` and `Working` gives to what its chat is about.
+ * Snoozed and settled chats ask nothing now, so their rows always keep to the title line.
+ */
+export type SidebarChatPreviewLines = 0 | 1 | 2;
+
+export const SIDEBAR_CHAT_PREVIEW_LINE_OPTIONS = [2, 1, 0] as const;
+export const DEFAULT_SIDEBAR_CHAT_PREVIEW_LINES = 2;
+
+export function normalizeSidebarChatPreviewLines(value: unknown): SidebarChatPreviewLines {
+  return value === 0 || value === 1 || value === 2 ? value : DEFAULT_SIDEBAR_CHAT_PREVIEW_LINES;
+}

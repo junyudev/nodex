@@ -9,7 +9,7 @@ import {
 } from "../contracts";
 
 export const SIDEBAR_ATTENTION_SCENARIO_ID = "sidebar/attention" as const;
-const REVISION = 1;
+const REVISION = 2;
 const PROJECTS = { nodex: "Nodex", core: "Core", web: "Web" } as const;
 type ProjectKey = keyof typeof PROJECTS;
 type ChatRecipe = {
@@ -19,10 +19,22 @@ type ChatRecipe = {
   readonly turn?: "question" | "review";
   readonly unread?: true;
   readonly section?: true;
-  readonly snooze?: "pending" | "due";
+  /** When a snoozed chat returns, from the moment it is seeded; `due` has already returned. */
+  readonly snooze?: SnoozeReturn | "due";
   readonly settled?: true;
   readonly pinned?: true;
 };
+
+type SnoozeReturn = "in-2-hours" | "tomorrow-morning" | "in-4-days" | "in-3-weeks";
+
+function snoozeReturn(when: SnoozeReturn, now: Date): Date {
+  if (when === "in-2-hours") return new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  const days = when === "tomorrow-morning" ? 1 : when === "in-4-days" ? 4 : 21;
+  const at = new Date(now);
+  at.setDate(at.getDate() + days);
+  at.setHours(9, 0, 0, 0);
+  return at;
+}
 
 // The native waiting flags drive the Active rows. The Inbox question uses a local Session
 // so Desktop's observer does not replace the seeded request with a native Thread snapshot.
@@ -48,7 +60,10 @@ export const SIDEBAR_ATTENTION_CHATS = {
     turn: "question",
   },
   releaseNodex: { project: "nodex", title: "Prepare the release checklist", section: true },
-  snoozed: { project: "web", title: "Check the analytics rollout", snooze: "pending" },
+  snoozedSoon: { project: "nodex", title: "Rerun the flaky upload test", snooze: "in-2-hours" },
+  snoozed: { project: "web", title: "Check the analytics rollout", snooze: "tomorrow-morning" },
+  snoozedWeek: { project: "web", title: "Plan the onboarding refresh", snooze: "in-4-days" },
+  snoozedMonth: { project: null, title: "Revisit the pricing page copy", snooze: "in-3-weeks" },
   woke: { project: "nodex", title: "Follow up on installer feedback", snooze: "due" },
   settledCore: { project: "core", title: "Verify the backup restore", settled: true },
   settledWeb: { project: "web", title: "Clean up unused routes", settled: true },
@@ -153,11 +168,9 @@ async function materialize(port: ScenarioSeedPort, workspace: string): Promise<S
         placement: { kind: "end" },
       });
     }
-    if (recipe.snooze === "pending") {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(9, 0, 0, 0);
-      await port.setSessionSnooze(chat.sessionId, tomorrow.toISOString());
+    if (recipe.snooze && recipe.snooze !== "due") {
+      const returnsAt = snoozeReturn(recipe.snooze, new Date());
+      await port.setSessionSnooze(chat.sessionId, returnsAt.toISOString());
     }
     if (recipe.snooze === "due") {
       await port.setSessionSnooze(chat.sessionId, new Date(Date.now() - 60_000).toISOString());
@@ -219,7 +232,7 @@ async function inspect(
       session.pinned !== Boolean(recipe.pinned) ||
       session.unread !== Boolean(recipe.unread || recipe.snooze === "due") ||
       (session.settledAt != null) !== Boolean(recipe.settled) ||
-      Boolean(session.snoozedUntil) !== (recipe.snooze === "pending") ||
+      Boolean(session.snoozedUntil) !== Boolean(recipe.snooze && recipe.snooze !== "due") ||
       (session.wokeAt != null) !== (recipe.snooze === "due") ||
       session.pageTurn?.reason !== expectedTurn ||
       (expectedTurn && session.pageTurn?.page_id !== manifest.pageIdsByKey[expectedTurn])

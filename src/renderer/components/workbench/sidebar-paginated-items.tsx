@@ -35,6 +35,10 @@ export interface SidebarPaginatedItemsProps<T> {
   readonly items: readonly T[];
   readonly getKey: (item: T) => string;
   readonly maxItems?: number | null;
+  /** Rows each Show more reveals, when a list unfolds in steps of its own. */
+  readonly pageIncrement?: number;
+  /** Names what Show more reveals, when the list knows: "3 later · Mon – Dec 8". */
+  readonly showMoreLabel?: ReactNode;
   /** Show more steps beyond the first page. The owner decides how long it is remembered. */
   readonly extraPages: number;
   readonly onExtraPagesChange?: (extraPages: number) => void;
@@ -62,6 +66,8 @@ export function SidebarPaginatedItems<T>({
   items,
   getKey,
   maxItems = null,
+  pageIncrement,
+  showMoreLabel,
   extraPages,
   onExtraPagesChange,
   forcedVisibleKey = null,
@@ -85,6 +91,7 @@ export function SidebarPaginatedItems<T>({
         items,
         getKey,
         maxItems,
+        pageIncrement,
         extraPages: depth,
         forcedVisibleKey,
         suppressedKeys,
@@ -98,6 +105,7 @@ export function SidebarPaginatedItems<T>({
       items,
       maxItems,
       onExtraPagesChange,
+      pageIncrement,
       suppressedKeys,
     ],
   );
@@ -203,7 +211,12 @@ export function SidebarPaginatedItems<T>({
     </CodexSidebarPagerButton>
   ) : offersShowMore ? (
     <CodexSidebarPagerButton ref={focusRestoreTargetRef} onClick={showMore}>
-      <FormattedMessage id="workbench.sidebarPaginatedItems.showMore" defaultMessage="Show more" />
+      {showMoreLabel ?? (
+        <FormattedMessage
+          id="workbench.sidebarPaginatedItems.showMore"
+          defaultMessage="Show more"
+        />
+      )}
     </CodexSidebarPagerButton>
   ) : !hasOverflow && canShowLess && endNote != null ? (
     <span className="px-2 py-0.5 text-sm leading-[18px] text-token-description-foreground -ml-[9px] select-none">

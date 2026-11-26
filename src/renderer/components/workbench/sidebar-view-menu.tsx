@@ -12,7 +12,10 @@ import {
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { defineMessages, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import {
+  normalizeSidebarChatPreviewLines,
+  SIDEBAR_CHAT_PREVIEW_LINE_OPTIONS,
   SIDEBAR_OPTIONAL_SHELVES,
+  type SidebarChatPreviewLines,
   type SidebarOptionalShelf,
   type SidebarOrganize,
 } from "@/lib/sidebar-chat-lifecycle";
@@ -77,6 +80,15 @@ const OPTIONAL_SHELF_LABELS: Readonly<Record<SidebarOptionalShelf, MessageDescri
     settled: { id: "workbench.sidebarViewMenu.settled", defaultMessage: "Settled" },
   });
 
+const PREVIEW_LINE_LABELS: Readonly<Record<SidebarChatPreviewLines, MessageDescriptor>> =
+  defineMessages({
+    2: { id: "workbench.sidebarViewMenu.previewTwoLines", defaultMessage: "Two lines" },
+    1: { id: "workbench.sidebarViewMenu.previewOneLine", defaultMessage: "One line" },
+    0: { id: "workbench.sidebarViewMenu.previewOff", defaultMessage: "Off" },
+  });
+
+const SUBMENU_CLASS = "min-w-[180px]";
+
 /** A scope's name with what waits in its Inbox; the radio's check keeps the row's end. */
 function ScopeLabel({ name, inboxCount }: { name: string; inboxCount: number }) {
   return (
@@ -92,12 +104,15 @@ function ScopeLabel({ name, inboxCount }: { name: string; inboxCount: number }) 
 }
 
 /**
- * Adjusts what the attention arrangement shows: which lists beside `Active`, and whose chats,
- * every Project's or one Project's. It sits beside the arrangement's first heading.
+ * Adjusts what the attention arrangement shows: which lists beside `Active`, how much each row
+ * says, and whose chats, every Project's or one Project's. It stays beside the arrangement's first
+ * heading, in reach without pointing at it.
  */
 export function SidebarLaneViewMenu({
   hiddenShelves,
   onHiddenShelvesChange,
+  previewLines,
+  onPreviewLinesChange,
   scopeProjectId,
   projects,
   libraryInboxCount,
@@ -105,6 +120,8 @@ export function SidebarLaneViewMenu({
 }: {
   hiddenShelves: readonly SidebarOptionalShelf[];
   onHiddenShelvesChange: (shelves: readonly SidebarOptionalShelf[]) => void;
+  previewLines: SidebarChatPreviewLines;
+  onPreviewLinesChange: (lines: SidebarChatPreviewLines) => void;
   scopeProjectId: string | null;
   projects: readonly SidebarScopeProject[];
   libraryInboxCount: number;
@@ -181,6 +198,31 @@ export function SidebarLaneViewMenu({
               data-app-action-sidebar-scope-option={project.id}
             >
               <ScopeLabel name={project.name} inboxCount={project.inboxCount} />
+            </NodexDropdownRadioItem>
+          ))}
+        </NodexDropdownRadioGroup>
+      </NodexDropdownSummarySubmenuItem>
+      <NodexDropdownSummarySubmenuItem
+        label={intl.formatMessage({
+          id: "workbench.sidebarViewMenu.previews",
+          defaultMessage: "Previews",
+        })}
+        value={intl.formatMessage(PREVIEW_LINE_LABELS[previewLines])}
+        contentClassName={SUBMENU_CLASS}
+      >
+        <NodexDropdownRadioGroup
+          value={String(previewLines)}
+          onValueChange={(value) =>
+            onPreviewLinesChange(normalizeSidebarChatPreviewLines(Number(value)))
+          }
+        >
+          {SIDEBAR_CHAT_PREVIEW_LINE_OPTIONS.map((lines) => (
+            <NodexDropdownRadioItem
+              key={lines}
+              value={String(lines)}
+              data-app-action-sidebar-preview-lines={lines}
+            >
+              {intl.formatMessage(PREVIEW_LINE_LABELS[lines])}
             </NodexDropdownRadioItem>
           ))}
         </NodexDropdownRadioGroup>

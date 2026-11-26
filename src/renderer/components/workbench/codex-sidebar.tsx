@@ -329,6 +329,7 @@ export function CodexSidebarSection({
   headingButtonRef,
   headingButtonProps,
   actions,
+  tool,
   children,
 }: {
   heading: string;
@@ -339,7 +340,10 @@ export function CodexSidebarSection({
   status?: ReactNode;
   headingButtonRef?: Ref<HTMLButtonElement>;
   headingButtonProps?: ComponentPropsWithoutRef<"button">;
+  /** Shown while the pointer is over the heading. */
   actions?: ReactNode;
+  /** Always shown after the actions, for a control the heading keeps in reach. */
+  tool?: ReactNode;
   children: ReactNode;
 }) {
   const disclosureTransition = resolveCodexSidebarDisclosureTransition(useResolvedReducedMotion());
@@ -388,6 +392,7 @@ export function CodexSidebarSection({
               {actions ? (
                 <div className={CODEX_SIDEBAR_SECTION_ACTIONS_CLASS}>{actions}</div>
               ) : null}
+              {tool ? <div className="flex shrink-0 items-center">{tool}</div> : null}
               {/* A collapsed Section summarizes its chats at the header's end. */}
               {collapsed && status ? <div className="me-0.5 shrink-0">{status}</div> : null}
             </div>
@@ -2282,11 +2287,15 @@ type CodexSidebarThreadRowProps = {
   /** Names where the chat belongs when its list spans Projects; it yields to the row's actions. */
   trailingLabel?: string | null;
   /**
-   * Shows what the chat is about under its title, in up to two lines: the Page's words when it
+   * Shows what the chat is about under its title, in this many lines: the Page's words when it
    * waits on the reader, then the approval it waits on, what its Agent said it would do, or its
    * latest reply.
    */
-  preview?: boolean;
+  previewLines?: 1 | 2;
+  /** When the chat returns from its snooze, said at the row's end in place of the clock. */
+  wakeLabel?: string | null;
+  /** The row steps back: its chat returns later than the ones around it. */
+  quiet?: boolean;
   onOpenContextMenu?: (item: CodexSidebarThreadItem, event: MouseEvent<HTMLElement>) => void;
   onRenameFromTitleDoubleClick?: (
     item: CodexSidebarThreadItem,
@@ -2371,7 +2380,7 @@ function RuntimeCodexSidebarThreadRow(
     readback: activeRunReadback(state.activity),
     approvalPrompt: state.activity?.approvalPrompt ?? null,
   });
-  return props.preview ? (
+  return props.previewLines ? (
     <ReplyPreviewCodexSidebarThreadRow {...props} live={live} />
   ) : (
     <CodexSidebarThreadRowView {...props} live={live} />
@@ -2407,7 +2416,9 @@ function CodexSidebarThreadRowView({
   onArchive,
   onToggleSettled,
   trailingLabel,
-  preview = false,
+  previewLines,
+  wakeLabel = null,
+  quiet = false,
   reply = null,
   onOpenContextMenu,
   onRenameFromTitleDoubleClick,
@@ -2433,7 +2444,7 @@ function CodexSidebarThreadRowView({
   const linkedPage = useSessionLinkedPage(item.sessionId, linkedPageStore);
   const linkedPageResolved = useSessionLinkedPageResolved(item.sessionId, linkedPageStore);
   const canOpenContextMenu = !item.disabled && Boolean(onOpenContextMenu);
-  const previewText = preview
+  const previewText = previewLines
     ? resolveSidebarChatPreview({
         turn: turnLead?.text ?? null,
         needsApproval: live.needsApproval === true,
@@ -2461,11 +2472,13 @@ function CodexSidebarThreadRowView({
   const draftExcerpt = useSessionComposerDraftExcerpt(item.sessionId);
   // An unread chat back from its snooze says so; with nothing live, a chat rests on what its
   // person left behind: a draft, then a snooze.
+  // A row that names when its chat returns needs no clock beside the time.
+  const wake = wakeLabel && item.snoozedUntil ? { label: wakeLabel, at: item.snoozedUntil } : null;
   const status = resolveSidebarRowGlyph({
     live: live.status,
     wokeAt: item.wokeAt,
     hasDraft: draftExcerpt !== null,
-    snoozedUntil: item.snoozedUntil,
+    snoozedUntil: wake ? null : item.snoozedUntil,
   });
   // Otherwise a settled chat rests on its linked Page's status.
   const pageStatus = status ? null : (linkedPage?.status ?? null);
@@ -2505,12 +2518,13 @@ function CodexSidebarThreadRowView({
   const showActionRail = showRailPinSlot || showSnoozeSlot || showEndAction;
   const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false);
   const actionsOpen = contextMenuOpen || snoozeMenuOpen;
-  const trailingStatusClassName = cn(
-    "-me-1 flex shrink-0",
+  // What rests at the row's end makes way for its actions.
+  const yieldsToActions = cn(
     showActionRail &&
       "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
     actionsOpen && "hidden",
   );
+  const trailingStatusClassName = cn("-me-1 flex shrink-0", yieldsToActions);
   const [internalHoverCardOpen, setInternalHoverCardOpen] = useState(false);
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [lazyBranchName, setLazyBranchName] = useState<string | null>(null);
@@ -2646,7 +2660,13 @@ function CodexSidebarThreadRowView({
             data-app-action-sidebar-thread-main=""
           >
             <div
-              className="flex min-w-0 flex-1 self-stretch items-center gap-1 text-base leading-5 text-token-foreground"
+              className={cn(
+                "flex min-w-0 flex-1 self-stretch items-center gap-1 text-base leading-5",
+                // A quiet row comes forward under the pointer and while it is on screen.
+                quiet && !active
+                  ? "text-token-description-foreground group-hover:text-token-foreground group-focus-visible:text-token-foreground"
+                  : "text-token-foreground",
+              )}
               data-thread-title-trigger="true"
             >
               <span
@@ -2680,8 +2700,9 @@ function CodexSidebarThreadRowView({
             <div
               className={cn(
                 "ms-[3px] flex items-center justify-end gap-1 group-focus-visible:min-w-(--sidebar-row-actions-slot,3rem) group-hover:min-w-(--sidebar-row-actions-slot,3rem) group-has-[:focus-visible]:min-w-(--sidebar-row-actions-slot,3rem)",
-                // Rows that name their Project keep the slot, so the names share one edge.
-                (status || pageStatus || trailingLabel) && "min-w-[26px]",
+                // Rows that name their Project keep the slot, so the names share one edge; a
+                // return time takes the slot's place.
+                (status || pageStatus || (trailingLabel && !wake)) && "min-w-[26px]",
                 actionsOpen && "min-w-(--sidebar-row-actions-slot,3rem)",
                 // The resting pin stays interactive beside the overlaid archive action.
                 showRestingPinnedButton &&
@@ -2706,6 +2727,22 @@ function CodexSidebarThreadRowView({
                     <SessionPinFilledIcon />
                   </button>
                 </SidebarRowActionTooltip>
+              ) : null}
+              {wake ? (
+                // The row's description names the return in full; this is its glance. The clock
+                // keeps the time apart from the Project's name beside it.
+                <time
+                  aria-hidden="true"
+                  dateTime={wake.at}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1 text-xs leading-5 whitespace-nowrap text-token-description-foreground tabular-nums select-none",
+                    yieldsToActions,
+                  )}
+                  data-app-action-sidebar-thread-wake=""
+                >
+                  <ClockIcon className="icon-2xs shrink-0" />
+                  {wake.label}
+                </time>
               ) : null}
               {status ? (
                 <span
@@ -2745,7 +2782,9 @@ function CodexSidebarThreadRowView({
             className={cn(
               "px-row-x text-xs leading-4 break-words text-token-description-foreground select-none",
               // A Page's words alone need one line; what the chat said may take two.
-              previewText.text ? "line-clamp-2 min-h-8" : "line-clamp-1 min-h-4",
+              previewLines === 2 && previewText.text
+                ? "line-clamp-2 min-h-8"
+                : "line-clamp-1 min-h-4",
               grouped && "ps-[calc(var(--padding-row-x)+1.5rem)]",
             )}
             data-app-action-sidebar-thread-preview=""

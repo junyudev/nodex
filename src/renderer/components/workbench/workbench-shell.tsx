@@ -134,6 +134,7 @@ export function WorkbenchShell({
     setSidebarOrganize,
     setSidebarScopeProjectId,
     setSidebarHiddenShelves,
+    setSidebarPreviewLines,
     setSidebarAutoSettleDays,
     recordRecentPageLeave,
   } = useWorkbenchProfilePreferences();
@@ -457,6 +458,7 @@ export function WorkbenchShell({
       setSidebarOrganize={setSidebarOrganize}
       setSidebarScopeProjectId={setSidebarScopeProjectId}
       setSidebarHiddenShelves={setSidebarHiddenShelves}
+      setSidebarPreviewLines={setSidebarPreviewLines}
       setSidebarAutoSettleDays={setSidebarAutoSettleDays}
       onLeavePageStage={recordPageLeave}
       pageStageSessionSnapshotRef={pageStageSessionSnapshotRef}

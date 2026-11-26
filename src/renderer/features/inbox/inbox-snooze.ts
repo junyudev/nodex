@@ -1,6 +1,6 @@
 import { getIntl } from "@/lib/i18n";
 import type { InboxItem, InboxSnooze } from "../../../shared/inbox";
-import { formatChatSnoozeTime } from "@/lib/chat-snooze";
+import { formatChatSnoozeTime, localDayDistance } from "@/lib/chat-snooze";
 
 /**
  * Snoozed holds the messages a reader set aside until a time. Setting one aside decides nothing:
@@ -8,9 +8,6 @@ import { formatChatSnoozeTime } from "@/lib/chat-snooze";
  * back, the same way wherever Snoozed is named: a row's decision, the Snoozed view, a toast.
  */
 
-const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-const dayDistance = (date: Date, now: Date) =>
-  Math.round((startOfDay(date).getTime() - startOfDay(now).getTime()) / 86_400_000);
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** When a set-aside message comes back, mid-sentence: "tomorrow at 9:00 AM". */
@@ -79,7 +76,7 @@ export function describeBackFromSnooze(
       id: "inbox.inboxSnooze.backFromSnooze",
       defaultMessage: "Back from snooze",
     });
-  const days = -dayDistance(setAt, now);
+  const days = -localDayDistance(setAt, now);
   const when =
     days <= 0
       ? getIntl().formatMessage({
@@ -118,7 +115,7 @@ export interface SnoozedSection {
 }
 
 const snoozedDayLabel = (date: Date, now: Date, locale = getIntl().locale): string => {
-  const days = dayDistance(date, now);
+  const days = localDayDistance(date, now);
   // A time already reached returns within moments; until then it still reads as today's.
   if (days <= 0)
     return getIntl().formatMessage({ id: "inbox.inboxSnooze.todayTime", defaultMessage: "Today" });
