@@ -873,7 +873,8 @@ it.effect("recovers the original Run after a restart at execution hold release",
       const store = yield* ProjectionStoreV2;
       const execution = yield* make;
       yield* execution.hold({ threadId, operationId, action: "release" });
-      assert.equal(yield* writer.resumeQueuedRuns, 1);
+      // Startup recovery may start the Run before this pass does; either way it starts once.
+      assert.include([0, 1], yield* writer.resumeQueuedRuns);
       assert.equal(yield* writer.resumeQueuedRuns, 0);
       const started = yield* store.getThreadRecords(threadId, [
         "runs",
