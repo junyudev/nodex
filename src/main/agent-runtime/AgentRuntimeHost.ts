@@ -35,6 +35,7 @@ import type {
   HostTurnPreparation,
 } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 import { ScopedAgentCore } from "../../host/ScopedAgentCore";
@@ -197,7 +198,16 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     nativeTurnId?: string | null,
     pauseIfHeld = false,
   ) {
-    const proof = yield* readProof(identity);
+    // Native notifications can register an exact call before its Turn reaches the Runtime
+    // projection. Re-read the same live attempt while only that Turn identity is missing.
+    const proof = yield* readProof(identity).pipe(
+      Effect.repeat({
+        while: (proof) =>
+          nativeTurnId != null && proof.runId !== null && proof.nativeTurnId === null,
+        schedule: Schedule.exponential("10 millis"),
+        times: 7,
+      }),
+    );
     if (nativeTurnId !== undefined && proof.nativeTurnId !== nativeTurnId)
       return yield* unavailable("identity");
     const authorized = yield* authorizeExecution(proof, projectIdOf(proof.projectId));

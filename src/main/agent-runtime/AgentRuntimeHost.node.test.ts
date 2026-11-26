@@ -84,14 +84,17 @@ const request = (identity: AgentHostToolIdentity = actor(), id = "request"): Age
   input: {},
   identity,
 });
-const proofOf = (identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity) => ({
+const proofOf = (
+  identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity,
+  nativeTurnId: string | null = null,
+) => ({
   ...identity,
   rootThreadId: "thread:root",
   admittedAtMs: identity.runId === null ? 2_000 : 1_000,
   status: (identity.runId === null ? null : "running") as string | null,
   userMessageId: "message",
   archived: false,
-  nativeTurnId: null,
+  nativeTurnId,
   branch: null,
   worktreePath: null,
   hasNativeBackgroundWork: false,
@@ -610,6 +613,26 @@ it.effect("a Run call carries engine coordinates, its bound Session, and the Run
     f.live.set("run:cancelled", { ...proofOf(turn("run:cancelled")), status: "cancelled" });
     yield* Effect.flip(f.execute(request(turn("run:cancelled"))));
     assert.deepEqual(f.coreWrites, []);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("a registered tool call waits for its exact native Turn to reach the projection", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const identity = { ...codexTurn("run:codex"), nativeTurnId: "native-turn" };
+    f.bind(identity);
+
+    const pending = yield* f
+      .execute(request(identity))
+      .pipe(Effect.forkScoped({ startImmediately: true }));
+    assert.isUndefined(f.caller());
+    f.live.set("run:codex", proofOf(identity, "native-turn"));
+    yield* TestClock.adjust("1 second");
+    assert.deepEqual(yield* Fiber.join(pending), { content: [] });
+
+    const caller = f.caller();
+    yield* Effect.flip(f.execute(request({ ...identity, nativeTurnId: "another-turn" })));
+    assert.strictEqual(f.caller(), caller);
   }).pipe(Effect.scoped),
 );
 
