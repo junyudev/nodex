@@ -34,6 +34,23 @@ The Astro configuration loads as native ESM, and Vite uses the landing package's
 explicit TypeScript configuration. Builds must not discover unrelated ancestor
 projects or depend on their installed frameworks, including in linked worktrees.
 
+### Changelog data
+
+The site takes published entry slugs and media references from each stable tag's
+change files. Their grouped text and order must match `CHANGELOG.md`. Releases
+through `v0.1.2` may be missing their tags from the public archive. These releases
+and tags without change files have text-only entries when no source is available.
+
+The deployment workflow shallow-fetches stable `vX.Y.Z` tags and sets
+`NODEX_LANDING_DEPLOY=1`. A missing tag from `v0.1.3` onward or a missing or
+invalid published media description fails that build. Other builds, including
+shallow CI checkouts, warn and use the archived text or the available media.
+
+`vp run dev:landing` resolves unreleased screenshots and clips from the same
+local store as `media:add` (including `NODEX_MEDIA_STORE` overrides). It serves
+the originals and uses `ffprobe` from FFmpeg for clip dimensions. Production
+builds keep Unreleased text-only.
+
 ### Demo media capture
 
 Start the landing server separately, then record its capture pages:

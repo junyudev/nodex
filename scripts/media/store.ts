@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   linkSync,
@@ -10,28 +9,16 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
+import { extname, join } from "node:path";
 import type { UnreleasedChange } from "../../src/shared/change-media";
 import { CHANGES_README } from "../../src/shared/changelog";
+import { resolveMediaStore } from "./store-path.mts";
+
+export { resolveMediaStore };
 
 const limits = { ".png": 8_000_000, ".mp4": 20_000_000 };
 const pngSignature = Buffer.from("89504e470d0a1a0a", "hex");
 const sha256 = (data: Buffer): string => createHash("sha256").update(data).digest("hex");
-
-export function resolveMediaStore(cwd: string): string {
-  const override = process.env.NODEX_MEDIA_STORE;
-  if (override) return resolve(cwd, override);
-  const commonDir = execFileSync(
-    "git",
-    ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-    {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  ).replace(/\r?\n$/u, "");
-  return join(dirname(commonDir), "notes.local", "media", "sha256");
-}
 
 export function checkLocalChangeMedia(cwd: string, changes: readonly UnreleasedChange[]): void {
   if (process.env.CI !== undefined || !changes.some(({ media }) => media.length > 0)) return;
