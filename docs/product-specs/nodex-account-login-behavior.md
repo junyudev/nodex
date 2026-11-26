@@ -57,7 +57,9 @@ so nothing is marked new until the next release.
 
 The website publishes the feed at `https://nodex.jyu.app/changelog.json` with
 the changelog page: the twelve newest dated releases of `CHANGELOG.md`, each
-with its headline, sections and entries. Every dated release in `CHANGELOG.md`
+with its headline, sections and entries. Entries may include a changelog
+permalink and up to four captioned images with light and dark variants.
+Every dated release in `CHANGELOG.md`
 carries its headline on the line under its heading; the changelog page and
 GitHub release notes lead with the same line. Main fetches and validates it, reuses a
 read for five minutes and keeps the last good feed for the session when a later

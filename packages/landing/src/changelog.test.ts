@@ -1,15 +1,18 @@
 import { expect, test } from "vite-plus/test";
-import { readUnreleasedChangesWithMedia } from "../../../src/shared/change-media";
+import { mergeReleaseMedia, parseReleaseMedia } from "../../../scripts/release/release-media";
+import {
+  readTaggedChanges,
+  readUnreleasedChangesWithMedia,
+} from "../../../src/shared/change-media";
 import { parseChangelog } from "../../../src/shared/changelog";
 import { mediaUrl } from "../../../src/shared/release-media";
-import { CHANGELOG_PAGE_URL } from "../../../src/shared/changelog-feed";
+import { CHANGELOG_PAGE_URL, decodeChangelogFeed } from "../../../src/shared/changelog-feed";
 
 import {
   changelogFeed,
   formatReleaseDate,
   inlineHtml,
   permalinkEntries,
-  readTaggedChanges,
   releasesToShow,
   resolvePublishedMedia,
   splitEntry,
@@ -45,6 +48,9 @@ const imageHash = "a".repeat(64);
 const imageReference = `${imageHash}.png`;
 const videoHash = "b".repeat(64);
 const videoReference = `${videoHash}.mp4`;
+const backfillReference = `${"c".repeat(64)}.png`;
+const backfillYaml = (version = "0.1.2", slug = "guide") =>
+  `"${version}":\n  ${slug}:\n    - caption: Look at the guide\n      dark: ${backfillReference}\n`;
 
 const sampleChanges = [
   {
@@ -144,8 +150,8 @@ test("tagged entries carry their source slugs and both themes in changelog and p
         height: 900,
         src: mediaUrl(imageReference),
         sources: [
-          { url: mediaUrl(`${imageHash}.1600w.webp`), width: 1600 },
-          { url: mediaUrl(`${imageHash}.800w.webp`), width: 800 },
+          { url: mediaUrl(`${imageHash}.1600w.webp`), width: 1600, height: 900 },
+          { url: mediaUrl(`${imageHash}.800w.webp`), width: 800, height: 450 },
         ],
       },
       dark: {
@@ -180,6 +186,37 @@ test("tagged entries carry their source slugs and both themes in changelog and p
       media: [],
     },
   ]);
+});
+
+test("appends release media after tagged pictures without changing other entries", () => {
+  const release = published[0]!;
+  const tagged = readTaggedChanges(release, taggedFiles);
+  const merged = mergeReleaseMedia(parseReleaseMedia(backfillYaml()), published, () => tagged);
+  expect(merged.get(release.version)).toEqual(
+    tagged.map((change) =>
+      change.slug === "guide"
+        ? {
+            ...change,
+            media: [...change.media, { caption: "Look at the guide", dark: backfillReference }],
+          }
+        : change,
+    ),
+  );
+});
+
+test.each([
+  ["9.9.9", "guide", [], /v9\.9\.9.*not a published release/u],
+  ["0.1.2", "guide", undefined, /needs change files at stable tag v0\.1\.2/u],
+  ["0.1.2", "guide", [], /needs change files at stable tag v0\.1\.2/u],
+  ["0.1.2", "unknown", taggedFiles, /unknown.*does not match a change slug at tag v0\.1\.2/u],
+] as const)("rejects an invalid attachment target at v%s / %s", (version, slug, files, message) => {
+  expect(() =>
+    mergeReleaseMedia(
+      parseReleaseMedia(backfillYaml(version, slug)),
+      published,
+      (release) => files && readTaggedChanges(release, files),
+    ),
+  ).toThrow(message);
 });
 
 test("refuses to attach tagged entries when the text or order differs from CHANGELOG.md", () => {
@@ -237,7 +274,8 @@ test("a missing media theme leaves the other theme and unavailable media leaves 
 });
 
 test("changelogFeed limits published releases in source order and keeps Markdown in the entries", () => {
-  expect(changelogFeed(sampleChangelog, { limit: 1 })).toEqual({
+  const releases = releasesToShow(published, readUnreleasedChangesWithMedia(sampleChanges));
+  expect(changelogFeed(releases, { limit: 1 })).toEqual({
     schemaVersion: 1,
     url: CHANGELOG_PAGE_URL,
     releases: [
@@ -260,6 +298,75 @@ test("changelogFeed limits published releases in source order and keeps Markdown
         ],
       },
     ],
+  });
+});
+
+test("the feed uses tagged permalinks and the widest WebP dimensions while skipping videos", () => {
+  const taggedChanges = mergeReleaseMedia(parseReleaseMedia(backfillYaml()), published, (release) =>
+    readTaggedChanges(release, taggedFiles),
+  );
+  const image = resolvePublishedMedia(
+    imageReference,
+    {
+      value: {
+        ...imageDescription,
+        height: 901,
+        variants: [...imageDescription.variants].reverse(),
+      },
+    },
+    true,
+  );
+  const video = resolvePublishedMedia(videoReference, { value: videoDescription }, true);
+  const backfillHash = backfillReference.slice(0, -4);
+  const backfillWebp = `${backfillHash}.640w.webp`;
+  const backfill = resolvePublishedMedia(
+    backfillReference,
+    {
+      value: {
+        ...imageDescription,
+        width: 640,
+        height: 360,
+        variants: [{ file: backfillWebp, width: 640, height: 360 }],
+      },
+    },
+    true,
+  );
+  if (!("file" in image) || !("file" in video) || !("file" in backfill)) {
+    throw new Error("Expected published media.");
+  }
+  const releases = releasesToShow(published, [], {
+    taggedChanges,
+    publishedMedia: new Map([
+      [imageReference, image.file],
+      [videoReference, video.file],
+      [backfillReference, backfill.file],
+    ]),
+  });
+
+  const feed = changelogFeed(releases);
+  expect(decodeChangelogFeed(feed)).toStrictEqual(feed);
+  expect(feed.releases[0]?.sections[0]?.entries[0]).toMatchObject({
+    url: `${CHANGELOG_PAGE_URL}v0.1.2/guide/`,
+    media: [
+      {
+        caption: "Explore the guide",
+        light: { src: mediaUrl(`${imageHash}.1600w.webp`), width: 1600, height: 900 },
+      },
+      {
+        caption: "Look at the guide",
+        dark: { src: mediaUrl(backfillWebp), width: 640, height: 360 },
+      },
+    ],
+  });
+  expect(feed.releases[0]?.sections[0]?.entries[0]?.media?.[0]).not.toHaveProperty("dark");
+  expect(feed.releases[0]?.sections[1]?.entries[0]).toStrictEqual({
+    lead: "Fixed an older bug.",
+    detail: "",
+    url: `${CHANGELOG_PAGE_URL}v0.1.2/older-bug/`,
+  });
+  expect(feed.releases[1]?.sections[0]?.entries[0]).toStrictEqual({
+    lead: "Fixed older release notes.",
+    detail: "",
   });
 });
 

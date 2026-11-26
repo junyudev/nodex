@@ -1,11 +1,13 @@
 import { parseDocument } from "yaml";
-import { MEDIA_FILE } from "./release-media";
+import { isMediaCaption, MEDIA_FILE } from "./release-media";
 import {
   CHANGES_README,
+  formatReleaseSections,
   groupChangeEntries,
   readChangeEntries,
   splitChangeFile,
   type ChangeEntry,
+  type PublishedRelease,
   type ReleaseNotesSection,
   type RepositoryFile,
 } from "./changelog";
@@ -20,7 +22,6 @@ export interface UnreleasedChange extends Omit<ChangeEntry, "frontMatter"> {
   readonly media: readonly ChangeMediaItem[];
 }
 
-const invalidCaption = /[`*[\]\r\n\u0085\u2028\u2029]|<[^>]*>/u;
 const mediaKeys = ["caption", "light", "dark"];
 
 function invalidMedia(path: string, message: string): never {
@@ -31,7 +32,7 @@ function isMapping(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function validateMedia(items: unknown, path: string): readonly ChangeMediaItem[] {
+export function validateChangeMedia(items: unknown, path: string): readonly ChangeMediaItem[] {
   if (!Array.isArray(items) || items.length === 0) {
     invalidMedia(path, "must list at least one item under media.");
   }
@@ -41,12 +42,7 @@ function validateMedia(items: unknown, path: string): readonly ChangeMediaItem[]
       invalidMedia(path, "must use only caption, light and dark in each media item.");
     }
     const { caption } = item;
-    if (
-      typeof caption !== "string" ||
-      !/^.{1,120}$/u.test(caption) ||
-      caption.trim() !== caption ||
-      invalidCaption.test(caption)
-    ) {
+    if (!isMediaCaption(caption)) {
       invalidMedia(
         path,
         "needs a trimmed, one-line plain-text media caption of at most 120 characters.",
@@ -91,7 +87,7 @@ function readMedia(frontMatter: string | null, path: string): readonly ChangeMed
   if (!isMapping(value) || Object.keys(value).length !== 1 || !Object.hasOwn(value, "media")) {
     invalidMedia(path, "must use media as the only front matter key.");
   }
-  return validateMedia(value.media, path);
+  return validateChangeMedia(value.media, path);
 }
 
 /** Reads and validates an entire release set. Changes without front matter have an empty media list. */
@@ -102,6 +98,25 @@ export function readUnreleasedChangesWithMedia(
     ...change,
     media: readMedia(frontMatter, change.path),
   }));
+}
+
+/** Verifies the text and order before a tagged source can supply entry slugs or media. */
+export function readTaggedChanges(
+  release: PublishedRelease,
+  files: readonly RepositoryFile[],
+): readonly UnreleasedChange[] {
+  const changes = readUnreleasedChangesWithMedia(files);
+  if (changes.length === 0) return changes;
+
+  const tag = `v${release.version}`;
+  if (
+    formatReleaseSections(groupChangeEntries(changes)) !== formatReleaseSections(release.sections)
+  ) {
+    throw new Error(
+      `The change files at ${tag} do not match its sections in CHANGELOG.md. Check the release's entry text and order against the tag.`,
+    );
+  }
+  return changes;
 }
 
 /** Reads the text for release notes after validating the change files and their media references. */
@@ -118,10 +133,21 @@ export function upsertChangeMedia(
 ): { readonly media: readonly ChangeMediaItem[]; readonly body: string } {
   const [change] = readUnreleasedChangesWithMedia([file]);
   if (!change) invalidMedia(file.path, "is not a change.");
-  const media = [...change.media];
+  return {
+    media: upsertMediaItem(change.media, item, file.path),
+    body: splitChangeFile(file).body,
+  };
+}
+
+export function upsertMediaItem(
+  items: readonly ChangeMediaItem[],
+  item: ChangeMediaItem,
+  path: string,
+): readonly ChangeMediaItem[] {
+  const media = [...items];
   const previous = media.findIndex(({ caption }) => caption === item.caption);
   if (previous === -1) media.push(item);
   else media[previous] = item;
 
-  return { media: validateMedia(media, file.path), body: splitChangeFile(file).body };
+  return validateChangeMedia(media, path);
 }

@@ -1,19 +1,17 @@
-import {
-  readUnreleasedChangesWithMedia,
-  type ChangeMediaItem,
-  type UnreleasedChange,
-} from "../../../src/shared/change-media";
+import type { ChangeMediaItem, UnreleasedChange } from "../../../src/shared/change-media";
 import {
   CHANGELOG_SECTION_KINDS,
   CHANGELOG_SECTION_TITLES,
-  formatReleaseSections,
-  groupChangeEntries,
-  parseChangelog,
   type ChangelogSectionKind,
   type PublishedRelease,
-  type RepositoryFile,
 } from "../../../src/shared/changelog";
-import { CHANGELOG_PAGE_URL, type ChangelogFeed } from "../../../src/shared/changelog-feed";
+import {
+  CHANGELOG_PAGE_URL,
+  MAX_CHANGELOG_ENTRY_MEDIA,
+  type ChangelogEntryMedia,
+  type ChangelogFeed,
+  type ChangelogImage,
+} from "../../../src/shared/changelog-feed";
 import { changelogInlineTokens } from "../../../src/shared/changelog-inline";
 import { mediaUrl, parsePublishedMedia } from "../../../src/shared/release-media";
 
@@ -22,7 +20,11 @@ export type ShownMediaFile = {
   readonly width: number;
   readonly height: number;
   readonly src: string;
-  readonly sources: readonly { readonly url: string; readonly width: number }[];
+  readonly sources: readonly {
+    readonly url: string;
+    readonly width: number;
+    readonly height: number;
+  }[];
   readonly poster?: string;
 };
 
@@ -134,25 +136,6 @@ export const CHANGE_TONE: Record<string, string> = {
   Security: "bg-free",
 };
 
-/** Verifies the text and order before a tagged source can supply entry slugs or media. */
-export function readTaggedChanges(
-  release: PublishedRelease,
-  files: readonly RepositoryFile[],
-): readonly UnreleasedChange[] {
-  const changes = readUnreleasedChangesWithMedia(files);
-  if (changes.length === 0) return changes;
-
-  const tag = `v${release.version}`;
-  if (
-    formatReleaseSections(groupChangeEntries(changes)) !== formatReleaseSections(release.sections)
-  ) {
-    throw new Error(
-      `The change files at ${tag} do not match its sections in CHANGELOG.md. Check the release's entry text and order against the tag.`,
-    );
-  }
-  return changes;
-}
-
 type MediaDescription = { readonly value: unknown } | { readonly error: string };
 type MediaResolution = { readonly file: ShownMediaFile } | { readonly warning: string };
 
@@ -181,7 +164,7 @@ export function resolvePublishedMedia(
         height,
         src: mediaUrl(reference),
         sources: variants
-          .map(({ file, width }) => ({ url: mediaUrl(file), width }))
+          .map(({ file, width, height }) => ({ url: mediaUrl(file), width, height }))
           .sort((left, right) => right.width - left.width),
         ...(poster ? { poster: mediaUrl(poster.file) } : {}),
       },
@@ -270,27 +253,49 @@ export function permalinkEntries(releases: readonly ChangelogRelease[]): Changel
   });
 }
 
+function feedImage(file: ShownMediaFile | undefined): ChangelogImage | undefined {
+  const variant = file?.type === "image" ? file.sources[0] : undefined;
+  return variant && { src: variant.url, width: variant.width, height: variant.height };
+}
+
+function feedMedia(media: readonly ShownMedia[]): ChangelogEntryMedia[] {
+  const images: ChangelogEntryMedia[] = [];
+  for (const item of media) {
+    const light = feedImage(item.light);
+    const dark = feedImage(item.dark);
+    if (!light && !dark) continue;
+    images.push({ caption: item.caption, ...(light && { light }), ...(dark && { dark }) });
+    if (images.length === MAX_CHANGELOG_ENTRY_MEDIA) break;
+  }
+  return images;
+}
+
 /** The latest published releases for Nodex's What's new. */
 export function changelogFeed(
-  content: string,
+  releases: readonly ChangelogRelease[],
   { limit = 12 }: { readonly limit?: number } = {},
 ): ChangelogFeed {
-  const releases = parseChangelog(content)
-    .slice(0, limit)
-    .map(({ version, date, headline, sections }) => ({
+  const published: ChangelogFeed["releases"][number][] = [];
+  for (const { version, date, headline, categories } of releases) {
+    if (published.length >= limit) break;
+    if (version === null || date === null || headline === null) continue;
+    published.push({
       version,
       date,
       url: `${CHANGELOG_PAGE_URL}#v${version}`,
       headline,
-      sections: sections.map(({ kind, entries }) => ({
+      sections: categories.map(({ kind, items }) => ({
         kind,
-        entries: entries.map((entry) => {
-          const { lead, rest: detail } = splitEntry(entry);
-          return { lead, detail };
+        entries: items.map(({ text, slug, media }) => {
+          const { lead, rest: detail } = splitEntry(text);
+          const url = slug && new URL(permalinkPath(version, slug), CHANGELOG_PAGE_URL).href;
+          const images = media && feedMedia(media);
+          return { lead, detail, ...(url && { url }), ...(images?.length && { media: images }) };
         }),
       })),
-    }));
-  return { schemaVersion: 1, url: CHANGELOG_PAGE_URL, releases };
+    });
+  }
+  return { schemaVersion: 1, url: CHANGELOG_PAGE_URL, releases: published };
 }
 
 /**

@@ -59,6 +59,7 @@ export interface RepositoryFile {
 }
 
 export const CHANGES_DIRECTORY = "changes";
+export const RELEASE_MEDIA_PATH = "packages/landing/src/release-media.yaml";
 /** The one file under `changes/` that is not a change: how to write one. */
 export const CHANGES_README = `${CHANGES_DIRECTORY}/README.md`;
 const CHANGES_HELP = `See ${CHANGES_README}.`;

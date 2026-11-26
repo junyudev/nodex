@@ -20,7 +20,10 @@ const limits = { ".png": 8_000_000, ".mp4": 20_000_000 };
 const pngSignature = Buffer.from("89504e470d0a1a0a", "hex");
 const sha256 = (data: Buffer): string => createHash("sha256").update(data).digest("hex");
 
-export function checkLocalChangeMedia(cwd: string, changes: readonly UnreleasedChange[]): void {
+export function checkLocalChangeMedia(
+  cwd: string,
+  changes: readonly Pick<UnreleasedChange, "path" | "media">[],
+): void {
   if (process.env.CI !== undefined || !changes.some(({ media }) => media.length > 0)) return;
   const store = resolveMediaStore(cwd);
   if (!statSync(store, { throwIfNoEntry: false })?.isDirectory()) return;

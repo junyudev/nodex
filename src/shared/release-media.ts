@@ -9,6 +9,16 @@
 
 export const MEDIA_ORIGIN = "https://media.nodex.jyu.app";
 const MEDIA_PREFIX = "sha256";
+const invalidCaption = /[`*[\]\r\n\u0085\u2028\u2029]|<[^>]*>/u;
+
+export function isMediaCaption(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^.{1,120}$/u.test(value) &&
+    value.trim() === value &&
+    !invalidCaption.test(value)
+  );
+}
 
 /** A change file's media reference: a lowercase SHA-256 followed by `.png` or `.mp4`. */
 export const MEDIA_FILE = /^(?<hash>[0-9a-f]{64})\.(?<extension>png|mp4)$/u;

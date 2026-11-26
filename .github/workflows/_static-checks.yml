@@ -50,6 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-tags: ${{ matrix.group == 'repository-contracts' || (matrix.group == 'quick-contracts' && contains(fromJSON(inputs.groups_json), 'landing')) }}
           persist-credentials: false
           ref: ${{ inputs.source_sha || github.sha }}
       - uses: ./.github/actions/setup-vite-plus

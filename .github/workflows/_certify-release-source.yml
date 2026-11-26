@@ -76,6 +76,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ inputs.source_sha }}
+          fetch-tags: true
       - uses: ./.github/actions/run-nightly-tests
       - name: Upload nightly application timings
         if: always()
