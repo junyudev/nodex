@@ -37,7 +37,7 @@ import {
   type CommandKeymapState,
 } from "../../shared/command-keybindings";
 import {
-  isNewChatShortcutTargetBlocked,
+  isNewChatShortcutBlocked,
   isWorkbenchShortcutTargetEditable,
 } from "./workbench-panel-shortcut-scope";
 import { getDefaultPanelIdForTabKind } from "./workbench-panel-actions";
@@ -895,7 +895,7 @@ export function useWorkbenchSessionCommands({
       if (
         (matchesKeyboardEventToCommand(event, shortcutState, "newThread") ||
           matchesKeyboardEventToCommand(event, shortcutState, "quickChat")) &&
-        !isNewChatShortcutTargetBlocked(event.target)
+        !isNewChatShortcutBlocked(event)
       ) {
         event.preventDefault();
         void startNewChatInProject(activeProjectId);

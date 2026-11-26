@@ -26,9 +26,17 @@ export function isDialogShortcutTarget(target: EventTarget | null): boolean {
   return Boolean(element?.closest?.("[role='dialog']"));
 }
 
-/** New chat works while typing, as a native menu item would; dialogs and Terminals keep their keys. */
-export function isNewChatShortcutTargetBlocked(target: EventTarget | null): boolean {
-  return isDialogShortcutTarget(target) || isCodexTerminalShortcutTarget(target);
+/**
+ * New chat works while typing, as a native menu item would. Dialogs and Terminals keep their keys,
+ * and so does a field receiving text: Windows reports AltGr as Ctrl+Alt, so AltGr+N typing `ń`
+ * would otherwise match Ctrl+Alt+N.
+ */
+export function isNewChatShortcutBlocked(event: KeyboardEvent): boolean {
+  if (event.defaultPrevented) return true;
+  const { target } = event;
+  if (isDialogShortcutTarget(target) || isCodexTerminalShortcutTarget(target)) return true;
+  if (!isWorkbenchShortcutTargetEditable(target)) return false;
+  return event.isComposing || event.key === "Process" || event.getModifierState("AltGraph");
 }
 
 export function isWorkbenchShortcutTargetEditable(target: EventTarget | null): boolean {

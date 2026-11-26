@@ -3,7 +3,7 @@ import {
   isCodexTerminalShortcutTarget,
   isDocumentLevelShortcutTarget,
   isFocusedPanelTabShortcutTargetBlocked,
-  isNewChatShortcutTargetBlocked,
+  isNewChatShortcutBlocked,
   isWorkbenchPanelTabShortcutTargetBlocked,
   isWorkbenchShortcutTargetEditable,
   resolveFocusedPanelTabCycleScope,
@@ -86,10 +86,25 @@ describe("workbench panel shortcut scope", () => {
     expect(isWorkbenchPanelTabShortcutTargetBlocked(nfmChild)).toBe(false);
 
     // New chat starts from a composer or a Page, but a dialog or a Terminal keeps the keys.
-    expect(isNewChatShortcutTargetBlocked(input)).toBe(false);
-    expect(isNewChatShortcutTargetBlocked(blockNoteChild)).toBe(false);
-    expect(isNewChatShortcutTargetBlocked(nfmChild)).toBe(false);
-    expect(isNewChatShortcutTargetBlocked(dialogChild)).toBe(true);
-    expect(isNewChatShortcutTargetBlocked(terminalChild)).toBe(true);
+    const press = (target: Element, init: KeyboardEventInit = {}) => {
+      let blocked: boolean | null = null;
+      target.addEventListener("keydown", (event) => {
+        blocked = isNewChatShortcutBlocked(event as KeyboardEvent);
+      });
+      target.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "n", ctrlKey: true, altKey: true, ...init }),
+      );
+      return blocked;
+    };
+    expect(press(input)).toBe(false);
+    expect(press(blockNoteChild)).toBe(false);
+    expect(press(nfmChild)).toBe(false);
+    expect(press(dialogChild)).toBe(true);
+    expect(press(terminalChild)).toBe(true);
+    // AltGr arrives as Ctrl+Alt and types a character, and an IME owns its keystrokes.
+    expect(press(input, { modifierAltGraph: true })).toBe(true);
+    expect(press(nfmChild, { key: "Process" })).toBe(true);
+    expect(press(input, { isComposing: true })).toBe(true);
+    expect(press(document.body, { modifierAltGraph: true })).toBe(false);
   });
 });
