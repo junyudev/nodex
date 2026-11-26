@@ -3158,6 +3158,23 @@ fn a_member_starts_a_hosted_chat_of_their_own_from_their_own_draft() {
     };
     let refused = chats.refused(&chats.bob, "session_start", start("alice-draft"));
     assert!(refused.to_string().contains("another Member"), "{refused}");
+    let batch = chats.member_read(
+        &chats.bob,
+        json!({"kind":"task_windows","project_id":null,
+            "lanes":[{"window":{"first":50}},{"query":"New chat","window":{"first":50}}]}),
+    );
+    assert_eq!(batch["status"], "ok", "{batch}");
+    let lanes = batch["payload"]["value"]["lanes"].as_array().unwrap();
+    let ids = |index: usize| {
+        lanes[index]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|task| task["session"]["id"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(0), bob_lists);
+    assert_eq!(ids(1), ["bob-draft"]);
     // Bob starts his own draft; the host's proof launches exactly it, and it stays his.
     chats.admitted(&chats.bob, "session_start", start("bob-draft"), |proof| {
         let other = chats.launch(proof, "alice-draft", "bob-draft:launch", None);
