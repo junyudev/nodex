@@ -119,7 +119,7 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "resolve-promotion") {
-    const result = preparePromotion(
+    const result = await preparePromotion(
       projectRoot,
       required(flags, "repo"),
       required(flags, "dir"),
@@ -139,7 +139,7 @@ const main = async (): Promise<void> => {
         'Usage: vp run release:promote -- [<nightly-tag>] [--headline "Your headline"].',
       );
     }
-    promoteFromLocal(
+    await promoteFromLocal(
       projectRoot,
       flags.get("repo") ?? "junyudev/nodex",
       positional[0],

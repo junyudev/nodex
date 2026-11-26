@@ -3,16 +3,22 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { readChangeSections } from "../../src/shared/change-media";
+import {
+  readChangeSections,
+  readUnreleasedChangesWithMedia,
+  type UnreleasedChange,
+} from "../../src/shared/change-media";
 import {
   assertReleaseHeadline,
   formatReleaseNotes,
   formatReleaseSections,
+  groupChangeEntries,
   parseReleaseNotes,
   type PublishedRelease,
   type ReleaseNotesSection,
   type RepositoryFile,
 } from "../../src/shared/changelog";
+import { isMediaPublished, referencedMediaFiles } from "../media/public";
 import {
   readArchitectureDirectory,
   parseReleaseBundleManifest,
@@ -186,7 +192,8 @@ function resolvePromotionCandidate(cwd: string, repo: string, requestedTag?: str
   const sourceSha = tagTarget(repo, nightly.tag_name);
   if (!sourceSha) throw new Error("The Nightly tag has no source commit.");
   assertOnMain(cwd, sourceSha, fetchMain(cwd));
-  const sections = readChangeSections(readChangeFilesAtRef(cwd, sourceSha));
+  const changes = readUnreleasedChangesWithMedia(readChangeFilesAtRef(cwd, sourceSha));
+  const sections = groupChangeEntries(changes);
   if (sections.length === 0) {
     throw new Error(
       `${nightly.tag_name} has no release entries in changes/. Select a Nightly built from source with change files.`,
@@ -227,6 +234,7 @@ function resolvePromotionCandidate(cwd: string, repo: string, requestedTag?: str
   return {
     identity,
     stable,
+    changes,
     sections,
     stableTarget,
     publishedAt: nightly.published_at,
@@ -244,9 +252,16 @@ function notesFromGitHub(release: GitHubRelease, sections: readonly ReleaseNotes
   return notes;
 }
 
-export function resolvePromotion(cwd: string, repo: string, headline: string, tag?: string) {
-  assertReleaseHeadline(headline, "Stable promotion");
-  const { sections, stableTarget, ...candidate } = resolvePromotionCandidate(cwd, repo, tag);
+function resolveCandidatePromotion(
+  repo: string,
+  headline: string,
+  {
+    sections,
+    stableTarget,
+    changes: _changes,
+    ...candidate
+  }: ReturnType<typeof resolvePromotionCandidate>,
+) {
   const { identity, stable } = candidate;
   const existing = stableTarget ? readGitHubRelease(repo, stable.tag) : null;
   if (existing && notesFromGitHub(existing, sections).headline !== headline) {
@@ -264,6 +279,19 @@ export function resolvePromotion(cwd: string, repo: string, headline: string, ta
   }
   const notes = formatReleaseNotes({ headline, sections }, `Release ${stable.version}`);
   return { ...candidate, notes, resumeRunId };
+}
+
+/**
+ * Resolves what a Stable promotion publishes. Both the local command and the Release workflow go
+ * through here, so neither can publish a release whose pictures the website cannot show yet.
+ */
+export async function resolvePromotion(cwd: string, repo: string, headline: string, tag?: string) {
+  assertReleaseHeadline(headline, "Stable promotion");
+  const candidate = resolvePromotionCandidate(cwd, repo, tag);
+  const { unpublished } = await checkPromotionMedia(candidate.changes);
+  const blocker = promotionMediaBlocker(candidate.identity.sourceSha, unpublished);
+  if (blocker) throw new Error(blocker);
+  return resolveCandidatePromotion(repo, headline, candidate);
 }
 
 /** Compare the certified build deliverables. Feed files and publication metadata are regenerated. */
@@ -319,7 +347,7 @@ export function assertImmutableNightlyAssets(
 export function verifyPromotionInputs(
   repo: string,
   dir: string,
-  candidate: ReturnType<typeof resolvePromotion>,
+  candidate: Awaited<ReturnType<typeof resolvePromotion>>,
 ): void {
   const { identity, runId } = candidate;
   const sha = identity.sourceSha;
@@ -380,14 +408,14 @@ export function verifyPromotionInputs(
   }
 }
 
-export function preparePromotion(
+export async function preparePromotion(
   cwd: string,
   repo: string,
   dir: string,
   headline: string,
   tag?: string,
 ) {
-  const candidate = resolvePromotion(cwd, repo, headline, tag);
+  const candidate = await resolvePromotion(cwd, repo, headline, tag);
   gh([
     "run",
     "download",
@@ -420,24 +448,62 @@ export function verifyPromotedBundle(nightlyPath: string, stablePath: string): v
   }
 }
 
-export function promoteFromLocal(cwd: string, repo: string, tag?: string, headline?: string): void {
-  const candidate =
-    headline === undefined
-      ? resolvePromotionCandidate(cwd, repo, tag)
-      : resolvePromotion(cwd, repo, headline, tag);
-  const { identity, publishedAt } = candidate;
-  const hours = Math.floor((Date.now() - Date.parse(publishedAt)) / 3_600_000);
-  const preview =
-    "notes" in candidate ? candidate.notes : formatReleaseSections(candidate.sections);
-  process.stdout.write(
-    `${identity.tag} · ${identity.sourceSha} · ${hours}h old · v${identity.version}\n\n${preview.trimEnd()}\n\n`,
-  );
-  if (headline === undefined) {
+export async function checkPromotionMedia(changes: readonly UnreleasedChange[]) {
+  const withoutMedia = changes
+    .filter(({ kind, media }) => (kind === "added" || kind === "changed") && media.length === 0)
+    .map(({ path }) => path);
+  const files = referencedMediaFiles(changes);
+  const published = await Promise.all(files.map(isMediaPublished));
+  const unpublished = files.filter((_, index) => !published[index]);
+  return { withoutMedia, unpublished };
+}
+
+export function promotionMediaBlocker(
+  sourceSha: string,
+  unpublished: readonly string[],
+): string | null {
+  if (unpublished.length === 0) return null;
+  const files = unpublished.map((file) => `- ${file}`).join("\n");
+  return `Release media still needs to be published:\n${files}\n\nRun from the main checkout:\npython3 notes.local/secrets/use.py run cloudflare.r2_media -- vp run media:publish -- ${sourceSha} --report "notes.local/artifacts/release-media/${sourceSha}.json"`;
+}
+
+export async function promoteFromLocal(
+  cwd: string,
+  repo: string,
+  tag?: string,
+  headline?: string,
+): Promise<void> {
+  const write = (
+    candidate: {
+      identity: { tag: string; sourceSha: string; version: string };
+      publishedAt: string;
+    },
+    preview: string,
+  ) => {
+    const hours = Math.floor((Date.now() - Date.parse(candidate.publishedAt)) / 3_600_000);
+    const { identity } = candidate;
     process.stdout.write(
-      `To promote, run vp run release:promote -- ${identity.tag} --headline "Your headline"\n`,
+      `${identity.tag} · ${identity.sourceSha} · ${hours}h old · v${identity.version}\n\n${preview.trimEnd()}\n\n`,
+    );
+  };
+  if (headline === undefined) {
+    const candidate = resolvePromotionCandidate(cwd, repo, tag);
+    write(candidate, formatReleaseSections(candidate.sections));
+    const { withoutMedia, unpublished } = await checkPromotionMedia(candidate.changes);
+    if (withoutMedia.length > 0) {
+      const entries = withoutMedia.map((path) => `- ${path}`).join("\n");
+      process.stdout.write(`Added and Changed entries without media:\n${entries}\n\n`);
+    }
+    const blocker = promotionMediaBlocker(candidate.identity.sourceSha, unpublished);
+    if (blocker) process.stdout.write(`${blocker}\n\n`);
+    process.stdout.write(
+      `To promote, run vp run release:promote -- ${candidate.identity.tag} --headline "Your headline"\n`,
     );
     return;
   }
+  const promotion = await resolvePromotion(cwd, repo, headline, tag);
+  write(promotion, promotion.notes);
+  const { identity } = promotion;
   const result = api<{ html_url: string }>(
     `repos/${repo}/actions/workflows/release.yml/dispatches`,
     "--method",

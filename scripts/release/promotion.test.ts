@@ -11,6 +11,7 @@ import {
   assertImmutableNightlyAssets,
   assertPromotedBuildBytes,
   promoteFromLocal,
+  promotionMediaBlocker,
   resolvePromotion,
 } from "./promotion";
 import { makeReleaseFixture } from "./windows-release.fixture";
@@ -92,7 +93,18 @@ test("retained Nightly assets must match the immutable GitHub SHA-256 digests", 
   );
 });
 
-test("previews source entries, requires an explicit headline to dispatch, and binds resume to it", () => {
+test("blocks promotion only while referenced release media is unpublished", () => {
+  const sha = "a".repeat(40);
+  const original = `${"b".repeat(64)}.png`;
+  expect(promotionMediaBlocker(sha, [])).toBeNull();
+  const blocker = promotionMediaBlocker(sha, [original]);
+  expect(blocker).toContain(original);
+  expect(blocker).toContain(
+    `python3 notes.local/secrets/use.py run cloudflare.r2_media -- vp run media:publish -- ${sha} --report`,
+  );
+});
+
+test("previews source entries, requires an explicit headline to dispatch, and binds resume to it", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "nodex-promotion-headline-"));
   const git = (...args: string[]): string =>
     execFileSync("git", args, {
@@ -178,7 +190,7 @@ test("previews source entries, requires an explicit headline to dispatch, and bi
       throw new Error(`Unexpected GitHub endpoint ${endpoint}`);
     });
 
-    expect(() => resolvePromotion(cwd, repo, headline, tag)).toThrow(
+    await expect(resolvePromotion(cwd, repo, headline, tag)).rejects.toThrow(
       "no release entries in changes/",
     );
     mkdirSync(join(cwd, "changes/fixed"), { recursive: true });
@@ -193,21 +205,21 @@ test("previews source entries, requires an explicit headline to dispatch, and bi
       output.push(String(chunk));
       return true;
     });
-    promoteFromLocal(cwd, repo, tag);
+    await promoteFromLocal(cwd, repo, tag);
     expect(output.join("")).toContain(
       `### Fixed\n\n- Fixed sync.\n\nTo promote, run vp run release:promote -- ${tag} --headline`,
     );
     expect(gh.mock.calls.some(([args]) => args[1].endsWith("/dispatches"))).toBe(false);
-    promoteFromLocal(cwd, repo, tag, headline);
+    await promoteFromLocal(cwd, repo, tag, headline);
     expect(gh.mock.lastCall?.[0]).toContain(`inputs[headline]=${headline}`);
 
     retained = true;
-    expect(resolvePromotion(cwd, repo, "Another headline", tag)).toMatchObject({
+    await expect(resolvePromotion(cwd, repo, "Another headline", tag)).resolves.toMatchObject({
       resumeRunId: null,
       notes: "Another headline\n\n### Fixed\n\n- Fixed sync.\n",
     });
     stableExists = true;
-    expect(resolvePromotion(cwd, repo, headline, tag)).toMatchObject({
+    await expect(resolvePromotion(cwd, repo, headline, tag)).resolves.toMatchObject({
       resumeRunId: 2,
       notes: `${headline}\n\n### Fixed\n\n- Fixed sync.\n`,
     });
@@ -217,8 +229,8 @@ test("previews source entries, requires an explicit headline to dispatch, and bi
       prerelease: false,
       body: `${headline}\r\n### Fixed\r\n- Fixed sync.`,
     });
-    expect(resolvePromotion(cwd, repo, headline, tag).resumeRunId).toBe(2);
-    expect(() => resolvePromotion(cwd, repo, "A different headline", tag)).toThrow(
+    expect((await resolvePromotion(cwd, repo, headline, tag)).resumeRunId).toBe(2);
+    await expect(resolvePromotion(cwd, repo, "A different headline", tag)).rejects.toThrow(
       "Resume with its original headline",
     );
     readRelease.mockReturnValue({
@@ -227,7 +239,7 @@ test("previews source entries, requires an explicit headline to dispatch, and bi
       prerelease: false,
       body: `${headline}\n### Fixed\n- A different entry.`,
     });
-    expect(() => resolvePromotion(cwd, repo, headline, tag)).toThrow(
+    await expect(resolvePromotion(cwd, repo, headline, tag)).rejects.toThrow(
       "notes do not match its source change files",
     );
   } finally {
