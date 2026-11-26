@@ -11,7 +11,6 @@ import {
   nodeRuntimeUnavailableMessage,
 } from "@nodex/runtime-shared/nodeRuntime";
 import * as Crypto from "effect/Crypto";
-import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -91,7 +90,6 @@ const isAcpErrorDetails = Schema.is(Schema.Struct({ details: Schema.String }));
 const REFRESH_FAILED =
   "Could not refresh Antigravity models. The previous model list is unchanged.";
 const PYTHON_SOCKS_REQUIRED = "python-socks is required to use a SOCKS proxy";
-const CATALOG_RETRY_MS = 5 * 60_000;
 
 // Keep provider diagnostics in cause; only recognized, fixed text reaches clients.
 function refreshFailureDetail(cause: unknown) {
@@ -608,8 +606,7 @@ export const AntigravityDriver: ProviderDriver<
       Effect.provideService(Crypto.Crypto, digest),
       Effect.provideService(HttpClient.HttpClient, httpClient),
     );
-    // A sign-in made in a terminal loads the account's models once checks find it. A failed load
-    // waits before trying again, since each one starts agy.
+    // A sign-in made in a terminal loads the account's models once checks find it.
     const catalogLoader = yield* Deferred.make<Effect.Effect<void>>();
     const provider = yield* makeAntigravityProvider(settings, {
       environment: processEnvironment,
@@ -731,26 +728,9 @@ export const AntigravityDriver: ProviderDriver<
     );
 
     const catalogLoad = yield* FiberHandle.make();
-    let catalogFailedAt = Number.NEGATIVE_INFINITY;
     yield* Deferred.succeed(
       catalogLoader,
-      Effect.gen(function* () {
-        if ((yield* Clock.currentTimeMillis) - catalogFailedAt < CATALOG_RETRY_MS) return;
-        yield* FiberHandle.run(
-          catalogLoad,
-          refreshModels().pipe(
-            Effect.tapError(() =>
-              Clock.currentTimeMillis.pipe(
-                Effect.map((now) => {
-                  catalogFailedAt = now;
-                }),
-              ),
-            ),
-            Effect.ignore,
-          ),
-          { onlyIfMissing: true },
-        );
-      }),
+      FiberHandle.run(catalogLoad, refreshModels().pipe(Effect.ignore)).pipe(Effect.asVoid),
     );
 
     return {

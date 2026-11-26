@@ -47,6 +47,8 @@ directly.
 
 A profile that uses agy on this computer is ready as soon as agy is signed in: its models load by
 themselves, and while agy is signed out its chats ask for a sign-in instead of opening a browser.
+They load once per sign-in, since agy opens Google in the browser for a sign-in it can't use; after
+a failed load, starting a chat, refreshing models or signing in again tries again.
 
 Nodex shows the active sign-in or verification step and puts any failure in the Account row.
 The window that starts sign-in owns the response and can cancel it. Closing the last surface

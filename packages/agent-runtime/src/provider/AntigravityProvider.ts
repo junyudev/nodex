@@ -178,7 +178,10 @@ interface AntigravityProviderOptions {
    * at any time. Absent for a profile that keeps its own sign-in.
    */
   readonly storedSignIn?: Effect.Effect<AntigravityStoredSignIn>;
-  /** Loads the account's models after it is found signed in outside a Nodex sign-in. */
+  /**
+   * Loads the account's models after it is found signed in outside a Nodex sign-in, superseding a
+   * load still running for an earlier sign-in.
+   */
   readonly loadCatalog?: Effect.Effect<void>;
 }
 
@@ -262,6 +265,10 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
   const usageRead = yield* FiberHandle.make();
   // The address this computer's sign-in reports; a private sign-in reports none.
   let accountEmail: string | undefined;
+  // The stored sign-in checks last loaded models for. Each load starts agy, and agy opens Google
+  // in the browser by itself for a sign-in it can't use, so checks load once per sign-in; a chat,
+  // a model refresh or a new sign-in tries again.
+  let catalogSignIn: string | undefined;
   const withEmail = (auth: ServerProviderDraft["auth"]): ServerProviderDraft["auth"] => {
     const { email: _previous, ...rest } = auth;
     return accountEmail ? { ...rest, email: accountEmail } : rest;
@@ -342,8 +349,9 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     if (options.storedSignIn) {
       const signIn = yield* options.storedSignIn;
       const { auth } = (yield* SubscriptionRef.get(metadata)).draft;
-      if (signIn.status === "signed-out" && auth.status !== "unauthenticated") {
-        yield* clearAccountMetadata();
+      if (signIn.status === "signed-out") {
+        catalogSignIn = undefined;
+        if (auth.status !== "unauthenticated") yield* clearAccountMetadata();
       } else if (signIn.status === "signed-in") {
         accountEmail = signIn.email;
         if (auth.status === "authenticated" && auth.email !== signIn.email) {
@@ -353,7 +361,9 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           }));
         }
         // Signed in outside a Nodex sign-in, or before this start: load the account's models.
-        if (auth.status !== "authenticated") {
+        const signInKey = signIn.refreshToken ?? signIn.accessToken;
+        if (auth.status !== "authenticated" && signInKey !== catalogSignIn) {
+          catalogSignIn = signInKey;
           yield* Effect.forkIn(options.loadCatalog ?? Effect.void, scope);
         }
       }

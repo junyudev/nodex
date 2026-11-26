@@ -511,6 +511,45 @@ it.layer(layerTest)("Antigravity provider snapshots", (it) => {
     }),
   );
 
+  it.effect(
+    "loads a sign-in's models once, since agy opens Google for a sign-in it can't use",
+    () =>
+      Effect.gen(function* () {
+        const signedIn = (refreshToken: string): AntigravityStoredSignIn => ({
+          status: "signed-in",
+          accessToken: "access",
+          refreshToken,
+          expiry: undefined,
+          authMethod: "oauth-personal",
+          email: "person@example.com",
+        });
+        const signIn = yield* Ref.make(signedIn("refresh-a"));
+        const catalogLoads = yield* Ref.make(0);
+        const harness = yield* makeHarness({
+          auth: { type: "computer", label: "agy on this computer" },
+          storedSignIn: Ref.get(signIn),
+          loadCatalog: Ref.update(catalogLoads, (count) => count + 1),
+        });
+        const check = harness.provider.snapshot.refresh.pipe(
+          Effect.andThen(Effect.repeat(Effect.yieldNow, { times: 10 })),
+        );
+        yield* harness.initialize;
+        // The load never signed the profile in, so later checks leave the same sign-in alone.
+        for (let turn = 0; turn < 3; turn++) yield* check;
+        expect(yield* Ref.get(catalogLoads)).toBe(1);
+
+        // A new sign-in in a terminal, or the same one after a sign-out, loads again.
+        yield* Ref.set(signIn, signedIn("refresh-b"));
+        yield* check;
+        expect(yield* Ref.get(catalogLoads)).toBe(2);
+        yield* Ref.set(signIn, { status: "signed-out" });
+        yield* check;
+        yield* Ref.set(signIn, signedIn("refresh-b"));
+        yield* check;
+        expect(yield* Ref.get(catalogLoads)).toBe(3);
+      }),
+  );
+
   it.effect("replaces live model choices and accepts an empty catalog", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
