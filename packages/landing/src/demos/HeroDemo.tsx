@@ -26,6 +26,7 @@ import {
 } from "../replica/Page";
 import { AppSidebar, type SidebarChat } from "../replica/Sidebar";
 import { Stage } from "../replica/Stage";
+import { MapLead, SubagentsOverview, type MapSubagent } from "../replica/Subagents";
 import { PageFileView } from "../replica/Viewers";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { AppWindow, NewTab, PaneHeader, PaneTab, Tab, TabGroupContent } from "../replica/Window";
@@ -53,6 +54,9 @@ import {
 import { useTimeline, type Cue, type Timeline } from "./timeline";
 
 const REPORT = COLD_START_FILES[0].files[0];
+
+/** The passkey subagent the reader opens: Gemini, writing the sign-in tests. */
+const TESTS = 1;
 
 /** What the reader types into the model menu, and the lead the Inbox first suggested. */
 const MODEL_QUERY = "opus";
@@ -105,10 +109,11 @@ export const SCRIPTS = byLocale((locale): Schedule => {
   const clear = decisions.clearAt;
 
   // The cleared Inbox shows how it planned; then every agent: the passkey chat, whose Claude lead
-  // the reader points at before opening one of its GPT-6.2 Sol subagents to watch it work in
-  // Codex, beside the chat that sent it.
+  // the reader points at before opening its Gemini subagent to watch it finish in Antigravity,
+  // beside the chat that sent it, then stepping back to the chat's whole Subagents map.
   const chat = clear + 2500;
   const subagent = chat + 3300;
+  const map = subagent + 3500;
   cues.push(
     { id: "clear", at: clear },
     { id: "aim:chat", at: chat - 700 },
@@ -124,15 +129,20 @@ export const SCRIPTS = byLocale((locale): Schedule => {
     { id: "sub:read", at: subagent + 450 },
     { id: "sub:edit", at: subagent + 1050 },
     { id: "sub:edit2", at: subagent + 1650 },
-    { id: "sub:test", at: subagent + 2250 },
+    { id: "done:docs", at: subagent + 1300 },
+    { id: "sub:test", at: subagent + 1800 },
     // It finishes while the reader watches, and the chat that sent it sees it done.
-    { id: "done:0", at: subagent + 2950 },
-    { id: "done:1", at: subagent + 3350 },
+    { id: "done:tests", at: subagent + 2450 },
+    { id: "aim:back", at: subagent + 2950 },
+    { id: "press:back", at: map - 150 },
+    { id: "back", at: map },
+    // The last part comes home while the map is in view.
+    { id: "done:webauthn", at: map + 1200 },
   );
 
   // All local: the cold-start chat opens beside its Page; the agent writes its findings into the
   // Page, attaches its report, moves the Page to Review, and the reader opens the report.
-  const cold = subagent + 4300;
+  const cold = map + 2400;
   const findingsAt = findings.map((_, index) => cold + 1500 + index * 550);
   cues.push(
     { id: "aim:cold", at: cold - 700 },
@@ -167,7 +177,7 @@ export const SCRIPTS = byLocale((locale): Schedule => {
 });
 
 /** Presses that open something: each ends at the cue of the same name. */
-const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "report"];
+const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "back", "cold", "report"];
 
 /**
  * The hero story in three chapters, one per headline line. The headline buttons
@@ -294,19 +304,25 @@ function HeroPlayback({ controls }: { readonly controls: boolean }) {
       ? "file:report.html"
       : reached("aim:cold") && !reached("cold")
         ? "chat:coldstart"
-        : reached("aim:subagent") && !reached("cold")
-          ? "subagent"
-          : reached("aim:lead") && !reached("aim:subagent")
-            ? "lead"
-            : reached("aim:chat") && !reached("chat")
-              ? "chat:passkeys"
-              : aiming
-                ? `decision:${aiming.id}`
-                : reached("aim:pick") && !reached("pick")
-                  ? "pick"
-                  : reached("aim:model") && !reached("pick")
-                    ? `model:${story.inboxById.passkeys.id}`
-                    : null;
+        : reached("cold")
+          ? null
+          : reached("back")
+            ? "map:webauthn"
+            : reached("aim:back")
+              ? "subagent:back"
+              : reached("aim:subagent")
+                ? "subagent"
+                : reached("aim:lead")
+                  ? "lead"
+                  : reached("aim:chat") && !reached("chat")
+                    ? "chat:passkeys"
+                    : aiming
+                      ? `decision:${aiming.id}`
+                      : reached("aim:pick") && !reached("pick")
+                        ? "pick"
+                        : reached("aim:model") && !reached("pick")
+                          ? `model:${story.inboxById.passkeys.id}`
+                          : null;
   const pressingMenu =
     (reached("press:model") && !reached("menu")) || (reached("press:pick") && !reached("pick"));
 
@@ -314,7 +330,7 @@ function HeroPlayback({ controls }: { readonly controls: boolean }) {
     {
       title: story.titles.darkmode,
       project: "lumen-web",
-      provider: "claude",
+      provider: "antigravity",
       working: reached("folded:darkmode"),
     },
     { title: story.titles.ratelimit, project: "lumen-api", provider: "codex", working: false },
@@ -341,13 +357,15 @@ function HeroPlayback({ controls }: { readonly controls: boolean }) {
   const reportOpen = scene === "cold" && reached("report");
 
   // A chat started from the Inbox opens its Page in the side group. A subagent the reader opens
-  // from the chat lands there in the Subagents tab, and a report opened from a Page in a new
-  // browser tab.
+  // from the chat lands there in the Subagents tab, whose back arrow steps out to the chat's whole
+  // map; a report opened from a Page becomes a preview tab after it.
   const subagentOpen = scene === "passkeys" && reached("subagent");
+  const mapOpen = subagentOpen && reached("back");
+  const passkeyParts = passkeySubagents(story, copy, timeline);
   const pageGroup =
     scene === "passkeys"
       ? {
-          key: subagentOpen ? "subagent" : "passkeys",
+          key: mapOpen ? "map" : subagentOpen ? "subagent" : "passkeys",
           tabs: (
             <>
               <Tab
@@ -366,15 +384,31 @@ function HeroPlayback({ controls }: { readonly controls: boolean }) {
               ) : null}
             </>
           ),
-          content: subagentOpen ? (
-            <WebAuthnSubagent timeline={timeline} />
+          content: mapOpen ? (
+            <SubagentsOverview
+              still={still}
+              lead={
+                <MapLead
+                  agent={AGENTS.opus}
+                  title={story.titles.passkeys}
+                  summary={copy.delegatingBack(
+                    passkeyParts.filter((part) => part.edge === "returned").length,
+                    passkeyParts.length,
+                  )}
+                />
+              }
+              subagents={passkeyParts}
+            />
+          ) : subagentOpen ? (
+            <TestsSubagent timeline={timeline} />
           ) : (
             <PagePanel
               title={story.titles.passkeys}
               properties={
                 <TaskProperties
                   status="Doing"
-                  chat={{ title: story.titles.passkeys, provider: "claude" }}
+                  turn={{ kind: "working", provider: "claude" }}
+                  chat={{ title: story.titles.passkeys, working: true }}
                 />
               }
             >
@@ -417,7 +451,7 @@ function HeroPlayback({ controls }: { readonly controls: boolean }) {
         lead={reached("lead") && !reached("aim:subagent")}
         card={reached("card") && !reached("subagent")}
         secondTool={reached("tool:2")}
-        finished={[reached("done:0"), reached("done:1"), false, false]}
+        finished={passkeyParts.map((part) => part.edge === "returned")}
       />
     ) : scene === "cold" ? (
       <ColdStartChat timeline={timeline} />
@@ -618,6 +652,28 @@ function InboxStream({
   );
 }
 
+/** The passkey chat's subagents as its map draws them, and how each stands at this point. */
+function passkeySubagents(
+  story: ReturnType<typeof useLumen>,
+  copy: ReturnType<typeof useReplicaCopy>,
+  timeline: Timeline,
+): MapSubagent[] {
+  return story.subagents.map((subagent, index) => {
+    const back = timeline.reached(`done:${subagent.id}`);
+    return {
+      id: subagent.id,
+      name: subagent.name,
+      avatar: subagent.avatar,
+      agent: subagent.agent,
+      edge: back ? "returned" : "flowing",
+      status: back ? copy.done : copy.elapsedMinutes([6, 4, 3][index]!),
+      tone: back ? "settled" : "plain",
+      diff: subagent.diff,
+      cursorTarget: `map:${subagent.id}`,
+    };
+  });
+}
+
 function PasskeyChat({
   lead,
   card,
@@ -645,12 +701,22 @@ function PasskeyChat({
         <AnimatePresence>{lead ? <LeadCard agent={AGENTS.opus} /> : null}</AnimatePresence>
       }
     >
+      {/* The chat receives the confirmed prompt with each checked addition as its own paragraph. */}
       <UserBubble>
-        {dispatch.kind === "new_chat" ? dispatch.prompt : story.inboxById.passkeys.text}
+        {dispatch.kind === "new_chat" ? (
+          <span className="flex flex-col gap-1.5">
+            <span>{dispatch.prompt}</span>
+            {dispatch.additions?.map((addition) => (
+              <span key={addition}>{addition}</span>
+            ))}
+          </span>
+        ) : (
+          story.inboxById.passkeys.text
+        )}
       </UserBubble>
       <p className="text-[14px] leading-[21px]">{story.passkeyIntro}</p>
       <div className="relative">
-        <SubagentLine subagents={subagents} cursorTarget="subagent" />
+        <SubagentLine subagents={subagents} cursorTarget="subagent" targetIndex={TESTS} />
         <AnimatePresence>
           {card ? (
             <motion.div
@@ -660,7 +726,7 @@ function PasskeyChat({
               transition={{ duration: 0.18 }}
               className="absolute top-full left-6 z-10 mt-1.5"
             >
-              <SubagentCard subagent={subagents[0]!} />
+              <SubagentCard subagent={subagents[TESTS]!} />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -678,34 +744,33 @@ function PasskeyChat({
   );
 }
 
-/** The first passkey subagent's own conversation: Claude sent it, Codex runs it. */
-function WebAuthnSubagent({ timeline }: { readonly timeline: Timeline }) {
+/** The passkey tests subagent's own conversation: Claude sent it, Gemini runs it in Antigravity. */
+function TestsSubagent({ timeline }: { readonly timeline: Timeline }) {
   const story = useLumen();
   const { reached } = timeline;
-  const webauthn = story.subagents[0];
-  const finished = reached("done:0");
+  const tests = story.subagents[TESTS];
+  const finished = reached("done:tests");
   return (
     <SubagentThread
-      subagent={webauthn}
-      prompt={webauthn.prompt}
+      subagent={tests}
+      prompt={tests.prompt}
       sentBy={{ chat: story.titles.passkeys, agent: AGENTS.opus }}
       running={!finished}
+      backTarget="subagent:back"
     >
-      {finished ? <WorkedFor minutes={4} seconds={8} /> : null}
+      {finished ? <WorkedFor minutes={3} seconds={41} /> : null}
       <div className="flex flex-col gap-1.5">
-        {reached("sub:read") ? <ToolLine row={{ verb: "Read", target: "lib/session.ts" }} /> : null}
+        {reached("sub:read") ? (
+          <ToolLine row={{ verb: "Read", target: "e2e/sign-in.spec.ts" }} />
+        ) : null}
         {reached("sub:edit") ? (
-          <ToolLine
-            row={{ verb: "Edited", target: "app/api/auth/webauthn/register/route.ts", added: 64 }}
-          />
+          <ToolLine row={{ verb: "Edited", target: "e2e/passkey-sign-in.spec.ts", added: 164 }} />
         ) : null}
         {reached("sub:edit2") ? (
-          <ToolLine
-            row={{ verb: "Edited", target: "app/api/auth/webauthn/verify/route.ts", added: 71 }}
-          />
+          <ToolLine row={{ verb: "Edited", target: "e2e/password-fallback.spec.ts", added: 134 }} />
         ) : null}
         {reached("sub:test") ? (
-          <ToolLine row={{ verb: "Ran", target: "pnpm test webauthn" }} />
+          <ToolLine row={{ verb: "Ran", target: "pnpm test:e2e sign-in" }} />
         ) : null}
       </div>
       {finished ? (
@@ -714,10 +779,10 @@ function WebAuthnSubagent({ timeline }: { readonly timeline: Timeline }) {
           animate={{ opacity: 1, y: 0 }}
           className="text-[14px] leading-[21px]"
         >
-          {story.routesDone}
+          {story.testsDone}
         </motion.p>
       ) : (
-        <WorkingLine label={reached("sub:test") ? story.testingRoutes : story.writingRoutes} />
+        <WorkingLine label={reached("sub:test") ? story.testingRoutes : story.writingTests} />
       )}
     </SubagentThread>
   );
@@ -729,7 +794,7 @@ function ColdStartChat({ timeline }: { readonly timeline: Timeline }) {
   const dispatch = story.inboxById.coldstart.dispatch;
   const page = <PageIcon className="size-3.5" />;
   return (
-    <ChatColumn agent={AGENTS.deepseek} running={!reached("cold:answer")}>
+    <ChatColumn agent={AGENTS.neon} running={!reached("cold:answer")}>
       <UserBubble>
         {dispatch.kind === "new_chat" ? dispatch.prompt : story.inboxById.coldstart.text}
       </UserBubble>
@@ -748,7 +813,7 @@ function ColdStartChat({ timeline }: { readonly timeline: Timeline }) {
           <ToolLine row={{ verb: "Attached", target: story.attachedReport, icon: page }} />
         ) : null}
         {reached("cold:review") ? (
-          <ToolLine row={{ verb: "Moved", target: story.movedColdStart, icon: page }} />
+          <ToolLine row={{ verb: "Marked", target: story.markedColdStart, icon: page }} />
         ) : null}
       </div>
       {reached("cold:answer") ? (
@@ -782,12 +847,17 @@ function ColdStartPage({
         <>
           <TaskProperties
             status={reached("cold:review") ? "Review" : "Doing"}
-            chat={{ title: story.titles.coldstart, provider: "opencode" }}
+            turn={
+              reached("cold:answer")
+                ? { kind: "review" }
+                : { kind: "working", provider: "antigravity" }
+            }
+            chat={{ title: story.titles.coldstart, working: !reached("cold:answer") }}
           />
           <FilesProperty
             folders={reached("cold:attach") ? COLD_START_FILES : []}
             fresh={reached("cold:attach")}
-            source={{ chat: story.titles.coldstart, provider: "opencode" }}
+            source={{ chat: story.titles.coldstart }}
             selected={reached("aim:report") ? REPORT.name : null}
             opened={reached("report") ? [REPORT.name] : []}
           />

@@ -102,7 +102,7 @@ export function AppSidebar({
                                   animationDurationMs={2_000}
                                 />
                               ) : chat.waiting ? (
-                                <AgentQuestionIcon className="size-[13.12px] text-(--usage-low)" />
+                                <AgentQuestionIcon className="size-[13.12px] text-[#e25507] dark:text-[#ff8549]" />
                               ) : (
                                 <span
                                   aria-label={copy.unread}

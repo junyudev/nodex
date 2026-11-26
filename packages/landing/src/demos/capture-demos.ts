@@ -6,7 +6,7 @@ import type { Locale } from "../lib/locale";
  */
 export const CAPTURE_DEMOS = {
   hero: { width: 1180, height: 680 },
-  fanout: { width: 640, height: 540 },
+  aerial: { width: 1180, height: 800 },
   agents: { width: 640, height: 540 },
   pages: { width: 1180, height: 700 },
   tidy: { width: 1180, height: 700 },

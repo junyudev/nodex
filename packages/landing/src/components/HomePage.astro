@@ -3,8 +3,8 @@ import type { Locale } from "../lib/locale";
 import SiteFooter from "./SiteFooter.astro";
 import SiteNav from "./SiteNav.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import Aerial from "../sections/Aerial.astro";
 import Agents from "../sections/Agents.astro";
-import FanOut from "../sections/FanOut.astro";
 import Hero from "../sections/Hero.astro";
 import Mobile from "../sections/Mobile.astro";
 import Pages from "../sections/Pages.astro";
@@ -24,13 +24,13 @@ const zh = locale === "zh-CN";
   locale={locale}
   localizedPage="home"
   title={zh ? "Nodex：一个收件箱，所有智能体，一切存于本地" : "Nodex: One inbox. Every agent. All local."}
-  description={zh ? "Nodex 是开源的本地工作空间。把想法放进同一个收件箱，交给 Claude Code、Codex 或 OpenCode，再和智能体一起在本地页面里推进。" : undefined}
-  imageAlt={zh ? "Nodex 收件箱将不同任务分派给 Codex、Claude Code 和 OpenCode 等智能体。" : undefined}
+  description={zh ? "Nodex 是开源的本地工作空间。把想法放进同一个收件箱，交给 Claude Code、Codex、Antigravity 或 DeepSeek，再和智能体一起在本地页面里推进。" : undefined}
+  imageAlt={zh ? "Nodex 鸟瞰视图里两个正在工作的聊天和它们的子智能体：Claude Code 把路由交给 Codex、测试交给 Antigravity、文档交给 OpenCode；Antigravity 的 Codex 子智能体又把截图交给 DeepSeek。支持 Claude Code、Codex、Antigravity、DeepSeek 和 OpenCode。" : undefined}
 >
   <SiteNav locale={locale} page="home" />
   <main>
     <Hero locale={locale} />
-    <FanOut locale={locale} />
+    <Aerial locale={locale} />
     <Agents locale={locale} />
     <Pages locale={locale} />
     <Tidy locale={locale} />

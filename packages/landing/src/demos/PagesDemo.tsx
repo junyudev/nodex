@@ -24,7 +24,6 @@ import {
   TaskProperties,
 } from "../replica/Page";
 import { AgentDock } from "../replica/AgentDock";
-import { AppSidebar, type SidebarChat } from "../replica/Sidebar";
 import { Stage } from "../replica/Stage";
 import { PageFileView } from "../replica/Viewers";
 import { CAPTURE_DEMOS } from "./capture-demos";
@@ -35,25 +34,30 @@ import { useTimeline, type Timeline, type TimelineScript } from "./timeline";
 
 const FLAMEGRAPH = COLD_START_FILES[0].files[1];
 
-const OPEN = 2000;
+const OPEN = 1200;
 /** The agent starts writing as soon as the Page opens. */
 const FINDINGS_AT = lumen.en.findings.map((_, index) => OPEN + 500 + index * 550);
 const ATTACH = FINDINGS_AT.at(-1)! + 900;
+/** The agent reports its work ready, and the Board moves the Page to In Review. */
+const REPORT = ATTACH + 500;
 
 export const SCRIPT: TimelineScript = {
   cues: [
-    { id: "move", at: 500 },
-    { id: "aim:card", at: OPEN - 800 },
+    { id: "aim:card", at: 400 },
     { id: "press:card", at: OPEN - 150 },
     { id: "open", at: OPEN },
     ...FINDINGS_AT.map((at, index) => ({ id: `finding:${index}`, at })),
     { id: "attach", at: ATTACH },
-    { id: "aim:image", at: ATTACH + 1200 },
-    { id: "press:image", at: ATTACH + 1750 },
-    { id: "preview", at: ATTACH + 1900 },
-    { id: "rest", at: ATTACH + 2500 },
+    { id: "move", at: REPORT },
+    { id: "aim:image", at: REPORT + 900 },
+    // A double click keeps the image in a tab of its own rather than previewing it over the Page.
+    { id: "press:image", at: REPORT + 1450 },
+    { id: "release:image", at: REPORT + 1560 },
+    { id: "press2:image", at: REPORT + 1650 },
+    { id: "preview", at: REPORT + 1780 },
+    { id: "rest", at: REPORT + 2400 },
   ],
-  durationMs: ATTACH + 5000,
+  durationMs: REPORT + 4400,
 };
 
 /** The Board moving on its own while agents work, and a Page an agent is writing into. */
@@ -67,11 +71,6 @@ export default function PagesDemo({ locale }: DemoProps) {
 
 function PagesPlayback() {
   const story = useLumen();
-  const PROJECT_CHATS: readonly SidebarChat[] = [
-    { title: story.titles.passkeys, project: "lumen-web", provider: "claude", working: true },
-    { title: story.titles.coldstart, project: "lumen-web", provider: "opencode", working: false },
-    { title: story.titles.darkmode, project: "lumen-web", provider: "claude", working: false },
-  ];
 
   const copy = useReplicaCopy();
   const root = useRef<HTMLDivElement | null>(null);
@@ -84,7 +83,8 @@ function PagesPlayback() {
       ? {
           ...card,
           status: "Review" as const,
-          chat: { provider: "opencode" as const, working: false },
+          turn: { kind: "review" as const },
+          chat: { provider: "antigravity" as const, working: false },
         }
       : card,
   );
@@ -98,7 +98,9 @@ function PagesPlayback() {
         ? "card:coldstart"
         : null;
   const pressed =
-    (reached("press:card") && !open) || (reached("press:image") && !reached("preview"));
+    (reached("press:card") && !open) ||
+    (reached("press:image") && !reached("release:image")) ||
+    (reached("press2:image") && !reached("preview"));
 
   return (
     <div ref={root} className="w-full">
@@ -106,14 +108,8 @@ function PagesPlayback() {
         {({ compact }) => (
           <AppWindow
             key={timeline.loop}
-            sidebar={
-              compact ? undefined : (
-                <AppSidebar
-                  chats={PROJECT_CHATS}
-                  selection={{ kind: "project", name: "lumen-web" }}
-                />
-              )
-            }
+            // The rail alone leaves the Board room for its working columns beside the open Page.
+            rail={!compact}
             tabs={
               <>
                 <Tab icon={<InboxIcon className="size-4" />} label={copy.inbox} closable={false} />
@@ -132,12 +128,7 @@ function PagesPlayback() {
                         />
                         {previewing ? (
                           <NewTab>
-                            <Tab
-                              icon={PAGE_FILE_ICON.image}
-                              label={FLAMEGRAPH.name}
-                              active
-                              preview
-                            />
+                            <Tab icon={PAGE_FILE_ICON.image} label={FLAMEGRAPH.name} active />
                           </NewTab>
                         ) : null}
                       </>
@@ -184,7 +175,7 @@ function PagesPlayback() {
                   <div className="min-h-0 flex-1 overflow-hidden px-2.5 pt-2 pb-3">
                     <div
                       className="flex w-max items-stretch gap-2.5"
-                      style={{ transform: compact ? "translateX(-472px)" : undefined }}
+                      style={{ transform: compact ? "translateX(-86px)" : undefined }}
                     >
                       {STATUSES.map((status) => {
                         const column = cards.filter((card) => statusOf(card) === status);
@@ -243,13 +234,16 @@ function ColdStartStage({ timeline }: { readonly timeline: Timeline }) {
       properties={
         <>
           <TaskProperties
-            status="Review"
-            chat={{ title: story.titles.coldstart, provider: "opencode" }}
+            status={reached("move") ? "Review" : "Doing"}
+            turn={
+              reached("move") ? { kind: "review" } : { kind: "working", provider: "antigravity" }
+            }
+            chat={{ title: story.titles.coldstart, working: !reached("move") }}
           />
           <FilesProperty
             folders={reached("attach") ? COLD_START_FILES : []}
             fresh={reached("attach")}
-            source={{ chat: story.titles.coldstart, provider: "opencode" }}
+            source={{ chat: story.titles.coldstart }}
             selected={reached("aim:image") ? FLAMEGRAPH.name : null}
             opened={reached("preview") ? [FLAMEGRAPH.name] : []}
           />
@@ -262,7 +256,7 @@ function ColdStartStage({ timeline }: { readonly timeline: Timeline }) {
   );
 }
 
-/** The flame graph the agent attached, opened from the Page in a Page File tab beside it. */
+/** The flame graph the agent attached, kept open from the Page in a File tab after it. */
 function FlamegraphFile() {
   const story = useLumen();
   return (

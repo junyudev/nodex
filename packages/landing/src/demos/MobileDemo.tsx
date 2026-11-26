@@ -381,7 +381,7 @@ function InboxPane({
           <PhoneSuggestion
             summary={story.mobileDigestSummary}
             destination={copy.suggestedByModel(AGENTS.sol.model)}
-            action={{ label: copy.keep, tone: "primary", icon: "check" }}
+            action={{ label: copy.saveToNotes, tone: "primary", icon: "check" }}
           />
         </PhoneInboxRow>
         <PhoneInboxRow text={story.inboxById.darkmode.text} meta="9:03">

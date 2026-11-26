@@ -4,6 +4,7 @@ import { useReplicaCopy } from "./copy";
 import {
   AntigravityMark,
   ArrowLeftIcon,
+  DeepSeekMark,
   ArrowRightIcon,
   ClaudeMark,
   ClockIcon,
@@ -256,8 +257,8 @@ function Rail({
   );
 }
 
-/** The rail's meters, in the app's order. */
-const RAIL_METERS: readonly MeteredProvider[] = ["claude", "codex", "antigravity"];
+/** The rail's meters, in the app's order; an API key connection that reports usage has its own. */
+const RAIL_METERS: readonly MeteredProvider[] = ["deepseek", "antigravity", "claude", "codex"];
 
 /**
  * UsageRingGlyph geometry and severity thresholds from workbench-rail-usage-meter.tsx. An Agent
@@ -531,6 +532,7 @@ export function ProviderMark({
 }) {
   if (kind === "claude") return <ClaudeMark className={className} />;
   if (kind === "antigravity") return <AntigravityMark className={className} />;
+  if (kind === "deepseek") return <DeepSeekMark className={className} />;
   if (kind === "opencode") return <OpenCodeMark className={className} />;
   return <OpenAIMark className={className} />;
 }
