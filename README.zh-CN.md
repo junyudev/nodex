@@ -59,6 +59,8 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 把路由交给 Codex 里的 GPT；Codex 对话也能请 Claude 审查。鸟瞰视图同时显示每个正在工作的对话和
 它的整棵子 Agent 树。在对话旁打开子 Agent 就能查看进展；Agent 支持时，还能追问或叫停。
 
+**每个 Agent 都是一个节点，每个节点都是 Nodex。**
+
 <details>
 <summary>让 Claude 默认这样分工</summary>
 

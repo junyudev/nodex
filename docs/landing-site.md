@@ -119,7 +119,7 @@ every quality.
 - `src/pages/zh-cn/` for their Simplified Chinese routes, rendered by the same page components
 - `src/pages/changelog/index.astro` for the generated changelog page
 - `src/pages/privacy/index.astro` and `src/pages/terms/index.astro` for the legal pages
-- `src/components/` for shared site navigation, footer, and the social card frame
+- `src/components/` for shared site navigation, footer, wordmark, and the social card frame
 - `src/sections/` for the homepage sections, each an Astro component that places one demo island
 - `src/demos/` for the interactive product demos, hydrated with Astro client directives and animated with `motion/react`; `lumen.ts` holds the fictional workspace and the current agent and model names every demo shares
 - `src/replica/` for presentational copies of the desktop UI (window shell, Inbox, chat, Board) and of Nodex Mobile that the demos compose
@@ -242,15 +242,21 @@ with its Page in the side tab group, where the agent writes its findings, attach
 marks the Page ready for review, and the reader opens the report beside the Page. Icons beside
 the last two lines show what they cover, and a line's short caption appears only while its
 chapter plays. The sentence beside the headline is the README's tagline; change both together.
-Sections then cover Aerial view, with every chat at work and its whole tree of subagents across
-the three peers, every provider's models and plans in one menu, work landing in Pages on a Board
-until it waits for the reader to accept it, one plain request that has an agent file a whole
-backlog, and reaching all of it from a phone, followed by a feature grid and a final download
-call.
+Sections then cover Aerial view, with every chat at work and its whole tree of subagents across the
+three peers, closing on [what the name means](product-specs/brand-language.md#the-name), every
+provider's models and plans in one menu, work landing in Pages on a Board until it waits for the
+reader to accept it, one plain request that has an agent file a whole backlog, and reaching all of
+it from a phone, followed by a feature grid and a final download call.
 
 The hero reaches something worth watching within about a second. Its opening burst sweeps each
 message through the composer in a fraction of a second, and the Inbox plans each one while the
 rest are still arriving, so every route shows while its card is still in view.
+
+The nav, the footer and Aerial view's closing line set the name with `Wordmark.astro`, which lays
+the word out in layers so its x can draw as two delegation lines crossing in Claude Code's and
+Codex's colors while keeping the font's own shape: in the nav while the link is pointed at, and
+elsewhere once it is all in view, where it stays. Its clip geometry is measured from Geist
+SemiBold, so remeasure it in the `wordmark` utility if the site's font changes.
 
 Product demos are scripted re-enactments built from replicas of the interface, not recordings:
 
@@ -320,7 +326,8 @@ again with `vp run capture:landing` after changing a demo the README shows.
 
 A link to the site previews as a social card. A page names its card through `BaseLayout`'s
 `socialCard`, and `SOCIAL_CARDS` owns each card's published file and alt text, so the tags and the
-recorder read one list. Home, Download and Changelog each have a card; Privacy and Terms use Home's. The Download card lists every
+recorder read one list. Home, Download and Changelog each have a card; Privacy and Terms use Home's. Every card signs
+the name with what it means, `Every agent, a node.` The Download card lists every
 build the page offers: the desktop app for macOS and Windows, and Nodex Mobile for iPhone and
 Android.
 

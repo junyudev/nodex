@@ -2,6 +2,7 @@
 import { CHANGELOG_URL, GITHUB_URL } from "../lib/site";
 import { alternateLocale, localizedPath, type Locale, type LocalizedPage } from "../lib/locale";
 import { GitHubMark } from "../replica/icons";
+import Wordmark from "./Wordmark.astro";
 interface Props {
   locale?: Locale;
   page?: LocalizedPage;
@@ -16,7 +17,7 @@ const other = alternateLocale(locale);
   <div class="mx-auto flex h-14 max-w-[1200px] items-center justify-between gap-4 px-6">
     <a href={localizedPath("home", locale)} class="inline-flex items-center gap-2.5">
       <img src="/nodex-icon.png" alt="" width="26" height="26" class="size-[26px]" />
-      <span class="text-[16px] font-semibold tracking-[-0.02em]">Nodex</span>
+      <Wordmark class="text-[16px] font-semibold" />
     </a>
     <div class="flex items-center gap-1 text-[14px] text-ink-2">
       <a href={CHANGELOG_URL} class="hidden rounded-full px-3 py-1.5 hover:text-ink sm:block">{zh ? "更新日志" : "Changelog"}</a>

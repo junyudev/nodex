@@ -62,6 +62,8 @@ Gemini in Antigravity and its routes to GPT in Codex, while a Codex chat asks Cl
 Aerial view shows every chat at work with its whole tree of subagents. Open a subagent beside its
 chat to follow along, and reply or stop it where its Agent allows.
 
+**Every agent, a node. Every node, Nodex.**
+
 <details>
 <summary>Make Claude lead and Codex build by default</summary>
 
