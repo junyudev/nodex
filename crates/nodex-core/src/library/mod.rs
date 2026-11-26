@@ -1815,6 +1815,66 @@ mod tests {
     }
 
     #[test]
+    fn catalog_matches_unicode_titles_and_counts_the_same_results() {
+        use nodex_core_contracts::library::{LibraryCanvasDestination, LibraryCatalogKind};
+
+        let fixture = agent_surface::Fixture::new();
+        fixture.apply(
+            "accented-database",
+            LibraryIntent::CreateDatabase {
+                database_id: "01980000-0000-7000-8000-000000000001".into(),
+                data_source_id: "01980000-0000-7000-8000-000000000002".into(),
+                view_id: "01980000-0000-7000-8000-000000000003".into(),
+                name: "Équipe".into(),
+                parent: LibraryWriteParent::Library { before: None },
+            },
+        );
+        fixture.apply(
+            "accented-canvas",
+            LibraryIntent::CreateCanvas {
+                canvas_id: "01980000-0000-7000-8000-000000000004".into(),
+                document_id: "01980000-0000-7000-8000-000000000005".into(),
+                display_name: "Équipe".into(),
+                destination: LibraryCanvasDestination::Library { before: None },
+            },
+        );
+
+        for query in ["Équipe", "équipe", "e\u{301}quipe", "equipe", "équi"] {
+            let LibraryReadValue::Catalog { items, total, .. } = fixture
+                .library
+                .read(
+                    &context(),
+                    ModuleReadRequest {
+                        contract_version: LIBRARY_CONTRACT_VERSION,
+                        read: LibraryRead::Catalog {
+                            query: Some(query.into()),
+                            kinds: None,
+                            lifecycle: None,
+                            cursor: None,
+                            limit: None,
+                        },
+                    },
+                )
+                .expect("catalog search")
+                .value
+            else {
+                panic!("catalog result");
+            };
+
+            assert_eq!(total, 2, "query {query:?}");
+            assert_eq!(items.len(), 2, "query {query:?}");
+            for kind in [LibraryCatalogKind::Database, LibraryCatalogKind::Canvas] {
+                assert!(
+                    items
+                        .iter()
+                        .any(|item| item.kind == kind && item.title == "Équipe"),
+                    "query {query:?} missed {kind:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn persistent_navigation_separates_roots_rows_paths_and_continues_cursors() {
         use nodex_core_contracts::library::{
             LibraryLifecycle, LibraryLocationSegment, LibraryNavigationNode,
