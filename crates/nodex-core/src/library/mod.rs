@@ -170,7 +170,7 @@ impl LibraryModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<LibraryRead>,
     ) -> Result<ModuleReadSnapshot<LibraryReadValue>, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(context, "library_read", &request.read)?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.read)?;
         self.validate_context(context)?;
         if request.contract_version != LIBRARY_CONTRACT_VERSION {
             return Err(invalid_input("unsupported Library contract version"));
@@ -504,11 +504,7 @@ impl LibraryModule {
         context: &BoundModuleContext,
         request: ModuleApplyRequest<LibraryIntent>,
     ) -> Result<LibraryApplyOutcome, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(
-            context,
-            "library_apply",
-            &request.intent,
-        )?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.intent)?;
         self.validate_context(context)?;
         if request.contract_version != LIBRARY_CONTRACT_VERSION {
             return Err(invalid_input("unsupported Library contract version"));

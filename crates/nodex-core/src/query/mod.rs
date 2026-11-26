@@ -65,7 +65,7 @@ impl QueryModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<QueryRead>,
     ) -> Result<ModuleReadSnapshot<QueryReadValue>, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(context, "query_read", &request.read)?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.read)?;
         self.read_inner(context, request).map_err(core_error)
     }
 

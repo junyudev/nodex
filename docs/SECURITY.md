@@ -72,11 +72,14 @@ remain valid.
 A remote handshake requires a device session and the existing generation,
 transport, event, Store and Module compatibility negotiation. Every admitted
 request binds Space, Member, Device, Session and role into trusted Module context.
-Semantic admission uses an explicit remote command allowlist. Source commands,
-native execution bindings, Runner administration, backups, restore and maintenance stay
-host-only. Receipt admission checks the initiating Member, including exact retries and
-explicit resolution. Physical connection and session identities do not change
-the operation identity.
+Semantic admission fails closed and decides each command: every Module command
+variant is explicitly admitted or refused for remote Members, a new variant does
+not compile until it is, and Clippy rejects a wildcard arm that would decide one
+silently. Source commands, native execution bindings, Runner administration,
+backups, restore and maintenance stay host-only. Receipt admission checks the
+initiating Member, including exact retries and explicit
+resolution. Physical connection and session identities do not change the
+operation identity.
 Revocation is checked on new requests, at the durable writer boundary, and every
 second while responses remain open. Library blobs and all SSE routes share this
 boundary. A reverse proxy must forward HTTPS without substituting a local Host

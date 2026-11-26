@@ -328,7 +328,7 @@ impl OwnedDocumentModule {
             state_vector: Vec::new(),
             history_after_head_seq: None,
         };
-        nodex_core_contracts::remote_admission::authorize(context, "document_read", &read)?;
+        nodex_core_contracts::remote_admission::authorize(context, &read)?;
         self.validate_context(context)?;
         let OwnedDocumentRead::SyncYjs { document_id, .. } = read else {
             unreachable!("the admitted read is the Yjs sync built above");
@@ -348,7 +348,7 @@ impl OwnedDocumentModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<OwnedDocumentRead>,
     ) -> Result<ModuleReadSnapshot<OwnedDocumentReadValue>, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(context, "document_read", &request.read)?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.read)?;
         self.validate_context(context)?;
         if request.contract_version != OWNED_DOCUMENT_CONTRACT_VERSION {
             return Err(invalid("Unsupported Owned Document contract version"));
@@ -705,11 +705,7 @@ impl OwnedDocumentModule {
         client_session_id: &str,
         request: ModuleApplyRequest<OwnedDocumentIntent>,
     ) -> Result<OwnedDocumentApplyOutcome, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(
-            context,
-            "document_apply",
-            &request.intent,
-        )?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.intent)?;
         self.validate_context(context)?;
         if request.contract_version != OWNED_DOCUMENT_CONTRACT_VERSION {
             return Err(invalid("Unsupported Owned Document contract version"));

@@ -229,11 +229,7 @@ impl ProjectWorkspaceModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<ProjectWorkspaceRead>,
     ) -> Result<ModuleReadSnapshot<ProjectWorkspaceReadValue>, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(
-            context,
-            "workspace_read",
-            &request.read,
-        )?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.read)?;
         self.validate_context(context)?;
         if request.contract_version != PROJECT_WORKSPACE_CONTRACT_VERSION {
             return Err(invalid("unsupported Project Workspace contract version"));
@@ -292,11 +288,7 @@ impl ProjectWorkspaceModule {
         context: &BoundModuleContext,
         request: ModuleApplyRequest<ProjectWorkspaceIntent>,
     ) -> Result<ProjectWorkspaceApplyOutcome, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(
-            context,
-            "workspace_apply",
-            &request.intent,
-        )?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.intent)?;
         self.validate_context(context)?;
         if request.contract_version != PROJECT_WORKSPACE_CONTRACT_VERSION {
             return Err(invalid("unsupported Project Workspace contract version"));
