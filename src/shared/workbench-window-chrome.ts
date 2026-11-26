@@ -1,5 +1,5 @@
 /** Logical shell dimensions shared by native window controls and renderer layout. */
-export const WORKBENCH_TITLEBAR_HEIGHT_PX = 44;
+export const WORKBENCH_TITLEBAR_HEIGHT_PX = 46;
 export const WORKBENCH_APPLICATION_MENU_HEIGHT_PX = 36;
 export const WORKBENCH_NAVIGATION_RAIL_WIDTH_PX = 52;
 export const WORKBENCH_SURFACE_GUTTER_PX = 4;

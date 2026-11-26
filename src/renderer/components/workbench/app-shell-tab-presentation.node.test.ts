@@ -74,7 +74,7 @@ describe("app shell tab sizing", () => {
         trailingWidthPx: 28,
         lockedWidthPx: null,
       }),
-    ).toBe("clamp(276px, calc(100cqw - 28px), 486px)");
+    ).toBe("clamp(276px, calc(100cqw - 28px), 726px)");
 
     const flexSizing = buildAppShellTabFlexSizing(null);
     expect(flexSizing.flexBasis).toBe(0);
@@ -109,13 +109,13 @@ describe("app shell tab sizing", () => {
         trailingWidthPx: -8,
         lockedWidthPx: Number.POSITIVE_INFINITY,
       }),
-    ).toBe("clamp(183px, calc(100cqw - 0px), 323px)");
+    ).toBe("clamp(183px, calc(100cqw - 0px), 483px)");
   });
 });
 
 describe("leading tab strip sizing", () => {
   test("gives the fixed leading tab an equal share after trailing actions and gaps", () => {
-    const tabWidth = "clamp(90px, calc(calc(100cqw - 28px - 9px) / 4), 160px)";
+    const tabWidth = "clamp(90px, calc(calc(100cqw - 28px - 9px) / 4), 240px)";
     expect(
       buildAppShellLeadingTabStripSizing({ tabCount: 3, trailingWidthPx: 28, lockedWidthPx: null }),
     ).toEqual({ leadingTabWidth: tabWidth, listWidth: `calc(3 * ${tabWidth} + 6px)` });
@@ -139,7 +139,7 @@ describe("leading tab strip sizing", () => {
       ).toEqual({
         leadingTabWidth:
           lockedWidthPx === null
-            ? "clamp(90px, calc(calc(100cqw - 28px - 0px) / 1), 160px)"
+            ? "clamp(90px, calc(calc(100cqw - 28px - 0px) / 1), 240px)"
             : "120px",
         listWidth: "0px",
       });

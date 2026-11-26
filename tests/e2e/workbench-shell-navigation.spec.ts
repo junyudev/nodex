@@ -331,7 +331,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           claim(
             "Workbench chrome has the exact rail, button, header and tab dimensions",
             {
-              rail: { width: 52, top: 44 },
+              rail: { width: 52, top: 46 },
               buttons: [
                 { label: "Home", width: 36, height: 36 },
                 { label: "Space", width: 36, height: 36 },
@@ -340,15 +340,15 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
                 { label: "Insights", width: 36, height: 36 },
                 { label: "Spaces and settings", width: 36, height: 36 },
               ],
-              railFootBottomInset: 8,
-              headerHeight: 44,
-              surfaceTop: 44,
+              railFootBottomInset: 4,
+              headerHeight: 46,
+              surfaceTop: 0,
               tabHeaderTop: 0,
               tabHeaderInGlobalChrome: true,
               contentOwnsGlobalChrome: false,
               tabPillHeight: 32,
               tabHitHeight: 32,
-              paneInsets: { right: 4, bottom: 4 },
+              paneInsets: { right: 0, bottom: 0 },
             },
             await readGeometry(page),
           );
@@ -389,34 +389,50 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           if (process.platform === "darwin") {
             claim(
               "Native traffic lights are vertically centered in the shared titlebar",
-              { buttons: { x: 16, y: 15 }, zoom: 1 },
+              { buttons: { x: 16, y: 16 }, zoom: 1 },
               nativeChrome,
             );
           }
 
           claim(
-            "Window navigation follows the titlebar order and native safe inset",
-            [
-              { label: "Back", left: 88, width: 28, height: 28 },
-              { label: "Forward", left: 122, width: 28, height: 28 },
-              { label: "Hide sidebar", left: 156, width: 28, height: 28 },
-            ],
-            await page.getByTestId("workbench-window-navigation-chrome").evaluateAll((groups) => {
-              const group = groups.find(
-                (element) =>
-                  getComputedStyle(element).visibility === "visible" &&
-                  element.getBoundingClientRect().width > 0,
+            "The sidebar toggle follows the native safe inset and history closes the sidebar's titlebar row",
+            {
+              toggle: { left: 88, width: 28, height: 28 },
+              history: [
+                { label: "Back", width: 28, height: 28 },
+                { label: "Forward", width: 28, height: 28 },
+              ],
+              historyGap: 6,
+              historyEndInset: 10,
+            },
+            await page.evaluate(() => {
+              const titlebar = document.querySelector("[data-workbench-titlebar]");
+              const toggle = titlebar?.querySelector('button[aria-label="Hide sidebar"]');
+              const group = Array.from(
+                titlebar?.querySelectorAll('[data-testid="workbench-window-navigation-chrome"]') ??
+                  [],
+              ).find((element) => element.getBoundingClientRect().width > 0);
+              const surface = document.querySelector("[data-workbench-main-surface]");
+              if (!toggle || !group || !surface)
+                throw new Error("Missing visible window navigation controls");
+              const history = Array.from(group.querySelectorAll("button")).map((button) =>
+                button.getBoundingClientRect(),
               );
-              if (!group) throw new Error("Missing visible window navigation controls");
-              return Array.from(group.querySelectorAll("button")).map((button) => {
-                const bounds = button.getBoundingClientRect();
-                return {
+              const toggleBounds = toggle.getBoundingClientRect();
+              return {
+                toggle: {
+                  left: toggleBounds.left,
+                  width: toggleBounds.width,
+                  height: toggleBounds.height,
+                },
+                history: Array.from(group.querySelectorAll("button")).map((button, index) => ({
                   label: button.getAttribute("aria-label"),
-                  left: bounds.left,
-                  width: bounds.width,
-                  height: bounds.height,
-                };
-              });
+                  width: history[index]!.width,
+                  height: history[index]!.height,
+                })),
+                historyGap: history[1]!.left - history[0]!.right,
+                historyEndInset: surface.getBoundingClientRect().left - history[1]!.right,
+              };
             }),
           );
           const homeHeader = await readSidebarHeader(page);
@@ -424,7 +440,8 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             "Project titlebar keeps every control clickable and empty chrome draggable",
             { blockedControls: [], draggableAt: [true, true] },
             await readNativeDragRegions(page, [
-              { x: 300, y: 22 },
+              // Between the sidebar toggle and the history controls that end the sidebar's row.
+              { x: 200, y: 22 },
               { x: 720, y: 22 },
             ]),
           );
@@ -500,11 +517,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               const bounds = await peek.boundingBox();
               return bounds ? { x: bounds.x, y: bounds.y, width: bounds.width } : null;
             })
-            .toEqual({ x: 56, y: 48, width: 284 });
+            .toEqual({ x: 56, y: 50, width: 284 });
           const peekBounds = await peek.boundingBox();
           claim(
             "A rail peek survives the gap into its surface and keeps the pinned geometry",
-            { visible: true, x: 56, y: 48, width: 284 },
+            { visible: true, x: 56, y: 50, width: 284 },
             {
               visible: await peek.isVisible(),
               x: peekBounds?.x,
@@ -586,7 +603,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               claim(
                 "The actual Zoom In menu keeps native buttons and content clear of each other",
                 {
-                  nativeButtonY: Math.round((44 * zoomedNative.zoom - 14) / 2),
+                  nativeButtonY: Math.round((46 * zoomedNative.zoom - 14) / 2),
                   nativeReservationClear: true,
                   firstControlClear: true,
                   firstTabClear: true,
@@ -732,7 +749,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           const safeGeometry = await readNativeSafeGeometry(page);
           claim(
             "Full content and collapsed navigation preserve the native titlebar safe area",
-            { controlsClearNativeSafeInset: true, tabsClearNativeSafeInset: true, surfaceTop: 44 },
+            { controlsClearNativeSafeInset: true, tabsClearNativeSafeInset: true, surfaceTop: 0 },
             {
               controlsClearNativeSafeInset: safeGeometry.controlsClearNativeSafeInset,
               tabsClearNativeSafeInset: safeGeometry.tabsClearNativeSafeInset,

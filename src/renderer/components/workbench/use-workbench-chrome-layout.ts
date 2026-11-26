@@ -17,7 +17,6 @@ import {
   WORKBENCH_APPLICATION_MENU_HEIGHT_PX,
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
   WORKBENCH_TITLEBAR_HEIGHT_PX,
-  WORKBENCH_SURFACE_GUTTER_PX,
 } from "../../../shared/workbench-window-chrome";
 import { useMotionValue, useTransform, type MotionValue } from "motion/react";
 import {
@@ -124,15 +123,9 @@ function readShellBodyFallbackSize(applicationMenuBarEnabled: boolean, root: HTM
       window.innerHeight / windowZoom -
         (applicationMenuBarEnabled
           ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX
-          : WORKBENCH_TITLEBAR_HEIGHT_PX) -
-        WORKBENCH_SURFACE_GUTTER_PX,
+          : WORKBENCH_TITLEBAR_HEIGHT_PX),
     ),
-    width: Math.max(
-      0,
-      window.innerWidth / windowZoom -
-        WORKBENCH_NAVIGATION_RAIL_WIDTH_PX -
-        WORKBENCH_SURFACE_GUTTER_PX,
-    ),
+    width: Math.max(0, window.innerWidth / windowZoom - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX),
   };
 }
 
@@ -491,6 +484,7 @@ export function useWorkbenchChromeLayout({
     effectiveHeaderLeftWidth,
     headerLeftShellSlotMinWidth,
     headerLeftShellSlotWidth,
+    leftHeaderContentWidth,
     workspaceHeaderLeft,
     headerLeftFallbackRailWidth: applicationMenuBarEnabled
       ? 0

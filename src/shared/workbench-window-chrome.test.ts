@@ -55,7 +55,7 @@ describe("Workbench native window geometry", () => {
   test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
     "falls back to unscaled native coordinates for invalid zoom %s",
     (windowZoom) => {
-      expect(resolveWorkbenchMacWindowControlPosition(windowZoom)).toEqual({ x: 16, y: 15 });
+      expect(resolveWorkbenchMacWindowControlPosition(windowZoom)).toEqual({ x: 16, y: 16 });
       expect(
         resolveWorkbenchHeaderSafeInsets({
           isMacPlatform: true,

@@ -10,6 +10,7 @@ import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/compon
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
+  CONVERSATION_HEADER_CONTROL_CLASS,
   TOOLBAR_BUTTON_BASE_CLASS,
   TOOLBAR_BUTTON_GHOST_CLASS,
   TOOLBAR_BUTTON_SECONDARY_CLASS,
@@ -117,6 +118,7 @@ export function WorkspaceFullViewToggle({
         className={cn(
           TOOLBAR_BUTTON_BASE_CLASS,
           full ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
+          CONVERSATION_HEADER_CONTROL_CLASS,
         )}
         onClick={() => onFullViewChange(!full)}
       >
@@ -168,6 +170,7 @@ function WorkspaceTabsToggle({
         className={cn(
           TOOLBAR_BUTTON_BASE_CLASS,
           mode === "split" ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
+          CONVERSATION_HEADER_CONTROL_CLASS,
         )}
         onClick={onToggle}
       >
@@ -252,7 +255,11 @@ function RetainedWorkspaceTabsControl({
           aria-haspopup="menu"
           aria-pressed={false}
           data-workbench-workspace-tabs-control=""
-          className={cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS)}
+          className={cn(
+            TOOLBAR_BUTTON_BASE_CLASS,
+            TOOLBAR_BUTTON_GHOST_CLASS,
+            CONVERSATION_HEADER_CONTROL_CLASS,
+          )}
         >
           <OpenTabsIcon count={tabs.length} />
         </button>

@@ -31,6 +31,7 @@ import { toast } from "@/components/ui/toast";
 import { writeTextToClipboardStrict } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import {
+  CONVERSATION_HEADER_CONTROL_CLASS,
   TOOLBAR_BUTTON_BASE_CLASS,
   TOOLBAR_BUTTON_GHOST_CLASS,
 } from "@/lib/workbench-toolbar-control-styles";
@@ -161,7 +162,12 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           className={
             variant === "chat-tab"
               ? CHAT_TAB_ACTIONS_TRIGGER_CLASS
-              : cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS, "shrink-0")
+              : cn(
+                  TOOLBAR_BUTTON_BASE_CLASS,
+                  TOOLBAR_BUTTON_GHOST_CLASS,
+                  CONVERSATION_HEADER_CONTROL_CLASS,
+                  "shrink-0",
+                )
           }
           aria-label={intl.formatMessage({
             id: "conversation.stageHeader.actions",
@@ -513,7 +519,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
     <div className="flex w-full min-w-0 items-center gap-2 electron:h-toolbar extension:py-row-y">
       <span
         data-testid="thread-stage-title"
-        className="inline-flex min-w-[2ch] flex-1 items-center overflow-hidden font-sans text-base leading-6 text-token-foreground electron:font-medium"
+        className="inline-flex min-w-[2ch] flex-1 items-center overflow-hidden px-1.75 font-sans text-sm leading-5 text-token-foreground electron:font-[510]"
       >
         <span className="min-w-0 truncate">{presentSessionTitle(model.title, intl)}</span>
         {model.threadId && model.subagentName ? (

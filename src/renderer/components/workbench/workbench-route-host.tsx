@@ -32,38 +32,57 @@ function WorkbenchRouteMain({
   readonly children: ReactNode;
 }) {
   return (
-    <main
-      data-workbench-main-surface
-      data-app-shell-main-surface="default"
-      data-contextual-sidebar-open={sidebarMounted}
-      className={cn(
-        "mt-[var(--app-shell-content-top-inset,0px)] flex-col",
-        workbenchMainSurfaceClassName(sidebarMounted),
-      )}
-      style={{ clipPath: resolveWorkbenchMainSurfaceClip(sidebarMounted) }}
-    >
+    <WorkbenchMainSurface as="main" besideSidebar={sidebarMounted} headerRule>
       {children}
-    </main>
-  );
-}
-
-/** The one opaque content surface inside the window frame, shared by every route. */
-export function workbenchMainSurfaceClassName(sidebarMounted: boolean): string {
-  return cn(
-    "relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-(--color-surface)",
-    sidebarMounted &&
-      "border-s-[length:var(--border-width-hairline)] border-(--app-shell-sidebar-divider)",
+    </WorkbenchMainSurface>
   );
 }
 
 /**
- * A pinned sidebar owns the outer start corners; the main surface owns the end
- * corners and extends its clip under the shared flat divider.
+ * The one opaque content surface inside the window frame, shared by every route. It reaches the
+ * window's top, end and bottom edges and rises under the titlebar, so each pane's titlebar row
+ * sits on the surface it heads; its content starts below that row. Beside a sidebar it rounds
+ * its start corners against the sidebar's chrome.
  */
-export function resolveWorkbenchMainSurfaceClip(sidebarMounted: boolean): string {
-  return sidebarMounted
-    ? "inset(0 0 0 calc(-1 * var(--app-shell-surface-radius)) round var(--app-shell-surface-radius))"
-    : "inset(0 round var(--app-shell-surface-radius))";
+export function WorkbenchMainSurface({
+  as: Element = "div",
+  besideSidebar,
+  headerRule = false,
+  children,
+}: {
+  readonly as?: "main" | "div";
+  readonly besideSidebar: boolean;
+  /** A hairline closes the titlebar band above the content while the content dock shows. */
+  readonly headerRule?: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Element
+      data-workbench-main-surface={Element === "main" ? "" : undefined}
+      data-app-shell-main-surface="default"
+      data-contextual-sidebar-open={besideSidebar}
+      className={workbenchMainSurfaceClassName(besideSidebar)}
+    >
+      <div
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1 flex-col",
+          headerRule &&
+            "[[data-app-shell-content-dock-rule=true]_&]:border-t-[length:var(--border-width-hairline)] [[data-app-shell-content-dock-rule=true]_&]:border-(--color-border)",
+        )}
+      >
+        {children}
+      </div>
+    </Element>
+  );
+}
+
+/** Surface paint and placement; the titlebar band is padding above the content. */
+export function workbenchMainSurfaceClassName(besideSidebar: boolean): string {
+  return cn(
+    "relative isolate -mt-(--app-shell-surface-lift) flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-(--color-surface) pt-(--app-shell-surface-header-height)",
+    besideSidebar &&
+      "rounded-s-(--app-shell-surface-radius) border-s-[length:var(--border-width-hairline)] border-(--color-border)",
+  );
 }
 
 /**

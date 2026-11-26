@@ -30,6 +30,13 @@
 
 /* fix button pointer */
 @layer base {
+  /* Fractional UI weights such as the chat title's 510 come from the system font's weight axis;
+     synthesizing bold over a lighter face would render them far heavier. */
+  html,
+  :host {
+    font-synthesis-weight: none;
+  }
+
   ::selection {
     background-color: var(--color-background-text-selection);
     color: var(--color-text);

@@ -9,6 +9,7 @@ import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { requestInboxEntryOpen } from "../../lib/inbox-entry-navigation";
 import { readInboxEntry } from "../../lib/inbox-runtime";
 import { WorkbenchWorkspaceFrame } from "./workbench-workspace-frame";
+import { CONVERSATION_HEADER_CONTROL_CLASS } from "@/lib/workbench-toolbar-control-styles";
 import type { CSSProperties } from "react";
 import { NodexApplicationMenubar } from "@/components/ui/application-menubar";
 import { WORKBENCH_APPLICATION_MENU_HEIGHT_PX } from "../../../shared/workbench-window-chrome";
@@ -55,6 +56,7 @@ import { ThreadSummaryToggleDensityContext } from "@/features/local-conversation
 import {
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
   WORKBENCH_TITLEBAR_HEIGHT_PX,
+  resolveWorkbenchSurfaceStyle,
   resolveWorkbenchWorkspaceInsets,
 } from "@/lib/workbench-shell-geometry";
 import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
@@ -1954,6 +1956,7 @@ export function WorkbenchRuntime({
     headerLeftFallbackWidth,
     headerLeftShellSlotMinWidth,
     headerLeftShellSlotWidth,
+    leftHeaderContentWidth,
     mainContentTargetWidth,
     realSidebarMounted,
     regularRightPanelWidth,
@@ -4481,9 +4484,8 @@ export function WorkbenchRuntime({
   const forwardCommand = WORKBENCH_NAVIGATION_COMMANDS.forward;
   const backShortcutLabel = resolveWorkbenchNavigationShortcutLabel("back", isMacPlatform);
   const forwardShortcutLabel = resolveWorkbenchNavigationShortcutLabel("forward", isMacPlatform);
-  const windowNavigationChrome = (
-    <div className="flex items-center gap-1.5" data-testid="workbench-window-navigation-chrome">
-      {applicationMenuBarEnabled ? sidebarCollapseControlButton : null}
+  const windowHistoryButtons = (
+    <>
       <WindowNavigationToolbarButton
         label={intl.formatMessage(
           commandTitleMessage({ id: backCommand.id, title: backCommand.label }),
@@ -4504,25 +4506,58 @@ export function WorkbenchRuntime({
       >
         <BackIcon className="icon-xs -scale-x-100" />
       </WindowNavigationToolbarButton>
-      {applicationMenuBarEnabled ? null : sidebarCollapseControlButton}
+    </>
+  );
+  // The Windows application row carries the toggle and history together.
+  const windowNavigationChrome = (
+    <div className="flex items-center gap-1.5" data-testid="workbench-window-navigation-chrome">
+      {sidebarCollapseControlButton}
+      {windowHistoryButtons}
     </div>
   );
+  // A left content pane extends the left titlebar slot to the Conversation's edge.
+  const leftContentPaneExtendsTitlebar =
+    sessionWorkspace?.contentSide === "left" && sidePanelOpen && !rightPanelFullView;
 
+  // The toggle keeps its place beside the window controls; history and the collapsed sidebar's
+  // New chat close the slot. A docked sidebar spreads the slot to its edge, so history ends the
+  // sidebar's row, even when a left content pane extends the slot further; a collapsed sidebar
+  // leaves the slot at its natural width, packing the controls together.
   const sidebarHeaderActions = (
     <>
-      <HeaderAction
-        actionId="workbench-window-navigation-chrome"
-        slotPosition="left"
-        align="start"
-        order={100}
-      >
-        {applicationMenuBarEnabled ? null : windowNavigationChrome}
-      </HeaderAction>
+      {applicationMenuBarEnabled ? null : (
+        <>
+          <HeaderAction
+            actionId="workbench-sidebar-toggle"
+            slotPosition="left"
+            align="start"
+            order={100}
+          >
+            {sidebarCollapseControlButton}
+          </HeaderAction>
+          <HeaderAction
+            actionId="workbench-window-history"
+            slotPosition="left"
+            align="end"
+            order={105}
+          >
+            <motion.div
+              className={cn("flex items-center", sidebarLogicalCollapsed ? "gap-0" : "gap-1.5")}
+              data-testid="workbench-window-navigation-chrome"
+              style={{
+                marginInlineEnd: sidebarLogicalCollapsed ? 0 : leftHeaderContentWidth,
+              }}
+            >
+              {windowHistoryButtons}
+            </motion.div>
+          </HeaderAction>
+        </>
+      )}
       {sidebarLogicalCollapsed ? (
         <HeaderAction
           actionId="workbench-sidebar-new-chat"
           slotPosition="left"
-          align="start"
+          align={applicationMenuBarEnabled ? "start" : "end"}
           order={110}
         >
           <SidebarCompactNewChatButton
@@ -4608,6 +4643,7 @@ export function WorkbenchRuntime({
             }),
           )}
           pressed={bottomPanelOpen}
+          className={CONVERSATION_HEADER_CONTROL_CLASS}
           onClick={() =>
             executeWorkbenchCommand({
               commandId: TOGGLE_BOTTOM_PANEL_COMMAND_ID,
@@ -4988,6 +5024,19 @@ export function WorkbenchRuntime({
       pendingWorktreeRouteShell != null);
   const workspaceHeaderVisible =
     appShellHeaderCenterVisible || (!settingsPath && contentIssueCount > 0);
+  // The titlebar's hairline belongs to the content dock. It closes the row while a Scene's
+  // content tabs share the titlebar: a Project, Inbox or Library stack, or a chat's content pane
+  // in split or full view. A new chat's home and routes without content panels keep an open row.
+  const contentDockRuleVisible =
+    appShellHeaderCenterVisible &&
+    destinationRouteShell == null &&
+    pendingWorktreeRouteShell == null &&
+    (workbenchWindow.location.kind === "project" ||
+      workbenchWindow.location.kind === "library" ||
+      workbenchWindow.location.kind === "inbox" ||
+      (workbenchWindow.location.kind === "session" &&
+        (sidePanelOpen || rightPanelFullView) &&
+        hasSessionConversation(activeSession)));
   const workspaceInsets = resolveWorkbenchWorkspaceInsets(
     applicationMenuBarEnabled,
     workspaceHeaderVisible,
@@ -6653,15 +6702,15 @@ export function WorkbenchRuntime({
                   }
                   data-app-shell-frame
                   data-app-shell-page-surface="true"
+                  data-app-shell-content-dock-rule={contentDockRuleVisible ? "true" : undefined}
                   className="relative flex flex-col text-token-text-primary browser:bg-token-side-bar-background"
                   style={
                     {
                       "--app-shell-application-menu-height": `${applicationMenuBarEnabled ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX : 0}px`,
-                      "--app-shell-workspace-top-inset": `${workspaceInsets.workspaceTop}px`,
-                      "--app-shell-surface-top-inset": `${workspaceInsets.surfaceTop}px`,
-                      "--app-shell-content-top-inset": `${workspaceInsets.contentTop}px`,
+                      ...resolveWorkbenchSurfaceStyle(workspaceInsets),
                       "--height-toolbar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
                       "--height-titlebar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
+                      "--sidebar-navigation-header-height": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
                       "--app-shell-navigation-rail-width": `${WORKBENCH_NAVIGATION_RAIL_WIDTH_PX}px`,
                       "--spacing-token-safe-header-left": `${applicationMenuBarEnabled ? 8 : safeHeaderLeftWidth}px`,
                       "--spacing-token-safe-header-right": `${safeHeaderRightWidth}px`,
@@ -6693,7 +6742,7 @@ export function WorkbenchRuntime({
                     <div
                       data-testid="workbench-application-menu-row"
                       className={cn(
-                        "relative flex h-(--app-shell-application-menu-height) shrink-0 items-center gap-1 select-none",
+                        "relative flex h-(--app-shell-application-menu-height) shrink-0 items-center gap-1 bg-(--app-shell-sidebar-background) select-none",
                         APP_SHELL_APPLICATION_MENU_LAYER_CLASS,
                       )}
                       style={
@@ -6731,6 +6780,7 @@ export function WorkbenchRuntime({
                         minWidth={headerLeftShellSlotMinWidth}
                         fallbackWidth={headerLeftFallbackWidth}
                         fallbackRailWidth={headerLeftFallbackRailWidth}
+                        dense={sidebarLogicalCollapsed && !applicationMenuBarEnabled}
                         onMeasuredWidthChange={setHeaderLeftWidth}
                         onMeasuredRailWidthChange={setHeaderLeftRailWidth}
                       />
@@ -6739,15 +6789,25 @@ export function WorkbenchRuntime({
                           aria-hidden={appShellHeaderCoveredByScene ? "true" : undefined}
                           data-testid="app-shell-header-context-menu-surface"
                           className={cn(
-                            "group/titlebar-main pointer-events-none flex h-full min-w-0 flex-1 isolate items-center gap-1.5 overflow-hidden [contain:layout_paint] pe-2",
+                            "group/titlebar-main pointer-events-none relative flex h-full min-w-0 flex-1 isolate items-center gap-1.5 overflow-hidden [contain:layout_paint] pe-2",
+                            // The row reaches back over the left content pane's column border so
+                            // its seam lands on the same pixel column.
+                            leftContentPaneExtendsTitlebar
+                              ? "-ms-px ps-[calc(0.5rem+1px)]"
+                              : "ps-2",
                             appShellHeaderCoveredByScene && "invisible",
                           )}
                         >
-                          <span
-                            aria-hidden="true"
-                            data-workbench-titlebar-divider=""
-                            className="me-1.5 hidden h-5 w-px shrink-0 bg-token-border group-has-[[data-testid=thread-stage-header-content]>*]/titlebar-main:block"
-                          />
+                          {/* A left content pane's seam runs through the row. Otherwise the
+                              surface's own edge, or the space after the collapsed sidebar's
+                              controls, starts the title. */}
+                          {leftContentPaneExtendsTitlebar ? (
+                            <span
+                              aria-hidden="true"
+                              data-workbench-titlebar-divider=""
+                              className="pointer-events-none absolute inset-y-0 start-0 w-px bg-token-border"
+                            />
+                          ) : null}
                           <div
                             data-testid="thread-stage-header-content"
                             className="pointer-events-none w-full min-w-0 flex-1 [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto [&_select]:pointer-events-auto [&_textarea]:pointer-events-auto"
@@ -6787,6 +6847,7 @@ export function WorkbenchRuntime({
 
                     <WorkbenchWorkspaceFrame
                       bodyRef={shellBodySize.ref}
+                      railOnSurface={!settingsPath && !showInlineSidebar}
                       summaryLayout={threadSummaryPanelLayoutMode}
                       widthClass={shellWidthClass}
                       rail={

@@ -39,7 +39,7 @@ describe("workbench shell geometry", () => {
   test("Windows reserves the workspace header only for its content column", () => {
     expect(resolveWorkbenchWorkspaceInsets(true, true)).toEqual({
       workspaceTop: 0,
-      contentTop: 44,
+      contentTop: 46,
       surfaceTop: 0,
     });
   });
@@ -53,12 +53,12 @@ describe("workbench shell geometry", () => {
   });
 
   test.each([true, false])(
-    "macOS keeps its shared titlebar when a workspace header is %s",
+    "macOS raises the content surface under its shared titlebar when a workspace header is %s",
     (header) => {
       expect(resolveWorkbenchWorkspaceInsets(false, header)).toEqual({
-        workspaceTop: 44,
+        workspaceTop: 46,
         contentTop: 0,
-        surfaceTop: 44,
+        surfaceTop: 0,
       });
     },
   );
