@@ -211,10 +211,10 @@ describe("ApplicationWindowShellRuntime", () => {
         const primary = opened[0] as unknown as FakeBrowserWindow;
         primary.zoomFactor = 1.5;
         primary.webContents.emit("did-finish-load");
-        expect(primary.windowButtonPosition).toEqual({ x: 16, y: 26 });
+        expect(primary.windowButtonPosition).toEqual({ x: 16, y: 28 });
         primary.zoomFactor = 1;
         primary.webContents.emit("did-finish-load");
-        expect(primary.windowButtonPosition).toEqual({ x: 16, y: 15 });
+        expect(primary.windowButtonPosition).toEqual({ x: 16, y: 16 });
 
         for (const lease of shell.claimPendingActivation()) {
           shell.completeActivation(lease.window.webContents.id);

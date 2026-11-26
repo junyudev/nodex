@@ -11,10 +11,7 @@ import {
 } from "@/lib/codex-sidebar-auto-reveal";
 import { usePointerDrag } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
-
-/** A pinned sidebar owns the outer start corners of the shared page surface. */
-export const WORKBENCH_PINNED_SIDEBAR_CLIP =
-  "inset(0 calc(-1 * var(--app-shell-surface-radius)) 0 0 round var(--app-shell-surface-radius))";
+import { WorkbenchRailEdge } from "./workbench-app-rail";
 
 export type SidebarResizePhase = "live" | "end" | "reset";
 export type SidebarResizeSurface = "inline" | "floating";
@@ -128,16 +125,13 @@ export function WorkbenchSidebarFrame({
       data-testid={floating ? "app-shell-floating-left-panel" : testId}
     >
       {header}
+      {floating ? null : <WorkbenchRailEdge />}
       <motion.div
-        className={cn(
-          "max-w-full min-h-0 flex-1 overflow-hidden",
-          !floating && "bg-(--app-shell-sidebar-background)",
-        )}
+        className="max-w-full min-h-0 flex-1 overflow-hidden"
         style={{
           minWidth: width,
           width,
           opacity: floating ? undefined : contentOpacity,
-          clipPath: floating ? undefined : WORKBENCH_PINNED_SIDEBAR_CLIP,
         }}
       >
         {children}

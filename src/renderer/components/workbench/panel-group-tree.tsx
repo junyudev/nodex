@@ -495,11 +495,12 @@ function PanelGroupLeaf({
   const afterList = leaf.id === afterListLeafId ? (renderAfterList?.(leaf.id) ?? null) : null;
   const leafHeaderStartInsetPx = leaf.id === headerStartInsetLeafId ? headerStartInsetPx : 0;
   const leafHeaderEndInsetPx = leaf.id === headerEndInsetLeafId ? headerEndInsetPx : 0;
+  // Tabs that follow the window's titlebar controls start after a short navigation divider.
   const resolvedBeforeList =
     leafHeaderStartInsetPx && leafHeaderStartInsetPx > 0 ? (
       <div
         aria-hidden="true"
-        className="pointer-events-none h-full shrink-0"
+        className="pointer-events-none relative h-full shrink-0 after:absolute after:end-0 after:top-1/2 after:h-4 after:w-px after:-translate-y-1/2 after:bg-(--color-border) after:content-['']"
         style={{ width: leafHeaderStartInsetPx }}
       />
     ) : null;

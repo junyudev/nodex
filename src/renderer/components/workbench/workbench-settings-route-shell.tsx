@@ -29,10 +29,7 @@ import {
   resolveSettingsShellState,
 } from "./workbench-settings-routes";
 import { settingsMessages, settingsSearchAnchor } from "./workbench-settings-search-catalog";
-import {
-  resolveWorkbenchMainSurfaceClip,
-  workbenchMainSurfaceClassName,
-} from "./workbench-route-host";
+import { WorkbenchMainSurface } from "./workbench-route-host";
 
 const OpenSourceLicensesSettingsPage = lazy(async () => ({
   default: (await import("./open-source-licenses-settings-page")).OpenSourceLicensesSettingsPage,
@@ -257,7 +254,7 @@ export function SettingsRouteShell({
   return (
     <div
       data-testid="settings-route-shell"
-      className="flex h-full min-h-0 w-full flex-1 pt-[var(--app-shell-content-top-inset,0px)] text-(--foreground)"
+      className="flex h-full min-h-0 w-full flex-1 text-(--foreground)"
       style={CODEX_SETTINGS_SHELL_STYLE}
     >
       <div
@@ -286,11 +283,7 @@ export function SettingsRouteShell({
           }}
         />
 
-        <div
-          data-app-shell-main-surface="default"
-          className={workbenchMainSurfaceClassName(true)}
-          style={{ clipPath: resolveWorkbenchMainSurfaceClip(true) }}
-        >
+        <WorkbenchMainSurface besideSidebar>
           <SettingsMobileHeader
             activeSectionId={activeSectionId}
             sections={visibleSections}
@@ -382,7 +375,7 @@ export function SettingsRouteShell({
               ) : null}
             </SettingsPageContent>
           </ApplicationSurface>
-        </div>
+        </WorkbenchMainSurface>
       </div>
     </div>
   );

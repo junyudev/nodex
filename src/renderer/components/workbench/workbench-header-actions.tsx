@@ -205,10 +205,13 @@ export function HeaderShellSlot({
   minWidth,
   fallbackWidth,
   fallbackRailWidth,
+  dense = false,
   onMeasuredWidthChange,
   onMeasuredRailWidthChange,
 }: {
   side: HeaderActionSlotPosition;
+  /** Packs the controls tightly, as beside a collapsed sidebar. */
+  dense?: boolean;
   slotWidth: number | MotionValue<number> | MotionValue<string>;
   minWidth: number;
   fallbackWidth: number;
@@ -219,7 +222,11 @@ export function HeaderShellSlot({
   const entries = useHeaderActions(side);
   const slotRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
-  const paddingClassName = resolveHeaderSlotPaddingClassName(side, entries.length);
+  const paddingClassName = resolveHeaderSlotPaddingClassName(
+    side,
+    entries.length,
+    entries.some((entry) => entry.align === "end"),
+  );
 
   // Each action mounts once: the slot's natural width is read from the actions it shows, so
   // stateful actions such as popovers never gain a hidden twin that shares their state.
@@ -279,7 +286,7 @@ export function HeaderShellSlot({
       )}
       style={{ width: slotWidth, minWidth }}
     >
-      <HeaderActionRail entries={entries} fillSlot railRef={railRef} />
+      <HeaderActionRail entries={entries} fillSlot dense={dense} railRef={railRef} />
     </motion.div>
   );
 }
@@ -287,10 +294,12 @@ export function HeaderShellSlot({
 function HeaderActionRail({
   entries,
   fillSlot = false,
+  dense = false,
   railRef,
 }: {
   entries: readonly HeaderActionEntry[];
   fillSlot?: boolean;
+  dense?: boolean;
   railRef?: Ref<HTMLDivElement>;
 }) {
   const startEntries = entries.filter((entry) => entry.align === "start");
@@ -301,7 +310,8 @@ function HeaderActionRail({
       ref={railRef}
       data-workbench-header-action-rail="visible"
       className={cn(
-        "inline-flex h-full items-center gap-1.5",
+        "inline-flex h-full items-center",
+        dense ? "gap-0.5" : "gap-1.5",
         fillSlot ? "pointer-events-none w-full" : "pointer-events-auto w-auto",
       )}
     >
@@ -344,9 +354,15 @@ function getElementChildren(element: ReactElement): ReactNode {
   return (props as { children?: ReactNode }).children;
 }
 
-function resolveHeaderSlotPaddingClassName(side: HeaderActionSlotPosition, entryCount: number) {
+function resolveHeaderSlotPaddingClassName(
+  side: HeaderActionSlotPosition,
+  entryCount: number,
+  hasEndActions: boolean,
+) {
   if (entryCount === 0) return null;
-  if (side === "left") return "ps-[max(var(--spacing-token-safe-header-left),0.5rem)]";
+  // Controls aligned to the slot's end keep clear of the edge it closes.
+  if (side === "left")
+    return cn("ps-[max(var(--spacing-token-safe-header-left),0.5rem)]", hasEndActions && "pe-2.5");
   if (side === "right") return "pe-2";
   return null;
 }

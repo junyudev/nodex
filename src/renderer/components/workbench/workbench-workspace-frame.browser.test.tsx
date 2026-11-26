@@ -3,7 +3,10 @@ import { render } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
 import "../../globals.css";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
-import { resolveWorkbenchWorkspaceInsets } from "@/lib/workbench-shell-geometry";
+import {
+  resolveWorkbenchSurfaceStyle,
+  resolveWorkbenchWorkspaceInsets,
+} from "@/lib/workbench-shell-geometry";
 import { getCodexSidebarFloatingOuterClassName } from "@/lib/codex-sidebar-auto-reveal";
 import { WorkbenchWorkspaceFrame } from "./workbench-workspace-frame";
 import { WorkbenchRouteHost } from "./workbench-route-host";
@@ -23,7 +26,7 @@ const noop = () => {};
 const emptySlot = { content: () => null };
 
 test.each([true, false])(
-  "sidebar and workspace content keep their own top edges (application menu: %s)",
+  "the surface rises under the titlebar while sidebar and content keep their own top edges (application menu: %s)",
   (applicationMenu) => {
     const insets = resolveWorkbenchWorkspaceInsets(applicationMenu, true);
     const menuHeight = applicationMenu ? 36 : 0;
@@ -33,9 +36,7 @@ test.each([true, false])(
         style={
           {
             "--app-shell-application-menu-height": `${menuHeight}px`,
-            "--app-shell-workspace-top-inset": `${insets.workspaceTop}px`,
-            "--app-shell-content-top-inset": `${insets.contentTop}px`,
-            "--app-shell-surface-top-inset": `${insets.surfaceTop}px`,
+            ...resolveWorkbenchSurfaceStyle(insets),
           } as CSSProperties
         }
       >
@@ -65,13 +66,15 @@ test.each([true, false])(
     const sidebar = view
       .getByRole("complementary", { name: "Workspace sidebar" })
       .getBoundingClientRect();
-    const content = view.getByRole("main").getBoundingClientRect();
+    const surface = view.getByRole("main").getBoundingClientRect();
+    const content = view.getByRole("article").getBoundingClientRect();
     const rail = view.getByRole("navigation").getBoundingClientRect();
-    expect(sidebar.top).toBe(applicationMenu ? 36 : 44);
+    expect(sidebar.top).toBe(applicationMenu ? 36 : 46);
     expect(rail.top).toBe(sidebar.top);
-    expect(content.top).toBe(applicationMenu ? 80 : 44);
-    expect(content.bottom).toBe(sidebar.bottom);
-    expect(content.left).toBe(sidebar.right);
+    expect(surface.top).toBe(applicationMenu ? 36 : 0);
+    expect(content.top).toBe(applicationMenu ? 82 : 46);
+    expect(surface.bottom).toBe(sidebar.bottom);
+    expect(surface.left).toBe(sidebar.right);
     if (applicationMenu)
       expect(
         view.getByRole("complementary", { name: "Peek sidebar" }).getBoundingClientRect().top,
@@ -88,13 +91,7 @@ test("Windows Computer Use Settings opens at the page gutter", async () => {
     const view = render(
       <div
         className="fixed inset-0 flex flex-col"
-        style={
-          {
-            "--app-shell-workspace-top-inset": `${insets.workspaceTop}px`,
-            "--app-shell-content-top-inset": `${insets.contentTop}px`,
-            "--app-shell-surface-top-inset": `${insets.surfaceTop}px`,
-          } as CSSProperties
-        }
+        style={resolveWorkbenchSurfaceStyle(insets) as CSSProperties}
       >
         <div style={{ height: 36, flexShrink: 0 }} />
         <WorkbenchWorkspaceFrame
@@ -122,9 +119,12 @@ test("Windows Computer Use Settings opens at the page gutter", async () => {
       </div>,
     );
     await view.findByRole("heading", { name: "Computer use" });
-    expect(view.getByLabelText("Settings", { selector: "div" }).getBoundingClientRect().top).toBe(
-      44,
-    );
+    expect(
+      view
+        .getByRole("heading", { name: "Computer use" })
+        .closest("[data-app-shell-main-surface]")
+        ?.getBoundingClientRect().top,
+    ).toBe(44);
     expect(view.getByRole("link", { name: "Computer use", hidden: true })).toBeTruthy();
     expect(view.getByRole("link", { name: "Browser", hidden: true })).toBeTruthy();
   } finally {

@@ -37,6 +37,9 @@ function projectPaneScope(anchor: HTMLElement, chrome: HTMLElement) {
   }
 }
 
+/** The column border every pane inside the main surface draws at its start. */
+const PANE_COLUMN_SEAM_WIDTH_PX = 1;
+
 /** Top-edge pane chrome occupies the window titlebar without reserving content height. */
 export function WorkbenchPaneTitlebar({
   enabled,
@@ -79,15 +82,20 @@ export function WorkbenchPaneTitlebar({
         visibleLeft = Math.max(visibleLeft, clipLeft);
         visibleRight = Math.min(visibleRight, clipLeft + element.clientWidth * elementScale);
       }
-      chrome.style.left = `${(anchorBounds.left - hostBounds.left) / zoom}px`;
-      chrome.style.width = `${anchorBounds.width / zoom}px`;
-      chrome.style.clipPath = `inset(0px ${Math.max(0, anchorBounds.right - visibleRight) / zoom}px 0px ${Math.max(0, visibleLeft - anchorBounds.left) / zoom}px)`;
-      chrome.style.opacity = String(opacity);
-      chrome.style.visibility = visibleRight > visibleLeft && opacity > 0 ? "visible" : "hidden";
-      // A pane that starts inside the main surface continues its column divider into the titlebar.
+      // A pane that starts inside the main surface carries its column seam through the titlebar.
+      // The pane's 1px column border sits just before its content, so the chrome reaches back over
+      // it and draws the seam on the same pixel column while its content keeps the pane's start.
       const mainSurface = anchor.closest("[data-app-shell-main-surface]");
       const startsInsideSurface =
         mainSurface !== null && anchorBounds.left - mainSurface.getBoundingClientRect().left > 1;
+      const seam = startsInsideSurface ? PANE_COLUMN_SEAM_WIDTH_PX : 0;
+      const clipStart = Math.max(0, visibleLeft - anchorBounds.left) / zoom;
+      chrome.style.left = `${(anchorBounds.left - hostBounds.left) / zoom - seam}px`;
+      chrome.style.width = `${anchorBounds.width / zoom + seam}px`;
+      chrome.style.paddingInlineStart = `${seam}px`;
+      chrome.style.clipPath = `inset(0px ${Math.max(0, anchorBounds.right - visibleRight) / zoom}px 0px ${clipStart > 0 ? clipStart + seam : 0}px)`;
+      chrome.style.opacity = String(opacity);
+      chrome.style.visibility = visibleRight > visibleLeft && opacity > 0 ? "visible" : "hidden";
       chrome.toggleAttribute("data-workbench-pane-titlebar-divider", startsInsideSurface);
       projectPaneScope(anchor, chrome);
     };
@@ -132,7 +140,7 @@ export function WorkbenchPaneTitlebar({
         <div
           ref={chromeRef}
           data-workbench-pane-titlebar
-          className="pointer-events-none absolute top-0 h-full min-w-0 bg-transparent before:absolute before:inset-y-3 before:start-0 before:hidden before:w-px before:bg-token-border before:content-[''] data-workbench-pane-titlebar-divider:before:block [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto [&_select]:pointer-events-auto [&_textarea]:pointer-events-auto [&_[data-panel-tab-row]]:pointer-events-auto"
+          className="pointer-events-none absolute top-0 h-full min-w-0 bg-transparent before:absolute before:inset-y-0 before:start-0 before:hidden before:w-px before:bg-token-border before:content-[''] data-workbench-pane-titlebar-divider:before:block [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto [&_select]:pointer-events-auto [&_textarea]:pointer-events-auto [&_[data-panel-tab-row]]:pointer-events-auto"
           style={{ visibility: "hidden" }}
         >
           {children}

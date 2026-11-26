@@ -31,6 +31,17 @@ export function WorkbenchRailDivider() {
   return <div role="separator" aria-hidden className="my-0.5 h-px w-6 bg-(--color-border)" />;
 }
 
+/** The hairline between the rail and a docked sidebar, inset from both ends of the column. */
+export function WorkbenchRailEdge() {
+  return (
+    <div
+      aria-hidden
+      data-workbench-rail-edge=""
+      className="pointer-events-none absolute inset-y-2 start-0 z-10 w-(--border-width-hairline) bg-(--color-border)"
+    />
+  );
+}
+
 export interface WorkbenchAppRailProps {
   contentOnly?: boolean;
   destination: WorkbenchPrimaryDestination;
@@ -143,7 +154,7 @@ export function WorkbenchAppRail({
         defaultMessage: "App navigation",
       })}
       data-app-navigation-rail
-      className="flex h-full min-h-0 w-13 shrink-0 flex-col items-center gap-2 bg-transparent px-2 pt-2 pb-1 select-none"
+      className="flex h-full min-h-0 w-13 shrink-0 flex-col items-center gap-2 bg-transparent px-2 pt-[calc((var(--sidebar-navigation-header-height)-var(--spacing)*9)/2)] pb-1 select-none"
     >
       {groups.map((entries, index) => (
         <Fragment key={entries[0]?.group}>

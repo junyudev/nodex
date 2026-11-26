@@ -127,10 +127,10 @@ it.effect("owns native menus and refreshes commands without replacing the runtim
     zoomCommand("view.resetZoom");
     assert.strictEqual(zoomLevel, 0);
     assert.deepEqual(nativeButtonPositions, [
-      { x: 16, y: 17 },
-      { x: 16, y: 19 },
-      { x: 16, y: 17 },
-      { x: 16, y: 15 },
+      { x: 16, y: 18 },
+      { x: 16, y: 21 },
+      { x: 16, y: 18 },
+      { x: 16, y: 16 },
     ]);
     let guestZoomLevel = 0;
     focused = {

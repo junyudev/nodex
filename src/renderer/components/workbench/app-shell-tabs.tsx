@@ -194,6 +194,16 @@ export interface AppShellTabPanelRenderContext {
   active: boolean;
 }
 
+/** A tab's visible plate sits inside its hit area; the selected tab keeps the ghost fill a hovered one shows. */
+function appShellTabPlateClassName(selected: boolean): string {
+  return cn(
+    "pointer-events-none absolute inset-0 z-0 rounded-md",
+    selected
+      ? "bg-(--color-background-secondary-ghost-hover)"
+      : "group-hover/tab:bg-(--color-background-secondary-ghost-hover)",
+  );
+}
+
 export function makeAppShellTabAccessibleLabel(
   tab: AppShellTabPresentation,
   title: string,
@@ -1202,7 +1212,7 @@ function AppShellTab({
       <div
         data-tab-id={dataTabId}
         data-app-shell-tab-surface="true"
-        className="group group/tab relative flex h-8 w-full max-w-39 shrink-0 items-center overflow-hidden rounded-lg"
+        className="group group/tab relative flex h-8 w-full max-w-60 shrink-0 items-center overflow-hidden rounded-lg"
         onMouseDown={(event) => {
           if (event.button !== 1 || !onClose) return;
           event.preventDefault();
@@ -1210,14 +1220,7 @@ function AppShellTab({
           closeCurrentTabFromDirectInteraction();
         }}
       >
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-0 z-0 rounded-md border-[length:var(--border-width-hairline)]",
-            isActive || isDragging
-              ? "border-(--color-border) bg-(--app-shell-tab-selected-background) shadow-[0px_1px_2px_-1px_#00000014]"
-              : "border-transparent group-hover/tab:bg-(--color-background-primary-ghost-hover)",
-          )}
-        />
+        <div className={appShellTabPlateClassName(isActive || isDragging)} />
         <button
           type="button"
           id={tabId}
@@ -1561,16 +1564,9 @@ function AppShellLeadingTabChrome({
     >
       <div
         data-app-shell-tab-surface="true"
-        className="group/tab relative flex h-8 w-full max-w-39 shrink-0 items-center overflow-hidden rounded-lg pe-1.75"
+        className="group/tab relative flex h-8 w-full max-w-60 shrink-0 items-center overflow-hidden rounded-lg pe-1.75"
       >
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-0 z-0 rounded-md border-[length:var(--border-width-hairline)]",
-            tab.selected
-              ? "border-(--color-border) bg-(--app-shell-tab-selected-background) shadow-[0px_1px_2px_-1px_#00000014]"
-              : "border-transparent group-hover/tab:bg-(--color-background-primary-ghost-hover)",
-          )}
-        />
+        <div className={appShellTabPlateClassName(tab.selected)} />
         <button
           type="button"
           id={domId}

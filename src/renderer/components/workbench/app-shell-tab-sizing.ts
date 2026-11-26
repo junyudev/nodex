@@ -1,6 +1,6 @@
 export const APP_SHELL_TAB_GAP_PX = 3;
 export const APP_SHELL_TAB_MIN_WIDTH_PX = 90;
-export const APP_SHELL_TAB_MAX_WIDTH_PX = 160;
+export const APP_SHELL_TAB_MAX_WIDTH_PX = 240;
 
 export interface AppShellTabFlexSizing {
   flexBasis: number;

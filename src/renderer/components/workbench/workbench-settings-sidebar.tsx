@@ -23,7 +23,7 @@ import {
   type SettingsSectionId,
 } from "./workbench-settings-sections";
 import { buildSettingsPath } from "./workbench-settings-routes";
-import { WORKBENCH_PINNED_SIDEBAR_CLIP } from "./workbench-sidebar-frame";
+import { WorkbenchRailEdge } from "./workbench-app-rail";
 
 interface SettingsSidebarProps {
   activeSectionId: SettingsSectionId;
@@ -269,12 +269,10 @@ export function SettingsSidebar({
     onSelect: (result) => onSelectSection(result.sectionId, query),
   });
   return (
-    <aside
-      className="app-shell-left-panel relative hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden md:flex"
-      style={{ clipPath: WORKBENCH_PINNED_SIDEBAR_CLIP }}
-    >
+    <aside className="app-shell-left-panel relative mt-[var(--app-shell-content-top-inset,0px)] hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden md:flex">
+      <WorkbenchRailEdge />
       <nav
-        className="flex min-h-0 flex-1 flex-col bg-(--app-shell-sidebar-background) select-none px-row-x"
+        className="flex min-h-0 flex-1 flex-col select-none px-row-x"
         aria-label={intl.formatMessage({
           id: "settings.navigation.settings",
           defaultMessage: "Settings",

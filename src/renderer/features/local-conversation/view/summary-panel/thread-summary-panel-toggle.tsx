@@ -2,17 +2,18 @@ import { defineMessage, getIntl, useIntl } from "@/lib/i18n";
 import { createContext, forwardRef, useContext, type ComponentPropsWithoutRef } from "react";
 import { PinnedSummaryIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import {
+  CONVERSATION_HEADER_CONTROL_CLASS,
+  TOOLBAR_BUTTON_GHOST_CLASS,
+  TOOLBAR_BUTTON_SECONDARY_CLASS,
+} from "@/lib/workbench-toolbar-control-styles";
 
 const SUMMARY_TOGGLE_BASE_CLASS =
   "border-token-border no-drag cursor-interaction flex overflow-visible items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 border-transparent justify-center";
-const SUMMARY_TOGGLE_PRESSED_CLASS =
-  "text-token-foreground bg-token-foreground/5 enabled:hover:bg-token-foreground/10 data-[state=open]:bg-token-foreground/10";
-const SUMMARY_TOGGLE_IDLE_CLASS =
-  "text-token-text-tertiary enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background";
 const SUMMARY_TOGGLE_SIZE_CLASS = {
-  toolbar:
-    "rounded-lg h-token-button-composer px-2 py-0 text-base leading-[18px] aspect-square !px-0",
-  compact: "size-5 rounded-md p-0.5",
+  toolbar: "h-token-button-composer px-2 py-0 text-base leading-[18px] aspect-square !px-0",
+  compact: "size-5 p-0.5",
 } as const;
 
 /**
@@ -20,12 +21,6 @@ const SUMMARY_TOGGLE_SIZE_CLASS = {
  * workspace controls while full view hides the Chat's title row.
  */
 export const ThreadSummaryToggleDensityContext = createContext<"toolbar" | "compact">("toolbar");
-
-function appendClassName(baseClassName: string, className: string | undefined): string {
-  const trimmedClassName = className?.trim();
-  if (!trimmedClassName) return baseClassName;
-  return `${baseClassName} ${trimmedClassName}`;
-}
 
 type ThreadSummaryPanelToggleButtonProps = Omit<
   ComponentPropsWithoutRef<"button">,
@@ -79,10 +74,12 @@ export const ThreadSummaryPanelToggleButton = forwardRef<
       aria-label={ariaLabel}
       aria-pressed={pressed}
       data-thread-summary-toggle-density={density}
-      className={appendClassName(
-        `${SUMMARY_TOGGLE_BASE_CLASS} ${SUMMARY_TOGGLE_SIZE_CLASS[density]} ${
-          pressed ? SUMMARY_TOGGLE_PRESSED_CLASS : SUMMARY_TOGGLE_IDLE_CLASS
-        }`,
+      className={cn(
+        SUMMARY_TOGGLE_BASE_CLASS,
+        SUMMARY_TOGGLE_SIZE_CLASS[density],
+        pressed ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
+        "data-[state=open]:bg-(--color-background-secondary-ghost-hover)",
+        CONVERSATION_HEADER_CONTROL_CLASS,
         className,
       )}
     >

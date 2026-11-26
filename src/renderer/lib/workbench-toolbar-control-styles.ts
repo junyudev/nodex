@@ -4,6 +4,13 @@ export const TOOLBAR_BUTTON_GHOST_CLASS =
   "text-(--color-text-secondary-ghost) enabled:hover:bg-(--color-background-secondary-ghost-hover) enabled:hover:text-(--color-text-secondary-ghost-hover) enabled:active:bg-(--color-background-secondary-ghost-active) aria-expanded:bg-(--color-background-secondary-ghost-hover) aria-expanded:text-(--color-text-secondary-ghost-hover) border-transparent";
 export const TOOLBAR_BUTTON_SECONDARY_CLASS =
   "text-(--color-text-secondary-ghost-hover) bg-(--color-background-secondary-ghost-hover) enabled:active:bg-(--color-background-secondary-ghost-active) border-transparent";
+/**
+ * A control that heads a pane in the titlebar (chat actions, summary, panel and full-view
+ * toggles): its glyph takes the full foreground and its hover or pressed fill is round. Window
+ * navigation, new-tab and tab-close controls keep the quieter ghost ink.
+ */
+export const CONVERSATION_HEADER_CONTROL_CLASS =
+  "rounded-full [--color-text-secondary-ghost:var(--color-text)] [--color-text-secondary-ghost-hover:var(--color-text)]";
 
 /** Shortcut keycaps on panel tool tiles: compact pills. */
 export const PANEL_TOOL_KEYCAP_CLASS = "h-4 rounded-full leading-none";

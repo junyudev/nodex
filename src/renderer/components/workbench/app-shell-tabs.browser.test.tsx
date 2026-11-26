@@ -28,7 +28,7 @@ test("closes a newly shown tab without moving its close target during the press"
   const button = view.getByRole("button", { name: "Close Side chat tab" });
   const tab = button.closest<HTMLElement>("[data-app-shell-tab-controller]");
   if (!tab) throw new Error("Expected a tab controller");
-  await waitFor(() => expect(tab.offsetWidth).toBe(160));
+  await waitFor(() => expect(tab.offsetWidth).toBe(240));
   // Opening and exiting tabs can have unequal widths. Hold a deterministic opening frame.
   await act(async () => {
     tab.style.maxWidth = "90px";
