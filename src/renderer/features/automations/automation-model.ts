@@ -27,6 +27,8 @@ export interface AutomationRunRowModel {
   readonly runId: string;
   readonly sessionId: string | null;
   readonly title: string;
+  /** When the run started, which tells runs of one Automation apart. */
+  readonly createdAt: number;
   readonly isRunning: boolean;
   readonly isUnread: boolean;
   /** Finished without asking for attention. */
@@ -53,7 +55,9 @@ export interface AutomationRowModel {
 }
 
 export function formatAutomationScheduleLabel(
-  automation: Pick<Automation, "kind" | "trigger">,
+  automation: Pick<Automation, "kind"> & {
+    trigger: { kind: "clock"; rrule: string } | { kind: "event" };
+  },
   intl = getIntl(),
 ): string {
   if (automation.trigger.kind === "event")
@@ -263,6 +267,7 @@ export function buildAutomationRunRows(
         runId: item.runId,
         sessionId,
         title: formatAutomationRunTitle(item, intl),
+        createdAt: item.createdAt,
         isRunning: item.status === "IN_PROGRESS",
         isUnread: isUnreadRun(item),
         isQuiet: item.quiet,

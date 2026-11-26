@@ -55,6 +55,10 @@ function nativeHistoryPaths({ environment, platform, homeDirectory }: NativeHist
   };
 }
 
+/** The Claude Code history home when the launcher supplies no per-profile override. */
+export const defaultClaudeNativeHistoryHome = (host: NativeHistoryHost): string =>
+  nativeHistoryPaths(host).defaultClaudeDirectory;
+
 /** Resolves native import locations from the exact physical provider configuration. */
 export function nativeImportSources(
   input: NativeHistoryHost & {

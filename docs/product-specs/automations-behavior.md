@@ -41,6 +41,14 @@ bounded; search filters before its limit. Mutations retain a stable operation
 identity and the observed revision. A changed Automation cannot be overwritten by a
 stale editor or proposal.
 
+## Imported Automations
+
+Scheduled tasks imported from Codex or Claude Desktop begin paused in Run mode under the local
+Member's ownership. The Automation shows its source, and its schedule uses the Host's timezone.
+Codex notes become a runbook Page in the Project. Imported cron history opens from the Automation
+and arrives already read. A heartbeat keeps its target chat in the usual conversation lists. See
+[Importing scheduled tasks](native-conversation-connection-behavior.md#importing-scheduled-tasks).
+
 ## Triggers
 
 Every Automation has exactly one trigger, which decides when its written condition is

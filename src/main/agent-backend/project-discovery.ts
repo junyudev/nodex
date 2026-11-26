@@ -1,6 +1,11 @@
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join, sep } from "node:path";
 import * as Effect from "effect/Effect";
+import {
+  nativeAutomationConversationKey,
+  type NativeAutomationImportRow,
+  type NativeAutomationSelection,
+} from "../../shared/native-automation-import";
 import type { NativeSessionSource } from "../../shared/native-session-catalog";
 import type {
   ProjectCandidate,
@@ -91,20 +96,43 @@ export function projectCandidatesFromConversations(
   identities: ReadonlyMap<string, GitRepositoryIdentity | null>,
   now: number,
   home = "",
+  automations: readonly NativeAutomationImportRow[] = [],
 ): readonly ProjectCandidate[] {
   const byFolder = new Map<
     string,
     {
       readonly identity: GitRepositoryIdentity | null;
       readonly conversations: ProjectDiscoveryConversation[];
+      readonly scheduledTasks: NativeAutomationSelection[];
     }
   >();
   for (const conversation of conversations) {
     const identity = identities.get(conversation.cwd) ?? null;
     const path = identity?.root ?? conversation.cwd;
-    const group = byFolder.get(path) ?? { identity, conversations: [] };
+    const group = byFolder.get(path) ?? { identity, conversations: [], scheduledTasks: [] };
     group.conversations.push(conversation);
     byFolder.set(path, group);
+  }
+  for (const { selection } of automations) {
+    const targets = new Map<string, string[]>();
+    for (const folder of selection.folders) {
+      if (!identities.has(folder)) continue;
+      const identity = identities.get(folder) ?? null;
+      const path = identity?.root ?? folder;
+      const owningPath = byFolder.has(path)
+        ? path
+        : ([...byFolder.keys()]
+            .filter((parent) => isInside(path, parent))
+            .toSorted((a, b) => b.length - a.length)[0] ?? path);
+      if (!byFolder.has(owningPath))
+        byFolder.set(owningPath, { identity, conversations: [], scheduledTasks: [] });
+      const scopes = targets.get(owningPath) ?? [];
+      scopes.push(folder);
+      targets.set(owningPath, scopes);
+    }
+    for (const [path, folders] of targets) {
+      byFolder.get(path)?.scheduledTasks.push({ sourceKey: selection.sourceKey, folders });
+    }
   }
   const recentSince = now - RECENT_WINDOW_MS;
   return Array.from(byFolder, ([path, group]): ProjectCandidate => {
@@ -119,6 +147,7 @@ export function projectCandidatesFromConversations(
       repository: repositoryFromRemoteUrl(group.identity?.remoteUrl ?? null),
       isGitRepository: group.identity !== null,
       chatCount: newestFirst.length,
+      scheduledTasks: group.scheduledTasks,
       lastActiveAt,
       suggested:
         group.identity !== null &&
@@ -144,6 +173,8 @@ export const discoverProjects = <E>(input: {
   readonly sources: readonly ProjectDiscoverySource[];
   readonly places: ReturnType<typeof projectDiscoveryPlaces>;
   readonly now: number;
+  readonly cronConversationKeys?: ReadonlySet<string>;
+  readonly automations?: readonly NativeAutomationImportRow[];
   readonly readPage: (
     source: ProjectDiscoverySource,
     cursor: string | null,
@@ -163,6 +194,16 @@ export const discoverProjects = <E>(input: {
           .pipe(Effect.orElseSucceed((): ProjectDiscoveryPage | null => null));
         if (!page) break;
         for (const entry of page.entries) {
+          if (
+            input.cronConversationKeys?.has(
+              nativeAutomationConversationKey(
+                source.backendKind,
+                page.nativeHome,
+                entry.nativeSessionId,
+              ),
+            )
+          )
+            continue;
           read += 1;
           if (entry.cwdAvailable === false || !isAbsolute(entry.cwd)) continue;
           if (!isOfferedProjectFolder(entry.cwd, places)) continue;
@@ -184,18 +225,28 @@ export const discoverProjects = <E>(input: {
       } while (cursor);
     }
     const all = [...conversations.values()];
-    const folders = [...new Set(all.map((conversation) => conversation.cwd))];
+    const folders = [
+      ...new Set([
+        ...all.map((conversation) => conversation.cwd),
+        ...(input.automations ?? [])
+          .flatMap(({ selection }) => selection.folders)
+          .filter((folder) => isAbsolute(folder) && isOfferedProjectFolder(folder, places)),
+      ]),
+    ];
     const probed = yield* Effect.forEach(
       folders,
       (folder) => input.probe(folder).pipe(Effect.map((identity) => [folder, identity] as const)),
       { concurrency: PROBE_CONCURRENCY },
     );
-    const identities = new Map(probed);
+    const identities = new Map(
+      probed.filter(([cwd, identity]) => isOfferedProjectFolder(identity?.root ?? cwd, places)),
+    );
     const candidates = projectCandidatesFromConversations(
-      all.filter(({ cwd }) => isOfferedProjectFolder(identities.get(cwd)?.root ?? cwd, places)),
+      all.filter(({ cwd }) => identities.has(cwd)),
       identities,
       input.now,
       places.home,
+      input.automations,
     );
     return {
       candidates: candidates.slice(0, MAX_CANDIDATES),

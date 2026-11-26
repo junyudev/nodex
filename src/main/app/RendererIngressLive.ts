@@ -62,6 +62,7 @@ import * as AgentsMapIpc from "../ipc/handlers/AgentsMapIpc";
 import * as ChatMemberActionsIpc from "../ipc/handlers/ChatMemberActionsIpc";
 import * as SubscriptionUsageIpc from "../ipc/handlers/SubscriptionUsageIpc";
 import * as NativeSessionCatalogIpc from "../ipc/handlers/NativeSessionCatalogIpc";
+import * as NativeAutomationImport from "../agent-backend/NativeAutomationImport";
 import * as NativeSessionCatalog from "../agent-backend/NativeSessionCatalog";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
 import * as AvatarOverlayIpc from "../ipc/handlers/AvatarOverlayIpc";
@@ -169,7 +170,10 @@ export const live = Layer.mergeAll(
   SubscriptionUsageIpc.live,
   AgentAccountsIpc.live.pipe(Layer.provide(AgentAccounts.live)),
   AcpAgentsIpc.live.pipe(Layer.provide(AcpAgents.live)),
-  NativeSessionCatalogIpc.live.pipe(Layer.provide(NativeSessionCatalog.live)),
+  NativeSessionCatalogIpc.live.pipe(
+    Layer.provide(NativeAutomationImport.live),
+    Layer.provide(NativeSessionCatalog.live),
+  ),
   AutomationIpc.live,
   CodexPendingWorktreeIpc.live,
   CodexThreadHandoffIpc.live,

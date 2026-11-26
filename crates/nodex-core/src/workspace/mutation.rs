@@ -356,7 +356,7 @@ pub(super) fn apply(
                 ProjectWorkspaceIntent::CreatePageFor { target, page_id, document_id, title } => {
                     super::page_create::create_page_for(
                         transaction, &context, &library_id, &store_epoch,
-                        &request.operation_id, &request_hash, target, page_id, document_id, title,
+                        &request.operation_id, &request_hash, target, page_id, document_id, title, "",
                     )
                 }
                 intent @ (ProjectWorkspaceIntent::AnswerInboxQuestion { .. } | ProjectWorkspaceIntent::ReplyToPageTurn { .. } | ProjectWorkspaceIntent::ClaimTurnNotification { .. }) => super::inbox::nodex::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
@@ -822,6 +822,7 @@ pub(super) fn apply(
                     None,
                 ),
                 ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                    pending_historical_run_id,
                     decision_run,
                     session_id,
                     project_id,
@@ -851,6 +852,7 @@ pub(super) fn apply(
                     None,
                     side_chat_source_session_id.as_deref(),
                     decision_run.as_ref(),
+                    pending_historical_run_id.as_deref(),
                 ),
                 ProjectWorkspaceIntent::AcknowledgeDecisionRunStopped { session_id } => super::decision_run::acknowledge_stopped(
                     transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, session_id,

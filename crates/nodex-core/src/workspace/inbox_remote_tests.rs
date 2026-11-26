@@ -51,6 +51,7 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
         &bob,
         "bob:standalone",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             session_id: "session:standalone".into(),
             project_id: None,
             title: "Bob's chat".into(),
@@ -144,6 +145,7 @@ fn chat_events_concern_the_member_core_entitles_never_another() {
         &bob,
         "bob:push",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             session_id: "session:push".into(),
             project_id: None,
             title: "Bob's chat".into(),
@@ -236,6 +238,7 @@ fn remote_members_read_session_execution_routes_without_host_or_agent_authority(
         &w.module,
         "host:bind",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             session_id: "session:bob".into(),
             project_id: Some("project:default".into()),
             title: "Shared chat".into(),

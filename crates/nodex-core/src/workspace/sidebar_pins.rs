@@ -372,6 +372,7 @@ mod tests {
             &workspace.module,
             "create-runtime-chat",
             Intent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 session_id: "root-a".into(),
                 project_id: None,
                 title: "Runtime chat".into(),

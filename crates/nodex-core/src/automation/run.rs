@@ -649,6 +649,16 @@ fn record_historical_run(
     }
     require_session(connection, automation_id, None, session_id)?;
     crate::workspace::require_root_chat_session(connection, session_id)?;
+    let pending: Option<String> = connection
+        .query_row(
+            "SELECT run_id FROM pending_historical_automation_runs WHERE session_id=?1",
+            [session_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if pending.as_ref().is_some_and(|expected| expected != run_id) {
+        return Err(conflict("Session is reserved for another historical run"));
+    }
     if *created_at_ms < 0 || updated_at_ms < created_at_ms {
         return Err(invalid("Historical run timestamps are invalid"));
     }
@@ -676,6 +686,10 @@ fn record_historical_run(
             updated_at_ms,
             admission_hash
         ],
+    )?;
+    connection.execute(
+        "DELETE FROM pending_historical_automation_runs WHERE session_id=?1",
+        [session_id],
     )?;
     single_run_effects(connection, "record_historical_run", run_id, committed_at)
 }

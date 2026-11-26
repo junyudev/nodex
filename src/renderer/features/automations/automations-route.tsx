@@ -11,6 +11,7 @@ import {
 import { NodexButton } from "@/components/ui/button";
 import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
 import type { Automation, Project } from "@/lib/types";
+import { nativeAutomationAgentLabel } from "../../../shared/native-automation-import";
 import { cn } from "@/lib/utils";
 import { THREAD_VISUAL_TOKENS } from "@/features/local-conversation/view/blocks/local-conversation-visual-tokens";
 import {
@@ -262,6 +263,15 @@ function AutomationConversation({
                           })
                         : formatAutomationScheduleLabel(task, intl),
                       intl.formatMessage(AUTOMATION_MODE_LABELS[task.mode]),
+                      task.importOrigin
+                        ? intl.formatMessage(
+                            {
+                              id: "automations.automationsRoute.importedFrom",
+                              defaultMessage: "Imported from {agent}",
+                            },
+                            { agent: nativeAutomationAgentLabel(task.importOrigin.agent) },
+                          )
+                        : null,
                       task.runbookTitle
                         ? intl.formatMessage(
                             {

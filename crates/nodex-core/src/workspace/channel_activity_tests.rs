@@ -416,6 +416,7 @@ fn card_session(w: &TestWorkspace, id: &str) {
         &w.module,
         "new-work-chat",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             side_chat_source_session_id: None,

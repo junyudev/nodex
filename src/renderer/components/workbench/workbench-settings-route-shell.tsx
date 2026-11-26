@@ -45,6 +45,7 @@ export interface SettingsRouteShellProps {
   onRequestProjectPickerOpen: () => void;
   onOpenThread?: SettingsOpenThread;
   onOpenCustomize?: (path: string) => void;
+  onOpenAutomations?: (path: string) => void;
   onStartChat?: (prompt: string) => void;
   projects: Project[];
   activeProjectId: string | null;
@@ -193,6 +194,7 @@ export function SettingsRouteShell({
   onRequestProjectPickerOpen,
   onOpenThread,
   onOpenCustomize,
+  onOpenAutomations,
   onStartChat,
   projects,
   activeProjectId,
@@ -362,6 +364,7 @@ export function SettingsRouteShell({
                   onRequestProjectPickerOpen={onRequestProjectPickerOpen}
                   onOpenThread={onOpenThread}
                   onOpenCustomize={onOpenCustomize}
+                  onOpenAutomations={onOpenAutomations}
                   onStartChat={onStartChat}
                   threadQueueFollowUpsEnabled={threadQueueFollowUpsEnabled}
                   onThreadQueueFollowUpsEnabledChange={onThreadQueueFollowUpsEnabledChange}

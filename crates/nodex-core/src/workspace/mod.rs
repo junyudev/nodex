@@ -60,7 +60,7 @@ pub(crate) mod member_attention;
 mod mutation;
 pub(crate) use mutation::repair_legacy_project_resource_names;
 mod page_chat;
-mod page_create;
+pub(crate) mod page_create;
 #[cfg(test)]
 mod page_handoff_tests;
 mod project_activity_summary;

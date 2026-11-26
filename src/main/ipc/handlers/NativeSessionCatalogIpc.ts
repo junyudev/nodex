@@ -10,7 +10,11 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { NativeSessionCatalogInput } from "../../../shared/native-session-catalog";
-import { NativeSessionCatalog } from "../../agent-backend/NativeSessionCatalog";
+import { NativeAutomationImport } from "../../agent-backend/NativeAutomationImport";
+import {
+  NativeSessionCatalog,
+  prepareNativeSessionImport,
+} from "../../agent-backend/NativeSessionCatalog";
 import { discoverProjects } from "../../agent-backend/project-discovery";
 import {
   AgentRuntimeApplication,
@@ -75,6 +79,7 @@ export class NativeSessionCatalogIpcError extends Schema.TaggedError<NativeSessi
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
     const catalog = yield* NativeSessionCatalog;
+    const automations = yield* NativeAutomationImport;
     const runtime = yield* AgentRuntimeApplication;
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
@@ -140,10 +145,24 @@ export const live = Layer.effectDiscard(
         catch: (cause) => new NativeSessionCatalogIpcError({ operation: "list.input", cause }),
       }).pipe(Effect.flatMap(readCatalogPage)),
     );
+    yield* handleQuery("native-automations:list", () => automations.catalog);
+    yield* handlePlainCommand("native-automations:import", (_, input) =>
+      parse(
+        "automation.import.input",
+        z.strictObject({
+          sourceKey: z.uuid(),
+          folders: z.array(FolderPath).min(1).max(128),
+        }),
+        input,
+      ).pipe(Effect.flatMap(automations.importSelection)),
+    );
     yield* handleQuery("native-sessions:discover-projects", () =>
       Effect.gen(function* () {
         const { agentProfiles } = yield* settings.snapshot();
         const now = yield* Clock.currentTimeMillis;
+        const imported = yield* automations.catalog.pipe(
+          Effect.orElseSucceed(() => ({ rows: [], cronConversationKeys: [] })),
+        );
         const antigravity = agentProfilesFor(agentProfiles, antigravityAgent.driver).find(
           (instance) => instance.enabled,
         );
@@ -167,6 +186,8 @@ export const live = Layer.effectDiscard(
           ],
           places,
           now,
+          cronConversationKeys: new Set(imported.cronConversationKeys),
+          automations: imported.rows.filter(({ status }) => status.kind === "ready"),
           readPage: (source, cursor) =>
             readCatalogPage({ ...source, ...(cursor ? { cursor } : {}) }),
           probe: (cwd) => Effect.promise(() => probeGitRepository(cwd)),
@@ -214,17 +235,7 @@ export const live = Layer.effectDiscard(
         });
         return yield* runtime.submitNativeImport(
           parsed,
-          catalog.prepareImport(parsed).pipe(
-            Effect.mapError((cause) =>
-              cause.admissionRejected
-                ? new AgentRuntimeApplicationError({
-                    operation: "import",
-                    message: cause.message,
-                    admissionRejected: true,
-                  })
-                : cause,
-            ),
-          ),
+          prepareNativeSessionImport(catalog, parsed),
           resolveAndEnsureFolderProject({ projects, places, folder: parsed.cwd }).pipe(
             Effect.flatMap((placement) => {
               if (placement.kind === "missing")

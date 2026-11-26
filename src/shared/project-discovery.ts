@@ -1,3 +1,4 @@
+import type { NativeAutomationSelection } from "./native-automation-import";
 import type { NativeSessionSource } from "./native-session-catalog";
 
 /** A recent native conversation that can be copied into Nodex along with its Project. */
@@ -24,6 +25,7 @@ export interface ProjectCandidate {
   readonly suggested: boolean;
   /** Newest first and bounded; chats already copied into Nodex are absent. */
   readonly recentChats: readonly ProjectCandidateChat[];
+  readonly scheduledTasks: readonly NativeAutomationSelection[];
 }
 
 export interface ProjectDiscoveryResult {

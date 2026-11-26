@@ -73,6 +73,7 @@ export const projectAutomation = (definition: CoreAutomation): Automation => {
   const backendBinding = definition.backend_binding;
   return {
     id: definition.automation_id,
+    ...(definition.import_origin && { importOrigin: definition.import_origin }),
     scope:
       definition.scope.kind === "project"
         ? { kind: "project", projectId: definition.scope.project_id }

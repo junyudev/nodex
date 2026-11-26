@@ -89,6 +89,9 @@ pub struct AutomationInput {
     /// Create only. A repeated origin identifies the previously imported Automation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub import_origin: Option<AutomationImportOrigin>,
+    /// Initial instructions copied into a new runbook in the import destination.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_runbook_markdown: Option<String>,
     /// What starts the Automation: a clock schedule or matching Source events.
     pub trigger: AutomationTriggerInput,
     #[serde(default)]

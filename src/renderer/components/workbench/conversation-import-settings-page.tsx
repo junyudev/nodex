@@ -1,3 +1,9 @@
+import { AutomationImportSection, useAutomationImportCatalog } from "./automation-import-section";
+import { listNativeAutomations } from "@/lib/native-automation-import";
+import {
+  nativeAutomationConversationKey,
+  type NativeAutomationCatalogResult,
+} from "../../../shared/native-automation-import";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { useIntl } from "@/lib/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -95,6 +101,7 @@ type ProfileAgent = (typeof PROFILE_AGENTS)[number];
 type ProfileDriver = ProfileAgent["driver"];
 
 export interface ConversationImportRuntime {
+  readonly listAutomations?: () => Promise<NativeAutomationCatalogResult>;
   readonly profiles: (driver: ProfileDriver) => Promise<AgentProfiles>;
   readonly projects: (after?: string | null) => Promise<ProjectWindow>;
   readonly list: (input: NativeSessionCatalogInput) => Promise<NativeSessionCatalogPage>;
@@ -111,6 +118,7 @@ export interface ConversationImportRuntime {
 
 const defaultRuntime: ConversationImportRuntime = {
   profiles: readAgentProfiles,
+  listAutomations: listNativeAutomations,
   projects: readNativeSessionProjects,
   list: listNativeSessions,
   preview: previewNativeConversationImport,
@@ -131,9 +139,10 @@ export function ConversationImportSettingsPage({
   activeProjectId = null,
   projects: settingsProjects = NO_PROJECTS,
   onOpenThread,
+  onOpenAutomations,
   runtime = defaultRuntime,
   ledger = nativeConversationImportLedger,
-}: Pick<SettingsSectionPageProps, "open" | "onOpenThread"> & {
+}: Pick<SettingsSectionPageProps, "open" | "onOpenThread" | "onOpenAutomations"> & {
   readonly activeProjectId?: string | null;
   /** The workbench's loaded Projects; names an active Project beyond this page's first window. */
   readonly projects?: ProjectNames;
@@ -141,6 +150,8 @@ export function ConversationImportSettingsPage({
   readonly ledger?: NativeConversationImportLedger;
 }) {
   const intl = useIntl();
+  const automations = useAutomationImportCatalog(open, runtime.listAutomations);
+  const cronConversationKeys = new Set(automations.catalog?.cronConversationKeys);
   const [profiles, setProfiles] = useState<Partial<Record<ProfileDriver, AgentProfiles>>>({});
   const [profileErrors, setProfileErrors] = useState<Partial<Record<ProfileDriver, string>>>({});
   const [projects, setProjects] = useState<ProjectWindow | null>(null);
@@ -273,9 +284,9 @@ export function ConversationImportSettingsPage({
     <NodexSettingsPageSurface
       title={intl.formatMessage(settingsMessages.importTitle)}
       subtitle={intl.formatMessage({
-        id: "settings.conversationImport.eachImportIsANewChat",
+        id: "settings.conversationImport.lead",
         defaultMessage:
-          "Each import is a new chat with copied history and the same Agent. The original stays unchanged.",
+          "Bring in chats and scheduled tasks from your agents. Each lands in the project for its folder, and the originals stay unchanged.",
       })}
     >
       {PROFILE_AGENTS.map((agent) => {
@@ -306,6 +317,12 @@ export function ConversationImportSettingsPage({
           onRetry={readMoreProjects}
         />
       ) : null}
+      <AutomationImportSection
+        rows={automations.catalog?.rows ?? []}
+        failed={automations.failed}
+        refresh={automations.refresh}
+        onOpen={onOpenAutomations}
+      />
       <ConversationImportSection
         open={open}
         runtime={runtime}
@@ -313,6 +330,8 @@ export function ConversationImportSettingsPage({
         sources={sources}
         pathContext={pathContext}
         onOpenThread={onOpenThread}
+        cronConversationKeys={cronConversationKeys}
+        loadingAutomations={automations.loading}
       />
       <AcpNativeConversationsSection
         defaultProjectId={activeProjectId}
@@ -404,6 +423,8 @@ function ConversationImportSection({
   sources,
   pathContext,
   onOpenThread,
+  cronConversationKeys,
+  loadingAutomations,
 }: {
   open: boolean;
   runtime: ConversationImportRuntime;
@@ -411,6 +432,8 @@ function ConversationImportSection({
   sources: readonly NativeConversationSource[];
   pathContext: LocalPathPresentationContext | null;
   onOpenThread?: SettingsOpenThread;
+  cronConversationKeys: ReadonlySet<string>;
+  loadingAutomations: boolean;
 }) {
   const intl = useIntl();
   const count = (value: number) => intl.formatNumber(value);
@@ -497,7 +520,19 @@ function ConversationImportSection({
     ...merged,
     // Placed by the entries above; a selected row's own observation can still be the newest.
     ...selection.values(),
-  ]).map(present);
+  ])
+    .filter(
+      (row) =>
+        !loadingAutomations &&
+        !cronConversationKeys.has(
+          nativeAutomationConversationKey(
+            row.source.backendKind,
+            row.nativeHome,
+            row.nativeSessionId,
+          ),
+        ),
+    )
+    .map(present);
   const isSelected = (key: string) => selection.has(key);
   const isSelectable = (row: NativeConversationCandidate) =>
     !row.imported && pendingFor(row.key)?.status !== "sending";
@@ -1040,7 +1075,13 @@ function ConversationImportSection({
   ) : null;
 
   return (
-    <NodexSettingsSection cardClassName="h-[min(44rem,max(22rem,calc(100dvh-13rem)))]">
+    <NodexSettingsSection
+      title={intl.formatMessage({
+        id: "settings.conversationImport.chats",
+        defaultMessage: "Chats",
+      })}
+      cardClassName="h-[min(44rem,max(22rem,calc(100dvh-13rem)))]"
+    >
       <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2.5">
         <PageSearchInput
           id={searchId}

@@ -6,14 +6,15 @@ import * as Effect from "effect/Effect";
 import { parse as parseToml } from "smol-toml";
 import { z } from "zod";
 import {
+  CODEX_AUTOMATIONS,
   NATIVE_AUTOMATION_RUN_LIMIT,
   type NativeAutomationCandidate,
-  type NativeAutomationRun,
 } from "../../../../shared/native-automation-import";
 import { normalizeCodexAutomationRrule } from "../../../../shared/native-automation-schedule";
 import { canonicalNativeSessionHome } from "../NativeSessionCatalogPaths";
 import {
   NATIVE_AUTOMATION_TASK_LIMIT,
+  NATIVE_AUTOMATION_DIRECTORY_SCAN_LIMIT,
   readSourceText,
   reportSourceIssues,
   sourceEntries,
@@ -67,7 +68,7 @@ const runSchema = z.object({
 });
 
 type Report = ReturnType<typeof reportSourceIssues>;
-type CodexCandidate = NativeAutomationCandidate & { readonly agent: "codex" };
+type CodexCandidate = NativeAutomationCandidate & { readonly agent: typeof CODEX_AUTOMATIONS };
 
 function decodeDefinition(
   value: unknown,
@@ -91,10 +92,10 @@ function decodeDefinition(
     return null;
   }
   const fields = {
-    agent: "codex",
+    agent: CODEX_AUTOMATIONS,
     sourceHome: home,
     sourceAutomationId: row.id,
-    conversationSource: { backendKind: "codex", nativeHome: home },
+    conversationSource: { backendKind: CODEX_AUTOMATIONS, nativeHome: home },
     name: row.name,
     prompt: row.prompt,
     sourceStatus: row.status === "ACTIVE" ? "active" : "paused",
@@ -188,7 +189,7 @@ function readRuns(
   db: DatabaseSync,
   taskIds: readonly string[],
   report: Report,
-): ReadonlyMap<string, readonly NativeAutomationRun[]> {
+): ReadonlyMap<string, Pick<CodexCandidate, "runs" | "runConversationIds">> {
   if (taskIds.length === 0) return new Map();
   if (tableColumns(db, "automation_runs").size === 0) {
     report("codex-runs", "missing");
@@ -198,33 +199,51 @@ function readRuns(
     SELECT thread_id, status, thread_title, source_cwd, created_at, updated_at
     FROM automation_runs
     WHERE automation_id = ? AND thread_id NOT LIKE 'pending:%'
-    ORDER BY created_at DESC, updated_at DESC, thread_id LIMIT ?
+    ORDER BY (status = 'ARCHIVED'), updated_at DESC, created_at DESC, thread_id LIMIT ?
   `);
-  const runs = new Map<string, readonly NativeAutomationRun[]>();
+  const links = db.prepare(`
+    SELECT thread_id FROM automation_runs
+    WHERE automation_id = ? AND thread_id NOT LIKE 'pending:%'
+    LIMIT ?
+  `);
+  let remainingLinks = NATIVE_AUTOMATION_DIRECTORY_SCAN_LIMIT;
+  const runs = new Map<string, Pick<CodexCandidate, "runs" | "runConversationIds">>();
   for (const id of taskIds) {
     const rows = statement.all(id, NATIVE_AUTOMATION_RUN_LIMIT + 1);
+    const linkedIds = links
+      .all(id, remainingLinks + 1)
+      .flatMap(({ thread_id }) => (typeof thread_id === "string" ? [thread_id] : []));
+    if (linkedIds.length > remainingLinks) report("codex-runs", "limit");
+    const runConversationIds = linkedIds.slice(0, remainingLinks);
+    remainingLinks -= runConversationIds.length;
     if (rows.length > NATIVE_AUTOMATION_RUN_LIMIT) report("codex-runs", "limit");
-    runs.set(
-      id,
-      rows.slice(0, NATIVE_AUTOMATION_RUN_LIMIT).flatMap((row) => {
-        const result = runSchema.safeParse(row);
-        if (!result.success) {
-          report("codex-runs", "invalid");
-          return [];
-        }
-        const run = result.data;
-        return [
-          {
-            nativeSessionId: run.thread_id,
-            title: run.thread_title,
-            cwd: run.source_cwd,
-            createdAt: run.created_at,
-            updatedAt: run.updated_at,
-            archived: run.status === "ARCHIVED",
-          },
-        ];
-      }),
-    );
+    const history = rows.slice(0, NATIVE_AUTOMATION_RUN_LIMIT).flatMap((row) => {
+      const result = runSchema.safeParse(row);
+      if (!result.success) {
+        report("codex-runs", "invalid");
+        return [];
+      }
+      const run = result.data;
+      return [
+        {
+          nativeSessionId: run.thread_id,
+          title: run.thread_title,
+          cwd: run.source_cwd,
+          createdAt: run.created_at,
+          updatedAt: run.updated_at,
+          archived: run.status === "ARCHIVED",
+        },
+      ];
+    });
+    runs.set(id, {
+      runs: history,
+      runConversationIds: [
+        ...new Set([
+          ...runConversationIds,
+          ...history.map(({ nativeSessionId }) => nativeSessionId),
+        ]),
+      ],
+    });
   }
   return runs;
 }
@@ -320,7 +339,7 @@ async function readCodexSource(
   signal.throwIfAborted();
   let definitions: readonly CodexCandidate[] = [];
   let fallbackDirectories = legacyDirectories;
-  let runsById: ReadonlyMap<string, readonly NativeAutomationRun[]> = new Map();
+  let runsById: ReturnType<typeof readRuns> = new Map();
   if (databaseExists) {
     try {
       using db = new DatabaseSync(dbPath, { readOnly: true });
@@ -372,9 +391,9 @@ async function readCodexSource(
     const directory = memoryDirectories.get(candidate.sourceAutomationId);
     const memory =
       directory === undefined ? undefined : await readMemory(directory, report, signal);
-    const runs =
-      candidate.kind === "cron" ? (runsById.get(candidate.sourceAutomationId) ?? []) : [];
-    candidates.push({ ...candidate, memory, runs });
+    const history =
+      candidate.kind === "cron" ? runsById.get(candidate.sourceAutomationId) : undefined;
+    candidates.push({ ...candidate, memory, ...history });
   }
   return { candidates, issues };
 }

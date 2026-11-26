@@ -628,6 +628,7 @@ describe("first-run projects", () => {
     lastActiveAt: 0,
     suggested: true,
     recentChats: [],
+    scheduledTasks: [],
     ...overrides,
   });
 

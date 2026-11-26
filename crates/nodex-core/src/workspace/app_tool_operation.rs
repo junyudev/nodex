@@ -195,6 +195,7 @@ mod tests {
             &workspace.module,
             "launch:root",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 agent_selection: None,
                 decision_run: None,
                 side_chat_source_session_id: None,
@@ -288,6 +289,7 @@ mod tests {
             &workspace.module,
             "launch:other",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 agent_selection: None,
                 decision_run: None,
                 side_chat_source_session_id: None,
@@ -336,6 +338,7 @@ mod tests {
             .admit_app_tool_operation(&context(), admission.clone())
             .unwrap();
         let intent = ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             side_chat_source_session_id: None,
@@ -479,6 +482,7 @@ mod tests {
                         ProjectWorkspaceIntent::AgentCommand {
                             provenance: Box::new(request.provenance.clone().unwrap()),
                             intent: Box::new(ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                                pending_historical_run_id: None,
                                 agent_selection: None,
                                 decision_run: None,
                                 side_chat_source_session_id: None,

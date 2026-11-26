@@ -6691,6 +6691,13 @@
               }
             ]
           },
+          "import_runbook_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Initial instructions copied into a new runbook in the import destination."
+          },
           "initial_status": {
             "oneOf": [
               {
@@ -36302,6 +36309,13 @@
                   "launch_request_id": {
                     "type": "string"
                   },
+                  "pending_historical_run_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "A new historical run copy is hidden from chat lists until its history settles."
+                  },
                   "project_id": {
                     "type": [
                       "string",
@@ -50846,6 +50860,13 @@
               },
               "launch_request_id": {
                 "type": "string"
+              },
+              "pending_historical_run_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "A new historical run copy is hidden from chat lists until its history settles."
               },
               "project_id": {
                 "type": [

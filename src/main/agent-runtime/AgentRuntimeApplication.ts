@@ -498,6 +498,7 @@ interface NativeAdoptionInput {
 type NativeImportRequest = NativeConversationImportInput & {
   readonly projectId: string | null;
   readonly adoption?: NativeAdoptionInput;
+  readonly pendingHistoricalRunId?: string;
 };
 const nativeImportIdentity = (input: NativeImportRequest) =>
   input.adoption
@@ -2708,6 +2709,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                 model,
               }),
               initial_page_ids: [],
+              ...(input.pendingHistoricalRunId && {
+                pending_historical_run_id: input.pendingHistoricalRunId,
+              }),
             },
           },
         });
@@ -2784,6 +2788,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       unknown
     >,
     resolveProject: Effect.Effect<string | null, unknown>,
+    pendingHistoricalRunId?: string,
   ): Effect.fn.Return<NativeConversationImportOutcome, unknown> {
     yield* validateCaller();
     const previous = yield* lookupDestinationBinding(input.requestId);
@@ -2799,6 +2804,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         {
           ...input,
           projectId,
+          pendingHistoricalRunId,
           title: source.title,
           model: source.model,
           ...(source.cwd === undefined ? {} : { sourceCwd: source.cwd }),
@@ -4941,12 +4947,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       input: NativeConversationImportInput,
       prepare: Parameters<typeof submitNativeImport>[1],
       resolveProject: Parameters<typeof submitNativeImport>[2],
+      pendingHistoricalRunId?: string,
     ) =>
       withSessionLane(
         input.requestId,
         ownedWrite(
           "import",
-          submitNativeImport(input, prepare, resolveProject).pipe(Effect.scoped),
+          submitNativeImport(input, prepare, resolveProject, pendingHistoricalRunId).pipe(
+            Effect.scoped,
+          ),
         ),
       ),
     adoptNativeSession: (input: NativeAdoptionInput) =>

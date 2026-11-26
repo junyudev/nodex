@@ -26,7 +26,7 @@ use crate::infrastructure::durable_mutation::{
 use crate::infrastructure::event_log::{
     NewChangeLogEntry, append_change_log, load_committed_event_by_sequence,
 };
-use crate::infrastructure::module_receipts::read_module_receipt;
+use crate::infrastructure::module_receipts::{mint_operation_id, read_module_receipt};
 use crate::infrastructure::projection_impact::{expand_database_coordinates, impact_for_payload};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode, with_immediate_transaction};
 use crate::infrastructure::writer::StoreWriter;
@@ -307,6 +307,7 @@ pub(super) fn apply(
                     let input = AutomationInput {
                         initial_status: None,
                         import_origin: None,
+                        import_runbook_markdown: None,
                         trigger: match current.trigger {
                             AutomationTrigger::Clock { rrule, .. } => {
                                 AutomationTriggerInput::Clock {
@@ -813,12 +814,18 @@ fn create_definition(
             ))
         })
         .transpose()?;
+    let placement_project = if origin.is_some() {
+        automation_scope(connection, library_id, input, None)?
+    } else {
+        None
+    };
+    let placement_key = placement_project.as_deref().unwrap_or_default();
     let existing = match &origin {
         Some((agent, home, source_id)) => connection
             .query_row(
                 "SELECT automation_id FROM automation_import_origins
-             WHERE agent=?1 AND source_home=?2 AND source_automation_id=?3",
-                params![agent, home, source_id],
+             WHERE agent=?1 AND source_home=?2 AND source_automation_id=?3 AND placement_project_id=?4",
+                params![agent, home, source_id, placement_key],
                 |row| row.get::<_, String>(0),
             )
             .optional()?,
@@ -828,19 +835,61 @@ fn create_definition(
     let (stored_id, operation_kind) = if let Some(existing) = existing {
         (existing, "import_definition_unchanged")
     } else {
+        let mut definition = input.clone();
+        if let Some(markdown) = input.import_runbook_markdown.as_deref() {
+            if !matches!(origin, Some(("codex", _, _)))
+                || !matches!(
+                    context.adapter,
+                    AdapterKind::ElectronHost | AdapterKind::Test
+                )
+                || context.agent_attribution.is_some()
+                || input.runbook_page_id.is_some()
+            {
+                return Err(invalid(
+                    "Only a Codex import can create a runbook from source notes",
+                ));
+            }
+            let project_id = placement_project
+                .clone()
+                .ok_or_else(|| invalid("An imported runbook requires a Project"))?;
+            let new_id = || {
+                crate::domain::identity::random_uuid_v7()
+                    .map_err(|_| internal("Runbook identity unavailable"))
+            };
+            let page_id = new_id()?;
+            let document_id = new_id()?;
+            // Page and Automation events keep distinct LocalCommit identities in this transaction.
+            let page_operation = mint_operation_id("automation-import-runbook")?;
+            crate::workspace::page_create::create_page_for(
+                connection,
+                context,
+                library_id,
+                store_epoch,
+                &page_operation,
+                request_hash,
+                &nodex_core_contracts::workspace::ProjectWorkspacePageCreationTarget::Project {
+                    project_id,
+                },
+                &page_id,
+                &document_id,
+                input.name.trim(),
+                markdown,
+            )?;
+            definition.runbook_page_id = Some(page_id);
+        }
         insert_definition(
             connection,
             library_id,
             context,
             automation_id,
-            input,
+            &definition,
             now_ms,
         )?;
         if let Some((agent, home, source_id)) = origin {
             connection.execute(
-                "INSERT INTO automation_import_origins(automation_id, agent, source_home, source_automation_id)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![automation_id, agent, home, source_id],
+                "INSERT INTO automation_import_origins(automation_id, agent, source_home, source_automation_id, placement_project_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![automation_id, agent, home, source_id, placement_key],
             )?;
         }
         (automation_id.to_owned(), "create_definition")
@@ -975,7 +1024,10 @@ fn update_definition(
     input: &AutomationInput,
 ) -> Result<AutomationApplyOutcome, StoreError> {
     validate_id("automation_id", automation_id)?;
-    if input.initial_status.is_some() || input.import_origin.is_some() {
+    if input.initial_status.is_some()
+        || input.import_origin.is_some()
+        || input.import_runbook_markdown.is_some()
+    {
         return Err(invalid(
             "Initial status and import origin can only be supplied at create",
         ));
@@ -2721,6 +2773,7 @@ mod tests {
         AutomationInput {
             initial_status: None,
             import_origin: None,
+            import_runbook_markdown: None,
             trigger: AutomationTriggerInput::Clock {
                 rrule: "FREQ=MINUTELY;INTERVAL=5".to_owned(),
                 timezone: None,
@@ -3066,6 +3119,7 @@ mod tests {
         let automation = AutomationInput {
             initial_status: Some(AutomationInitialStatus::Paused),
             import_origin: Some(origin.clone()),
+            import_runbook_markdown: Some("Remember the last checkpoint.".into()),
             ..definition()
         };
         let make_create = |id: &str| AutomationIntent::CreateAutomation {
@@ -3076,6 +3130,24 @@ mod tests {
         let first = &created.committed.value.automations[0];
         assert_eq!(first.status, AutomationStatus::Paused);
         assert_eq!(first.import_origin, Some(origin.clone()));
+        let runbook = first
+            .runbook_page_id
+            .as_deref()
+            .expect("imported runbook Page");
+        assert_eq!(first.runbook_title.as_deref(), Some(first.name.as_str()));
+        let markdown: String = harness
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                Ok(connection.query_row(
+                    "SELECT materialization.markdown FROM pages page JOIN document_materializations materialization
+                     ON materialization.document_id=page.document_id WHERE page.block_id=?1",
+                    [runbook],
+                    |row| row.get(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(markdown.trim(), "Remember the last checkpoint.");
         assert_eq!(next_run(first), None);
         let plan = harness
             .kernel
@@ -3128,8 +3200,64 @@ mod tests {
 
         let harness = harness();
         create(&harness);
-        seed_session(&harness, "session:historical");
+        let workspace =
+            ProjectWorkspaceModule::new("profile-1", "library-1", &harness.kernel).unwrap();
+        use nodex_core_contracts::workspace::{
+            ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+        };
+        workspace
+            .apply(
+                &harness.context,
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    operation_id: "create-pending-import".into(),
+                    store_epoch: harness.store_epoch.clone(),
+                    intent: ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                        pending_historical_run_id: Some("run:historical".into()),
+                        decision_run: None,
+                        session_id: "session:historical".into(),
+                        project_id: Some("project:default".into()),
+                        title: "Historical chat".into(),
+                        initial_page_ids: vec![],
+                        agent_selection: None,
+                        runtime_id: "runtime:primary".into(),
+                        runtime_thread_id: "thread:historical".into(),
+                        launch_request_id: "launch:historical".into(),
+                        side_chat_source_session_id: None,
+                    },
+                },
+            )
+            .unwrap();
         seed_session(&harness, "session:other");
+        let listed_chats = || {
+            let snapshot = workspace
+                .read(
+                    &harness.context,
+                    ModuleReadRequest {
+                        contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read: ProjectWorkspaceRead::TaskWindow {
+                            project_id: Some("project:default".into()),
+                            whole_library: false,
+                            include_archived: None,
+                            placement_scope: Default::default(),
+                            lifecycle: Default::default(),
+                            order: Default::default(),
+                            query: None,
+                            window: Default::default(),
+                        },
+                    },
+                )
+                .unwrap();
+            let ProjectWorkspaceReadValue::TaskWindow { tasks } = snapshot.value else {
+                panic!("expected chat list")
+            };
+            tasks
+                .items
+                .into_iter()
+                .map(|item| item.session.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(listed_chats(), ["session:other"]);
         let input = AutomationHistoricalRunInput {
             run_id: "run:historical".into(),
             automation_id: "daily-report".into(),
@@ -3148,6 +3276,7 @@ mod tests {
         };
         let imported = record("history-1", input.clone()).unwrap();
         assert!(imported.event.is_some());
+        assert!(!listed_chats().contains(&"session:historical".to_owned()));
         assert_eq!(
             imported.committed.receipt.affected_run_ids,
             ["run:historical"]
