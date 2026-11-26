@@ -4,18 +4,27 @@ import { ChevronRightIcon } from "@/components/shared/icons";
 export const addCalendarMonth = (month: Date, delta: number): Date =>
   new Date(month.getFullYear(), month.getMonth() + delta, 1);
 
+const NAVIGATION_BUTTON_CLASS =
+  "flex size-7 items-center justify-center rounded-md text-token-description-foreground enabled:hover:bg-token-list-hover-background enabled:hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-hidden disabled:opacity-40";
+
 export function NodexDateCalendarHeader({
   month,
   onMonthChange,
   onToday,
   disabled = false,
+  minDate,
 }: {
   readonly month: Date;
   readonly onMonthChange: (month: Date) => void;
   readonly onToday: () => void;
   readonly disabled?: boolean;
+  /** The earliest day that can be chosen; the header goes no further back than its month. */
+  readonly minDate?: Date;
 }) {
   const intl = useIntl();
+  const atEarliestMonth =
+    minDate !== undefined &&
+    month.getFullYear() * 12 + month.getMonth() <= minDate.getFullYear() * 12 + minDate.getMonth();
   return (
     <div className="flex h-9 items-center gap-1 px-2">
       <button
@@ -35,8 +44,8 @@ export function NodexDateCalendarHeader({
           id: "ui.dateCalendarHeader.previousMonth",
           defaultMessage: "Previous month",
         })}
-        disabled={disabled}
-        className="flex size-7 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-hidden"
+        disabled={disabled || atEarliestMonth}
+        className={NAVIGATION_BUTTON_CLASS}
         onClick={() => onMonthChange(addCalendarMonth(month, -1))}
       >
         <ChevronRightIcon className="icon-2xs rotate-180" />
@@ -48,7 +57,7 @@ export function NodexDateCalendarHeader({
           defaultMessage: "Next month",
         })}
         disabled={disabled}
-        className="flex size-7 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-hidden"
+        className={NAVIGATION_BUTTON_CLASS}
         onClick={() => onMonthChange(addCalendarMonth(month, 1))}
       >
         <ChevronRightIcon className="icon-2xs" />

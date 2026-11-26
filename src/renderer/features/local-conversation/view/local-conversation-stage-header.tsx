@@ -44,7 +44,7 @@ import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runti
 import { sessionForkDestinations } from "@/lib/session-fork";
 import { describeChatSnooze } from "@/lib/chat-snooze";
 import {
-  CustomSnoozeDialog,
+  preloadCustomSnoozeForm,
   SnoozeMenuItems,
   useCustomSnoozeHandoff,
 } from "@/components/shared/snooze-menu";
@@ -69,10 +69,12 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
   // Reminder presets are relative to when the menu opens.
   const [menuOpenedAt, setMenuOpenedAt] = useState(() => new Date());
   const handleMenuOpenChange = useCallback((open: boolean) => {
-    if (open) setMenuOpenedAt(new Date());
+    if (open) {
+      setMenuOpenedAt(new Date());
+      void preloadCustomSnoozeForm();
+    }
     setMenuOpen(open);
   }, []);
-  const customSnooze = useCustomSnoozeHandoff();
   const [forking, setForking] = useState(false);
   const forkInFlight = useRef(false);
   const pendingModal = useRef<(() => void) | null>(null);
@@ -115,9 +117,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
         defaultMessage: "Couldn’t snooze the chat",
       }),
     );
-  const customSnoozeDialog = canSetSnooze ? (
-    <CustomSnoozeDialog {...customSnooze.dialog} onChoose={snoozeChat} />
-  ) : null;
+  const customSnooze = useCustomSnoozeHandoff(snoozeChat);
 
   const handleCopyText = useCallback(async (value: string | null, successMessage: string) => {
     if (!value) return;
@@ -506,7 +506,6 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       <>
         {queueLabel}
         {actionsMenu}
-        {customSnoozeDialog}
       </>
     );
 
@@ -526,7 +525,6 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       </span>
       {queueLabel}
       {actionsMenu}
-      {customSnoozeDialog}
     </div>
   );
 }

@@ -393,6 +393,12 @@ Turn still defers it.
   its name, then `Custom…` for any later date and time. They are the times chat Snooze offers,
   counted from when the menu opens. A message still waiting for advice can be set aside at once. An
   Automation's waiting run offers no Snooze. Answers and Problems also keep their own actions.
+- `Custom…` opens `Snooze until`, in the Member's own time zone. They type a time such as
+  `fri 3pm`, `in 2 hours` or `明天下午3点`, or choose a day on its calendar and a time from the
+  half-hour list beside it; whichever they used last decides. A typed day without a time keeps
+  the time the list shows, which starts at the next 9:00 AM, and a bare hour from 1 to 6 means the
+  afternoon. Nothing before the next minute can be chosen. Beside `Snooze`, the dialog says when
+  the item returns, or that it can't read the text or the time has passed.
 - A message then says `Snoozed · tomorrow at 9:00 AM` in its place before it folds away; a Turn
   row simply leaves. Either way a toast confirms the time and offers `Undo`.
 - The header's `Snoozed` view, between Inbox and Activity, lists what the reader set aside in the

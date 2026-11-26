@@ -24,6 +24,8 @@ export const NODEX_DAY_PICKER_CLASS_NAMES = {
     "hover:bg-token-list-hover-background focus-visible:ring-token-focus-border focus-visible:ring-2",
   ),
   [DayFlag.outside]: "rdp-day_outside [&>button]:text-token-description-foreground/55",
+  [DayFlag.disabled]:
+    "rdp-day_disabled [&>button]:cursor-default [&>button]:text-token-description-foreground/35 [&>button]:hover:bg-transparent",
   [DayFlag.today]:
     "rdp-day_today [&>button]:font-medium [&>button]:ring-[0.5px] [&>button]:ring-token-border",
   [DayFlag.focused]: "rdp-day_focused",
@@ -44,6 +46,7 @@ export function NodexDateCalendar({
   onSelect,
   onToday,
   disabled = false,
+  minDate,
 }: {
   readonly selected?: Date;
   readonly month: Date;
@@ -51,6 +54,8 @@ export function NodexDateCalendar({
   readonly onSelect: (date: Date | undefined) => void;
   readonly onToday: () => void;
   readonly disabled?: boolean;
+  /** The earliest day that can be chosen; earlier days and months are out of reach. */
+  readonly minDate?: Date;
 }) {
   const intl = useIntl();
   return (
@@ -60,6 +65,7 @@ export function NodexDateCalendar({
         onMonthChange={onMonthChange}
         onToday={onToday}
         disabled={disabled}
+        minDate={minDate}
       />
       <DayPicker
         mode="single"
@@ -68,7 +74,8 @@ export function NodexDateCalendar({
         month={month}
         onMonthChange={onMonthChange}
         onSelect={onSelect}
-        disabled={disabled}
+        disabled={disabled || (minDate ? { before: minDate } : undefined)}
+        startMonth={minDate}
         showOutsideDays
         fixedWeeks
         hideNavigation

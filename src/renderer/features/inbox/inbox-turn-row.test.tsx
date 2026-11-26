@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
-import { render, openNodexMenu } from "@/test/dom";
+import { renderWithAppMaitai } from "@/test/app-maitai";
+import { openNodexMenu } from "@/test/dom";
 import { InboxTurnRow } from "./inbox-turn-row";
 import { turnRow as row, turnRowHandlers as props } from "./inbox-turn-row.test-support";
 vi.mock("@/lib/space-host-runtime", () => ({ useSpaceHostAvailable: () => true }));
@@ -15,7 +16,7 @@ test.each([
   ["ready_to_start", "Start"],
 ] as const)("offers the typed action for %s", async (reason, action) => {
   const handlers = props();
-  render(<InboxTurnRow item={row(reason)} {...handlers} />);
+  renderWithAppMaitai(<InboxTurnRow item={row(reason)} {...handlers} />);
   expect(screen.getByRole("button", { name: "Ship the change" })).toBeTruthy();
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: action }));
@@ -33,7 +34,7 @@ test.each([
 });
 test("answers exact labels and puts only extra options in More", async () => {
   const handlers = props();
-  render(
+  renderWithAppMaitai(
     <InboxTurnRow
       item={row("question", ["First", "Second", "Third", "Fourth", "Fifth"])}
       {...handlers}
@@ -56,7 +57,7 @@ test.each(["review", "failed", "reply"] as const)(
   "explains undeliverable %s replies beside the fact",
   (reason) => {
     const item = row(reason);
-    render(
+    renderWithAppMaitai(
       <InboxTurnRow item={{ ...item, turn: { ...item.turn!, active_chat: null } }} {...props()} />,
     );
     expect(screen.getByText("The exact question or report")).toBeTruthy();
@@ -67,7 +68,7 @@ test.each(["review", "failed", "reply"] as const)(
 );
 test("a question that offers options still opens its chat", async () => {
   const handlers = props();
-  render(<InboxTurnRow item={row("question", ["Yes", "No"])} {...handlers} />);
+  renderWithAppMaitai(<InboxTurnRow item={row("question", ["Yes", "No"])} {...handlers} />);
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
     await Promise.resolve();
@@ -76,7 +77,7 @@ test("a question that offers options still opens its chat", async () => {
 });
 test("a review offers a labeled Open chat button between Reply and Accept", async () => {
   const handlers = props();
-  render(<InboxTurnRow item={row("review")} {...handlers} />);
+  renderWithAppMaitai(<InboxTurnRow item={row("review")} {...handlers} />);
   const card = within(screen.getByRole("article"));
   const openChat = card.getByRole("button", { name: "Open chat" });
   expect(within(openChat).getByText("Open chat")).toBeTruthy();
@@ -92,7 +93,7 @@ test("a review offers a labeled Open chat button between Reply and Accept", asyn
   expect(handlers.onOpenChat).toHaveBeenCalledOnce();
 });
 test("work that has not started has no chat to open", () => {
-  render(<InboxTurnRow item={row("ready_to_start")} {...props()} />);
+  renderWithAppMaitai(<InboxTurnRow item={row("ready_to_start")} {...props()} />);
   expect(screen.queryByRole("button", { name: "Open chat" })).toBeNull();
 });
 test.each([
@@ -103,12 +104,12 @@ test.each([
   ["failed", "Failed · needs you"],
   ["ready_to_start", "Ready to start"],
 ] as const)("words a %s turn as the reader's own", (reason, phrase) => {
-  render(<InboxTurnRow item={row(reason)} {...props()} />);
+  renderWithAppMaitai(<InboxTurnRow item={row(reason)} {...props()} />);
   expect(screen.getByText(phrase)).toBeTruthy();
 });
 test("a reply turn quotes the chat and answers it from the Inbox", async () => {
   const handlers = props();
-  render(<InboxTurnRow item={row("reply")} {...handlers} />);
+  renderWithAppMaitai(<InboxTurnRow item={row("reply")} {...handlers} />);
   expect(screen.getByText("The exact question or report")).toBeTruthy();
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Reply" }));
@@ -118,7 +119,7 @@ test("a reply turn quotes the chat and answers it from the Inbox", async () => {
 });
 test("a move that can wait is set aside until a chosen time", async () => {
   const handlers = props();
-  render(<InboxTurnRow item={row("review")} {...handlers} />);
+  renderWithAppMaitai(<InboxTurnRow item={row("review")} {...handlers} />);
   await openNodexMenu(screen.getByRole("button", { name: "Snooze" }));
   const option = await screen.findByRole("menuitem", { name: /^In 1 hour/ });
   await act(async () => {
@@ -128,37 +129,9 @@ test("a move that can wait is set aside until a chosen time", async () => {
   const [until] = handlers.onSnooze.mock.calls[0]!;
   expect(Date.parse(until)).toBeGreaterThan(Date.now());
 });
-test("a move can be set aside until a time the person picks", async () => {
-  const handlers = props();
-  render(<InboxTurnRow item={row("review")} {...handlers} />);
-  await openNodexMenu(screen.getByRole("button", { name: "Snooze" }));
-  const custom = await screen.findByRole("menuitem", { name: "Custom…" });
-  await act(async () => {
-    fireEvent.click(custom);
-    await Promise.resolve();
-  });
-  const field = await screen.findByLabelText("Date and time");
-  const later = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-  later.setHours(18, 30, 0, 0);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  await act(async () => {
-    fireEvent.change(field, {
-      target: {
-        value: `${later.getFullYear()}-${pad(later.getMonth() + 1)}-${pad(later.getDate())}T18:30`,
-      },
-    });
-    await Promise.resolve();
-  });
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Snooze" }));
-    await Promise.resolve();
-  });
-  await waitFor(() => expect(handlers.onSnooze).toHaveBeenCalledWith(later.toISOString()));
-  await waitFor(() => expect(screen.queryByLabelText("Date and time")).toBeNull());
-});
 test("a move that came back from Snooze says when it was set aside", () => {
   const past = new Date(Date.now() - 60_000).toISOString();
-  render(
+  renderWithAppMaitai(
     <InboxTurnRow item={{ ...row("review"), snooze: { setAt: past, until: past } }} {...props()} />,
   );
   expect(screen.getByTestId("inbox-back-from-snooze").textContent).toMatch(/^Back from snooze/u);

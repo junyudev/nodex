@@ -1,4 +1,5 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
+import { renderWithAppMaitai } from "@/test/app-maitai";
 import { expect, test, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 import "@/globals.css";
@@ -24,7 +25,7 @@ const REPORT = [
 ].join("\n");
 
 const renderRow = (body: string) =>
-  render(
+  renderWithAppMaitai(
     <div style={{ width: 420 }}>
       <InboxTurnRow item={{ ...turnRow("review"), body }} {...turnRowHandlers()} />
     </div>,

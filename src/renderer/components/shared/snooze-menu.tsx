@@ -1,31 +1,28 @@
 import { useIntl } from "@/lib/i18n";
-import { useRef, useState, type ReactElement, type RefObject } from "react";
+import { lazy, Suspense, useRef, useState, type ReactElement } from "react";
 import { ClockIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
-import {
-  NodexDialog,
-  NodexDialogAction,
-  NodexDialogBody,
-  NodexDialogContent,
-  NodexDialogFooter,
-  NodexDialogForm,
-  NodexDialogFrame,
-  NodexDialogHeader,
-  NodexDialogTitle,
-} from "@/components/ui/dialog";
+import { NodexDialog, NodexDialogContent } from "@/components/ui/dialog";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
-import { Input } from "@/components/ui/input";
-import {
-  chatSnoozePresets,
-  defaultCustomSnoozeInput,
-  formatChatSnoozeTime,
-  minimumCustomSnoozeInput,
-  parseCustomSnoozeInput,
-} from "@/lib/chat-snooze";
+import { chatSnoozePresets, formatChatSnoozeTime } from "@/lib/chat-snooze";
+import { appScope, useScopeHandle } from "@/lib/maitai";
+import { openModal, type ModalCloseProps } from "@/lib/modal-registry";
+
+let customSnoozeFormPromise: Promise<typeof import("./custom-snooze-form")> | undefined;
+
+/** Warms the custom picker, with its calendar and phrase reader, while a snooze menu is open. */
+export function preloadCustomSnoozeForm() {
+  customSnoozeFormPromise ??= import("./custom-snooze-form");
+  return customSnoozeFormPromise;
+}
+
+const LazyCustomSnoozeForm = lazy(async () => ({
+  default: (await preloadCustomSnoozeForm()).CustomSnoozeForm,
+}));
 
 /**
  * The snooze choices every menu offers, read at `now`: each preset with when it brings the item
@@ -64,12 +61,12 @@ export function SnoozeMenuItems({
 
 /**
  * Opens the custom snooze dialog from a menu. The dialog waits until the menu has closed and
- * returned focus to its trigger, then opens over it, and closing it returns focus there.
+ * returned focus to its trigger, then opens over it from the window's modal host, so a row that
+ * holds the menu never receives the dialog's clicks; closing it returns focus to that trigger.
  */
-export function useCustomSnoozeHandoff() {
+export function useCustomSnoozeHandoff(onChoose: (snoozedUntil: string) => void) {
+  const appHandle = useScopeHandle(appScope);
   const requested = useRef(false);
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const [open, setOpen] = useState(false);
   return {
     /** Custom… was chosen; the dialog opens as the menu finishes closing. */
     request: () => {
@@ -84,94 +81,47 @@ export function useCustomSnoozeHandoff() {
       requested.current = false;
       requestAnimationFrame(() => {
         const focused = document.activeElement;
-        returnFocus.current = focused instanceof HTMLElement ? focused : null;
-        setOpen(true);
+        openModal(appHandle, CustomSnoozeDialog, {
+          onChoose,
+          returnFocus: focused instanceof HTMLElement ? focused : null,
+        });
       });
       return true;
     },
-    dialog: { open, onOpenChange: setOpen, finalFocus: returnFocus },
   };
 }
 
 /** Picks any future date and time to snooze until, in the person's own time zone. */
-export function CustomSnoozeDialog({
-  open,
-  onOpenChange,
+function CustomSnoozeDialog({
+  onClose,
   onChoose,
-  finalFocus,
-}: {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
+  returnFocus,
+}: ModalCloseProps & {
   readonly onChoose: (snoozedUntil: string) => void;
   /** Where focus returns when the dialog closes: the control that offered it. */
-  readonly finalFocus?: RefObject<HTMLElement | null>;
+  readonly returnFocus: HTMLElement | null;
 }) {
   return (
-    <NodexDialog open={open} onOpenChange={onOpenChange}>
-      <NodexDialogContent finalFocus={finalFocus}>
-        {/* The form mounts with each opening, so it starts from the next morning after then. */}
-        <CustomSnoozeForm
-          onCancel={() => onOpenChange(false)}
-          onChoose={(snoozedUntil) => {
-            onChoose(snoozedUntil);
-            onOpenChange(false);
-          }}
-        />
+    <NodexDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <NodexDialogContent
+        size="narrow"
+        finalFocus={() => (returnFocus?.isConnected ? returnFocus : true)}
+      >
+        <Suspense fallback={<div aria-hidden="true" className="h-[420px]" />}>
+          <LazyCustomSnoozeForm
+            onChoose={(snoozedUntil) => {
+              onChoose(snoozedUntil);
+              onClose();
+            }}
+          />
+        </Suspense>
       </NodexDialogContent>
     </NodexDialog>
-  );
-}
-
-function CustomSnoozeForm({
-  onCancel,
-  onChoose,
-}: {
-  readonly onCancel: () => void;
-  readonly onChoose: (snoozedUntil: string) => void;
-}) {
-  const intl = useIntl();
-  const [openedAt] = useState(() => new Date());
-  const [value, setValue] = useState(() => defaultCustomSnoozeInput(openedAt));
-  const snoozedUntil = parseCustomSnoozeInput(value, openedAt);
-  return (
-    <NodexDialogFrame>
-      <NodexDialogForm
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (snoozedUntil) onChoose(snoozedUntil);
-        }}
-      >
-        <NodexDialogHeader>
-          <NodexDialogTitle>
-            {intl.formatMessage({
-              id: "shared.snoozeMenu.customTitle",
-              defaultMessage: "Snooze until",
-            })}
-          </NodexDialogTitle>
-        </NodexDialogHeader>
-        <NodexDialogBody>
-          <Input
-            type="datetime-local"
-            aria-label={intl.formatMessage({
-              id: "shared.snoozeMenu.customTime",
-              defaultMessage: "Date and time",
-            })}
-            value={value}
-            min={minimumCustomSnoozeInput(openedAt)}
-            onChange={(event) => setValue(event.target.value)}
-            data-app-action-snooze-custom-time=""
-          />
-        </NodexDialogBody>
-        <NodexDialogFooter>
-          <NodexDialogAction onClick={onCancel}>
-            {intl.formatMessage({ id: "shared.snoozeMenu.cancel", defaultMessage: "Cancel" })}
-          </NodexDialogAction>
-          <NodexDialogAction type="submit" tone="primary" disabled={!snoozedUntil}>
-            {intl.formatMessage({ id: "shared.snoozeMenu.snooze", defaultMessage: "Snooze" })}
-          </NodexDialogAction>
-        </NodexDialogFooter>
-      </NodexDialogForm>
-    </NodexDialogFrame>
   );
 }
 
@@ -207,51 +157,51 @@ export function SnoozeMenu({
     intl.formatMessage({ id: "shared.snoozeMenu.snooze", defaultMessage: "Snooze" });
   // The presets are read when the menu opens, so "in 1 hour" counts from then.
   const [openedAt, setOpenedAt] = useState(() => new Date());
-  const customSnooze = useCustomSnoozeHandoff();
+  const customSnooze = useCustomSnoozeHandoff(onChoose);
   return (
-    <>
-      <NodexDropdownMenu
-        align={align}
-        finalFocus={() => {
-          customSnooze.handOff();
-          return true;
-        }}
-        triggerTooltipContent={label}
-        triggerTooltipShortcutLabel={shortcutLabel}
-        onOpenChange={(open) => {
-          if (open) setOpenedAt(new Date());
-          onOpenChange?.(open);
-        }}
-        triggerButton={
-          trigger ?? (
-            <NodexButton
-              size="icon-xs"
-              variant="ghost"
-              aria-label={label}
-              className="text-token-description-foreground hover:text-token-foreground"
-            >
-              <ClockIcon className="icon-xs" />
-            </NodexButton>
-          )
+    <NodexDropdownMenu
+      align={align}
+      finalFocus={() => {
+        customSnooze.handOff();
+        return true;
+      }}
+      triggerTooltipContent={label}
+      triggerTooltipShortcutLabel={shortcutLabel}
+      onOpenChange={(open) => {
+        if (open) {
+          setOpenedAt(new Date());
+          void preloadCustomSnoozeForm();
         }
-      >
-        {current ? (
-          <>
-            <NodexDropdownItem disabled>
-              {intl.formatMessage({ id: "shared.snoozeMenu.returns", defaultMessage: "Returns" })}{" "}
-              {formatChatSnoozeTime(current, openedAt, intl.locale)}
+        onOpenChange?.(open);
+      }}
+      triggerButton={
+        trigger ?? (
+          <NodexButton
+            size="icon-xs"
+            variant="ghost"
+            aria-label={label}
+            className="text-token-description-foreground hover:text-token-foreground"
+          >
+            <ClockIcon className="icon-xs" />
+          </NodexButton>
+        )
+      }
+    >
+      {current ? (
+        <>
+          <NodexDropdownItem disabled>
+            {intl.formatMessage({ id: "shared.snoozeMenu.returns", defaultMessage: "Returns" })}{" "}
+            {formatChatSnoozeTime(current, openedAt, intl.locale)}
+          </NodexDropdownItem>
+          {onWake ? (
+            <NodexDropdownItem onSelect={onWake}>
+              {intl.formatMessage({ id: "shared.snoozeMenu.wake", defaultMessage: "Wake" })}
             </NodexDropdownItem>
-            {onWake ? (
-              <NodexDropdownItem onSelect={onWake}>
-                {intl.formatMessage({ id: "shared.snoozeMenu.wake", defaultMessage: "Wake" })}
-              </NodexDropdownItem>
-            ) : null}
-            <NodexDropdownSeparator />
-          </>
-        ) : null}
-        <SnoozeMenuItems now={openedAt} onChoose={onChoose} onCustom={customSnooze.request} />
-      </NodexDropdownMenu>
-      <CustomSnoozeDialog {...customSnooze.dialog} onChoose={onChoose} />
-    </>
+          ) : null}
+          <NodexDropdownSeparator />
+        </>
+      ) : null}
+      <SnoozeMenuItems now={openedAt} onChoose={onChoose} onCustom={customSnooze.request} />
+    </NodexDropdownMenu>
   );
 }

@@ -19,18 +19,15 @@ export interface ChatSnoozePreset {
   readonly snoozedUntil: string;
 }
 
-const MORNING_HOUR = 9;
+export const MORNING_HOUR = 9;
 /** A morning snooze never lands sooner than this; "tomorrow" at 8 AM would be an hour away. */
 const MIN_MORNING_LEAD_MS = 3 * 60 * 60 * 1000;
 const MONDAY = 1;
 
-function addMinutesRoundedUp(now: Date, minutes: number): Date {
-  const next = new Date(now.getTime() + minutes * 60_000);
-  if (next.getSeconds() > 0 || next.getMilliseconds() > 0) {
-    next.setSeconds(0, 0);
-    next.setMinutes(next.getMinutes() + 1);
-  }
-  return next;
+export function addMinutesRoundedUp(now: Date, minutes: number): Date {
+  // Round elapsed time so a repeated local hour keeps its original offset.
+  const target = now.getTime() + minutes * 60_000;
+  return new Date(Math.ceil(target / 60_000) * 60_000);
 }
 
 function atLocalMorning(day: Date): Date {
@@ -40,7 +37,7 @@ function atLocalMorning(day: Date): Date {
 }
 
 /** The next 9:00 AM at least three hours away: this morning in the small hours, else tomorrow. */
-function nextMorning(now: Date): Date {
+export function nextMorning(now: Date): Date {
   const today = atLocalMorning(now);
   if (today.getTime() - now.getTime() >= MIN_MORNING_LEAD_MS) return today;
   const tomorrow = new Date(now);
@@ -265,34 +262,4 @@ export function describeChatSnooze(snoozedUntil: string, now: Date, locale?: str
     { id: "lib.chatSnooze.relativeTime", defaultMessage: "Snoozed until {time}" },
     { time: formatChatSnoozeTime(snoozedUntil, now, locale) },
   );
-}
-
-const pad = (value: number) => String(value).padStart(2, "0");
-
-/** A local date and time as a `datetime-local` field holds it: "2026-11-05T09:00". */
-function toLocalInput(date: Date): string {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-/** Where a custom snooze starts: the next morning, the time a person most often picks. */
-export function defaultCustomSnoozeInput(now: Date): string {
-  return toLocalInput(nextMorning(now));
-}
-
-/** The earliest a custom snooze may be set: the next whole minute. */
-export function minimumCustomSnoozeInput(now: Date): string {
-  return toLocalInput(addMinutesRoundedUp(now, 1));
-}
-
-/**
- * A custom snooze time from a `datetime-local` value, read in the person's own time zone, as an
- * ISO 8601 UTC string. Null when the field is empty, unreadable or not in the future.
- */
-export function parseCustomSnoozeInput(value: string, now: Date): string | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const [, year, month, day, hour, minute] = match.map(Number);
-  const at = new Date(year!, month! - 1, day!, hour!, minute!);
-  if (at.getMonth() !== month! - 1 || at.getDate() !== day!) return null;
-  return at.getTime() > now.getTime() ? at.toISOString() : null;
 }

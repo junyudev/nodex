@@ -1,0 +1,1 @@
+Type when a snooze should end, such as `fri 3pm`, `in 2 hours` or `明天下午3点`, after choosing **Custom…** in any Snooze menu. The same dialog now pairs a calendar with a list of times, keeps past days and times out of reach, and says when the item will come back before you confirm.

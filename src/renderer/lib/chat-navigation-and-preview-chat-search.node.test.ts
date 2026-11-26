@@ -4,14 +4,20 @@ import { resolveChatSessionForThreadId } from "./chat-session-for-thread";
 import {
   chatSnoozePresetTime,
   chatSnoozePresets,
-  defaultCustomSnoozeInput,
-  minimumCustomSnoozeInput,
-  parseCustomSnoozeInput,
   describeChatSnooze,
   describeChatSnoozeAbsolute,
   formatChatSnoozeConfirmation,
   formatChatSnoozeTime,
 } from "./chat-snooze";
+import {
+  earliestSnoozeInstant,
+  initialSnoozeDraft,
+  parseSnoozePhrase,
+  snoozeDraftInstant,
+  snoozeDraftIsPast,
+  snoozeDraftOnDay,
+  snoozeTimeSlots,
+} from "./custom-snooze-time";
 import type { CodexThreadSummary, ProjectSession } from "../../shared/types";
 import { nativeConversationIdentity } from "./conversation-identity";
 import { prepareCreatedThreadNavigation } from "./created-thread-navigation";
@@ -220,22 +226,83 @@ describe("chat snooze", () => {
   });
 
   describe("custom snooze time", () => {
-    // Wednesday, Nov 4 2026, 2:15:30 PM
-    const now = local(2026, 11, 4, 14, 15, 30);
+    // Thursday, Nov 26 2026, 2:15:30 PM
+    const now = local(2026, 11, 26, 14, 15, 30);
+    const today = local(2026, 11, 26, 0);
+    const tomorrow = local(2026, 11, 27, 0);
+    const fallbackMinutes = 10 * 60 + 45;
 
-    it("starts the picker at the next morning, and allows nothing before the next minute", () => {
-      expect(defaultCustomSnoozeInput(now)).toBe("2026-11-05T09:00");
-      expect(minimumCustomSnoozeInput(now)).toBe("2026-11-04T14:17");
+    it("starts at the next morning", () => {
+      expect(initialSnoozeDraft(now)).toEqual({ day: tomorrow, minutes: 9 * 60 });
+    });
+
+    it("moves earlier selections to the first available slot of the earliest day", () => {
+      const expected = { day: today, minutes: 14 * 60 + 30 };
+      expect(snoozeDraftOnDay(today, 9 * 60, now)).toEqual(expected);
+      expect(snoozeDraftOnDay(local(2026, 11, 25, 0), 9 * 60, now)).toEqual(expected);
+    });
+
+    it("uses the earliest allowed minute when the day has no half-hour slots left", () => {
+      const late = local(2026, 11, 26, 23, 45, 30);
+      const draft = snoozeDraftOnDay(today, 9 * 60, late);
+      expect(draft).toEqual({ day: today, minutes: 23 * 60 + 47 });
+      expect(earliestSnoozeInstant(late)).toEqual(local(2026, 11, 26, 23, 47));
+      expect(snoozeDraftInstant(draft)).toEqual(earliestSnoozeInstant(late));
+    });
+
+    it("inserts the selected minute in order and disables times before the earliest instant", () => {
+      const slots = snoozeTimeSlots({ day: today, minutes: 14 * 60 + 17 }, now, "en-US");
+      expect(slots).toHaveLength(49);
+      expect(slots.slice(28, 31)).toEqual([
+        { minutes: 14 * 60, label: "2:00 PM", disabled: true },
+        { minutes: 14 * 60 + 17, label: "2:17 PM", disabled: false },
+        { minutes: 14 * 60 + 30, label: "2:30 PM", disabled: false },
+      ]);
     });
 
     it.each([
-      ["a later local time", "2026-11-06T18:30", local(2026, 11, 6, 18, 30).toISOString()],
-      ["a time already past", "2026-11-04T14:15", null],
-      ["an empty field", "", null],
-      ["a day the month lacks", "2026-02-30T09:00", null],
-      ["something else", "tomorrow", null],
-    ] as const)("reads %s", (_name, value, expected) => {
-      expect(parseCustomSnoozeInput(value, now)).toBe(expected);
+      ["  fri 3pm.  ", "en-US", tomorrow, 15 * 60],
+      ["at 5", "en-US", today, 17 * 60],
+      ["at 1", "en-US", tomorrow, 13 * 60],
+      ["tomorrow at 5", "en-US", tomorrow, 17 * 60],
+      ["fri at 3", "en-US", tomorrow, 15 * 60],
+      ["fri 3pm to 5pm", "en-US", tomorrow, 15 * 60],
+      ["tomorrow morning", "en-US", tomorrow, 9 * 60],
+      ["this evening", "en-US", today, 20 * 60],
+      ["tomorrow", "en-US", tomorrow, fallbackMinutes],
+      ["fri", "en-US", tomorrow, fallbackMinutes],
+      ["today", "en-US", today, 14 * 60 + 30],
+      ["in 2 hours", "en-US", today, 16 * 60 + 15],
+      ["明天下午3点", "zh-CN", tomorrow, 15 * 60],
+      ["下周一", "zh-CN", local(2026, 11, 30, 0), fallbackMinutes],
+      ["tomorrow", "zh-CN", tomorrow, fallbackMinutes],
+    ] as const)("reads %j in %s", (phrase, locale, day, minutes) => {
+      expect(parseSnoozePhrase(phrase, now, locale, fallbackMinutes)).toEqual({
+        kind: "time",
+        draft: { day, minutes },
+      });
+    });
+
+    it.each([
+      ["tom 3pm", "unreadable"],
+      ["something else", "unreadable"],
+      ["   ", "empty"],
+    ] as const)("classifies %j as %s", (phrase, kind) => {
+      expect(parseSnoozePhrase(phrase, now, "en-US", fallbackMinutes)).toEqual({ kind });
+    });
+
+    it("reads a phrase counted from now as it is, even in the small hours", () => {
+      const midnight = local(2026, 11, 26, 0, 0, 0);
+      expect(parseSnoozePhrase("两小时后", midnight, "zh-CN", fallbackMinutes)).toEqual({
+        kind: "time",
+        draft: { day: today, minutes: 2 * 60 },
+      });
+    });
+
+    it("preserves an explicit past time for the picker to flag", () => {
+      const result = parseSnoozePhrase("today 9am", now, "en-US", fallbackMinutes);
+      expect(result).toEqual({ kind: "time", draft: { day: today, minutes: 9 * 60 } });
+      expect(result.kind === "time" && snoozeDraftIsPast(result.draft, now)).toBe(true);
     });
   });
 });

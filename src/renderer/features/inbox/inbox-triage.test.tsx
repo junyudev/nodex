@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
-import { render } from "@/test/dom";
+import { renderWithAppMaitai } from "@/test/app-maitai";
 import { TestQueryProvider } from "@/test/query";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
@@ -102,7 +102,7 @@ const renderTriage = (
   overrides: Partial<Parameters<typeof InboxTriage>[0]> = {},
   commands: InboxActions = actions(),
 ) => {
-  render(
+  renderWithAppMaitai(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
@@ -175,7 +175,9 @@ describe("InboxTriage", () => {
         )}
       </InboxTriage>
     );
-    const rendered = render(<TestQueryProvider>{view(item({ body: "A" }))}</TestQueryProvider>);
+    const rendered = renderWithAppMaitai(
+      <TestQueryProvider>{view(item({ body: "A" }))}</TestQueryProvider>,
+    );
     await click("Edit");
     await act(async () => {
       fireEvent.change(screen.getByRole("textbox", { name: "Edit message" }), {
@@ -401,7 +403,7 @@ describe("InboxTriage", () => {
 
   test("new advice for an outdated suggestion runs beside it, then reports a failure there", () => {
     const outdated = proposal({ outdated: true });
-    const { unmount } = render(
+    const { unmount } = renderWithAppMaitai(
       <TestQueryProvider>
         <InboxTriage
           item={item({ proposal: outdated, suggestionState: "pending" })}
@@ -460,7 +462,7 @@ describe("InboxMessage source navigation", () => {
     "opens the owning product Session for a child source with Run %s",
     async (runId) => {
       const onOpenChat = vi.fn();
-      render(
+      renderWithAppMaitai(
         <TestQueryProvider>
           <InboxMessage
             item={item({
@@ -494,7 +496,7 @@ describe("InboxMessage source navigation", () => {
 
   test("an unavailable Session cannot be replaced with a native Thread lookup", async () => {
     const onOpenChat = vi.fn();
-    render(
+    renderWithAppMaitai(
       <TestQueryProvider>
         <InboxMessage
           item={item({
@@ -531,7 +533,7 @@ describe("InboxMessage source navigation", () => {
 
 test("a handed-back intake keeps the original words and opens its previous chat", async () => {
   const onOpenChat = vi.fn();
-  render(
+  renderWithAppMaitai(
     <TestQueryProvider>
       <InboxMessage
         item={item({

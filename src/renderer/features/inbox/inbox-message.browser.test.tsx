@@ -1,4 +1,5 @@
-import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithAppMaitai } from "@/test/app-maitai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AnimatePresence } from "motion/react";
 import { type ReactNode, useLayoutEffect, useRef } from "react";
@@ -141,7 +142,7 @@ describe("inbox message", () => {
   }
 
   test("the waiting spinner becomes Stop in place, ending where the bubble's corner curve ends", async () => {
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage key="page:1" item={waiting} />
       </Stream>,
@@ -179,7 +180,7 @@ describe("inbox message", () => {
       basis: { pageId: "page:2", contentHash: "content:2" },
       pageKey: "IN-2",
     };
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage key="page:1" item={waiting} />
         <StreamMessage key="page:2" item={another} />
@@ -190,7 +191,7 @@ describe("inbox message", () => {
   });
 
   test("a row of icons ends its last glyph where the bubble's corner curve ends", async () => {
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage
           key="page:1"
@@ -221,7 +222,7 @@ describe("inbox message", () => {
       suggestionState: "failed" as const,
       suggestionError: "Agent operation could not be completed",
     };
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage key="page:1" item={failed} />
       </Stream>,
@@ -233,7 +234,7 @@ describe("inbox message", () => {
   });
 
   test("a selected card's ring is never clipped, and only a message folding away clips", async () => {
-    const view = render(
+    const view = renderWithAppMaitai(
       <Stream>
         <StreamMessage key="page:1" item={waiting} selected />
       </Stream>,
@@ -257,7 +258,7 @@ describe("inbox message", () => {
   });
 
   test("Open page, Copy and Edit wait on the text's bottom-right corner until the message is hovered", async () => {
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage key="page:1" item={waiting} />
       </Stream>,
@@ -299,7 +300,7 @@ describe("inbox message", () => {
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
   test("an important message's star keeps its own place beside the bubble, through hover", async () => {
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage key="page:1" item={{ ...waiting, important: true }} />
       </Stream>,
@@ -329,7 +330,7 @@ describe("inbox message", () => {
   });
 
   test("a message without the mark has no star, even while hovered", async () => {
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage key="page:1" item={waiting} />
       </Stream>,
@@ -343,7 +344,7 @@ describe("inbox message", () => {
 
   test("the time keeps its place on the bubble's side whether or not the message is starred", () => {
     const timeOffset = (item: InboxItem) => {
-      const view = render(
+      const view = renderWithAppMaitai(
         <Stream>
           <StreamMessage key={item.pageId} item={item} />
         </Stream>,
@@ -386,7 +387,7 @@ describe("inbox message", () => {
     };
     const body =
       "Keep the drag handle visible while moving a block, and keep it in place when the pointer leaves the row during a long drag.";
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage
           key="page:1"
@@ -416,7 +417,7 @@ describe("inbox message", () => {
 
   test("marks never push a message that fits on one line onto a second", () => {
     const body = "Review the empty search results copy.";
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage
           key="page:1"
@@ -441,7 +442,7 @@ describe("inbox message", () => {
   });
 
   test("a message still waiting in Triage with no chats shows no marks", () => {
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage
           key="page:1"
@@ -466,7 +467,7 @@ describe("inbox message", () => {
 
   test("the time becomes another link to the message's Page once it shows", async () => {
     const onOpenPage = vi.fn();
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage key="page:1" item={waiting} onOpenPage={onOpenPage} />
       </Stream>,
@@ -511,7 +512,7 @@ describe("inbox message", () => {
       createdAt: "2026-10-11T10:00:00.000Z",
       updatedAt: "2026-10-11T10:00:00.000Z",
     };
-    render(
+    renderWithAppMaitai(
       <Stream>
         <StreamMessage
           key="page:1"
@@ -641,7 +642,7 @@ describe("inbox important", () => {
 
   describe("important messages out of view", () => {
     test("are pointed back to only while they are out of view", async () => {
-      render(<Stream items={messages(20)} marked={important("m3")} />);
+      renderWithAppMaitai(<Stream items={messages(20)} marked={important("m3")} />);
       await settle();
       expect(bar()?.textContent).toContain("Important m3");
       // It has waited four days.
@@ -655,7 +656,7 @@ describe("inbox important", () => {
     });
 
     test("bring the reader back to the longest-waiting one, then point at the next", async () => {
-      render(<Stream items={messages(20)} marked={important("m2", "m14")} />);
+      renderWithAppMaitai(<Stream items={messages(20)} marked={important("m2", "m14")} />);
       await settle();
       expect(bar()?.textContent).toContain("Important m2");
       expect(bar()?.textContent).toContain("1/2");
@@ -672,7 +673,7 @@ describe("inbox important", () => {
     test("load earlier windows to find one further back than the stream has loaded", async () => {
       const all = messages(20);
       const fetchNextPage = vi.fn(async () => undefined);
-      const view = render(
+      const view = renderWithAppMaitai(
         <Stream
           items={all.slice(0, 10)}
           marked={important("m3")}
@@ -692,7 +693,7 @@ describe("inbox important", () => {
       await waitFor(() => expect(bar()).toBeNull());
     });
     test("are named on a surface that stays opaque under the pointer", async () => {
-      render(<Stream items={messages(20)} marked={important("m3")} />);
+      renderWithAppMaitai(<Stream items={messages(20)} marked={important("m3")} />);
       await settle();
       await act(async () => {
         await userEvent.hover(bar()!);
@@ -783,7 +784,7 @@ describe("inbox viewport", () => {
   describe("an Inbox's place", () => {
     test("returns to the message the reader left at, though messages above it were handled", async () => {
       const items = messages(20);
-      const first = render(<Stream scopeKey="test:anchor" items={items} />);
+      const first = renderWithAppMaitai(<Stream scopeKey="test:anchor" items={items} />);
       expect(atBottom()).toBe(true);
       await scrollTo(650);
       // Oldest first, m8 is the first message wholly in view, 50px below the top.
@@ -791,32 +792,34 @@ describe("inbox viewport", () => {
       first.unmount();
 
       // Two older messages were handled while the reader was away.
-      render(
+      renderWithAppMaitai(
         <Stream scopeKey="test:anchor" items={items.filter((id) => !["m1", "m2"].includes(id))} />,
       );
       expect(offsetOf("m8")).toBe(50);
     });
 
     test("keeps following the newest messages when the reader left there", async () => {
-      const first = render(<Stream scopeKey="test:latest" items={messages(20)} />);
+      const first = renderWithAppMaitai(<Stream scopeKey="test:latest" items={messages(20)} />);
       expect(atBottom()).toBe(true);
       first.unmount();
-      render(<Stream scopeKey="test:latest" items={messages(25)} />);
+      renderWithAppMaitai(<Stream scopeKey="test:latest" items={messages(25)} />);
       expect(atBottom()).toBe(true);
     });
 
     test("settles at the newest messages when the message it left at was handled", async () => {
       const items = messages(20);
-      const first = render(<Stream scopeKey="test:handled" items={items} />);
+      const first = renderWithAppMaitai(<Stream scopeKey="test:handled" items={items} />);
       await scrollTo(650);
       first.unmount();
-      render(<Stream scopeKey="test:handled" items={items.filter((id) => id !== "m8")} />);
+      renderWithAppMaitai(
+        <Stream scopeKey="test:handled" items={items.filter((id) => id !== "m8")} />,
+      );
       expect(atBottom()).toBe(true);
     });
 
     test("keeps a place in each view", async () => {
       const items = messages(20);
-      const view = render(<Stream scopeKey="test:views" items={items} />);
+      const view = renderWithAppMaitai(<Stream scopeKey="test:views" items={items} />);
       await scrollTo(650);
       view.rerender(<Stream scopeKey="test:views" items={items} view="activity" />);
       // Activity opens at its newest fact, at the top.
@@ -830,14 +833,14 @@ describe("inbox viewport", () => {
 
     test("loads earlier windows to find the message it left at", async () => {
       const all = messages(20);
-      const first = render(<Stream scopeKey="test:earlier" items={all} />);
+      const first = renderWithAppMaitai(<Stream scopeKey="test:earlier" items={all} />);
       await scrollTo(150);
       // m3 is wholly in view first; only the newest ten messages load on return.
       expect(offsetOf("m3")).toBe(50);
       first.unmount();
 
       const fetchNextPage = vi.fn(async () => undefined);
-      const view = render(
+      const view = renderWithAppMaitai(
         <Stream
           scopeKey="test:earlier"
           items={all.slice(0, 10)}
