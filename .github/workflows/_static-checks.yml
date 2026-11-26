@@ -68,9 +68,10 @@ jobs:
           groups="${STATIC_GROUP}"
           if [[ "${STATIC_GROUP}" == "quick-contracts" ]]; then
             groups="$(node -e '
-              const dedicated = ["types", "ui-contracts", "startup-bundles", "repository-contracts", "tooling-contracts"];
+              // Match the matrix exclusions. Other groups get their own cells.
+              const quickGroups = ["source-ownership", "ci-contracts", "dependency-security", "generated", "landing"];
               for (const group of JSON.parse(process.env.STATIC_GROUPS_JSON)) {
-                if (!dedicated.includes(group)) console.log(group);
+                if (quickGroups.includes(group)) console.log(group);
               }
             ')"
             [[ -n "${groups}" ]]

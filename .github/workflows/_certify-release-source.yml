@@ -28,34 +28,40 @@ jobs:
         with:
           source_sha: ${{ inputs.source_sha }}
 
+  plan:
+    needs: guard
+    uses: ./.github/workflows/_full-ci-plan.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+
   static-contracts:
     name: certify static contracts
-    needs: guard
+    needs: plan
     uses: ./.github/workflows/_static-checks.yml
     with:
-      groups_json: '["types","source-ownership","ui-contracts","startup-bundles","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"]'
+      groups_json: ${{ toJSON(fromJSON(needs.plan.outputs.plan).staticGroups) }}
       source_sha: ${{ inputs.source_sha }}
       timing_prefix: certify-static
 
   rust-checks:
     name: certify rust checks
-    needs: guard
+    needs: plan
     uses: ./.github/workflows/_rust-checks.yml
     with:
-      full_workspace: true
-      run_fast: true
-      run_protocol: true
+      full_workspace: ${{ fromJSON(needs.plan.outputs.plan).rustFull }}
+      run_fast: ${{ fromJSON(needs.plan.outputs.plan).rustFast }}
+      run_protocol: ${{ fromJSON(needs.plan.outputs.plan).protocolContracts }}
       source_sha: ${{ inputs.source_sha }}
       timing_prefix: certify-rust
 
   app-tests:
     name: certify application and browser tests
-    needs: guard
+    needs: plan
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"draft":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"staticGroups":["types","source-ownership","ui-contracts","startup-bundles","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"],"testMode":"full","windowsChecks":false}'
+      gate_plan_json: ${{ needs.plan.outputs.plan }}
       source_sha: ${{ inputs.source_sha }}
-      suites_json: '["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"]'
+      suites_json: ${{ toJSON(fromJSON(needs.plan.outputs.plan).appTestSuites) }}
       timing_prefix: certify-app
 
   app-nightly:
@@ -118,6 +124,7 @@ jobs:
   certify:
     name: issue exact-source certificate
     needs:
+      - plan
       - static-contracts
       - rust-checks
       - app-tests

@@ -2,12 +2,12 @@ import path from "node:path";
 
 import { describe, expect, test } from "vite-plus/test";
 
-import { APP_TEST_SUITES, STATIC_GROUPS, type CiGatePlan } from "./ci-gate-plan";
 import {
   verifyAppTestMatrixContracts,
   verifyDirectNeedsContracts,
   verifyElectronE2eWorkflowContracts,
   verifyFullCiContracts,
+  verifyFullPlanWorkflow,
   verifyMainCiBaseContract,
   verifyNightlyMacApplicationContracts,
   verifyNightlyTierContract,
@@ -15,48 +15,15 @@ import {
   verifyRustCacheOwnership,
   verifyWindowsCiContracts,
 } from "./verify-ci-matrix-contracts";
-import { readWorkflow, repositoryRoot, requireRecord } from "./github-workflow-files";
+import {
+  readWorkflow,
+  requireRecord,
+  workflowsDirectory,
+  repositoryRoot,
+} from "./github-workflow-files";
 import { MAIN_CI_BASE_COMMAND } from "./main-ci-base";
 
-const nightlyWorkflow = ({
-  appTestSuites = APP_TEST_SUITES,
-  gatePlanOverrides = {},
-  rawGatePlan,
-  staticGroups = STATIC_GROUPS,
-}: {
-  readonly appTestSuites?: readonly string[];
-  readonly gatePlanOverrides?: Partial<CiGatePlan>;
-  readonly rawGatePlan?: unknown;
-  readonly staticGroups?: readonly string[];
-} = {}): Record<string, unknown> => {
-  const gatePlan: CiGatePlan = {
-    allGates: true,
-    appTestSuites: APP_TEST_SUITES,
-    dependencyKind: "source",
-    docsOnly: false,
-    draft: false,
-    landingOnly: false,
-    protocolContracts: true,
-    relatedPaths: [],
-    rustFast: true,
-    rustFull: true,
-    staticGroups: STATIC_GROUPS,
-    testMode: "full",
-    windowsChecks: false,
-    ...gatePlanOverrides,
-  };
-  return {
-    jobs: {
-      "app-tests": {
-        with: {
-          gate_plan_json: rawGatePlan ?? JSON.stringify(gatePlan),
-          suites_json: JSON.stringify(appTestSuites),
-        },
-      },
-      "static-contracts": { with: { groups_json: JSON.stringify(staticGroups) } },
-    },
-  };
-};
+const readCiWorkflow = (filename: string) => readWorkflow(path.join(workflowsDirectory, filename));
 
 describe("CI matrix contracts", () => {
   test("rejects Main CI when its base resolver can be skipped", () => {
@@ -116,49 +83,70 @@ describe("CI matrix contracts", () => {
     ).toThrow("must publish the verdict even when verification fails");
   });
 
-  test("accepts exhaustive canonical nightly matrices", () => {
-    expect(() => verifyFullCiContracts(nightlyWorkflow())).not.toThrow();
+  test("classifies the full plan from the requested source before publishing", () => {
+    const workflow = readCiWorkflow("_full-ci-plan.yml");
+    expect(() => verifyFullPlanWorkflow(workflow)).not.toThrow();
+
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    const plan = requireRecord(jobs.plan, "plan");
+    const steps = plan.steps as Record<string, unknown>[];
+    for (const [id, overrides, error] of [
+      ["checkout", { with: { ref: "${{ github.workflow_sha }}" } }, "exact source checkout"],
+      ["classify", { run: "node --no-warnings scripts/ci/classify-change.ts" }, "with --full"],
+      ["publish", { "continue-on-error": true }, "must require classification"],
+      ["publish", { if: "always()" }, "must require classification"],
+    ] as const) {
+      const invalidSteps = steps.map((step) =>
+        step.id === id || (id === "checkout" && String(step.uses).startsWith("actions/checkout@"))
+          ? { ...step, ...overrides }
+          : step,
+      );
+      expect(() =>
+        verifyFullPlanWorkflow({ ...workflow, jobs: { plan: { ...plan, steps: invalidSteps } } }),
+      ).toThrow(error);
+    }
   });
 
-  test("rejects omitted, additional, and reordered nightly matrix entries", () => {
-    expect(() =>
-      verifyFullCiContracts(nightlyWorkflow({ staticGroups: STATIC_GROUPS.slice(1) })),
-    ).toThrow("Nightly CI static groups");
-    expect(() =>
-      verifyFullCiContracts(nightlyWorkflow({ appTestSuites: [...APP_TEST_SUITES, "new"] })),
-    ).toThrow("Nightly CI app-tests suites");
-    expect(() =>
-      verifyFullCiContracts(nightlyWorkflow({ appTestSuites: [...APP_TEST_SUITES].reverse() })),
-    ).toThrow("Nightly CI app-tests suites");
-  });
+  test.each([
+    ["ci-nightly.yml", "Nightly CI"],
+    ["_certify-release-source.yml", "Release certification"],
+  ] as const)("%s derives every deterministic gate from its source", (filename, name) => {
+    const workflow = readCiWorkflow(filename);
+    expect(() => verifyFullCiContracts(workflow, name)).not.toThrow();
 
-  test("labels malformed full-plan inputs and rejects incomplete coverage", () => {
-    expect(() => verifyFullCiContracts(nightlyWorkflow({ rawGatePlan: 7 }))).toThrow(
-      "app-tests.gate_plan_json must be a JSON string",
-    );
-    expect(() => verifyFullCiContracts(nightlyWorkflow({ rawGatePlan: "{" }))).toThrow(
-      "app-tests.gate_plan_json must contain valid JSON",
-    );
-    expect(() => verifyFullCiContracts(nightlyWorkflow({ rawGatePlan: "{}" }))).toThrow(
-      "CI gate plan is missing fields",
-    );
-    expect(() =>
-      verifyFullCiContracts(
-        nightlyWorkflow({
-          gatePlanOverrides: {
-            relatedPaths: ["src/shared/core-types.ts"],
-            testMode: "related",
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    for (const [jobName, overrides, error] of [
+      ["plan", { source_sha: "${{ github.workflow_sha }}" }, "source it checks"],
+      ["static-contracts", { groups_json: '["types"]' }, "every static group from the source"],
+      ["rust-checks", { run_protocol: false }, "Rust gates from the source"],
+      ["app-tests", { gate_plan_json: "{}" }, "every uncached suite from the source"],
+      ["app-tests", { suites_json: '["unit"]' }, "every uncached suite from the source"],
+      ["app-tests", { lanes_json: '["unit"]' }, "every uncached suite from the source"],
+    ] as const) {
+      const job = requireRecord(jobs[jobName], jobName);
+      const inputs = requireRecord(job.with, `${jobName} inputs`);
+      expect(() =>
+        verifyFullCiContracts(
+          {
+            ...workflow,
+            jobs: { ...jobs, [jobName]: { ...job, with: { ...inputs, ...overrides } } },
           },
-        }),
-      ),
-    ).toThrow("full deterministic gate plan");
+          name,
+        ),
+      ).toThrow(error);
+    }
+  });
+
+  test("release certification requires planning after the protected source guard", () => {
+    const workflow = readCiWorkflow("_certify-release-source.yml");
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    const plan = requireRecord(jobs.plan, "plan");
     expect(() =>
       verifyFullCiContracts(
-        nightlyWorkflow({
-          gatePlanOverrides: { rustFull: false },
-        }),
+        { ...workflow, jobs: { ...jobs, plan: { ...plan, needs: undefined } } },
+        "Release certification",
       ),
-    ).toThrow("full deterministic gate plan");
+    ).toThrow("must derive its full plan from the source it checks");
   });
 
   test("leaves enabling the Rust compiler cache to the action that installs it", () => {
@@ -345,7 +333,7 @@ describe("Nightly macOS application coverage", () => {
     const inputs = requireRecord(macJob.with, "mac application inputs");
     for (const [overrides, error] of [
       [{ max_parallel: 3 }, "in five slots"],
-      [{ suites_json: '["unit"]' }, "app-tests-macos suites"],
+      [{ suites_json: '["unit"]' }, "app-tests-macos must run every uncached suite"],
     ] as const) {
       expect(() =>
         verifyNightlyMacApplicationContracts({

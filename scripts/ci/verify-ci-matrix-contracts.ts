@@ -1,6 +1,5 @@
 import path from "node:path";
 
-import { APP_TEST_SUITES, parseCiGatePlan, STATIC_GROUPS } from "./ci-gate-plan";
 import {
   isRecord,
   readWorkflow,
@@ -11,18 +10,6 @@ import {
   type UnknownRecord,
 } from "./github-workflow-files";
 import { MAIN_CI_BASE_COMMAND, MAIN_CI_WORKFLOW_PATH } from "./main-ci-base";
-
-const parseStringArray = (value: unknown, label: string): readonly string[] => {
-  if (typeof value !== "string") throw new Error(`${label} must be a JSON string.`);
-  const parsed: unknown = JSON.parse(value);
-  if (
-    !Array.isArray(parsed) ||
-    !parsed.every((entry): entry is string => typeof entry === "string")
-  ) {
-    throw new Error(`${label} must contain a JSON string array.`);
-  }
-  return parsed;
-};
 
 const reusableInputs = (
   workflow: UnknownRecord,
@@ -50,45 +37,155 @@ const requireExactEntries = (
   );
 };
 
+const FULL_PLAN_WORKFLOW = "./.github/workflows/_full-ci-plan.yml";
+const PLAN_OUTPUT = "${{ needs.plan.outputs.plan }}";
+const SOURCE_INPUT = "${{ inputs.source_sha }}";
+
+const requireFullGateCaller = (
+  workflow: UnknownRecord,
+  jobName: string,
+  workflowName: string,
+  reusableWorkflow: string,
+  sourceSha?: string,
+): UnknownRecord => {
+  const jobs = requireRecord(workflow.jobs, `${workflowName} jobs`);
+  const label = `${workflowName} ${jobName}`;
+  const job = requireRecord(jobs[jobName], `${label} job`);
+  const inputs = requireRecord(job.with, `${label} inputs`);
+  if (
+    job.uses !== reusableWorkflow ||
+    job.if !== undefined ||
+    !declaredNeeds(job.needs, label).has("plan") ||
+    inputs.source_sha !== sourceSha
+  ) {
+    throw new Error(`${label} must run after planning against the same source.`);
+  }
+  return inputs;
+};
+
 const requireFullAppTestMatrix = (
   workflow: UnknownRecord,
   jobName: string,
   workflowName: string,
+  sourceSha?: string,
 ): void => {
-  const inputs = reusableInputs(workflow, jobName, workflowName);
-  const label = `${workflowName} ${jobName}`;
-  requireExactEntries(
-    parseStringArray(inputs.suites_json, `${label}.suites_json`),
-    APP_TEST_SUITES,
-    `${label} suites`,
+  const inputs = requireFullGateCaller(
+    workflow,
+    jobName,
+    workflowName,
+    "./.github/workflows/_app-tests.yml",
+    sourceSha,
   );
-  if (typeof inputs.gate_plan_json !== "string") {
-    throw new Error(`${label}.gate_plan_json must be a JSON string.`);
+  if (
+    inputs.gate_plan_json !== PLAN_OUTPUT ||
+    inputs.suites_json !== "${{ toJSON(fromJSON(needs.plan.outputs.plan).appTestSuites) }}" ||
+    inputs.lanes_json !== undefined
+  ) {
+    throw new Error(
+      `${workflowName} ${jobName} must run every uncached suite from the source plan.`,
+    );
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(inputs.gate_plan_json) as unknown;
-  } catch (cause) {
-    throw new Error(`${label}.gate_plan_json must contain valid JSON.`, { cause });
+};
+
+export const verifyFullPlanWorkflow = (workflow: UnknownRecord): void => {
+  const triggers = requireRecord(workflow.on, "Full plan triggers");
+  const call = requireRecord(triggers.workflow_call, "Full plan workflow_call");
+  const outputs = requireRecord(call.outputs, "Full plan workflow outputs");
+  const planOutput = requireRecord(outputs.plan, "Full plan workflow plan output");
+  const jobs = requireRecord(workflow.jobs, "Full plan workflow jobs");
+  const job = requireRecord(jobs.plan, "Full plan job");
+  const jobOutputs = requireRecord(job.outputs, "Full plan job outputs");
+  const steps = Array.isArray(job.steps) ? job.steps.filter(isRecord) : [];
+  const checkouts = steps.filter(
+    (step) => typeof step.uses === "string" && step.uses.startsWith("actions/checkout@"),
+  );
+  const [checkout] = checkouts;
+  const classify = steps.find((step) => step.id === "classify");
+  const publish = steps.find((step) => step.id === "publish");
+  if (
+    checkouts.length !== 1 ||
+    !isRecord(checkout?.with) ||
+    checkout.with.ref !== SOURCE_INPUT ||
+    !isRecord(classify?.env) ||
+    classify.env.SOURCE_SHA !== SOURCE_INPUT ||
+    typeof classify.run !== "string" ||
+    !classify.run
+      .split("\n")
+      .includes(
+        'node --no-warnings scripts/ci/classify-change.ts --full --head "${SOURCE_SHA}" --output "${RUNNER_TEMP}/classification.json"',
+      ) ||
+    steps.indexOf(checkout) >= steps.indexOf(classify)
+  ) {
+    throw new Error("The full plan must classify with --full from the exact source checkout.");
   }
-  const plan = parseCiGatePlan(parsed);
-  if (plan.testMode !== "full" || !plan.rustFull) {
-    throw new Error(`${workflowName} must use a full deterministic gate plan.`);
+  if (
+    !publish ||
+    steps.indexOf(classify) >= steps.indexOf(publish) ||
+    [job, checkout, classify, publish].some(
+      (entry) => entry.if !== undefined || entry["continue-on-error"] !== undefined,
+    ) ||
+    jobOutputs.plan !== "${{ steps.publish.outputs.plan }}" ||
+    planOutput.value !== "${{ jobs.plan.outputs.plan }}"
+  ) {
+    throw new Error("The full plan workflow must require classification and publish its result.");
   }
-  requireExactEntries(plan.appTestSuites, APP_TEST_SUITES, `${label} gate plan suites`);
 };
 
 export const verifyFullCiContracts = (
   workflow: UnknownRecord,
-  workflowName = "Nightly CI",
+  workflowName: "Nightly CI" | "Release certification" = "Nightly CI",
 ): void => {
-  const inputs = reusableInputs(workflow, "static-contracts", workflowName);
-  requireExactEntries(
-    parseStringArray(inputs.groups_json, `${workflowName} static-contracts.groups_json`),
-    STATIC_GROUPS,
-    `${workflowName} static groups`,
+  const certification = workflowName === "Release certification";
+  const source = certification ? SOURCE_INPUT : undefined;
+  const jobs = requireRecord(workflow.jobs, `${workflowName} jobs`);
+  const plan = requireRecord(jobs.plan, `${workflowName} plan job`);
+  const planInputs = requireRecord(plan.with, `${workflowName} plan inputs`);
+  if (
+    plan.uses !== FULL_PLAN_WORKFLOW ||
+    plan.if !== undefined ||
+    planInputs.source_sha !== (source ?? "${{ github.sha }}") ||
+    (certification && !declaredNeeds(plan.needs, workflowName).has("guard"))
+  ) {
+    throw new Error(`${workflowName} must derive its full plan from the source it checks.`);
+  }
+
+  const staticInputs = requireFullGateCaller(
+    workflow,
+    "static-contracts",
+    workflowName,
+    "./.github/workflows/_static-checks.yml",
+    source,
   );
-  requireFullAppTestMatrix(workflow, "app-tests", workflowName);
+  if (
+    staticInputs.groups_json !== "${{ toJSON(fromJSON(needs.plan.outputs.plan).staticGroups) }}"
+  ) {
+    throw new Error(`${workflowName} must run every static group from the source plan.`);
+  }
+  const rustInputs = requireFullGateCaller(
+    workflow,
+    "rust-checks",
+    workflowName,
+    "./.github/workflows/_rust-checks.yml",
+    source,
+  );
+  if (
+    rustInputs.full_workspace !== "${{ fromJSON(needs.plan.outputs.plan).rustFull }}" ||
+    rustInputs.run_fast !== "${{ fromJSON(needs.plan.outputs.plan).rustFast }}" ||
+    rustInputs.run_protocol !== "${{ fromJSON(needs.plan.outputs.plan).protocolContracts }}"
+  ) {
+    throw new Error(`${workflowName} must run the Rust gates from the source plan.`);
+  }
+  requireFullAppTestMatrix(workflow, "app-tests", workflowName, source);
+
+  const aggregateId = certification ? "certify" : "complete";
+  const aggregate = requireRecord(jobs[aggregateId], `${workflowName} ${aggregateId} job`);
+  const needs = declaredNeeds(aggregate.needs, `${workflowName} ${aggregateId}`);
+  if (
+    ["plan", "static-contracts", "rust-checks", "app-tests"].some((name) => !needs.has(name)) ||
+    (certification && aggregate.if !== undefined)
+  ) {
+    throw new Error(`${workflowName} must require the plan and its full gate results.`);
+  }
 };
 
 export const verifyNightlyTierContract = (workflow: UnknownRecord, aggregateId: string): void => {
@@ -450,8 +547,6 @@ export const verifyNightlyMacApplicationContracts = (workflow: UnknownRecord): v
   const inputs = requireRecord(macJob.with, "Nightly CI macOS application inputs");
   const linuxInputs = reusableInputs(workflow, "app-tests", "Nightly CI");
   if (
-    macJob.uses !== "./.github/workflows/_app-tests.yml" ||
-    macJob.if !== undefined ||
     inputs.runner !== "macos-26" ||
     typeof inputs.timing_prefix !== "string" ||
     inputs.timing_prefix === linuxInputs.timing_prefix
@@ -587,6 +682,9 @@ export const verifyDirectNeedsContracts = (workflow: UnknownRecord, workflowName
 };
 
 const main = (): void => {
+  verifyFullPlanWorkflow(
+    readWorkflow(path.join(repositoryRoot, ".github/workflows/_full-ci-plan.yml")),
+  );
   const nightly = readWorkflow(path.join(repositoryRoot, ".github/workflows/ci-nightly.yml"));
   verifyFullCiContracts(nightly);
   verifyNightlyMacApplicationContracts(nightly);

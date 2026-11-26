@@ -1,0 +1,54 @@
+name: Reusable Full CI Plan
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact source commit whose gate inventory to use.
+        required: true
+        type: string
+    outputs:
+      plan:
+        description: Full gate plan from the requested source.
+        value: ${{ jobs.plan.outputs.plan }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      plan: ${{ steps.publish.outputs.plan }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source_sha }}
+      - name: Classify all source gates
+        id: classify
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          node --no-warnings scripts/ci/classify-change.ts --full --head "${SOURCE_SHA}" --output "${RUNNER_TEMP}/classification.json"
+      - name: Validate and publish the full plan
+        id: publish
+        shell: bash
+        run: |
+          node --no-warnings --input-type=module - "${RUNNER_TEMP}/classification.json" <<'JS'
+          import { appendFileSync, readFileSync } from "node:fs";
+          import { APP_TEST_SUITES, parseCiGatePlan, STATIC_GROUPS } from "./scripts/ci/ci-gate-plan.ts";
+
+          const { plan: rawPlan } = JSON.parse(readFileSync(process.argv[2], "utf8"));
+          const plan = parseCiGatePlan(rawPlan);
+          if (!plan.allGates || plan.testMode !== "full" || !plan.rustFull ||
+              !plan.rustFast || !plan.protocolContracts ||
+              plan.staticGroups.length !== STATIC_GROUPS.length ||
+              plan.appTestSuites.length !== APP_TEST_SUITES.length) {
+            throw new Error("Expected the full deterministic gate plan for the source commit.");
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `plan=${JSON.stringify(plan)}\n`);
+          JS
