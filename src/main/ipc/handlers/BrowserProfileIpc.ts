@@ -549,6 +549,12 @@ export const live: Layer.Layer<
         ]);
       }),
     );
+    yield* ipc.on("browser-workbench-shortcut", (event, commandId: unknown, accelerator: unknown) =>
+      Effect.sync(() => {
+        if (ownerForGuest(guest, event))
+          guest.forwardPageShortcut(event.sender.id, commandId, accelerator);
+      }),
+    );
     yield* ipc.on("browser-annotation-toggle", (event) =>
       Effect.sync(() => {
         const owner = ownerForGuest(guest, event);

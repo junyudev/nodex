@@ -35,6 +35,7 @@ import {
   type CSSProperties,
   type RefObject,
   type ReactNode,
+  type Ref,
 } from "react";
 import type { MotionValue } from "motion/react";
 import {
@@ -331,6 +332,7 @@ export function BrowserSidebarPanel({
   const linkOpening = useLinkOpening();
   const { resolved: themeVariant } = useTheme();
   const panelRef = useRef<HTMLDivElement>(null);
+  const annotationComposerRef = useRef<HTMLDivElement>(null);
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
   const syncWebviewPresentationRef = useRef<
     | ((presentation?: { isVisible: boolean; themeVariant: BrowserSidebarThemeVariant }) => void)
@@ -718,40 +720,6 @@ export function BrowserSidebarPanel({
       window.removeEventListener("keydown", onKeyDown, true);
     };
   }, [annotationKeymap, browserIdentity, command, commentMode, isVisible]);
-  useEffect(() => {
-    if (!commentMode || !isVisible) return;
-    const change = (event: KeyboardEvent) => {
-      if (
-        event.code !== "Space" ||
-        event.isComposing ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.shiftKey ||
-        (event.target instanceof HTMLElement &&
-          event.target.closest("input,textarea,[contenteditable=true]"))
-      )
-        return;
-      event.preventDefault();
-      void command({
-        type: "set-annotation-presentation",
-        ...browserIdentity,
-        suspended: event.type === "keydown",
-      });
-    };
-    const release = () => {
-      void command({ type: "set-annotation-presentation", ...browserIdentity, suspended: false });
-    };
-    window.addEventListener("keydown", change, true);
-    window.addEventListener("keyup", change, true);
-    window.addEventListener("blur", release);
-    return () => {
-      window.removeEventListener("keydown", change, true);
-      window.removeEventListener("keyup", change, true);
-      window.removeEventListener("blur", release);
-    };
-  }, [browserIdentity, command, commentMode, isVisible]);
-
   const shouldMountWebview = !isBlank || activeBrowserUseTab !== null;
   const showsNewTabPage = !downloadsOpen && !snapshot.failure && !shouldMountWebview;
   const workspaceAddressCandidates = addressSuggestions.useWorkspaceSuggestions(
@@ -1111,25 +1079,61 @@ export function BrowserSidebarPanel({
   }
 
   useEffect(() => {
-    if (!commentMode) return undefined;
+    if (!commentMode || !isVisible) return;
+    let holdingSpace = false;
+    const changeSuspension = (suspended: boolean) => {
+      if (holdingSpace === suspended) return;
+      holdingSpace = suspended;
+      void command({ type: "set-annotation-presentation", ...browserIdentity, suspended });
+    };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.repeat)
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!panelRef.current?.contains(target) && !annotationComposerRef.current?.contains(target))
         return;
+      if (
+        target.closest(
+          '[role="dialog"],[role="alertdialog"],[role="menu"],[data-command-palette-surface],[data-content-search-surface]',
+        )
+      )
+        return;
+      if (event.code === "Space") {
+        if (
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey ||
+          event.shiftKey ||
+          target.isContentEditable ||
+          target.closest("input,textarea,select")
+        )
+          return;
+        event.preventDefault();
+        changeSuspension(true);
+        return;
+      }
+      if (event.key !== "Escape" || event.repeat) return;
       event.preventDefault();
-      event.stopPropagation();
       if (annotationAnchors.length > 0) {
         setAnnotationDraft((current) => resetBrowserAnnotationDraft(current));
         return;
       }
-      void command({
-        type: "set-interaction-mode",
-        ...browserIdentity,
-        mode: "browse",
-      });
+      void command({ type: "set-interaction-mode", ...browserIdentity, mode: "browse" });
     };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [annotationAnchors.length, browserIdentity, command, commentMode]);
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") changeSuspension(false);
+    };
+    const release = () => changeSuspension(false);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", release);
+      release();
+    };
+  }, [annotationAnchors.length, browserIdentity, command, commentMode, isVisible]);
 
   useEffect(() => {
     if (!browserRuntimeAvailable) return undefined;
@@ -1603,6 +1607,7 @@ export function BrowserSidebarPanel({
   return (
     <div
       ref={panelRef}
+      data-browser-sidebar-panel-tab={browserIdentity.browserTabId}
       className="relative h-full min-h-0 overflow-hidden bg-token-main-surface-primary text-token-text-primary"
     >
       {!showsNewTabPage ? (
@@ -2088,7 +2093,7 @@ export function BrowserSidebarPanel({
             onCloseDeviceToolbar={toggleDeviceToolbar}
           >
             {commentMode && !snapshot.annotationSuspended && !annotationAgentControlled ? (
-              <BrowserCommentOverlay identity={browserIdentity}>
+              <BrowserCommentOverlay identity={browserIdentity} composerRef={annotationComposerRef}>
                 <BrowserAnnotationEditorPlacement
                   identity={browserIdentity}
                   anchor={annotationAnchors[0]}
@@ -4087,14 +4092,16 @@ function formatLocalServerTitle(origin: string): string {
 
 function BrowserCommentOverlay({
   identity,
+  composerRef,
   children,
 }: {
   identity: BrowserSidebarTabIdentity;
+  composerRef: Ref<HTMLDivElement>;
   children?: ReactNode;
 }) {
   return (
     <BrowserPageOverlay identity={identity}>
-      <div id="browser-sidebar-comment-popup-root" className="absolute inset-0">
+      <div ref={composerRef} id="browser-sidebar-comment-popup-root" className="absolute inset-0">
         {children}
       </div>
     </BrowserPageOverlay>

@@ -101,6 +101,7 @@ export interface ApplicationMenuRuntimeOptions {
   readonly initialCommandKeymap: CommandKeymapState;
   readonly isPackaged: boolean;
   readonly native?: ApplicationMenuNativePort;
+  readonly onKeymapChanged?: (keymap: CommandKeymapState) => void;
   readonly platform: NodeJS.Platform;
   readonly requestNewWindow: () => void;
   readonly resourcesPath: string;
@@ -434,6 +435,7 @@ export const live = (
       let currentCommandKeymap = options.initialCommandKeymap;
       const refresh = (commandKeymap: CommandKeymapState): void => {
         currentCommandKeymap = commandKeymap;
+        options.onKeymapChanged?.(commandKeymap);
         const checkForUpdatesLabel = getMainIntl().formatMessage({
           id: "main.appMenu.app.checkForUpdates",
           defaultMessage: "Check for Updates…",

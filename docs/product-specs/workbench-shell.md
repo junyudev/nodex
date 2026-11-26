@@ -328,6 +328,15 @@ place of windows. Nodex never opens a separate window for a page.
 - While an Agent controls a page, these requests follow its
   [navigation restriction](../SECURITY.md).
 
+### Browser shortcuts
+
+A focused Browser page gives New Chat, New Window, Focus Address, New Tab and
+Close Tab to Nodex. Address and tab actions use the Browser that has focus.
+The page gets first refusal on the command palette, Page search, Workbench Find
+and its match navigation, and chat navigation. Nodex defers to page handlers
+in the top-level document and same-origin frames. Configured shortcuts apply
+to the focused page. Text editing and Back/Forward stay with the Browser page.
+
 ### Browser annotations
 
 Annotate selects an element, text, or region and opens a comment editor beside it,
@@ -337,8 +346,11 @@ Cmd/Ctrl+Enter sends it as its own chat message. Entered from the page menu's
 Quick annotate, which starts at the clicked target, the two are swapped. The
 editor shows both actions and their shortcuts. Shift+Enter adds a line. Escape
 cancels an editor or gesture first, then leaves annotation mode when neither is
-open. Region selection follows the held primary pointer. Returning to the page
-after releasing outside it, losing focus, or leaving the page cancels the region.
+open. Escape and hold-Space apply when focus is in that Browser or its annotation
+editor. Focused menus, dialogs and Find handle Escape first. Hold Space to
+temporarily interact with the page while annotating. Region selection follows
+the held primary pointer. Returning to the page after releasing outside it,
+losing focus, or leaving the page cancels the region.
 
 Saved notes have numbered pins and chat composer attachments. The Annotate
 control shows the saved count. A pin reopens its note for editing or removal.

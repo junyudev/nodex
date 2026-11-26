@@ -76,15 +76,38 @@ function resolveFocusedBrowserLeaf(document: Document, target: Element | null): 
   const tabId = guest?.getAttribute("data-browser-sidebar-browser-tab-id");
   const conversationId = guest?.getAttribute("data-browser-sidebar-conversation-id");
   if (!tabId || !conversationId) return null;
+  return (
+    findBrowserTabHost(document, {
+      browserTabId: tabId,
+      browserConversationId: conversationId,
+    })?.closest(PANEL_GROUP_LEAF_SELECTOR) ?? null
+  );
+}
 
-  const hosts = document.querySelectorAll("div[data-browser-sidebar-webview-host-root]");
-  for (const host of hosts) {
-    if (host.getAttribute("data-browser-sidebar-browser-tab-id") !== tabId) continue;
-    if (host.getAttribute("data-browser-sidebar-conversation-id") !== conversationId) continue;
-    const hostLeaf = host.closest(PANEL_GROUP_LEAF_SELECTOR);
-    if (hostLeaf) return hostLeaf;
+interface BrowserTabHostIdentity {
+  readonly browserConversationId: string;
+  readonly browserTabId: string;
+}
+
+function findBrowserTabHost(document: Document, identity: BrowserTabHostIdentity): Element | null {
+  for (const host of document.querySelectorAll("div[data-browser-sidebar-webview-host-root]")) {
+    if (host.getAttribute("data-browser-sidebar-browser-tab-id") !== identity.browserTabId)
+      continue;
+    if (
+      host.getAttribute("data-browser-sidebar-conversation-id") !== identity.browserConversationId
+    )
+      continue;
+    if (host.closest(PANEL_GROUP_LEAF_SELECTOR)) return host;
   }
   return null;
+}
+
+/** The panel group showing a Browser page, found through that page's in-panel host. */
+export function resolveBrowserTabPanelScope(
+  document: Document,
+  identity: BrowserTabHostIdentity,
+): PanelTabCycleScope | null {
+  return resolveFocusedPanelTabCycleScope(findBrowserTabHost(document, identity));
 }
 
 /** Prefer the focused Browser group, then the remembered group, then active groups. */

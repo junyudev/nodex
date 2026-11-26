@@ -63,14 +63,11 @@ test("same-mode synchronization preserves selected targets and saved pins surviv
     document.querySelector<HTMLButtonElement>("[data-nodex-browser-annotation-marker]")!.style
       .display,
   ).toBe("none");
-  presentation({}, { suspended: false, pinsVisible: true, agentControlled: false });
-  target.dispatchEvent(
-    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " ", code: "Space" }),
-  );
+  presentation({}, { suspended: true, pinsVisible: true, agentControlled: false });
   const suspendedClick = new MouseEvent("click", { bubbles: true, cancelable: true });
   target.dispatchEvent(suspendedClick);
   expect(suspendedClick.defaultPrevented).toBe(false);
-  target.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: " ", code: "Space" }));
+  presentation({}, { suspended: false, pinsVisible: true, agentControlled: false });
   const resumedClick = new MouseEvent("click", { bubbles: true, cancelable: true });
   target.dispatchEvent(resumedClick);
   expect(resumedClick.defaultPrevented).toBe(true);
@@ -78,14 +75,6 @@ test("same-mode synchronization preserves selected targets and saved pins surviv
   const controlledClick = new MouseEvent("click", { bubbles: true, cancelable: true });
   target.dispatchEvent(controlledClick);
   expect(controlledClick.defaultPrevented).toBe(false);
-  const controlledSpace = new KeyboardEvent("keydown", {
-    bubbles: true,
-    cancelable: true,
-    key: " ",
-    code: "Space",
-  });
-  target.dispatchEvent(controlledSpace);
-  expect(controlledSpace.defaultPrevented).toBe(false);
   expect(target.style.fontSize).toBe("");
   presentation({}, { suspended: false, pinsVisible: true, agentControlled: false });
   mode({}, { enabled: false });

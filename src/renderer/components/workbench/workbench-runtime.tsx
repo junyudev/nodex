@@ -508,10 +508,13 @@ import {
 } from "../../../shared/window-navigation";
 import {
   CAPTURE_TO_INBOX_COMMAND_ID,
+  FIND_NEXT_COMMAND_ID,
+  FIND_PREVIOUS_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
   TOGGLE_FULL_VIEW_COMMAND_ID,
   type WorkbenchCommandInvocation,
 } from "../../../shared/workbench-commands";
+import { navigateContentSearch } from "@/features/content-search/content-search-keyboard";
 import {
   commandTitleMessage,
   createCommandKeymapState,
@@ -4341,22 +4344,54 @@ export function WorkbenchRuntime({
     void runNoticeAction(() => presentNoticeConversation(readback.navigation, focus));
   };
 
-  const executeWorkbenchCommand = ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
-    if (commandId === "focusBrowserAddressBar") return panelCommands.focusActiveBrowserAddress();
-    if (commandId === "settings") {
-      openSettings();
-      return true;
+  const executeWorkbenchCommand = ({
+    commandId,
+    source,
+    browserTab,
+  }: WorkbenchCommandInvocation): boolean => {
+    switch (commandId) {
+      case "focusBrowserAddressBar":
+        return panelCommands.focusActiveBrowserAddress(browserTab);
+      case "openBrowserTab":
+        return panelCommands.openBrowserTab(browserTab);
+      case "closeTab":
+        return panelCommands.closeBrowserTab(browserTab);
+      case "settings":
+        openSettings();
+        return true;
+      case CAPTURE_TO_INBOX_COMMAND_ID:
+        return captureToInbox(source);
+      case TOGGLE_BOTTOM_PANEL_COMMAND_ID:
+        toggleActiveBottomPanel();
+        return true;
+      case TOGGLE_FULL_VIEW_COMMAND_ID:
+        toggleActiveWorkspaceFullView();
+        return true;
+      case "newThread":
+        void sessionCommands.startNewChatInProject(activeProjectId);
+        return true;
+      case "openCommandMenu":
+        openCommandPalette({ mode: "root" });
+        return true;
+      case "searchPages":
+        openCommandPalette({ mode: "pages" });
+        return true;
+      case "findInThread":
+        // The menu opens Find through its own channel; this request comes from a shortcut.
+        requestContentSearchOpen("keyboard_shortcut", browserTab ? "browser" : undefined);
+        return true;
+      case FIND_NEXT_COMMAND_ID:
+        return navigateContentSearch("next");
+      case FIND_PREVIOUS_COMMAND_ID:
+        return navigateContentSearch("previous");
+      case "nextThread":
+      case "previousThread":
+        void chatLifecycleCommands.stepChat(commandId === "nextThread" ? "next" : "previous");
+        return true;
+      case "nextThreadNeedingAttention":
+        void chatLifecycleCommands.openNextChatNeedingReader();
+        return true;
     }
-    if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) return captureToInbox(source);
-    if (commandId === TOGGLE_BOTTOM_PANEL_COMMAND_ID) {
-      toggleActiveBottomPanel();
-      return true;
-    }
-    if (commandId === TOGGLE_FULL_VIEW_COMMAND_ID) {
-      toggleActiveWorkspaceFullView();
-      return true;
-    }
-    return false;
   };
 
   const commandPort: WorkbenchCommandPort = (() => ({
@@ -4381,22 +4416,17 @@ export function WorkbenchRuntime({
     closePanelTab: () => {
       closeFocusedPanelTab(null, { respectActiveElementGuard: true });
     },
-    execute: (commandId, source) => {
+    execute: (invocation) => {
+      // Panel commands act on the selected chat's panels, so they wait for its details.
       if (
-        commandId === CAPTURE_TO_INBOX_COMMAND_ID ||
-        commandId === "settings" ||
-        commandId === "focusBrowserAddressBar"
+        !selectedSessionDetailReady &&
+        (invocation.commandId === TOGGLE_BOTTOM_PANEL_COMMAND_ID ||
+          invocation.commandId === TOGGLE_FULL_VIEW_COMMAND_ID)
       ) {
-        return executeWorkbenchCommand({ commandId, source });
-      }
-      if (!selectedSessionDetailReady) {
-        pendingWorkbenchCommandInvocationsRef.current.push({
-          commandId,
-          source,
-        });
+        pendingWorkbenchCommandInvocationsRef.current.push(invocation);
         return true;
       }
-      return executeWorkbenchCommand({ commandId, source });
+      return executeWorkbenchCommand(invocation);
     },
     openCommandPalette,
     goToPages: workbenchWindow.selectLibrary,
