@@ -1035,10 +1035,12 @@ Grouped suggestions and dispatches accept at most 16 messages.
 
 ## Agent and command-line drop-in
 
-The Agent and command-line Inbox interfaces append messages. Triage and dispatch
-remain fenced Inbox workflows; only the user, or the user's own `Let Nodex start chats for me`, confirms work. Inbox
-messages are ordinary Pages and retain the Profile's full content access, including
-for parent, child and background Agents and planning interactions.
+Agents and the CLI can send messages and read the Inbox messages and suggestions
+visible to the Member they act for. `page show` includes a message’s current
+suggestion and the latest decision that sent it to a chat. `fetch` gives a brief
+routing summary, and SQL exposes `inbox_messages` and `inbox_suggestions` for
+queries across Pages. Triage stays in the Inbox. Only the person, or their own
+`Let Nodex start chats for me` setting, confirms work.
 
 - **Agent tool:** an Agent uses the `send_to_inbox` application tool. Core records
   its chat and Project from the verified execution source, and the message lands

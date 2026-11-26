@@ -122,7 +122,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["members", "me"] => document::<Member>(),
         ["tree"] => document::<crate::runtime::TreeRoot>(),
         ["read"] => document::<crate::deeplink::LinkedPage<LibraryPageProjectionFile>>(),
-        ["page", "show"] => document::<crate::runtime::PageShowResult>(),
+        ["page", "show"] => document::<crate::runtime::PageShowResult<'static>>(),
         ["page", "prepare"] => document::<LibraryPageOperationPreparation>(),
         ["sed"] => document::<crate::runtime::SedOutput>(),
         ["docs", "markdown"] => document::<String>(),

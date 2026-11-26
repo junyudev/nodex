@@ -645,6 +645,7 @@ describe("inbox-files", () => {
     summary: "File this",
     rationale: null,
     producedBy: null,
+    decisionSessionId: null,
     targetProjectName: "Project",
     chat: null,
     failureMessage: null,

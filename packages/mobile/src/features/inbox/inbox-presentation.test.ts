@@ -26,6 +26,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   rationale: null,
   origin: "agent",
   producedBy: null,
+  decisionSessionId: null,
   action: {
     type: "new_chat",
     projectId: null,

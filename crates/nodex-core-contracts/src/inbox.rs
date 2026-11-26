@@ -396,6 +396,8 @@ pub struct ProjectWorkspaceInboxProposal {
     pub summary: String,
     pub rationale: Option<String>,
     pub produced_by: Option<String>,
+    /// The Decision run that wrote this suggestion.
+    pub decision_session_id: Option<String>,
     /// Display context for the action's target Project.
     pub target_project_name: Option<String>,
     /// Current state of the chat named by `send_to_chat`, or the dispatched chat.
@@ -464,6 +466,141 @@ pub struct ProjectWorkspaceInboxItem {
     /// Present for an Automation's decision.
     pub automation_decision: Option<AutomationInboxDecision>,
     pub revision: i64,
+}
+
+/// What the Inbox knows about one Page for the reader.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageIntake {
+    pub page_id: String,
+    pub message: Option<ProjectWorkspaceInboxItem>,
+    pub handoff: Option<InboxHandoff>,
+}
+
+/// The latest decision sent this message to a chat.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxHandoff {
+    pub proposal: ProjectWorkspaceInboxProposal,
+    pub decided_at: String,
+    pub actor: crate::sources::ActivityActor,
+    pub actor_label: String,
+}
+
+/// Capture and suggestion details shared by the Agent read surfaces.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageIntakeMetadata {
+    pub source: InboxMessageSource,
+    pub kind: Option<ProjectWorkspaceInboxEntryKind>,
+    pub important: bool,
+    pub captured_at: String,
+    pub suggestion: Option<InboxSuggestionSummary>,
+    pub suggestion_decision_session_id: Option<String>,
+    pub page_keys: std::collections::BTreeMap<String, Option<String>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxMessageSource {
+    pub kind: String,
+    pub label: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InboxReadSuggestionState {
+    Waiting,
+    Running,
+    Settled,
+    Failed,
+    Outdated,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxSuggestionSummary {
+    pub state: InboxReadSuggestionState,
+    pub action_type: Option<String>,
+    pub summary: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CompactPageIntake {
+    pub source: InboxMessageSource,
+    pub waiting: bool,
+    #[schema(required = true)]
+    pub suggestion: Option<InboxSuggestionSummary>,
+    #[schema(required = true)]
+    pub handoff: Option<CompactInboxHandoff>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CompactInboxHandoff {
+    pub session_id: Option<String>,
+    pub decided_at: String,
+    pub confirmed_by: Option<InboxConfirmedBy>,
+}
+
+/// The prompt and optional context recorded on a proposal, with any resolved destination.
+#[derive(Serialize, ToSchema)]
+pub struct InboxActionDetails<'a> {
+    pub action_type: &'static str,
+    pub project_id: Option<&'a str>,
+    pub session_id: Option<&'a str>,
+    pub prompt: Option<&'a str>,
+    pub additions: &'a [String],
+    pub skills: &'a [InboxSuggestedSkill],
+}
+
+impl ProjectWorkspaceInboxProposal {
+    pub fn action_details(&self) -> InboxActionDetails<'_> {
+        use ProjectWorkspaceInboxDispatchAction::*;
+        let mut details = InboxActionDetails {
+            action_type: "",
+            project_id: self
+                .chat
+                .as_ref()
+                .and_then(|chat| chat.project_id.as_deref()),
+            session_id: self.chat.as_ref().map(|chat| chat.session_id.as_str()),
+            prompt: None,
+            additions: &[],
+            skills: &[],
+        };
+        details.action_type = match &self.action {
+            NewChat {
+                project_id,
+                prompt,
+                additions,
+                skills,
+                ..
+            } => {
+                details.project_id = project_id.as_deref();
+                details.prompt = Some(prompt);
+                details.additions = additions;
+                details.skills = skills;
+                "new_chat"
+            }
+            SendToChat {
+                session_id,
+                prompt,
+                additions,
+                skills,
+                ..
+            } => {
+                details.session_id = Some(session_id);
+                details.prompt = Some(prompt);
+                details.additions = additions;
+                details.skills = skills;
+                "send_to_chat"
+            }
+            MoveToProject { project_id } => {
+                details.project_id = Some(project_id);
+                "move_to_project"
+            }
+            Plan { .. } => "plan",
+            Keep => "keep",
+            SaveToNotes { .. } => "save_to_notes",
+            Snooze { .. } => "snooze",
+            ExecuteDecision { .. } => "execute_decision",
+        };
+        details
+    }
 }
 
 /// The Page write that rewrites one message, prepared by Core's message rules so

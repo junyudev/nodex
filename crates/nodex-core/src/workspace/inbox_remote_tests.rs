@@ -1,5 +1,6 @@
 //! Remote membership crosses the same Inbox transaction and receipt boundaries as local UI.
 use super::*;
+use crate::workspace::inbox_tests::inbox_sql;
 use crate::workspace::test_support::read;
 use nodex_core_contracts::{RemotePrincipal, library::MemberRole};
 
@@ -731,6 +732,7 @@ fn queued_member_withdrawal(withdrawal: &'static str) {
 fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
     let w = seeded_workspace();
     let bob = member(&w, "bob");
+    let alice = member(&w, "alice");
     apply_member(
         &w,
         &bob,
@@ -762,6 +764,31 @@ fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
     else {
         panic!("Bob's intake")
     };
+    for (reader, expected) in [(&bob, true), (&alice, false)] {
+        let ProjectWorkspaceReadValue::InboxPageIntake { intake, metadata } = w
+            .module
+            .read(
+                reader,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::InboxPageIntake {
+                        page_id: entry.page_id.clone(),
+                    },
+                },
+            )
+            .unwrap()
+            .value
+        else {
+            panic!("Expected Page intake");
+        };
+        assert_eq!(intake.message.as_ref(), expected.then_some(entry.as_ref()));
+        assert_eq!(metadata.is_some(), expected);
+        assert_eq!(
+            inbox_sql(&w, reader, "SELECT page_id FROM inbox_messages").len(),
+            usize::from(expected)
+        );
+        assert!(inbox_sql(&w, reader, "SELECT page_id FROM inbox_suggestions").is_empty());
+    }
     let start = |person: &BoundModuleContext, operation: &str, id: &str| {
         apply_member(
             &w,

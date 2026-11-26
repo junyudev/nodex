@@ -509,6 +509,7 @@ describe("inbox message", () => {
       chat: null,
       failureMessage: null,
       failureKind: null,
+      decisionSessionId: null,
       createdAt: "2026-10-11T10:00:00.000Z",
       updatedAt: "2026-10-11T10:00:00.000Z",
     };

@@ -280,6 +280,14 @@ pub(super) fn read(
             item: super::inbox_read::read_single_entry(connection, context, library_id, &page_id)?
                 .map(Box::new),
         }),
+        ProjectWorkspaceRead::InboxPageIntake { page_id } => {
+            let (intake, metadata) =
+                super::page_intake::read(connection, context, library_id, &page_id)?;
+            Ok(ProjectWorkspaceReadValue::InboxPageIntake {
+                intake: Box::new(intake),
+                metadata: metadata.map(Box::new),
+            })
+        }
         ProjectWorkspaceRead::InboxSummary { scope } => {
             Ok(ProjectWorkspaceReadValue::InboxSummary {
                 summary: super::inbox_read::read_summary(connection, context, library_id, &scope)?,

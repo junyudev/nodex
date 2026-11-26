@@ -66,6 +66,8 @@ const PROVISIONAL_TITLE_COLUMNS: usize = 48;
 /// More than any opening line a provisional title can be cut from.
 const OPENING_TEXT_CHARS: i64 = 4_096;
 pub(super) const MAX_PROPOSAL_PAGES: usize = 16;
+pub(super) const REDACTED_HANDOFF_FAILURE: &str =
+    "A message was deleted before delivery was confirmed";
 const MAX_BULK_PAGES: usize = 200;
 const MAX_PROMPT_BYTES: usize = 32 * 1024;
 const MAX_ADDITIONS: usize = 12;
@@ -1909,7 +1911,7 @@ fn forget_proposals(
         if state == "dispatching" && !remaining.is_empty() {
             // Runtime may already have accepted even a local delivery. Erasure cannot infer
             // non-delivery, replay it, or report the remaining members as completed.
-            connection.execute("UPDATE inbox_proposals SET action_json=json_set(action_json,'$.prompt','Review the remaining Inbox messages'),summary='Delivery needs review',rationale=NULL,produced_by=NULL,kind=NULL,basis_json=?2,failure_kind='unknown',failure_message='A message was deleted before delivery was confirmed',revision=revision+1,updated_at=?3 WHERE proposal_id=?1",params![proposal_id,serde_json::to_string(&current_basis(connection,&remaining)?).map_err(|_| internal("Inbox basis cannot be encoded"))?,now])?;
+            connection.execute("UPDATE inbox_proposals SET action_json=json_remove(json_set(action_json,'$.prompt','Review the remaining Inbox messages'),'$.additions','$.skills'),summary='Delivery needs review',rationale=NULL,produced_by=NULL,kind=NULL,basis_json=?2,failure_kind='unknown',failure_message=?4,revision=revision+1,updated_at=?3 WHERE proposal_id=?1",params![proposal_id,serde_json::to_string(&current_basis(connection,&remaining)?).map_err(|_| internal("Inbox basis cannot be encoded"))?,now,REDACTED_HANDOFF_FAILURE])?;
             connection.execute("UPDATE inbox_handoffs SET final_text='',execution_selection_json=NULL WHERE proposal_id=?1",[&proposal_id])?;
             connection.execute("DELETE FROM inbox_proposal_pages WHERE proposal_id=?1 AND page_id IN (SELECT value FROM json_each(?2))",params![proposal_id,page_ids_json])?;
             connection.execute("UPDATE inbox_entries SET suggestion_state='settled',suggestion_request_id=NULL,suggestion_error=NULL,revision=revision+1,updated_at=?2 WHERE current_proposal_id=?1 AND page_id NOT IN (SELECT value FROM json_each(?3))",params![proposal_id,now,page_ids_json])?;

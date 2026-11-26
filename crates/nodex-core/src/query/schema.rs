@@ -5,6 +5,8 @@ use nodex_sqlite_query::{Affinity, Column, Table};
 pub(super) const RELATIONS: &[&str] = &[
     "pages",
     "page_documents",
+    "inbox_messages",
+    "inbox_suggestions",
     "databases",
     "data_sources",
     "properties",
@@ -71,6 +73,51 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
                 ("page_id", "TEXT", false),
                 ("markdown", "TEXT", false),
                 ("body_etag", "TEXT", false),
+            ],
+        ),
+        "inbox_messages" => (
+            "One active Inbox message Page visible in the reader's Inbox or its history.",
+            &["page_id"],
+            &[],
+            None,
+            &[
+                ("page_id", "TEXT", false),
+                ("inbox_project_id", "TEXT", true),
+                ("source_kind", "TEXT", false),
+                ("source_label", "TEXT", true),
+                ("kind", "TEXT", true),
+                ("important", "INTEGER", false),
+                ("captured_at", "TEXT", false),
+                ("waiting", "INTEGER", false),
+                ("suggestion_state", "TEXT", true),
+            ],
+        ),
+        "inbox_suggestions" => (
+            "The current waiting suggestion or latest chat handoff, once per member Page. Sent actions contain the reviewed prompt and context.",
+            &["proposal_id", "page_id"],
+            &[],
+            None,
+            &[
+                ("proposal_id", "TEXT", false),
+                ("page_id", "TEXT", false),
+                ("member_index", "INTEGER", false),
+                ("member_count", "INTEGER", false),
+                ("stage", "TEXT", false),
+                ("outdated", "INTEGER", false),
+                ("origin", "TEXT", false),
+                ("action_type", "TEXT", false),
+                ("project_id", "TEXT", true),
+                ("session_id", "TEXT", true),
+                ("prompt", "TEXT", true),
+                ("additions", "TEXT", false),
+                ("skills", "TEXT", false),
+                ("summary", "TEXT", false),
+                ("rationale", "TEXT", true),
+                ("suggested_by", "TEXT", true),
+                ("decision_session_id", "TEXT", true),
+                ("created_at", "TEXT", false),
+                ("decided_at", "TEXT", true),
+                ("confirmed_by", "TEXT", true),
             ],
         ),
         "databases" => (
@@ -307,6 +354,12 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
         "page_documents" => vec![
             "SELECT page_id, markdown, body_etag FROM page_documents WHERE page_id = :id".into(),
         ],
+        "inbox_messages" => vec![
+            "SELECT page_id, source_label, suggestion_state FROM inbox_messages WHERE waiting = 1".into(),
+        ],
+        "inbox_suggestions" => vec![
+            "SELECT stage, action_type, session_id, prompt, rationale FROM inbox_suggestions WHERE page_id = :id".into(),
+        ],
         "view_rows" => vec!["SELECT page_id, title FROM view_rows(:view) ORDER BY ordinal".into()],
         "search_hits" => vec![
             "SELECT page_id, title, snippet FROM search_hits(:query, 5) ORDER BY ordinal".into(),
@@ -324,7 +377,17 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
         examples,
         columns: fields
             .iter()
-            .map(|(n, t, v)| column(n, t, *v, ""))
+            .map(|(n, t, v)| column(n, t, *v, match (name, *n) {
+                ("inbox_messages", "waiting") => "In the requesting Member's Inbox, including snoozed and failed deliveries.",
+                ("inbox_messages", "inbox_project_id") => "Project Inbox where the message was captured, or NULL for the Library Inbox.",
+                ("inbox_messages", "suggestion_state") => "The current waiting, running, settled, failed or outdated suggestion state.",
+                ("inbox_suggestions", "member_index") => "Zero-based position in the proposal.",
+                ("inbox_suggestions", "stage") => "suggested or sent.",
+                ("inbox_suggestions", "origin") => "nodex, user or automation.",
+                ("inbox_suggestions", "additions" | "skills") => "JSON array. Sent rows contain only the reviewed selections.",
+                ("inbox_suggestions", "decided_at") => "Confirmation time for a sent action.",
+                _ => "",
+            }))
             .collect(),
     })
 }

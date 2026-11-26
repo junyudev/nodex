@@ -121,6 +121,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::TurnAuthority { .. }
         | ProjectWorkspaceRead::SidebarSectionPlacement { .. }
         | ProjectWorkspaceRead::InboxEntry { .. }
+        | ProjectWorkspaceRead::InboxPageIntake { .. }
         | ProjectWorkspaceRead::InboxSuggestionRequest { .. }
         | ProjectWorkspaceRead::InboxSummary { .. }
         | ProjectWorkspaceRead::InboxRoutingConsent

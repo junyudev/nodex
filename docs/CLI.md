@@ -114,8 +114,12 @@ explicit text output. Skill installation still requires its explicit confirmatio
 by task and describes each entry. SQL is the first read entry for filtering,
 joins and aggregation; `read` remains the direct route for one known Page.
 `nodex page show <page>` shows Page metadata and its Core-derived Turn, including
-actor, reason, start time and episode. Work briefs include the
-current Turn and name any blocking Prerequisite.
+actor, reason, start time and episode. For an Inbox message, including a Library
+Inbox message read from outside a Project, `intake` shows its source, whether it
+waits for a decision, its current suggestion, and what its latest decision sent to
+a chat: the prompt, the additions and skills that were kept, the rationale and the
+Decision run. Work briefs include the current Turn and name any blocking
+Prerequisite.
 
 Related multi-Page or multi-field writes favor atomic operations, and SQL-selected
 Property edits use prepare/apply to retain observed targets and versions. These
@@ -193,8 +197,9 @@ text. `--title` names it, otherwise Nodex labels it and names
 it later. Inside a Project's
 source or managed worktree, or with `--project`, the message lands in that
 Project's Inbox as a Page on its Board. Anywhere else it lands in the Library
-Inbox. The command cannot read or triage either Inbox. `--idempotency-key` makes a retry return the
-original receipt.
+Inbox. `--idempotency-key` makes a retry return the original receipt. Read Inbox
+messages with `page show` or SQL. Triage stays in the Inbox, and confirmation
+requires the person or their own `Let Nodex start chats for me` setting.
 
 Resource selectors accept bare IDs directly; no `@` prefix is required.
 Page selectors resolve a stable `pageId` first, then a current or
@@ -223,6 +228,11 @@ including standalone Pages. Source Property columns require an explicit binding
 such as `--bind tasks=SOURCE_ID`. `--database` hints schema discovery only and
 does not narrow `pages`. Start with the compact catalog, then describe a relation
 or bound Source for exact columns, identities, types, options and examples.
+
+`inbox_messages` lists the reader’s Inbox message Pages and whether they are
+waiting. Join `inbox_suggestions` on `page_id` for current suggestions and the
+latest chat handoff, including the recorded prompt and rationale. A grouped
+suggestion has one row per member Page.
 
 ```sh
 nodex sql query 'SELECT page_id,markdown,body_etag FROM page_documents WHERE page_id=:id' --param 'id="PAGE_ID"'

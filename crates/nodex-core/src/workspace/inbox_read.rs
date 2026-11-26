@@ -1,6 +1,9 @@
 //! Bounded Inbox read models: the user's stream, the suggestion Agent's routing
 //! context, and the Desktop Host's dispatch outbox.
 
+#[path = "page_intake.rs"]
+pub(crate) mod page_intake;
+
 use super::inbox_content::{
     MAX_MESSAGE_BYTES as MAX_AGENT_BODY_BYTES, MAX_SUGGESTION_IMAGES, MessageContent,
     MessageContentLimit, agent_markdown, read_message_content,
@@ -42,8 +45,8 @@ use crate::infrastructure::cursor::{
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::inbox::{
-    MAX_PROPOSAL_PAGES, corrupt, invalid, parse_action, parse_kind, proposal_page_ids, scope_home,
-    truncate_chars,
+    MAX_PROPOSAL_PAGES, REDACTED_HANDOFF_FAILURE, corrupt, invalid, parse_action, parse_kind,
+    proposal_page_ids, scope_home, truncate_chars,
 };
 
 const MAX_STREAM_BODY_BYTES: usize = 8 * 1024;
@@ -708,25 +711,34 @@ fn project_member_item(
     if matches!(item.row_kind, InboxRowKind::Intake | InboxRowKind::Turn) {
         item.snooze = super::inbox::snooze::record(connection, &item.page_id, member)?;
     }
-    let project = |chat: &mut ProjectWorkspaceInboxChat| -> Result<(), StoreError> {
-        chat.unread=connection.query_row("SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id=?1 AND session_id=?2)",params![member,chat.session_id],|r|r.get(0))?;
-        Ok(())
-    };
     if let Some(chat) = item
         .turn
         .as_mut()
         .and_then(|turn| turn.active_chat.as_mut())
     {
-        project(chat)?;
+        project_member_chat(connection, member, chat)?;
     }
     if let Some(chat) = item
         .proposal
         .as_mut()
         .and_then(|proposal| proposal.chat.as_mut())
     {
-        project(chat)?;
+        project_member_chat(connection, member, chat)?;
     }
     Ok(item)
+}
+
+fn project_member_chat(
+    connection: &Connection,
+    member: &str,
+    chat: &mut ProjectWorkspaceInboxChat,
+) -> Result<(), StoreError> {
+    chat.unread = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id=?1 AND session_id=?2)",
+        params![member, chat.session_id],
+        |row| row.get(0),
+    )?;
+    Ok(())
 }
 
 /// Current-schema Inbox/History projection; content migrations use `read_entry` instead.
@@ -853,7 +865,7 @@ fn read_proposal(
     let Some(row) = connection
         .query_row(
             "SELECT revision, origin, state, action_json, kind, summary, rationale, produced_by, \
-               dispatch_session_id, failure_message, created_at, updated_at \
+               dispatch_session_id, failure_message, created_at, updated_at, decision_session_id \
              FROM inbox_proposals WHERE proposal_id = ?1 AND library_id = ?2",
             params![proposal_id, library_id],
             |row| {
@@ -870,6 +882,7 @@ fn read_proposal(
                     row.get::<_, Option<String>>(9)?,
                     row.get::<_, String>(10)?,
                     row.get::<_, String>(11)?,
+                    row.get::<_, Option<String>>(12)?,
                 ))
             },
         )
@@ -890,12 +903,25 @@ fn read_proposal(
         failure_message,
         created_at,
         updated_at,
+        decision_session_id,
     ) = row;
     let state = parse_proposal_state(&state)?;
     if state == ProjectWorkspaceInboxProposalState::Superseded {
         return Ok(None);
     }
-    let action = parse_action(&action_json)?;
+    let mut action = parse_action(&action_json)?;
+    // Older uncertain handoffs redacted the prompt while still retaining optional context.
+    if failure_message.as_deref() == Some(REDACTED_HANDOFF_FAILURE)
+        && let ProjectWorkspaceInboxDispatchAction::NewChat {
+            additions, skills, ..
+        }
+        | ProjectWorkspaceInboxDispatchAction::SendToChat {
+            additions, skills, ..
+        } = &mut action
+    {
+        additions.clear();
+        skills.clear();
+    }
     let task_target = match &action {
         ProjectWorkspaceInboxDispatchAction::ExecuteDecision { decision_id, .. } => connection
             .query_row(
@@ -1034,6 +1060,7 @@ fn read_proposal(
         summary,
         rationale,
         produced_by,
+        decision_session_id,
         target_project_name,
         chat,
         failure_message,

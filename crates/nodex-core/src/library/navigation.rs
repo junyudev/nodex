@@ -373,7 +373,7 @@ pub(super) fn read(
                 library_id,
                 &authorization,
             )?;
-            let value = agent_block_target(
+            let mut value = agent_block_target(
                 connection,
                 library_id,
                 store_epoch,
@@ -381,6 +381,16 @@ pub(super) fn read(
                 &block_id,
                 requesting_project_id,
             )?;
+            if let Some(target) = &mut value
+                && target.block_id == target.owner_page_id
+            {
+                target.intake = crate::workspace::page_intake::read_compact(
+                    connection,
+                    context,
+                    &authorization.provenance,
+                    &target.block_id,
+                )?;
+            }
             Ok(LibraryReadValue::AgentBlockTarget { value })
         }
         LibraryRead::AgentSurfaceDescription {
@@ -980,6 +990,7 @@ fn agent_block_target(
         document_generation,
         document_head_seq,
         owner_page: Box::new(owner_page),
+        intake: None,
     }))
 }
 

@@ -208,6 +208,7 @@ pub fn authorize(
                 | "session_detail"
                 | "session_start"
                 | "inbox_entry"
+                | "inbox_page_intake"
                 | "inbox_message"
                 | "inbox_dispatch_context"
                 | "inbox_summary"

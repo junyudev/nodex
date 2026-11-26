@@ -180,6 +180,8 @@ export async function readInboxChatTargets(input: InboxChatTargetsInput) {
   return { items, nextCursor: result.nextCursor };
 }
 
+export const readPageIntake = (pageId: string) => invokeRendererQuery("inbox:page-intake", pageId);
+
 export const readInboxEntry = (pageId: string) => invokeRendererQuery("inbox:entry", pageId);
 
 export const readInboxReplyDestination = (pageId: string, body: string) =>

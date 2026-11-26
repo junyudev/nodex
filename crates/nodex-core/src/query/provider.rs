@@ -1,5 +1,6 @@
 use super::{Snapshot, invalid, schema};
 use crate::infrastructure::sqlite::StoreError;
+use crate::workspace::page_intake::{SqlRelation, visit_sql_rows};
 use nodex_core_contracts::database::DatabasePropertySchema;
 use nodex_core_contracts::sql::{SqlSchema, SqlScope, SqlTable};
 use nodex_sqlite_query::{Provider, ScanRequest};
@@ -166,6 +167,11 @@ impl Relation {
             return Ok(ids.clone());
         }
         let id = equalities.get("page_id").and_then(Value::as_str);
+        let inbox_relation = match self.table.table.as_str() {
+            "inbox_messages" => Some(SqlRelation::Messages),
+            "inbox_suggestions" => Some(SqlRelation::Suggestions),
+            _ => None,
+        };
         let (ids, rows) = self.snapshot.read(|connection| {
             if let Some(source) = &self.table.data_source_id {
                 let ids = self.snapshot.database(connection).source_ids(source, id)?;
@@ -177,6 +183,27 @@ impl Relation {
             }
             if matches!(self.table.table.as_str(), "pages" | "page_documents") {
                 return Ok((self.snapshot.library(connection).page_ids(id)?, Vec::new()));
+            }
+            if let Some(relation) = inbox_relation {
+                let mut rows = Vec::new();
+                visit_sql_rows(
+                    connection,
+                    &self.snapshot.context,
+                    self.snapshot.agent_turn.as_ref(),
+                    relation,
+                    id,
+                    |row| {
+                        self.snapshot.charge(
+                            1,
+                            serde_json::to_vec(&row)
+                                .map_err(|_| invalid("Invalid Inbox SQL row"))?
+                                .len(),
+                        )?;
+                        rows.push(row);
+                        Ok(())
+                    },
+                )?;
+                return Ok((Vec::new(), rows));
             }
             let rows = match self.table.table.as_str() {
                 "search_hits" => {
@@ -234,20 +261,28 @@ impl Relation {
                     .collect();
                 let identity = format!("{key}:{}", Value::Array(identity));
                 if !cache.rows.contains_key(&identity) {
-                    self.snapshot.charge(
-                        0,
-                        serde_json::to_vec(&row)
-                            .map_err(|_| invalid("Invalid query row"))?
-                            .len(),
-                    )?;
+                    if inbox_relation.is_none() {
+                        self.snapshot.charge(
+                            0,
+                            serde_json::to_vec(&row)
+                                .map_err(|_| invalid("Invalid query row"))?
+                                .len(),
+                        )?;
+                    }
                     cache.rows.insert(identity.clone(), row);
                 }
                 ids.push(identity);
             }
             ids
         };
-        self.snapshot
-            .charge(ids.len(), ids.iter().map(String::len).sum())?;
+        self.snapshot.charge(
+            if inbox_relation.is_some() {
+                0
+            } else {
+                ids.len()
+            },
+            ids.iter().map(String::len).sum(),
+        )?;
         cache.scans.insert(key, ids.clone());
         Ok(ids)
     }

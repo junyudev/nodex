@@ -14,6 +14,7 @@ import type {
   InboxItem,
   InboxLocation,
   InboxProposal,
+  PageIntake,
   InboxScope,
   InboxSource,
   InboxSummary,
@@ -326,6 +327,7 @@ const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
   summary: proposal.summary,
   rationale: proposal.rationale ?? null,
   producedBy: proposal.produced_by ?? null,
+  decisionSessionId: proposal.decision_session_id ?? null,
   targetProjectName: proposal.target_project_name ?? null,
   chat: proposal.chat ? inboxChatFromCore(proposal.chat) : null,
   failureMessage: proposal.failure_message ?? null,
@@ -381,6 +383,19 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
     : null,
   revision: item.revision,
   basis: inboxPageBasisFromCore(item.basis),
+});
+
+export const pageIntakeFromCore = (intake: Schemas["PageIntake"]): PageIntake => ({
+  pageId: intake.page_id,
+  message: intake.message ? inboxItemFromCore(intake.message) : null,
+  handoff: intake.handoff
+    ? {
+        proposal: proposalFromCore(intake.handoff.proposal),
+        decidedAt: intake.handoff.decided_at,
+        actor: intake.handoff.actor,
+        actorLabel: intake.handoff.actor_label,
+      }
+    : null,
 });
 
 /** One Activity window; a message fact's message reads as the Inbox reads its messages. */

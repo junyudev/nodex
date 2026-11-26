@@ -15,6 +15,7 @@ import {
 import { hostLocalCommit as committed } from "../../../host/host-local-commit";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
+import { InboxPageIdSchema } from "../../../shared/schemas/inbox";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
 export class InboxIpcError extends Schema.TaggedError<InboxIpcError>()("InboxIpcError", {
@@ -82,6 +83,9 @@ export const live: Layer.Layer<
       inbox.replyDestination(pageId, body),
     );
     yield* query("inbox:entry", (_, pageId) => inbox.entry(pageId));
+    yield* query("inbox:page-intake", (_, pageId) =>
+      Effect.try(() => InboxPageIdSchema.parse(pageId)).pipe(Effect.flatMap(inbox.pageIntake)),
+    );
     yield* query("inbox:summary", (_, input) => inbox.summary(input));
     yield* query("inbox:counts", () => inbox.counts);
     yield* query("inbox:activity", (_, input) => inbox.activity(input));

@@ -203,6 +203,7 @@ export const projectInboxEntry = (item: InboxItem): InboxEntry => {
           rationale: item.proposal.rationale,
           origin: item.proposal.origin,
           producedBy: item.proposal.producedBy,
+          decisionSessionId: item.proposal.decisionSessionId,
           action: projectAction(item.proposal, item),
           failureMessage: item.proposal.failureMessage,
           failureKind: item.proposal.failureKind,

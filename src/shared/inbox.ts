@@ -280,11 +280,29 @@ export interface InboxProposal {
   readonly summary: string;
   readonly rationale: string | null;
   readonly producedBy: string | null;
+  readonly decisionSessionId: string | null;
   readonly targetProjectName: string | null;
   readonly chat: InboxChat | null;
   readonly failureMessage: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/** What the Inbox knows about one Page, read for the Page itself. */
+export interface PageIntake {
+  readonly pageId: string;
+  /** The message while it waits in the reader's Inbox, exactly as the stream shows it. */
+  readonly message: InboxItem | null;
+  /** What the decision that handled the message sent to a chat; null until one did. */
+  readonly handoff: InboxHandoff | null;
+}
+
+export interface InboxHandoff {
+  /** The confirmed proposal as it was sent: its action holds only what the chat received. */
+  readonly proposal: InboxProposal;
+  readonly decidedAt: string;
+  readonly actor: ActivityRow["actor"];
+  readonly actorLabel: string;
 }
 
 /**

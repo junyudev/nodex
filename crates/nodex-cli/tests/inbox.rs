@@ -126,6 +126,7 @@ fn command_line_sends_land_in_the_inbox_of_their_project() {
         &["page", "show", "019b1000-1000-7000-8000-000000000102"],
         None,
     );
+    assert!(shown.get("intake").is_none());
     assert_eq!(shown["turn"]["actor"]["kind"], "none");
     assert_eq!(shown["turn"]["reason"], Value::Null);
     assert!(
@@ -161,6 +162,19 @@ fn command_line_sends_land_in_the_inbox_of_their_project() {
     let sent = nodex(&home, &workspace, &args, None);
     assert_eq!(sent["project_id"], PROJECT);
     assert_eq!(sent["duplicate"], false);
+    let shown = nodex(
+        &home,
+        &workspace,
+        &["page", "show", sent["page_id"].as_str().unwrap()],
+        None,
+    );
+    assert_eq!(
+        shown["intake"]["source"],
+        serde_json::json!({ "kind": "command_line", "label": "Command line" })
+    );
+    assert_eq!(shown["intake"]["waiting"], true);
+    assert_eq!(shown["intake"]["suggestion"]["state"], "waiting");
+    assert_eq!(shown["intake"]["handoff"], Value::Null);
     let replay = nodex(&home, &workspace, &args, None);
     assert_eq!(replay["duplicate"], true);
     assert_eq!(replay["page_id"], sent["page_id"]);
@@ -172,6 +186,9 @@ fn command_line_sends_land_in_the_inbox_of_their_project() {
         Some("Try the new tokenizer\nOnly after the benchmark lands."),
     );
     assert_eq!(outside["project_id"], Value::Null);
+    let shown = nodex(&home, &elsewhere, &["page", "show", "IN-1"], None);
+    assert_eq!(shown["page"]["page_id"], outside["page_id"]);
+    assert_eq!(shown["intake"]["waiting"], true);
 
     let read = |scope: ProjectWorkspaceInboxScope| {
         let window = client

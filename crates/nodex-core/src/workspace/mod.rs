@@ -44,6 +44,7 @@ pub(crate) use inbox::reliable::discard_replaced_dispatches as discard_replaced_
 pub(crate) mod inbox_content;
 mod inbox_projection;
 mod inbox_read;
+pub(crate) use inbox_read::page_intake;
 mod inbox_serialization;
 #[cfg(test)]
 pub(crate) use inbox_read::{

@@ -1,4 +1,5 @@
 use super::*;
+use crate::workspace::inbox_tests::page_intake;
 use nodex_core_contracts::inbox::{
     ChatMessageInbound, HandbackMessage, ProjectWorkspaceInboxSource,
 };
@@ -230,6 +231,9 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
         give_back("worker", "unused", None),
     );
     let after = entry(&w.module, "page:image");
+    let returned = page_intake(&w.module, "page:image").0;
+    assert_eq!(returned.message.as_ref(), Some(&after));
+    assert!(returned.handoff.is_none());
     assert_eq!(after.body, before.body);
     assert_eq!(after.source, before.source);
     assert_eq!(after.basis, before.basis);

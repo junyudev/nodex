@@ -180,6 +180,7 @@ export const InboxProposalSchema = z.looseObject({
   origin: z.enum(["agent", "user", "automation"]).default("agent"),
   /** Who wrote it, when that is known. */
   producedBy: z.string().nullable().default(null),
+  decisionSessionId: z.string().nullable().default(null),
   action: InboxProposalActionSchema,
   failureMessage: z.string().nullable(),
   /**

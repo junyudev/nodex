@@ -134,6 +134,7 @@ impl QueryModule {
         let snapshot = Arc::new(Snapshot {
             store,
             context: context.clone(),
+            agent_turn: provenance.cloned(),
             store_epoch: store_epoch.clone(),
             commit_head,
             page_search: self.page_search.clone(),
@@ -237,6 +238,7 @@ pub(crate) struct QueryStats {
 struct Snapshot {
     store: Arc<StoreReadSnapshot>,
     context: BoundModuleContext,
+    agent_turn: Option<nodex_core_contracts::agent::AgentTurnProvenance>,
     store_epoch: String,
     commit_head: i64,
     page_search: Arc<PageSearchIndexRegistry>,
@@ -347,6 +349,7 @@ pub(crate) fn execute_test_snapshot_with_stats(
     let snapshot = Arc::new(Snapshot {
         store,
         context,
+        agent_turn: None,
         store_epoch,
         commit_head,
         page_search: Arc::new(PageSearchIndexRegistry::default()),
