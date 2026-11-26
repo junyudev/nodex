@@ -276,6 +276,7 @@ fn task_row(
     Ok((
         ProjectWorkspaceSessionListingItem {
             cursor: String::new(),
+            member_requests: None,
             task: task_summary_from_row(row, 0)?,
             project_name: row.get("project_name")?,
             direct_section_id: row.get("direct_section_id")?,

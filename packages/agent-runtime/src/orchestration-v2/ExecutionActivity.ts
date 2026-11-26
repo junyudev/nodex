@@ -32,6 +32,7 @@ export const EXECUTION_ACTIVITY_PAGE_LIMIT = 200;
 export const EXECUTION_ACTIVITY_MAX_PAGE_LIMIT = 500;
 
 export const EXECUTION_ACTIVITY_BACKGROUND_TASK_LIMIT = 25;
+const EXECUTION_ACTIVITY_REQUEST_ID_LIMIT = 100;
 
 const BackgroundTask = Schema.Struct({
   threadId: Schema.String,
@@ -50,6 +51,10 @@ const decodeBackgroundTasks = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Array(BackgroundTask)),
 );
 
+const decodeRequestIds = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Array(Schema.String)),
+);
+
 /** Live work for one non-idle root; only user attention rolls up from hidden side chats. */
 export interface RootActivity {
   readonly rootThreadId: string;
@@ -66,6 +71,7 @@ export interface RootActivity {
   readonly activeRunId: string | null;
   readonly readback?: AgentRunReadback | null;
   readonly pendingRequestCount: number;
+  readonly pendingRequestIds?: readonly string[];
   readonly latestRequestAt?: string | null;
   readonly activeFlags?: readonly ThreadActiveFlag[];
   readonly approvalPrompt?: string | null;
@@ -167,6 +173,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         readonly root_thread_id: string;
         readonly active_runs: number;
         readonly pending_requests: number;
+        readonly pending_request_ids_json: string;
         readonly latest_request_at: string | null;
         readonly has_approval: number;
         readonly has_input: number;
@@ -310,6 +317,11 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           GROUP BY root_thread_id
         )
         SELECT activity.*, COALESCE(background_tasks.background_tasks_json, '[]') AS background_tasks_json,
+          (SELECT json_group_array(request_id) FROM (
+            SELECT DISTINCT request_id FROM attention
+            WHERE attention.root_thread_id = activity.root_thread_id
+            ORDER BY request_id LIMIT ${EXECUTION_ACTIVITY_REQUEST_ID_LIMIT}
+          )) AS pending_request_ids_json,
           (SELECT json_extract(item.payload_json, '$.prompt') FROM attention
             CROSS JOIN orchestration_v2_projection_runtime_requests AS request
               ON request.thread_id = attention.thread_id AND request.runtime_request_id = attention.request_id
@@ -418,6 +430,9 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             row.started_at,
           queuePosition: row.queue_position,
           pendingRequestCount: row.pending_requests,
+          ...(row.pending_requests > 0
+            ? { pendingRequestIds: yield* decodeRequestIds(row.pending_request_ids_json) }
+            : {}),
           latestRequestAt: row.latest_request_at,
           activeFlags: sessionAttentionFlags([
             { kind: ATTENTION_KINDS.approval, awaitsPerson: row.has_approval > 0 },

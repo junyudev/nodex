@@ -1,3 +1,7 @@
+import {
+  AgentRuntimeSessionActivity,
+  inactive,
+} from "../agent-runtime/AgentRuntimeSessionActivity";
 import { createHash } from "node:crypto";
 import { assert, it } from "@effect/vitest";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
@@ -56,6 +60,9 @@ const fixture = (kind: Kind = "runtime") => {
   const state = {
     kind,
     denied: false,
+    unread: false,
+    pinned: false,
+    archived: false,
     root: "root:a",
     projectId: "project:target",
     text: item.text,
@@ -111,6 +118,7 @@ const fixture = (kind: Kind = "runtime") => {
     };
   };
   const owner = make.pipe(
+    Effect.provideService(AgentRuntimeSessionActivity, inactive),
     Effect.provideService(CodexMainConversationManagers, {
       get: () => Effect.die("History does not search native catalogs"),
     } as never),
@@ -142,8 +150,10 @@ const fixture = (kind: Kind = "runtime") => {
                   id: input.sessionId,
                   project_id: state.projectId,
                   display_title: "Target",
-                  archived: false,
-                  pinned: false,
+                  archived: state.archived,
+                  pinned: state.pinned,
+                  unread: state.unread,
+                  attention_at: Date.parse(at),
                   execution_ref:
                     state.kind === "runtime"
                       ? { runtime_id: "runtime:a", thread_id: state.root }
@@ -437,6 +447,31 @@ it.effect("routes history by the target binding for Runtime and native Codex Ses
       "native:desc",
       "authorize",
     ]);
+  }),
+);
+
+it.effect("returns the authorized Member's attention for a chat with no execution", () =>
+  Effect.gen(function* () {
+    const f = fixture("draft");
+    const owner = yield* f.owner;
+    f.state.pinned = true;
+    f.state.unread = true;
+    const current = yield* owner.read(input, provenance);
+    assert.deepEqual(current.attention, {
+      lane: "pinned",
+      waitingOn: null,
+      working: null,
+      unread: true,
+      pinned: true,
+      attentionAt: Date.parse(at),
+      snoozedUntil: null,
+      snoozedAt: null,
+      wokeAt: null,
+      settledAt: null,
+    });
+    f.state.archived = true;
+    const archived = yield* owner.read(input, provenance);
+    assert.equal(archived.attention.lane, null);
   }),
 );
 

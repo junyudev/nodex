@@ -1121,6 +1121,7 @@ const supervisor = Layer.effectContext(
       Context.add(AgentsMap, agentsMap),
       Context.add(AgentRuntimeSessionActivity, {
         read: activity.read,
+        readAll: activity.readAll,
         activityChanges: activity.activityChanges,
         connection: runtime.connectionState,
         connectionChanges: runtime.connectionChanges,

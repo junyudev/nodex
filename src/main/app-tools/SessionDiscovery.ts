@@ -1,3 +1,11 @@
+import * as Clock from "effect/Clock";
+import {
+  CHAT_ATTENTION_LANES,
+  compareChatAttention,
+  type ChatAttentionLane,
+} from "../../shared/chat-attention-lane";
+import type { SessionActivity } from "../agent-runtime/AgentRuntimeSessionActivity";
+import { projectSessionAttention, type SessionAttention } from "./SessionAttention";
 import { resolveSessionScope } from "../../shared/nodex-app-tools/session-scope";
 import type { components } from "@nodex/core-protocol";
 import { createHash } from "node:crypto";
@@ -24,14 +32,14 @@ export interface SessionDiscoveryInput {
   readonly projectId?: string;
   readonly query?: string;
   readonly statuses?: readonly string[];
-  readonly settled?: boolean;
-  readonly snoozed?: boolean;
+  readonly lanes?: readonly ChatAttentionLane[];
+  readonly order?: "recency" | "attention";
   /** Internal bounded metadata candidate stream for global ranked search. */
   readonly searchCandidates?: boolean;
   readonly includeSubagents?: boolean;
 }
 
-export interface SessionListingSummary {
+interface SessionListingMetadata {
   readonly sessionId: string;
   readonly execution: { readonly threadId: string } | null;
   readonly executionTitle: string | null;
@@ -55,7 +63,6 @@ export interface SessionListingSummary {
     readonly active_flags: readonly ThreadActiveFlag[];
   };
   readonly archived: boolean;
-  readonly pinned: boolean;
   readonly recencyAt: number | null;
   readonly createdBy: "user" | "agent" | "system" | null;
   readonly creationSource: string | null;
@@ -74,12 +81,6 @@ export interface SessionListingSummary {
   readonly parentThreadId: string | null;
   readonly relationshipToParent: "fork" | "subagent" | null;
   readonly branch: string | null;
-  readonly settled: boolean;
-  readonly settledAt: string | null;
-  readonly snoozed: boolean;
-  readonly snoozedUntil: string | null;
-  readonly snoozedAt: number | null;
-  readonly wokeAt: number | null;
   readonly pullRequests: CatalogItem["pullRequests"];
   readonly itemCount: number | null;
   readonly itemCountCoverage: "complete" | "local" | "unavailable";
@@ -89,6 +90,10 @@ export interface SessionListingSummary {
     readonly source: "session" | "project";
     readonly sectionId?: string;
   };
+}
+
+export interface SessionListingSummary extends SessionListingMetadata {
+  readonly attention: SessionAttention;
 }
 
 export interface SessionDiscoveryResult {
@@ -115,6 +120,7 @@ export class SessionDiscoveryError extends Schema.TaggedError<SessionDiscoveryEr
 
 interface Dependencies {
   readonly core: CoreModules["Service"];
+  readonly sessionActivity?: Effect.Effect<ReadonlyMap<string, SessionActivity>>;
   readonly sessionCatalog?: (
     input: CatalogInput,
   ) => Effect.Effect<CatalogPage & { readonly runtimeId: string | null }, unknown>;
@@ -144,7 +150,21 @@ const placementOf = (item: ListingItem): SessionListingSummary["placement"] => {
   if (item.project_pinned) return { kind: "pinned", source: "project" };
   return { kind: "default", source: item.task.session.project_id ? "project" : "session" };
 };
-export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionListingSummary => ({
+interface LiveAttention {
+  readonly now: number;
+  readonly bySession: ReadonlyMap<string, SessionActivity>;
+}
+
+const catalogAttentionStatus = (runtime: CatalogItem) => ({
+  status_type: ["preparing", "starting", "running"].includes(
+    runtime.activityRunStatus ?? runtime.runStatus ?? "",
+  )
+    ? "active"
+    : "idle",
+  active_flags: runtime.activeFlags,
+});
+
+export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionListingMetadata => ({
   sessionId: item.task.session.id,
   execution: runtime
     ? { threadId: runtime.threadId }
@@ -176,7 +196,6 @@ export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionList
     ? { status_type: runtime.status, active_flags: runtime.activeFlags }
     : (item.task.thread?.status ?? { status_type: "idle", active_flags: [] }),
   archived: item.task.session.archived,
-  pinned: item.task.session.pinned,
   recencyAt: runtime
     ? runtime.recencyAt === null
       ? null
@@ -210,20 +229,30 @@ export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionList
   relationshipToParent:
     runtime?.relationshipToParent ?? (item.task.thread?.forked_from_id ? "fork" : null),
   branch: runtime?.branch ?? null,
-  settled: item.task.session.settled_at != null,
-  settledAt:
-    item.task.session.settled_at == null
-      ? null
-      : new Date(item.task.session.settled_at).toISOString(),
-  snoozed: item.task.session.snoozed_until != null,
-  snoozedUntil: item.task.session.snoozed_until ?? null,
-  snoozedAt: item.task.session.snoozed_at ?? null,
-  wokeAt: item.task.session.woke_at ?? null,
   pullRequests: runtime?.pullRequests ?? [],
   itemCount: runtime?.itemCount ?? null,
   itemCountCoverage: runtime?.itemCountCoverage ?? "unavailable",
   metadataCoverage: runtime ? "complete" : "partial",
   placement: placementOf(item),
+});
+
+const summarizeCandidate = (
+  item: ListingItem,
+  live: LiveAttention,
+  runtime?: CatalogItem,
+): SessionListingSummary => ({
+  ...summaryOf(item, runtime),
+  attention: projectSessionAttention(
+    item.task.session,
+    item.member_requests ?? undefined,
+    !runtime
+      ? item.task.thread?.status
+      : runtime.relationshipToParent === "subagent"
+        ? undefined
+        : catalogAttentionStatus(runtime),
+    live.bySession.get(item.task.session.id),
+    live.now,
+  ),
 });
 
 const statusOf = (
@@ -234,9 +263,9 @@ const statusOf = (
   return ["preparing", "starting", "running", "waiting"].includes(status ?? "") ? "active" : "idle";
 };
 export const withSessionMetadata = (
-  session: SessionListingSummary,
+  session: SessionListingMetadata,
   details: AgentRuntimeOperations["sessions.metadata"]["output"][number],
-): SessionListingSummary => ({
+): SessionListingMetadata => ({
   ...session,
   threadId: details.threadId,
   preview: details.preview,
@@ -277,8 +306,11 @@ const matches = (session: SessionListingSummary, input: SessionDiscoveryInput) =
     (session.activityRunStatus === null || !input.statuses.includes(session.activityRunStatus))
   )
     return false;
-  if (input.settled !== undefined && session.settled !== input.settled) return false;
-  if (input.snoozed !== undefined && session.snoozed !== input.snoozed) return false;
+  if (
+    input.lanes &&
+    (session.attention.lane === null || !input.lanes.includes(session.attention.lane))
+  )
+    return false;
   if (input.searchCandidates || !input.query) return true;
   const needle = input.query.trim().toLowerCase();
   return (
@@ -293,6 +325,7 @@ interface Candidate {
   readonly summary: SessionListingSummary;
   readonly sortAt: number;
   readonly stableId: string;
+  readonly pinnedOrder: number | null;
   readonly cursor: string;
 }
 
@@ -340,8 +373,8 @@ const Scope = Schema.Struct({
   projectId: Schema.NullOr(Schema.String),
   query: Schema.String,
   statuses: Schema.Array(Schema.String),
-  settled: Schema.NullOr(Schema.Boolean),
-  snoozed: Schema.NullOr(Schema.Boolean),
+  lanes: Schema.NullOr(Schema.Array(Schema.Literals(CHAT_ATTENTION_LANES))),
+  order: Schema.Literals(["recency", "attention"]),
   searchCandidates: Schema.Boolean,
   includeSubagents: Schema.Boolean,
   projectlessOnly: Schema.Boolean,
@@ -353,6 +386,7 @@ const readNative = Effect.fn("SessionDiscovery.native")(function* (
   core: Dependencies["core"],
   input: SessionDiscoveryInput,
   position: Position,
+  live: LiveAttention,
 ) {
   const empty = emptyPage("core", position.core, position.coreDone);
   if (position.coreDone) return empty;
@@ -364,6 +398,7 @@ const readNative = Effect.fn("SessionDiscovery.native")(function* (
         ...(provenance ? { provenance } : {}),
         archived: input.archived,
         native_only: true,
+        ...(input.order === "attention" ? { order: "identity" as const } : {}),
         ...(input.projectlessOnly ? { projectless_only: true } : {}),
         ...(input.projectId === undefined ? {} : { project_id: input.projectId }),
         ...(input.query === undefined || input.searchCandidates ? {} : { query: input.query }),
@@ -378,7 +413,7 @@ const readNative = Effect.fn("SessionDiscovery.native")(function* (
   const candidates: Candidate[] = [];
   let prefix = position.core;
   for (const item of window.items) {
-    const summary = summaryOf(item);
+    const summary = summarizeCandidate(item, live);
     if (!matches(summary, input)) {
       if (candidates.length === 0) prefix = item.cursor;
       continue;
@@ -389,6 +424,7 @@ const readNative = Effect.fn("SessionDiscovery.native")(function* (
       cursor: item.cursor,
       sortAt: item.task.thread?.recency_at ?? Date.parse(item.task.session.created_at),
       stableId: item.task.session.id,
+      pinnedOrder: item.task.session.pinned_order ?? null,
     });
   }
   const last = window.items.at(-1);
@@ -411,6 +447,7 @@ const readRuntime = Effect.fn("SessionDiscovery.runtime")(function* (
   { core, sessionCatalog }: Dependencies,
   input: SessionDiscoveryInput,
   position: Position,
+  live: LiveAttention,
 ) {
   const empty = emptyPage(
     "runtime",
@@ -459,16 +496,18 @@ const readRuntime = Effect.fn("SessionDiscovery.runtime")(function* (
   let prefix = position.runtime;
   for (const item of page.items) {
     const bound = byThread.get(item.rootThreadId ?? item.threadId);
-    if (bound === undefined || !matches(summaryOf(bound, item), input)) {
+    const summary = bound && summarizeCandidate(bound, live, item);
+    if (summary === undefined || !matches(summary, input)) {
       if (candidates.length === 0) prefix = item.cursor;
       continue;
     }
     candidates.push({
       source: "runtime",
-      summary: summaryOf(bound, item),
+      summary,
       cursor: item.cursor,
       sortAt: Date.parse(item.recencyAt ?? item.createdAt),
       stableId: item.threadId,
+      pinnedOrder: bound?.task.session.pinned_order ?? null,
     });
   }
   const last = page.items.at(-1)!;
@@ -485,6 +524,149 @@ const readRuntime = Effect.fn("SessionDiscovery.runtime")(function* (
     position: prefix,
     done: candidates.length === 0 && page.nextCursor === null,
   } satisfies SourcePage;
+});
+
+const AttentionCursor = Schema.Struct({
+  scope: Schema.String,
+  ordering: Schema.String,
+  offset: Schema.Int,
+});
+const decodeAttentionCursor = Schema.decodeEffect(Schema.fromJsonString(AttentionCursor));
+const encodeAttentionCursor = Schema.encodeSync(Schema.fromJsonString(AttentionCursor));
+const ATTENTION_WINDOW_LIMIT = 100;
+
+/** A recency frontier cannot prove anything about an unseen chat's attention rank. */
+const collectAttentionSource = Effect.fn("SessionDiscovery.attentionSource")(function* (
+  start: Position,
+  readPage: (position: Position) => Effect.Effect<SourcePage, SessionDiscoveryError>,
+) {
+  let position = start;
+  const candidates = new Map<string, Candidate>();
+  for (let pageIndex = 0; pageIndex < ATTENTION_WINDOW_LIMIT; pageIndex += 1) {
+    const page = yield* readPage(position);
+    for (const candidate of page.candidates) candidates.set(candidate.stableId, candidate);
+    if (!page.hasMore)
+      return {
+        ...page,
+        candidates: [...candidates.values()],
+        runtimeId: page.runtimeId ?? position.runtimeId,
+      };
+    const cursor = page.source === "core" ? position.core : position.runtime;
+    if (page.last === null || page.last === cursor)
+      return yield* new SessionDiscoveryError({
+        reason: "cursor_stale",
+        cause: new Error("Session source did not advance"),
+      });
+    position =
+      page.source === "core"
+        ? { ...position, core: page.last }
+        : { ...position, runtime: page.last, runtimeId: page.runtimeId ?? null };
+  }
+  return yield* new SessionDiscoveryError({
+    reason: "source_limit",
+    cause: new Error("Too many Sessions to sort by attention. Narrow the Project or query."),
+  });
+});
+
+const attentionPlacement = ({ summary, pinnedOrder }: Candidate) =>
+  summary.attention.lane === null
+    ? []
+    : [
+        {
+          lane: summary.attention.lane,
+          id: summary.sessionId,
+          attentionAt: summary.attention.attentionAt,
+          snoozedUntil: summary.attention.snoozedUntil,
+          settledAt:
+            summary.attention.settledAt === null ? null : Date.parse(summary.attention.settledAt),
+          stopped: summary.attention.waitingOn !== null,
+          pinnedOrder,
+        },
+      ];
+
+const readAttentionPage = Effect.fn("SessionDiscovery.attentionPage")(function* (
+  dependencies: Dependencies,
+  input: SessionDiscoveryInput,
+  start: Position,
+  live: LiveAttention,
+) {
+  const { scope } = start;
+  let cursor: typeof AttentionCursor.Type | null = null;
+  if (input.cursor !== undefined) {
+    if (!input.cursor.startsWith("nxa1.") || input.cursor.length > SESSION_HISTORY_CURSOR_MAX_CHARS)
+      return yield* new SessionDiscoveryError({
+        reason: "invalid_cursor",
+        cause: new Error("Attention cursor is malformed"),
+      });
+    cursor = yield* decodeAttentionCursor(
+      Buffer.from(input.cursor.slice(5), "base64url").toString("utf8"),
+    ).pipe(
+      Effect.mapError((cause) => new SessionDiscoveryError({ reason: "invalid_cursor", cause })),
+    );
+    if (cursor.scope !== scope || cursor.offset <= 0)
+      return yield* new SessionDiscoveryError({
+        reason: "invalid_cursor",
+        cause: new Error("Attention cursor belongs to another query"),
+      });
+  }
+  const [native, runtime] = yield* Effect.all(
+    [
+      collectAttentionSource(start, (position) =>
+        readNative(dependencies.core, input, position, live),
+      ),
+      collectAttentionSource(start, (position) => readRuntime(dependencies, input, position, live)),
+    ],
+    { concurrency: 2 },
+  );
+  const ordered = [...native.candidates, ...runtime.candidates]
+    .flatMap((candidate) =>
+      attentionPlacement(candidate).map((placement) => ({
+        ...placement,
+        candidate,
+      })),
+    )
+    .sort(
+      (left, right) =>
+        compareChatAttention(left, right) ||
+        left.id.localeCompare(right.id) ||
+        left.candidate.stableId.localeCompare(right.candidate.stableId),
+    );
+  const sources = [native, runtime].map(({ source, availability, reason }) => ({
+    source,
+    availability,
+    ...(reason === undefined ? {} : { reason }),
+  }));
+  // Cursor offsets are safe only while the same rows still occupy the same positions.
+  const ordering = createHash("sha256")
+    .update(
+      JSON.stringify([
+        sources,
+        runtime.runtimeId ?? null,
+        ordered.map(({ lane, id, candidate }) => [lane, id, candidate.stableId]),
+      ]),
+    )
+    .digest("base64url");
+  if (cursor && (cursor.ordering !== ordering || cursor.offset >= ordered.length))
+    return yield* new SessionDiscoveryError({
+      reason: "cursor_stale",
+      cause: new Error("Session attention order changed. Start a new listing."),
+    });
+  const offset = cursor?.offset ?? 0;
+  const sessions = ordered
+    .slice(offset, offset + input.limit)
+    .map(({ candidate }) => candidate.summary);
+  const entryCursors = sessions.map(
+    (_, index) =>
+      `nxa1.${Buffer.from(encodeAttentionCursor({ scope, ordering, offset: offset + index + 1 })).toString("base64url")}`,
+  );
+  return {
+    sessions,
+    entryCursors,
+    projectionRevision: Math.max(native.revision, runtime.revision),
+    searchRevision: Math.max(native.searchRevision, runtime.searchRevision),
+    sources,
+    nextCursor: offset + sessions.length < ordered.length ? (entryCursors.at(-1) ?? null) : null,
+  } satisfies SessionDiscoveryResult;
 });
 
 /**
@@ -508,8 +690,8 @@ export const make = (dependencies: Dependencies) =>
           projectId: input.projectId ?? null,
           query: input.query?.trim() ?? "",
           statuses: [...(input.statuses ?? [])].sort(),
-          settled: input.settled ?? null,
-          snoozed: input.snoozed ?? null,
+          lanes: input.lanes === undefined ? null : [...new Set(input.lanes)].sort(),
+          order: input.order ?? "recency",
           searchCandidates: input.searchCandidates ?? false,
           includeSubagents: !input.searchCandidates && (input.includeSubagents ?? true),
           projectlessOnly: input.projectlessOnly ?? false,
@@ -525,6 +707,14 @@ export const make = (dependencies: Dependencies) =>
       coreDone: false,
       runtimeDone: dependencies.sessionCatalog === undefined,
     };
+    const live = {
+      now: yield* Clock.currentTimeMillis,
+      bySession: yield* (
+        dependencies.sessionActivity ?? Effect.succeed(new Map<string, SessionActivity>())
+      ),
+    };
+    if (input.order === "attention")
+      return yield* readAttentionPage(dependencies, input, position, live);
     if (input.cursor !== undefined) {
       if (
         !input.cursor.startsWith("nxd1.") ||
@@ -546,7 +736,10 @@ export const make = (dependencies: Dependencies) =>
         });
     }
     const [native, runtime] = yield* Effect.all(
-      [readNative(dependencies.core, input, position), readRuntime(dependencies, input, position)],
+      [
+        readNative(dependencies.core, input, position, live),
+        readRuntime(dependencies, input, position, live),
+      ],
       { concurrency: 2 },
     );
     position = {

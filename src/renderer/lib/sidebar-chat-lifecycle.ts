@@ -1,3 +1,8 @@
+import {
+  compareChatAttention,
+  resolveOpenChatAttentionLane,
+  type ChatAttentionLane,
+} from "../../shared/chat-attention-lane";
 import { presentChatReplyPreview } from "../../shared/chat-reply-preview-text";
 import type { SidebarRowLiveStatus } from "./sidebar-status";
 
@@ -6,7 +11,7 @@ import type { SidebarRowLiveStatus } from "./sidebar-status";
  * never finish. Everything else is `active` while it waits on the person, `working` while its Agent
  * works, and `snoozed` until its wake time.
  */
-export type SidebarChatLane = "pinned" | "active" | "working" | "snoozed";
+export type SidebarChatLane = Exclude<ChatAttentionLane, "settled">;
 
 export const SIDEBAR_CHAT_LANES = ["pinned", "active", "working", "snoozed"] as const;
 
@@ -33,11 +38,11 @@ export function resolveSidebarChatLane(
     "pinned" | "snoozedUntil" | "snoozedAt" | "attentionAt" | "status"
   >,
 ): SidebarChatLane {
-  if (chat.pinned) return "pinned";
-  const asksAnew =
-    chat.status === "attention" && (chat.snoozedAt === null || chat.attentionAt > chat.snoozedAt);
-  if (chat.snoozedUntil && !asksAnew) return "snoozed";
-  return chat.status === "running" || chat.status === "background" ? "working" : "active";
+  return resolveOpenChatAttentionLane({
+    ...chat,
+    stopped: chat.status === "attention",
+    working: chat.status === "running" || chat.status === "background",
+  });
 }
 
 /**
@@ -85,27 +90,22 @@ export function partitionSidebarChats<Chat extends SidebarLifecycleChat>(
   chats: readonly Chat[],
   anchor: SidebarChatAnchor | null = null,
 ): Readonly<Record<SidebarChatLane, readonly Chat[]>> {
-  const placed = chats.map((chat) => ({ chat, ...placeSidebarChat(chat, anchor) }));
-  type Placed = (typeof placed)[number];
-  const newestFirst = (left: Placed, right: Placed) =>
-    right.attentionAt - left.attentionAt || left.chat.id.localeCompare(right.chat.id);
-  const inLane = (lane: SidebarChatLane) => placed.filter((entry) => entry.lane === lane);
-  const ids = (entries: readonly Placed[]) => entries.map((entry) => entry.chat);
+  const placed = chats
+    .map((chat) => ({
+      chat,
+      id: chat.id,
+      snoozedUntil: chat.snoozedUntil,
+      // Core supplies the sidebar's pins in the reader's order.
+      ...placeSidebarChat(chat, anchor),
+    }))
+    .sort(compareChatAttention);
+  const inLane = (lane: SidebarChatLane) =>
+    placed.filter((entry) => entry.lane === lane).map((entry) => entry.chat);
   return {
-    pinned: ids(inLane("pinned")),
-    active: ids(
-      inLane("active").sort(
-        (left, right) => Number(right.stopped) - Number(left.stopped) || newestFirst(left, right),
-      ),
-    ),
-    working: ids(inLane("working").sort(newestFirst)),
-    snoozed: ids(
-      inLane("snoozed").sort(
-        (left, right) =>
-          Date.parse(left.chat.snoozedUntil ?? "") - Date.parse(right.chat.snoozedUntil ?? "") ||
-          left.chat.id.localeCompare(right.chat.id),
-      ),
-    ),
+    pinned: inLane("pinned"),
+    active: inLane("active"),
+    working: inLane("working"),
+    snoozed: inLane("snoozed"),
   };
 }
 

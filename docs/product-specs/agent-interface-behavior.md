@@ -603,14 +603,30 @@ Project is invalid. Runtime child executions are included by default and carry t
 product Session identity plus `execution.threadId`. The `url` opens that Session.
 `includeSubagents: false` keeps only roots.
 Native roots retain `threadId` and binding metadata without a Runtime execution selector.
-Active discovery excludes archived Projects. Results use conversation-recency order; pins remain placement metadata.
+Active discovery excludes archived Projects. Conversation recency is the default order.
 `projectId` filters Project ownership and `query` matches the title or bounded first-user
 prompt preview, rather than searching complete transcripts. Each result identifies direct
 or Project-inherited sidebar placement, title, preview, backend, status and `recencyAt`.
-`statuses` accepts observed Session or Run states. `settled` and `snoozed` filter
-the calling Member's Core attention state, and results report that Member's
-`settledAt`, `snoozedUntil`, `snoozedAt`, and `wokeAt`. Runtime results include author and creation source,
-model and modes, latest Run, lineage, branch, pull requests and visible item counts.
+`statuses` accepts observed Session or Run states. Runtime results include author and creation
+source, model and modes, latest Run, lineage, branch, pull requests and visible item counts.
+
+Every row has an `attention` block for the Member the calling Turn represents. It reports `lane`,
+`waitingOn` (`approval` or `input` for requests that Member can answer), `working` (`foreground`
+or `background`), `unread`, and `pinned`. `attentionAt`, `snoozedAt`, and `wokeAt` are in Unix
+milliseconds. `snoozedUntil` and `settledAt` are ISO timestamps. An archived chat has a null lane.
+A Runtime child inherits the root chat's attention. Read and unread marks do not move a chat between lanes.
+
+`list_sessions` accepts `lanes` to select any of `pinned`, `active`, `working`, `snoozed`,
+or `settled`. With `order: "attention"`, it follows the sidebar's **By attention** arrangement
+before taking a page. Pinned follows the Member's pin order. Active puts chats stopped on the
+Member first and then uses newest attention time. Working uses newest attention time, Snoozed
+puts the soonest wake first, and Settled puts the most recently settled chat first. An elapsed
+snooze leaves its lane when the deadline passes, even if its wake has yet to be delivered. Use
+`includeSubagents: false` for one row per chat. If membership or order changes during an
+attention-ordered walk, the cursor reports `cursor_stale`. Start a new listing in that case.
+An oversized listing reports `source_limit`. Archived discovery accepts conversation-recency
+paging.
+
 Presented Run status and current activity status remain separate, so queued work cannot
 hide an active Run from status filters.
 Unavailable native execution fields remain null rather than being inferred from labels.
@@ -691,6 +707,10 @@ canonical version and causal-parent check. Missing fragments, changed versions, 
 inherited items and other callers cannot complete that proof. Read progress retains coordinates
 without bodies, renews during active reads and may safely expire or be evicted while leaving the
 result unread; rereading the complete result rebuilds it.
+
+`read_session` returns the same Member-specific `attention` block as Session discovery, even
+when the history request selects a Runtime child. It reads snooze, pin, unread and settled marks
+for the Member the verified calling Turn represents.
 
 `execution: {threadId}` selects a Runtime child within that Session's bound root
 subtree for reading or waiting; the Core `sessionId` remains unchanged. Runtime validates the

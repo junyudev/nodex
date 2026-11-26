@@ -1,3 +1,6 @@
+import * as Clock from "effect/Clock";
+import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessionActivity";
+import { projectSessionAttention, type SessionAttention } from "./SessionAttention";
 import { withSessionUrl } from "../../shared/nodex-app-tools/reference-urls";
 import { runtimeSessionTarget } from "../../shared/nodex-app-tools/session-execution-target";
 import { historyResultBytes, HISTORY_READ_MAX_BYTES } from "@nodex/agent-runtime/history-read";
@@ -53,7 +56,7 @@ export interface SessionObservationResult {
   readonly backend: string | null;
   readonly agent: SessionAgent | null;
   readonly archived: boolean;
-  readonly pinned: boolean;
+  readonly attention: SessionAttention;
   readonly status: { readonly type: string; readonly activeFlags: readonly ThreadActiveFlag[] };
   readonly history: SessionHistory;
   readonly execution: SessionReadExecution | null;
@@ -154,7 +157,12 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
   Effect.gen(function* () {
     const core = yield* CoreModules;
     const application = yield* AgentRuntimeApplication;
-    const discovery = makeDiscovery({ core, sessionCatalog: application.sessionCatalog });
+    const { readAll: sessionActivity } = yield* AgentRuntimeSessionActivity;
+    const discovery = makeDiscovery({
+      core,
+      sessionCatalog: application.sessionCatalog,
+      sessionActivity,
+    });
     const authorize = Effect.fn("SessionObservation.authorize")(function* (
       sessionId: string,
       provenance: Provenance,
@@ -342,8 +350,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
           Effect.mapError(
             (cause) =>
               new SessionObservationError({
-                reason:
-                  cause.reason === "invalid_cursor" ? "invalid_cursor" : "history_unavailable",
+                reason: cause.reason === "unavailable" ? "history_unavailable" : cause.reason,
                 cause,
               }),
           ),
@@ -474,6 +481,23 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
         Effect.gen(function* () {
           const before = yield* authorize(input.sessionId, provenance);
           const resolved = yield* resolve(before, true, input.execution);
+          const live = before.session.execution_ref
+            ? (yield* sessionActivity).get(before.session.id)
+            : undefined;
+          const now = yield* Clock.currentTimeMillis;
+          const attentionOf = (row: AuthorizedSession) =>
+            projectSessionAttention(
+              row.session,
+              row.member_requests,
+              input.execution && input.execution.threadId !== row.session.execution_ref?.thread_id
+                ? undefined
+                : {
+                    status_type: resolved.active ? "active" : resolved.status,
+                    active_flags: resolved.flags,
+                  },
+              live,
+              now,
+            );
           const base = withSessionUrl({
             schemaVersion: 2 as const,
             sessionId: before.session.id,
@@ -483,7 +507,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
             backend: resolved.backend,
             agent: resolved.agent,
             archived: before.session.archived,
-            pinned: before.session.pinned,
+            attention: attentionOf(before),
             status: { type: resolved.status, activeFlags: resolved.flags },
           });
           if (!resolved.source) {
@@ -497,11 +521,11 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
                 reason: "invalid_cursor",
                 cause: new Error("This Session has no readable history"),
               });
-            yield* unchanged(before, provenance);
+            const after = yield* unchanged(before, provenance);
             const history: SessionHistory = before.thread
               ? { availability: "unavailable", reason: "backend_not_loaded", items: [] }
               : { availability: "empty", items: [] };
-            return { ...base, execution: null, history };
+            return { ...base, attention: attentionOf(after), execution: null, history };
           }
           const binding = hash({
             binding: bindingOf(before),
@@ -551,6 +575,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
           const result = {
             ...base,
             projectId: after.session.project_id ?? null,
+            attention: attentionOf(after),
             execution,
             history,
           };

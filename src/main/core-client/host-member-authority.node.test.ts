@@ -350,6 +350,54 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
         intent: { kind: "set_unread", unread: true },
       },
     });
+    const provenance = {
+      profile_id: host.handshake.generation.profile_id,
+      authority: {
+        thread_id: "thread:host-members",
+        root_thread_id: "thread:host-members",
+        turn_id: runId,
+        actor_project_id: scenario.manifest.projectId,
+        library_id: host.handshake.library_id,
+        store_epoch: host.handshake.store_epoch,
+        runtime: { session_id: sessionId, runtime_id: "runtime:host-members", turn_kind: "run" },
+      },
+    } satisfies components["schemas"]["AgentTurnProvenance"];
+    const bobSnooze = new Date(Date.now() + 3_600_000).toISOString();
+    await host.workspaceApply({
+      operationId: operation(),
+      intent: {
+        kind: "agent_command",
+        provenance,
+        intent: {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "set_snooze", snoozed_until: bobSnooze },
+        },
+      },
+    });
+    const agentAttention = () =>
+      host.workspaceRead({ kind: "agent_session", session_id: sessionId, provenance });
+    expect((await agentAttention()).value).toMatchObject({
+      kind: "agent_session",
+      session: { snoozed_until: bobSnooze },
+      member_requests: { personal: false, pending: [{ id: "question", kind: "question" }] },
+    });
+    expect(
+      (await host.workspaceRead({ kind: "session_detail", session_id: sessionId })).value,
+    ).toMatchObject({ kind: "session_detail", session: { snoozed_until: null } });
+    // Remove the snooze before reading the Member's Inbox below.
+    await host.workspaceApply({
+      operationId: operation(),
+      intent: {
+        kind: "agent_command",
+        provenance,
+        intent: {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "set_snooze", snoozed_until: null },
+        },
+      },
+    });
     const attention = (client: CoreClient) =>
       relay(client, { operation: "session_read", input: { sessionId } }, async (options) => ({
         session: (await host.workspaceRead({ kind: "session", session_id: sessionId }, options))
@@ -444,6 +492,10 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
       alice.client.workspaceApply({ operationId: answerOperation, intent: reply }),
     ).rejects.toThrow();
     await observe(1, "approval");
+    expect((await agentAttention()).value).toMatchObject({
+      kind: "agent_session",
+      member_requests: { personal: false, pending: [] },
+    });
     const approval: HostCall = {
       operation: "session_respond",
       input: { sessionId, runId, requestId: "approval", decision: "accept" },

@@ -32,16 +32,7 @@ pub(super) fn authorize(
     if authority.archived {
         return Err(denied());
     }
-    let encoded: Option<String> = connection
-        .query_row(
-            "SELECT observed_json FROM session_execution_observations WHERE session_id=?1",
-            [session],
-            |r| r.get(0),
-        )
-        .optional()?;
-    let observation: SessionExecutionObservation = encoded
-        .and_then(|encoded| serde_json::from_str(&encoded).ok())
-        .ok_or_else(denied)?;
+    let observation = read_observation(connection, session)?.ok_or_else(denied)?;
     if observation.run_id.as_deref() != run {
         return Err(denied());
     }
@@ -55,6 +46,64 @@ pub(super) fn authorize(
         return Err(denied());
     }
     Ok(())
+}
+
+fn read_observation(
+    connection: &Connection,
+    session: &str,
+) -> Result<Option<SessionExecutionObservation>, StoreError> {
+    let encoded: Option<String> = connection
+        .query_row(
+            "SELECT observed_json FROM session_execution_observations WHERE session_id=?1",
+            [session],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(encoded.and_then(|encoded| serde_json::from_str(&encoded).ok()))
+}
+
+/// Projects the same answer entitlement used for Member Device responses.
+pub(super) fn member_requests(
+    connection: &Connection,
+    library: &str,
+    session: &ProjectWorkspaceSessionSummary,
+    member: &str,
+    personal: bool,
+) -> Result<AgentSessionMemberRequests, StoreError> {
+    let mut pending = Vec::new();
+    if personal || session.archived {
+        return Ok(AgentSessionMemberRequests { personal, pending });
+    }
+    let Some(observation) = read_observation(connection, &session.id)? else {
+        return Ok(AgentSessionMemberRequests { personal, pending });
+    };
+    for kind in [
+        SessionExecutionRequestKind::Approval,
+        SessionExecutionRequestKind::Question,
+    ] {
+        let mut requests = observation
+            .pending_requests
+            .iter()
+            .filter(|request| request.kind == kind)
+            .peekable();
+        if requests.peek().is_some()
+            && entitled_member(
+                connection,
+                library,
+                &session.id,
+                observation.run_id.as_deref(),
+                kind,
+            )?
+            .as_deref()
+                == Some(member)
+        {
+            pending.extend(requests.map(|request| AgentSessionPendingRequest {
+                id: request.id.clone(),
+                kind,
+            }));
+        }
+    }
+    Ok(AgentSessionMemberRequests { personal, pending })
 }
 
 /// Core's one answer-entitlement rule. A Question belongs to its Run's requester and an Approval to

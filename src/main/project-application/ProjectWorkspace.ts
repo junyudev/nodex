@@ -1,3 +1,4 @@
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { HostWorkspace } from "../../host/HostWorkspace";
 import {
@@ -582,9 +583,10 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     const read = (
       operation: string,
       request: ProjectWorkspaceRead,
+      projectId?: string | null,
     ): ProjectWorkspaceEffect<ProjectWorkspaceReadSnapshot> =>
       core.workspace
-        .read(request)
+        .read(request, undefined, projectId)
         .pipe(Effect.mapError((cause) => projectWorkspaceError(operation, cause)));
 
     const applyWithId = (
@@ -738,13 +740,15 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     // One Core read returns the Session with its linked Thread, so opening a chat costs one round trip.
     const requireSession = Effect.fn("ProjectWorkspace.requireSession")(function* (
       sessionId: string,
+      forCallingAgent = false,
     ) {
-      const snapshot = yield* read("session.read", {
-        kind: "session_detail",
-        session_id: sessionId,
-      });
+      const provenance = forCallingAgent ? yield* CoreApplicationAgent : null;
+      const request = provenance
+        ? { kind: "agent_session" as const, session_id: sessionId, provenance }
+        : { kind: "session_detail" as const, session_id: sessionId };
+      const snapshot = yield* read("session.read", request, provenance?.authority.actor_project_id);
       const { session: summary, thread } = yield* evaluate("session.read", () =>
-        expectVariant(snapshot, "session_detail"),
+        expectVariant(snapshot, request.kind),
       );
       const threadId = summary.thread_id ?? null;
       if (threadId && !thread) {
@@ -1704,13 +1708,13 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         const { snoozedUntil } = yield* evaluate("session.snooze.validate", () =>
           ProjectSessionSnoozeInputSchema.parse({ snoozedUntil: command.payload.snoozedUntil }),
         );
-        yield* requireSession(sessionId);
+        yield* requireSession(sessionId, true);
         const applied = yield* applyWithId("session.snooze.set", command.operationId, {
           kind: "mutate_session",
           session_id: sessionId,
           intent: { kind: "set_snooze", snoozed_until: snoozedUntil },
         });
-        return { value: yield* requireSession(sessionId), apply: applied };
+        return { value: yield* requireSession(sessionId, true), apply: applied };
       },
     );
     const readSessionStart = Effect.fn("ProjectWorkspace.readSessionStart")(function* (

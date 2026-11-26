@@ -123,7 +123,7 @@ export const projectChatRow = (
       entry.agent?.model ??
       (entry.binding?.kind === "native" ? "Codex" : null),
     unread: row.task.session.unread,
-    pinned: entry.pinned,
+    pinned: row.task.session.pinned,
     archived: entry.archived,
     activityAt: row.task.session.activity_at,
     canSend: entry.binding?.kind === "runtime" && !entry.archived,

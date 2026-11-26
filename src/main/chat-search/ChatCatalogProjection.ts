@@ -75,7 +75,7 @@ export const projectChat = (
       url,
       repository,
     })),
-    pinned: summary.pinned,
+    pinned: item.task.session.pinned,
     pinnedOrder: item.task.session.pinned_order ?? null,
     unread: item.task.session.unread,
     activity: activityOf(summary.status.status_type, summary.status.active_flags),

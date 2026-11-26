@@ -1,3 +1,7 @@
+import {
+  AgentRuntimeSessionActivity,
+  inactive,
+} from "../agent-runtime/AgentRuntimeSessionActivity";
 import { ChatSearch } from "../chat-search/ChatSearch";
 import { LibraryModule } from "../library-application/LibraryModule";
 import { GitHubSourceAdapter } from "../../host/sources/GitHubSourceAdapter";
@@ -49,6 +53,7 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
 /** Constructs real Host executors; unused infrastructure fails if a test crosses its boundary. */
 export const hostToolTestServices = Layer.mergeAll(
+  Layer.succeed(AgentRuntimeSessionActivity, inactive),
   Layer.mock(ChatSearch, {}),
   Layer.mock(LibraryModule, {}),
   nativeQuestionTestLayers,
