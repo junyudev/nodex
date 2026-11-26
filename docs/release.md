@@ -483,7 +483,8 @@ from a temporary directory outside the repository.
 
 Every distribution first consumes an exact-source certificate produced without
 signing secrets. The certificate binds the full commit SHA and Git tree to the
-deterministic source, browser, stress, and macOS runtime gates. Distribution
+deterministic source, browser, stress, and macOS runtime gates. Certification
+derives its full CI gate plan from the exact source commit. Distribution
 verifies both identities before materializing credentials, carries the
 certificate in the architecture bundle, and then runs the packaged
 process/runtime probes.

@@ -14,36 +14,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  plan:
+    uses: ./.github/workflows/_full-ci-plan.yml
+    with:
+      source_sha: ${{ github.sha }}
+
   static-contracts:
     name: nightly static contracts
+    needs: plan
     uses: ./.github/workflows/_static-checks.yml
     with:
-      groups_json: '["types","source-ownership","ui-contracts","startup-bundles","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"]'
+      groups_json: ${{ toJSON(fromJSON(needs.plan.outputs.plan).staticGroups) }}
       timing_prefix: nightly-static
 
   rust-checks:
     name: nightly rust checks
+    needs: plan
     uses: ./.github/workflows/_rust-checks.yml
     with:
-      full_workspace: true
-      run_fast: true
-      run_protocol: true
+      full_workspace: ${{ fromJSON(needs.plan.outputs.plan).rustFull }}
+      run_fast: ${{ fromJSON(needs.plan.outputs.plan).rustFast }}
+      run_protocol: ${{ fromJSON(needs.plan.outputs.plan).protocolContracts }}
       timing_prefix: nightly-rust
 
   app-tests:
     name: nightly application and browser tests
+    needs: plan
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: &full_gate_plan '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"draft":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"staticGroups":["types","source-ownership","ui-contracts","startup-bundles","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"],"testMode":"full","windowsChecks":false}'
-      suites_json: &all_application_suites '["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"]'
+      gate_plan_json: ${{ needs.plan.outputs.plan }}
+      suites_json: ${{ toJSON(fromJSON(needs.plan.outputs.plan).appTestSuites) }}
       timing_prefix: nightly-app
 
   app-tests-macos:
     name: nightly macOS application and browser tests
+    needs: plan
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: *full_gate_plan
-      suites_json: *all_application_suites
+      gate_plan_json: ${{ needs.plan.outputs.plan }}
+      suites_json: ${{ toJSON(fromJSON(needs.plan.outputs.plan).appTestSuites) }}
       runner: macos-26
       # Stress, runtime contracts, and Electron E2E can occupy the other three macOS slots.
       max_parallel: 2
@@ -143,6 +152,7 @@ jobs:
     name: nightly complete
     if: always()
     needs:
+      - plan
       - static-contracts
       - rust-checks
       - app-tests
@@ -158,6 +168,6 @@ jobs:
           persist-credentials: false
       - name: Require every nightly gate
         env:
-          CI_CLASSIFIER_RESULT: success
+          CI_CLASSIFIER_RESULT: ${{ needs.plan.result }}
           CI_NEEDS_JSON: ${{ toJSON(needs) }}
         run: node --no-warnings scripts/ci/verify-required-gates.ts
