@@ -264,6 +264,9 @@ const readModels = Layer.effectDiscard(
       projects.readSidebarSectionPlacement(item),
     );
     yield* ipc.handleQuery("project-sessions:get", (_, id) => projects.getProjectSession(id));
+    yield* ipc.handleQuery("project-sessions:side-chats", (_, sourceSessionId, input) =>
+      projects.listSessionSideChats(sourceSessionId, input),
+    );
     // Core reads why a hosted chat has not started for every Member; its retry goes to the host.
     yield* ipc.handleQuery("project-sessions:start", (_, id) => projects.readSessionStart(id));
     // Archived chats lists what this Member may restore: hosted chats they asked for, or every

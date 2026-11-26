@@ -354,11 +354,7 @@ fn read_task_window_in_scope(
         ProjectWorkspaceTaskLifecycle::Open => format!("AND {settled_at} IS NULL"),
         ProjectWorkspaceTaskLifecycle::Settled => format!("AND {settled_at} IS NOT NULL"),
     };
-    // A default draft is its Member's own, so another Member's unstarted chat never lists.
-    let own_draft = format!(
-        "(session.is_default_draft = 0 OR {} IS {member_parameter})",
-        super::chat_stewardship::opener_sql("session.id")
-    );
+    let own_draft = super::chat_stewardship::visible_draft_sql("session", member_parameter);
     let pinned_order = super::member_attention::pinned_order_sql("session.id", member_parameter);
     let pinned_first = format!("CASE WHEN {pinned} THEN 0 ELSE 1 END");
     let by_pin_then = |rest: &str| {

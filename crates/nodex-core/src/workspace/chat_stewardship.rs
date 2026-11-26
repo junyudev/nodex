@@ -54,6 +54,12 @@ pub(super) fn record_owner(
     Ok(())
 }
 
+/// An unstarted default draft is private to the Member who opened it.
+pub(super) fn visible_draft_sql(session: &str, member: &str) -> String {
+    let opener = opener_sql(&format!("{session}.id"));
+    format!("({session}.is_default_draft = 0 OR {opener} IS {member})")
+}
+
 /// The Member who opened a chat, as an SQL expression over a Session: the owner Core recorded when
 /// it created the chat for them, such as the default draft each Member opens for themselves.
 pub(super) fn opener_sql(session: &str) -> String {

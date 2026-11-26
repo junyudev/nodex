@@ -1090,15 +1090,6 @@ pub(super) fn project(
     })
 }
 
-pub(super) fn read_session_summary(
-    connection: &Connection,
-    library_id: &str,
-    session_id: &str,
-    member: &str,
-) -> Result<Option<ProjectWorkspaceSessionSummary>, StoreError> {
-    Ok(read_session(connection, library_id, session_id, member)?.map(session_summary))
-}
-
 fn read_linked_thread(
     connection: &Connection,
     library_id: &str,
