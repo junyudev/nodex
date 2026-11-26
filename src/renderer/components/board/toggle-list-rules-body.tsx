@@ -161,7 +161,10 @@ export function ToggleListRulesBody({
           >
             <span
               className={cn(
-                "size-4 rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm transition-transform duration-200 ease-out",
+                "size-4 rounded-full border border-current bg-current shadow-sm transition-transform duration-200 ease-out",
+                showRaw
+                  ? "text-(color:--switch-thumb-color-checked)"
+                  : "text-(color:--switch-thumb-color)",
                 showRaw ? "translate-x-3.25" : "translate-x-0.75",
               )}
             />

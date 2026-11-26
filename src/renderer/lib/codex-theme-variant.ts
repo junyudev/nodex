@@ -153,7 +153,6 @@ interface BaseTheme {
   semanticColors: {
     diffAdded: string;
     diffRemoved: string;
-    skill: string;
   };
   surface: string;
 }
@@ -212,28 +211,23 @@ interface DerivedTheme {
 const BLACK: Rgb = { blue: 0, green: 0, red: 0 };
 const WHITE: Rgb = { blue: 255, green: 255, red: 255 };
 
-// The default preset's resolved seed. Every surface, control, border and text role derives
-// from these five inputs; the interpolation baselines below are a separate contract.
-const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
+// Contrast, ink and surface belong to the appearance. The accent is resolved independently.
+const DEFAULT_THEMES: Record<ThemeVariant, Omit<BaseTheme, "accent">> = {
   dark: {
-    accent: "#3a83f7",
     contrast: 60,
-    ink: "#fcfcfc",
+    ink: "#ffffff",
     semanticColors: {
-      diffAdded: "#00a240",
-      diffRemoved: "#e02e2a",
-      skill: "#b06dff",
+      diffAdded: "#40c977",
+      diffRemoved: "#fa423e",
     },
-    surface: "#111111",
+    surface: "#181818",
   },
   light: {
-    accent: "#3a83f7",
     contrast: 45,
-    ink: "#0d0d0d",
+    ink: "#1a1c1f",
     semanticColors: {
       diffAdded: "#00a240",
-      diffRemoved: "#e02e2a",
-      skill: "#751ed9",
+      diffRemoved: "#ba2623",
     },
     surface: "#ffffff",
   },
@@ -290,8 +284,6 @@ export function getCodexThemeVariantStyle(
     "--codex-base-contrast": String(prepared.theme.contrast),
     "--codex-base-ink": prepared.theme.ink,
     "--codex-base-surface": prepared.theme.surface,
-    "--app-color-accent-blue": prepared.theme.accent,
-    "--app-color-accent-purple": prepared.theme.semanticColors.skill,
     "--app-color-background-accent": derived.accentBackground,
     "--app-color-background-accent-active": derived.accentBackgroundActive,
     "--app-color-background-accent-hover": derived.accentBackgroundHover,
@@ -362,9 +354,6 @@ export function getCodexThemeVariantStyle(
     "--app-color-text-secondary": "initial",
     "--app-color-text-primary-solid": "initial",
     "--app-color-background-card": "initial",
-    "--color-image-generation-accent": prepared.theme.accent,
-    "--color-image-generation-text": "var(--color-text-accent)",
-    "--color-image-generation-foreground": "var(--app-color-text-on-accent)",
     "--color-text-mode-toggle-inactive": `color-mix(in oklab, ${derived.textForeground} 80%, transparent)`,
     "--shadow-mode-toggle-selected": "var(--shadow-md)",
     ...deriveAccentStyle(variant, resolvedAccent, prepared, derived, coloredUserMessages),
@@ -398,6 +387,10 @@ function deriveAccentStyle(
   const shared = {
     "--codex-base-accent": prepared.theme.accent,
     "--app-color-accent-blue": prepared.theme.accent,
+    // Product controls and progress indicators use the selected palette.
+    "--color-chart-blue": "var(--app-color-accent-blue)",
+    "--color-ring-accent": "var(--app-color-border-focus)",
+    "--color-text-info": "var(--app-color-text-accent)",
     "--app-color-text-on-accent": onAccent,
     "--app-color-text-unread-badge":
       accent.kind === "custom"
@@ -410,7 +403,7 @@ function deriveAccentStyle(
     "--color-chart-sequential-3": `var(--${colorName}-400)`,
     "--color-chart-sequential-4": `var(--${colorName}-${isDark ? 200 : 600})`,
     "--color-image-generation-accent":
-      accent.kind === "preset" && preset === "black" ? "var(--color-text)" : prepared.theme.accent,
+      accent.kind === "preset" && preset === "black" ? "var(--color-text)" : "var(--color-accent)",
     "--color-image-generation-text":
       accent.kind === "preset" && preset === "black"
         ? "var(--color-text)"
@@ -418,11 +411,13 @@ function deriveAccentStyle(
     "--color-image-generation-foreground":
       accent.kind === "preset" && preset === "black"
         ? "var(--app-color-background-surface)"
-        : "var(--app-color-text-on-accent)",
+        : "var(--color-text-on-accent)",
   };
   if (accent.kind === "custom")
     return {
       ...shared,
+      "--color-accent": prepared.theme.accent,
+      "--color-text-on-accent": onAccent,
       "--app-color-background-accent": derived.accentBackground,
       "--app-color-background-accent-active": derived.accentBackgroundActive,
       "--app-color-background-accent-hover": derived.accentBackgroundHover,
@@ -477,10 +472,12 @@ function deriveAccentStyle(
     ? isDark
       ? "#ffffff"
       : "#000000"
-    : palette[isDark && preset !== "pink" ? 500 : 400];
+    : palette[preset === "blue" || (isDark && preset !== "pink") ? 500 : 400];
   const actionText = monochrome && isDark ? "#000000" : "#ffffff";
   return {
     ...shared,
+    "--color-accent": preset === "black" ? actionBackground : prepared.theme.accent,
+    "--color-text-on-accent": preset === "black" && !isDark ? "var(--white)" : "var(--black)",
     "--app-color-background-accent": soft,
     "--app-color-background-accent-active": soft,
     "--app-color-background-accent-hover": soft,

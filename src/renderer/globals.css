@@ -528,15 +528,15 @@
   font-weight: var(--shiki-dark-font-weight, inherit);
 }
 
-/* BlockNote's dark red-on-red defaults are only 1.44:1. Keep the semantic danger
-   foreground while deriving a restrained surface that stays readable. */
+/* BlockNote's dark red-on-red defaults are only 1.44:1. Use the error-text role, which
+   stays readable on dark surfaces, and derive a restrained surface from it. */
 .nfm-editor .bn-root[data-color-scheme="dark"] .bn-preview-placeholder-error {
-  background-color: color-mix(in srgb, var(--color-text-danger) 18%, transparent);
-  color: var(--color-text-danger);
+  background-color: color-mix(in srgb, var(--app-color-text-error) 18%, transparent);
+  color: var(--app-color-text-error);
 }
 
 .nfm-editor .bn-root[data-color-scheme="dark"] .bn-code-block-source-error {
-  color: var(--color-text-danger);
+  color: var(--app-color-text-error);
 }
 
 /* A Block Equation owns the full block width, so its committed diagnostic does too.

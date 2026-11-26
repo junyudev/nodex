@@ -26,17 +26,21 @@
     inset: 0 0 auto;
   }
 
+  :where(:root, [data-theme="light"]) {
+    --viewer-control-shadow: var(--shadow-viewer-surface);
+  }
+
+  :where([data-theme="dark"]) {
+    --viewer-control-shadow:
+      0 0 0 var(--border-width-hairline) var(--color-border), var(--shadow-xl-spread);
+  }
+
   .controlSurface {
     background: linear-gradient(
       var(--color-background-viewer-control),
       var(--color-background-viewer-control)
     );
-    box-shadow: var(--lightningcss-light, var(--shadow-viewer-surface))
-      var(
-        --lightningcss-dark,
-        0 0 0 var(--border-width-hairline) var(--color-border),
-        var(--shadow-xl-spread)
-      );
+    box-shadow: var(--viewer-control-shadow);
     backdrop-filter: blur(var(--blur-xl, 24px));
   }
 
@@ -103,8 +107,10 @@
     background-image: none;
     background-color: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue));
     /* Dark themes lift the accent toward white (39% at the default contrast). */
-    color: var(--lightningcss-light, var(--color-text-info))
-      var(--lightningcss-dark, color-mix(in srgb, var(--color-chart-blue), white 39%));
+    color: light-dark(
+      var(--color-text-info),
+      color-mix(in srgb, var(--color-chart-blue), white 39%)
+    );
   }
 
   .button.selected:enabled:hover:not([data-hover-suppressed="true"]),

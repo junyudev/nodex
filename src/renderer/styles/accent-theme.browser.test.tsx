@@ -318,7 +318,7 @@ test.each(["light", "dark"] as const)(
       };
       await waitFor(() => expect(capture()).toEqual(expected));
     };
-    expect(baseline.send).toBe(color(variant === "light" ? "#3a83f7" : "#2c67c5"));
+    expect(baseline.send).toBe(color("#2c67c5"));
     expect(baseline.text).toBe("rgb(255, 255, 255)");
     expect(baseline.message).toBe(color(variant === "light" ? "#e8f3fe" : "#173e76"));
     applyAccent(variant, { kind: "preset", name: "blue" });

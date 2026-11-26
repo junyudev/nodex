@@ -7,6 +7,11 @@
   --height-toolbar-pane: 42px;
 }
 
+/* The shared editor components use this utility for neutral interaction paint. */
+@utility bg-accent {
+  background-color: var(--accent);
+}
+
 @utility h-toolbar-pane {
   height: var(--height-toolbar-pane);
 }

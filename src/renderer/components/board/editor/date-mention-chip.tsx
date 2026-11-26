@@ -92,7 +92,10 @@ function DateMentionSwitch({
     >
       <span
         className={cn(
-          "size-3 rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm",
+          "size-3 rounded-full border border-current bg-current shadow-sm",
+          checked
+            ? "text-(color:--switch-thumb-color-checked)"
+            : "text-(color:--switch-thumb-color)",
           checked && "translate-x-3",
         )}
       />

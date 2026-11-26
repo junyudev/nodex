@@ -64,7 +64,11 @@ const referenceFixture = `
     --color-text-on-accent: var(--vscode-button-foreground);
     --color-text-tip-badge: var(--vscode-charts-blue);
     --color-chart-blue: var(--vscode-charts-blue);
-    --color-control-thumb-on-accent: white;
+    --app-shell-page-window-fill: white;
+    --color-accent: #0285ff;
+    --menu-background-color: white;
+    --switch-thumb-color: white;
+    --switch-thumb-color-checked: var(--switch-thumb-color);
   }
   .text-info { color: var(--color-text-info); }
   .text-danger { color: var(--color-text-danger); }
@@ -79,8 +83,6 @@ const referenceFixture = `
   .bg-user-message { background-color: var(--color-background-user-message); }
   .text-user-message { color: var(--color-text-user-message); }
   .bg-chart-blue { background-color: var(--color-chart-blue); }
-  .bg-control-thumb-on-accent { background-color: var(--color-control-thumb-on-accent); }
-  .border-control-thumb-on-accent { border-color: var(--color-control-thumb-on-accent); }
   .text-inverse { color: var(--color-text-inverse); }
   .bg-primary-solid { background-color: var(--color-background-primary-solid); }
   .text-primary-solid { color: var(--color-text-primary-solid); }
@@ -108,6 +110,15 @@ const createWorkspace = async (): Promise<string> => {
         --background: white;
         --destructive: #c43b2f;
         --corner-radius-scale: 1.25;
+        --radius-2xs-base: 0.125rem;
+        --radius-xs-base: 0.25rem;
+        --radius-sm-base: 0.375rem;
+        --radius-md-base: 0.5rem;
+        --radius-lg-base: 0.625rem;
+        --radius-xl-base: 0.75rem;
+        --radius-2xl-base: 1rem;
+        --radius-3xl-base: 1.5rem;
+        --radius-4xl-base: 2rem;
         --padding-panel-base: 0.75rem;
         --color-background-elevated-secondary: #f5f5f5;
         --color-border: #ddd;

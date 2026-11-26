@@ -1,6 +1,8 @@
 import {
-  CONTRACT_NODEX_OWNED_PROPERTIES,
   CONTRACT_DECLARATION_PREFIXES,
+  CONTRACT_EXTENSION_OVERRIDES,
+  CONTRACT_NODEX_OWNED_PROPERTIES,
+  CONTRACT_SCOPED_PROPERTIES,
   CONTRACT_SOURCE_SELECTORS,
   ELECTRON_BODY_PROPERTIES,
   FOUNDATION_BROWSER_OVERRIDES,
@@ -173,6 +175,7 @@ const renderContract = (
   const facts = collectSemanticThemeCssFacts(sourceDeclarations, "source");
   const propertyNames = new Set([
     ...theme.keys(),
+    ...CONTRACT_SCOPED_PROPERTIES,
     ...SEMANTIC_THEME_RUNTIME_VARIABLES,
     ...facts.definitions
       .filter(({ name }) => CONTRACT_DECLARATION_PREFIXES.some((prefix) => name.startsWith(prefix)))
@@ -240,7 +243,17 @@ const renderContract = (
   // Registration must not synthesize a :root rule above the source's zero-specificity cascade.
   // Source declarations publish their own runtime values; Nodex-only defaults use the same layer.
   const augmentations = `@layer theme {\n  ${formatBlock(":where(:root, :host)", RUNTIME_TOKEN_AUGMENTATIONS).replaceAll("\n", "\n  ")}\n}`;
-  return [HEADER(refVersion), formatThemeBlock(theme, "reference"), augmentations, declarations]
+  const extension = formatBlock(
+    ':root[data-codex-window-type="extension"], :root[data-codex-window-type="extension"] :where([data-theme])',
+    new Map(Object.entries(CONTRACT_EXTENSION_OVERRIDES)),
+  );
+  return [
+    HEADER(refVersion),
+    formatThemeBlock(theme, "reference"),
+    augmentations,
+    declarations,
+    extension,
+  ]
     .filter(Boolean)
     .join("\n\n")
     .concat("\n");
@@ -282,6 +295,8 @@ const renderUtilities = (sourceCss: string, refVersion: string): string => {
 const renderSurfaces = (sourceCss: string, refVersion: string): string => {
   const extracted = filterCss(sourceCss, {
     selectorFingerprints: collectSelectorFingerprints(SURFACE_SELECTORS),
+    // Export the base chrome paint, excluding wallpaper-conditioned variants.
+    skipContainerRules: true,
     keepKeyframes: new Set(["loading-shimmer"]),
   });
   return `${HEADER(refVersion)}\n\n${extracted.trim()}\n`;

@@ -1,34 +1,10 @@
 /*
- * Generated semantic theme contract (refVersion 26.1027.61615).
+ * Generated semantic theme contract (refVersion 26.1120.50957).
  * Do not edit by hand. Run:
- *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1027.61615
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1120.50957
  */
 
 @layer components {
-  .loading-shimmer-pure-text-inverted {
-    background: var(--text-primary) linear-gradient(to right, var(--text-primary) 0%, var(--text-quaternary) 50%, var(--text-primary) 100%);
-    background: var(--text-primary) -webkit-gradient(linear, 100% 0, 0 0, from(var(--text-primary)), color-stop(.5, var(--text-quaternary)), to(var(--text-primary)));
-    text-fill-color: transparent;
-    -webkit-text-fill-color: transparent;
-    background-position: -100% 0;
-    background-repeat: no-repeat;
-    background-size: 50% 200%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    animation-name: loading-shimmer;
-    animation-duration: 5s;
-    animation-timing-function: steps(120, end);
-    animation-iteration-count: infinite;
-    animation-delay: .5s;
-    display: inline-block;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .loading-shimmer-pure-text-inverted {
-      animation: none;
-    }
-  }
-
   :where(.loading-shimmer-pure-text, .loading-shimmer, .loading-shimmer-dot-grid) {
     --loading-shimmer-foreground: initial;
     --loading-shimmer-base: initial;
@@ -86,22 +62,6 @@
     --shimmer-contrast: var(--loading-shimmer-highlight, #0009);
   }
 
-  @container style(--theme-variant: dark) {
-    :is(.loading-shimmer-pure-text, .loading-shimmer):where(:not([data-theme])) {
-      --shimmer-text-secondary: var(--loading-shimmer-base, var(--text-primary));
-    }
-
-    @supports (color: color-mix(in lab, red, red)) {
-      :is(.loading-shimmer-pure-text, .loading-shimmer):where(:not([data-theme])) {
-        --shimmer-text-secondary: var(--loading-shimmer-base, color-mix(in srgb, var(--text-primary) 45%, transparent));
-      }
-    }
-
-    :is(.loading-shimmer-pure-text, .loading-shimmer):where(:not([data-theme])) {
-      --shimmer-contrast: var(--loading-shimmer-highlight, #0009);
-    }
-  }
-
   .loading-shimmer-working {
     --loading-shimmer-base: var(--color-text-secondary);
     --loading-shimmer-highlight: var(--color-text);
@@ -115,12 +75,8 @@
   .loading-shimmer-pure-text, .loading-shimmer, .loading-shimmer-dot-grid {
     --loading-shimmer-default-duration: 2s;
     background: var(--shimmer-text-secondary) linear-gradient(to right, transparent 0%, var(--shimmer-contrast) 40%, var(--shimmer-contrast) 60%, transparent 100%);
-    background: var(--shimmer-text-secondary) -webkit-gradient(linear, 100% 0, 0 0, from(transparent), color-stop(.4, var(--shimmer-contrast)), color-stop(.6, var(--shimmer-contrast)), to(transparent));
+    animation: steps(48, end) infinite loading-shimmer;
     animation-duration: var(--loading-shimmer-duration, var(--loading-shimmer-default-duration));
-    animation-name: loading-shimmer;
-    animation-timing-function: steps(48, end);
-    animation-iteration-count: infinite;
-    animation-delay: 0s;
     animation-play-state: var(--decorative-animation-play-state, running);
     background-position: -100% 0;
     background-repeat: no-repeat;
@@ -137,7 +93,6 @@
   .loading-shimmer-pure-text, .loading-shimmer {
     text-fill-color: transparent;
     -webkit-text-fill-color: transparent;
-    -webkit-background-clip: text;
     background-clip: text;
   }
 
@@ -148,41 +103,22 @@
   }
 }
 
-[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])) {
+[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame], [data-app-shell-page-surface="true"]) {
   background: var(--color-surface-tertiary);
 }
 
 @supports (color: color-mix(in lab, red, red)) {
-  [data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])) {
-    background: color-mix(in srgb, var(--color-surface-tertiary) 70%, transparent);
+  [data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame], [data-app-shell-page-surface="true"]) {
+    background: color-mix(in oklab, var(--color-surface-tertiary) 70%, transparent);
   }
 }
 
-[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])) {
+[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame], [data-app-shell-page-surface="true"]) {
   overflow: visible;
 }
 
-[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]))[data-app-shell-page-surface="true"] {
-  background: var(--lightningcss-light, var(--color-surface-secondary))var(--lightningcss-dark, var(--color-surface-tertiary));
-}
-
-@supports (color: color-mix(in lab, red, red)) {
-  [data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]))[data-app-shell-page-surface="true"] {
-    background: var(--lightningcss-light, color-mix(in srgb, var(--color-surface-secondary) 85%, transparent))var(--lightningcss-dark, color-mix(in srgb, var(--color-surface-tertiary) 80%, transparent));
-  }
-}
-
-[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"]) .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]) {
-  background: none;
-}
-
-[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]):after {
-  inset: 0 calc(-1 * var(--radius-2xl)) 0 auto;
-  width: var(--radius-2xl);
-  background: inherit;
-  content: "";
-  pointer-events: none;
-  position: absolute;
+[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame], [data-app-shell-page-surface="true"])[data-app-shell-page-surface="true"] {
+  background: var(--app-shell-page-window-fill);
 }
 
 @keyframes loading-shimmer {

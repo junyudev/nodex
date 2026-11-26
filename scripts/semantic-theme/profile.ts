@@ -5,8 +5,8 @@ import type {
   SemanticUtilityProfile,
 } from "./types";
 
-export const SEMANTIC_THEME_GENERATOR_VERSION = 4;
-export const SEMANTIC_THEME_REF_VERSION = "26.1027.61615";
+export const SEMANTIC_THEME_GENERATOR_VERSION = 5;
+export const SEMANTIC_THEME_REF_VERSION = "26.1120.50957";
 
 export const SEMANTIC_THEME_TARGETS = [
   "electron-light",
@@ -94,6 +94,12 @@ export const FOUNDATION_THEME_PROPERTIES = [
 ] as const;
 
 export const FOUNDATION_THEME_NORMALIZATIONS = {
+  ...Object.fromEntries(
+    FOUNDATION_THEME_PROPERTIES.filter((name) => name.startsWith("--radius-")).map((name) => [
+      name,
+      `calc(var(${name}-base) * var(--corner-radius-scale))`,
+    ]),
+  ),
   "--padding-row-y": "calc(var(--spacing) * 1)",
   "--padding-panel": "var(--padding-panel-base)",
   "--padding-toolbar": "calc(var(--spacing) * 4)",
@@ -111,6 +117,19 @@ export const FOUNDATION_ELECTRON_OVERRIDES = {
 
 export const FOUNDATION_BROWSER_OVERRIDES = {
   "--height-toolbar": "56px",
+} as const;
+
+export const CONTRACT_SCOPED_PROPERTIES = [
+  "--app-shell-page-window-fill",
+  "--color-accent",
+  "--menu-background-color",
+  "--switch-thumb-color",
+  "--switch-thumb-color-checked",
+] as const;
+
+// The extension uses its own neutral surface scale. Its app background aliases this role.
+export const CONTRACT_EXTENSION_OVERRIDES = {
+  "--color-surface-secondary": "light-dark(var(--gray-50), var(--gray-100))",
 } as const;
 
 export const CONTRACT_NODEX_OWNED_PROPERTIES = new Set([
@@ -176,7 +195,7 @@ export const SEMANTIC_THEME_REQUIRED_VARIABLES = [
     "--color-token-description-foreground",
     "--color-token-editor-background",
     "--color-chart-blue",
-    "--color-control-thumb-on-accent",
+    ...CONTRACT_SCOPED_PROPERTIES,
     "--color-text-inverse",
     "--color-background-primary-solid",
     "--color-text-primary-solid",
@@ -337,8 +356,6 @@ export const SEMANTIC_UTILITY_PROFILE: readonly SemanticUtilityProfile[] = [
   })),
   ...[
     { id: "bg-chart-blue", dependency: "--color-chart-blue" },
-    { id: "bg-control-thumb-on-accent", dependency: "--color-control-thumb-on-accent" },
-    { id: "border-control-thumb-on-accent", dependency: "--color-control-thumb-on-accent" },
     { id: "text-inverse", dependency: "--color-text-inverse" },
     { id: "bg-primary-solid", dependency: "--color-background-primary-solid" },
     { id: "text-primary-solid", dependency: "--color-text-primary-solid" },
@@ -408,10 +425,8 @@ export const SURFACE_SELECTORS = [
   ".loading-shimmer-on-color",
   ".loading-shimmer:hover",
   ".loading-shimmer-pure-text-inverted",
-  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]))',
-  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]))[data-app-shell-page-surface="true"]',
-  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"]) .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])',
-  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])::after',
+  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame], [data-app-shell-page-surface="true"])',
+  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame], [data-app-shell-page-surface="true"])[data-app-shell-page-surface="true"]',
 ] as const;
 
 export const COLLISION_RESOLUTIONS = {
@@ -479,6 +494,8 @@ export const SEMANTIC_THEME_PROFILE = {
   runtimeProviders: SEMANTIC_THEME_RUNTIME_PROVIDERS,
   runtimeVariables: SEMANTIC_THEME_RUNTIME_VARIABLES,
   sourceSelectors: CONTRACT_SOURCE_SELECTORS,
+  scopedProperties: CONTRACT_SCOPED_PROPERTIES,
+  extensionOverrides: CONTRACT_EXTENSION_OVERRIDES,
   exclusions: SEMANTIC_THEME_EXCLUSIONS,
   requiredVariables: SEMANTIC_THEME_REQUIRED_VARIABLES,
   collisions: COLLISION_RESOLUTIONS,
