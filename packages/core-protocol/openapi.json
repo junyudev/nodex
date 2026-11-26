@@ -25928,6 +25928,68 @@
         },
         "additionalProperties": false
       },
+      "LibraryLocationSegment": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "title",
+              "lifecycle",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page"
+                ]
+              },
+              "lifecycle": {
+                "$ref": "#/components/schemas/LibraryLifecycle"
+              },
+              "page_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "database_id",
+              "title",
+              "default_view_id",
+              "kind"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string"
+              },
+              "default_view_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "database"
+                ]
+              },
+              "primary_project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
       "LibraryMoveDestinationEntry": {
         "type": "object",
         "required": [
@@ -29141,72 +29203,6 @@
           }
         ]
       },
-      "LibraryPageOwnershipPath": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "target_page_id",
-              "status"
-            ],
-            "properties": {
-              "status": {
-                "type": "string",
-                "enum": [
-                  "missing"
-                ]
-              },
-              "target_page_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "target_page_id",
-              "ancestors",
-              "status"
-            ],
-            "properties": {
-              "ancestors": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/LibraryPageOwnershipPathAncestor"
-                }
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "available"
-                ]
-              },
-              "target_page_id": {
-                "type": "string"
-              }
-            }
-          }
-        ]
-      },
-      "LibraryPageOwnershipPathAncestor": {
-        "type": "object",
-        "required": [
-          "page_id",
-          "title",
-          "lifecycle"
-        ],
-        "properties": {
-          "lifecycle": {
-            "$ref": "#/components/schemas/LibraryLifecycle"
-          },
-          "page_id": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        }
-      },
       "LibraryPagePrepareKind": {
         "oneOf": [
           {
@@ -30493,6 +30489,53 @@
       },
       "LibraryReadResponse": {
         "$ref": "#/components/schemas/ResponseEnvelope_ModuleReadSnapshot_LibraryReadValue"
+      },
+      "LibraryResourceLocation": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "target",
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "missing"
+                ]
+              },
+              "target": {
+                "$ref": "#/components/schemas/LibraryRouteTarget"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "target",
+              "segments",
+              "status"
+            ],
+            "properties": {
+              "segments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LibraryLocationSegment"
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "available"
+                ]
+              },
+              "target": {
+                "$ref": "#/components/schemas/LibraryRouteTarget"
+              }
+            }
+          }
+        ]
       },
       "LibraryResourceTarget": {
         "oneOf": [
@@ -41644,18 +41687,18 @@
               {
                 "type": "object",
                 "required": [
-                  "page_id",
+                  "target",
                   "kind"
                 ],
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "page_ownership_path"
+                      "resource_location"
                     ]
                   },
-                  "page_id": {
-                    "type": "string"
+                  "target": {
+                    "$ref": "#/components/schemas/LibraryRouteTarget"
                   }
                 }
               },
@@ -61728,13 +61771,13 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "page_ownership_path"
+                              "resource_location"
                             ]
                           },
                           "value": {
                             "oneOf": [
                               {
-                                "$ref": "#/components/schemas/LibraryPageOwnershipPath"
+                                "$ref": "#/components/schemas/LibraryResourceLocation"
                               },
                               {
                                 "type": "null"

@@ -1816,6 +1816,11 @@ mod tests {
 
     #[test]
     fn persistent_navigation_separates_roots_rows_paths_and_continues_cursors() {
+        use nodex_core_contracts::library::{
+            LibraryLifecycle, LibraryLocationSegment, LibraryNavigationNode,
+            LibraryResourceLocation, LibraryRouteTarget,
+        };
+
         const ROOT_PAGE: &str = "page:root";
         const ROW_PAGE: &str = "page:row";
         const MOVE_SOURCE_PAGE: &str = "page:move-source";
@@ -1908,7 +1913,7 @@ mod tests {
                         "INSERT INTO data_sources( \
                            id, library_id, home_database_block_id, name, schema_key, \
                            rank_key, created_at, updated_at \
-                         ) VALUES (?1, 'library-1', ?2, 'Cards', 'nodex.database', 'a', ?3, ?3)",
+                         ) VALUES (?1, 'library-1', ?2, 'Tasks', 'nodex.database', 'a', ?3, ?3)",
                         params![SOURCE, DATABASE, NOW],
                     )?;
                     transaction.execute(
@@ -2202,6 +2207,10 @@ mod tests {
                 .find(|hit| hit.page_id == page_id)
                 .expect("Library Page matched");
             assert_eq!(hit.project_id, None);
+            assert_eq!(
+                hit.location_label,
+                if page_id == ROOT_PAGE { "" } else { "Cards" }
+            );
             assert!(search(Some(vec!["project-1".to_owned()]), query).is_empty());
         }
         assert_eq!(
@@ -2463,7 +2472,7 @@ mod tests {
                 )
             })
             .expect("root page in catalog");
-        assert_eq!(root.location_label, "Library");
+        assert_eq!(root.location_label, "");
         assert!(root.location_is_library_root);
         let root_context = context();
         let LibraryReadValue::ProjectPageSearch { items, .. } = module
@@ -2993,31 +3002,74 @@ mod tests {
                 ..
             }) if target_page_id == NESTED_PAGE
         ));
-        let LibraryReadValue::PageOwnershipPath { value } = module
-            .read(
-                &root_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageOwnershipPath {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("trusted root Page ownership path")
-            .value
-        else {
-            panic!("Page ownership path");
+        let page_target = |page_id: &str| LibraryRouteTarget::Page {
+            page_id: page_id.to_owned(),
         };
-        let Some(nodex_core_contracts::library::LibraryPageOwnershipPath::Available {
-            ancestors,
-            ..
-        }) = value.as_deref()
-        else {
-            panic!("available Page ownership path");
+        let locate = |target| {
+            let LibraryReadValue::ResourceLocation { value: Some(value) } =
+                read(LibraryRead::ResourceLocation { target })
+            else {
+                panic!("Resource location");
+            };
+            *value
         };
-        assert_eq!(ancestors.len(), 2);
-        assert_eq!(ancestors[0].page_id, ROOT_PAGE);
-        assert_eq!(ancestors[1].page_id, INTERMEDIATE_PAGE);
+        let segments = |target| {
+            let LibraryResourceLocation::Available { segments, .. } = locate(target) else {
+                panic!("available Resource location");
+            };
+            segments
+        };
+        assert!(segments(page_target(ROOT_PAGE)).is_empty());
+        assert_eq!(
+            segments(page_target(ROW_PAGE)),
+            [LibraryLocationSegment::Database {
+                database_id: DATABASE.to_owned(),
+                title: "Cards".to_owned(),
+                default_view_id: VIEW.to_owned(),
+                primary_project_id: Some("project-1".to_owned()),
+            }]
+        );
+        assert!(
+            segments(LibraryRouteTarget::View {
+                view_id: VIEW.to_owned()
+            })
+            .is_empty()
+        );
+        assert!(matches!(
+            segments(page_target(NESTED_PAGE)).as_slice(),
+            [
+                LibraryLocationSegment::Page { page_id: root, .. },
+                LibraryLocationSegment::Page { page_id: parent, .. }
+            ] if root == ROOT_PAGE && parent == INTERMEDIATE_PAGE
+        ));
+        let missing = page_target("page:missing");
+        assert_eq!(
+            locate(missing.clone()),
+            LibraryResourceLocation::Missing { target: missing }
+        );
+
+        // A title projection that trails its Document head still names its owner.
+        let shift_intermediate_head = |delta: i64| {
+            kernel
+                .writer()
+                .call(move |connection| {
+                    connection.execute(
+                        "UPDATE documents SET head_seq = head_seq + ?1 \
+                         WHERE id = (SELECT document_id FROM pages WHERE block_id = ?2)",
+                        rusqlite::params![delta, INTERMEDIATE_PAGE],
+                    )?;
+                    Ok(())
+                })
+                .expect("shift intermediate Document head");
+        };
+        shift_intermediate_head(1);
+        assert!(matches!(
+            segments(page_target(NESTED_PAGE)).as_slice(),
+            [_, LibraryLocationSegment::Page { page_id, title, .. }]
+                if page_id == INTERMEDIATE_PAGE && !title.is_empty()
+        ));
+        shift_intermediate_head(-1);
+
         let LibraryReadValue::Children { next_cursor, .. } = read(LibraryRead::Children {
             parent: LibraryNavigationParent::Library,
             cursor: None,
@@ -3154,7 +3206,7 @@ mod tests {
             .find(|item| item.page_id == ROOT_PAGE)
             .expect("root Page destination");
         assert!(!root_destination.is_current);
-        assert_eq!(root_destination.path, ["Pages"]);
+        assert_eq!(root_destination.path, Vec::<String>::new());
         assert_eq!(
             (
                 root_destination.document_generation,
@@ -3199,7 +3251,7 @@ mod tests {
         };
         assert_eq!(current_destination.page_id, MOVE_SOURCE_PAGE);
         assert!(current_destination.is_current);
-        assert_eq!(current_destination.path, ["Pages"]);
+        assert_eq!(current_destination.path, Vec::<String>::new());
         let source_document_head = kernel
             .writer()
             .call(|connection| {
@@ -3379,7 +3431,7 @@ mod tests {
             .iter()
             .find(|destination| destination.key == format!("page:{MOVE_SOURCE_PAGE}"))
             .expect("Page relocation target");
-        assert_eq!(page_destination.path, ["Pages"]);
+        assert_eq!(page_destination.path, Vec::<String>::new());
         let moved = module
             .apply(
                 &context(),
@@ -3749,6 +3801,77 @@ mod tests {
         kernel
             .writer()
             .call(|connection| {
+                // The fixture now models a card with a nested Page in a Database hosted by
+                // an archived Page. Use separate names for the Database and its Data Source.
+                connection.execute(
+                    "UPDATE pages SET parent_kind = 'data_source', parent_id = ?1 WHERE block_id = ?2",
+                    params![SOURCE, ROW_PAGE],
+                )?;
+                connection.execute(
+                    "UPDATE pages SET parent_kind = 'page', parent_id = ?1 WHERE block_id = ?2",
+                    params![ROW_PAGE, NESTED_PAGE],
+                )?;
+                connection.execute(
+                    "UPDATE blocks SET lifecycle = 'archived' WHERE id = ?1",
+                    [ROOT_PAGE],
+                )?;
+                connection.execute(
+                    "UPDATE project_database_bindings SET lifecycle = 'inactive' WHERE project_id = 'project-1'",
+                    [],
+                )?;
+                connection.execute(
+                    "DELETE FROM library_block_placements WHERE block_id IN (?1, ?2)",
+                    params![DATABASE, PRIMARY_CANVAS],
+                )?;
+                connection.execute(
+                    "INSERT INTO document_block_index(document_id, block_id, ordinal, block_type, text, projected_seq)
+                     VALUES (?1, ?2, 10, 'database', '', 1), (?1, ?3, 11, 'canvas', '', 1)",
+                    params![ROOT_DOCUMENT, DATABASE, PRIMARY_CANVAS],
+                )?;
+                Ok(())
+            })
+            .expect("host the Database and Canvas");
+        let trail = segments(page_target(NESTED_PAGE));
+        assert!(matches!(
+            trail.as_slice(),
+            [
+                LibraryLocationSegment::Page { page_id: host, lifecycle: LibraryLifecycle::Archived, .. },
+                LibraryLocationSegment::Database { database_id, primary_project_id: None, .. },
+                LibraryLocationSegment::Page { page_id: card, .. }
+            ] if host == ROOT_PAGE && database_id == DATABASE && card == ROW_PAGE
+        ));
+        assert_eq!(super::location::label(&trail), "Untitled / Cards / Say hi");
+        assert_eq!(segments(page_target(ROW_PAGE)), trail[..2]);
+        assert_eq!(
+            segments(LibraryRouteTarget::Canvas {
+                canvas_id: PRIMARY_CANVAS.to_owned()
+            }),
+            trail[..1]
+        );
+        assert_eq!(
+            segments(LibraryRouteTarget::View {
+                view_id: VIEW.to_owned()
+            }),
+            trail[..1]
+        );
+        let LibraryReadValue::Path { nodes, .. } = read(LibraryRead::Path {
+            target: page_target(NESTED_PAGE),
+        }) else {
+            panic!("navigation path");
+        };
+        assert!(matches!(
+            nodes.as_slice(),
+            [
+                LibraryNavigationNode::Page { page_id: host, .. },
+                LibraryNavigationNode::Database { database_id, .. },
+                LibraryNavigationNode::Page { page_id: card, .. },
+                LibraryNavigationNode::Page { page_id: child, .. }
+            ] if host == ROOT_PAGE && database_id == DATABASE && card == ROW_PAGE && child == NESTED_PAGE
+        ));
+
+        kernel
+            .writer()
+            .call(|connection| {
                 connection.execute(
                     "UPDATE blocks SET lifecycle = 'deleted' WHERE id = ?1",
                     [ROW_PAGE],
@@ -3756,6 +3879,12 @@ mod tests {
                 Ok(())
             })
             .expect("delete keyed Page tombstone");
+        let target = page_target(ROW_PAGE);
+        assert_eq!(
+            locate(target.clone()),
+            LibraryResourceLocation::Missing { target }
+        );
+
         let LibraryReadValue::PageKeyTarget { value } = module
             .read(
                 &root_context,
@@ -7859,7 +7988,7 @@ mod tests {
                 .iter()
                 .find(|item| item.page_id == "page:nested")
                 .map(|item| item.location_label.as_str()),
-            Some("Pages / Local source"),
+            Some("Local source"),
         );
 
         let fuzzy_candidates = module
@@ -7959,6 +8088,7 @@ pub(crate) use mutation::validate_uuid_v7;
 pub(crate) use mutation::{
     LibraryRootPosition, insert_library_placement, require_project_in_library,
 };
+mod location;
 mod navigation;
 mod page_copy;
 pub(crate) mod page_genesis;

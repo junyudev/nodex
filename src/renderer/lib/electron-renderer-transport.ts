@@ -351,20 +351,6 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         releaseAudience();
       };
     },
-    subscribePageOwnershipPathChanges(
-      _projectId: string,
-      callback: (
-        event: import("../../shared/page-ownership-path-events").PageOwnershipPathsChangedEvent,
-      ) => void,
-    ) {
-      return bridge.on("page-ownership-paths-changed", (...args: unknown[]) => {
-        const payload = args[0] as
-          | import("../../shared/page-ownership-path-events").PageOwnershipPathsChangedEvent
-          | undefined;
-        if (!payload) return;
-        callback(payload);
-      });
-    },
     subscribeDatabaseChanges(projectId: string, callback: (event: DatabaseChangeEvent) => void) {
       return bridge.on("database-changed", (...args: unknown[]) => {
         const payload = args[0] as DatabaseChangeEvent | undefined;

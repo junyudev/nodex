@@ -45,7 +45,7 @@ pub fn authorize(
                 | "page_content"
                 | "page_target"
                 | "page_key_target"
-                | "page_ownership_path"
+                | "resource_location"
                 | "page_location"
                 | "canvas_target"
                 | "view_location"

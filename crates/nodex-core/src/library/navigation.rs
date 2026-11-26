@@ -1,13 +1,13 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 
 use nodex_core_contracts::library::{
     LibraryAgentBlockTarget, LibraryAgentSiblingAnchor, LibraryCanvasLocation,
     LibraryCanvasSummary, LibraryCanvasTarget, LibraryCatalogEntry, LibraryCatalogKind,
-    LibraryLifecycle, LibraryMoveDestinationEntry, LibraryMoveDestinationScope,
-    LibraryNavigationNode, LibraryNavigationParent, LibraryPageBacklink,
-    LibraryPageDataSourceContext, LibraryPageDetail, LibraryPageDocumentDescriptor,
-    LibraryPageIntrinsicProperty, LibraryPageKeyTarget, LibraryPageLocation, LibraryPageMembership,
-    LibraryPageMentionDestinationHead, LibraryPageOwnershipPath, LibraryPageOwnershipPathAncestor,
+    LibraryLifecycle, LibraryLocationSegment, LibraryMoveDestinationEntry,
+    LibraryMoveDestinationScope, LibraryNavigationNode, LibraryNavigationParent,
+    LibraryPageBacklink, LibraryPageDataSourceContext, LibraryPageDetail,
+    LibraryPageDocumentDescriptor, LibraryPageIntrinsicProperty, LibraryPageKeyTarget,
+    LibraryPageLocation, LibraryPageMembership, LibraryPageMentionDestinationHead,
     LibraryPageReferencePresentation, LibraryPageRelocationDestinationEntry,
     LibraryPageRelocationDestinationKind, LibraryPageRelocationDestinationScope, LibraryPageTarget,
     LibraryPageWriteDestination, LibraryPlacedResourceTarget, LibraryRead, LibraryReadValue,
@@ -23,7 +23,7 @@ use crate::document::is_primary_canvas_block_id;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::primary_database::active_primary_database_sql;
-use super::{cursor, page_search};
+use super::{cursor, location, page_search};
 
 const DEFAULT_LIMIT: usize = 20;
 const MAX_LIMIT: usize = 100;
@@ -452,15 +452,8 @@ pub(super) fn read(
                 &page_key,
             )?,
         }),
-        LibraryRead::PageOwnershipPath { page_id } => Ok(LibraryReadValue::PageOwnershipPath {
-            value: page_ownership_path(
-                connection,
-                library_id,
-                requesting_project_id,
-                requesting_adapter,
-                &page_id,
-            )?
-            .map(Box::new),
+        LibraryRead::ResourceLocation { target } => Ok(LibraryReadValue::ResourceLocation {
+            value: Some(Box::new(location::read(connection, library_id, target)?)),
         }),
         LibraryRead::PageLocation { page_id } => {
             validate_identity(&page_id, "Page location")?;
@@ -830,12 +823,11 @@ fn page_backlinks(
                 })
                 .collect::<Result<Vec<_>, StoreError>>()?;
             Ok(LibraryPageBacklink {
-                location_label: move_destination_path(
+                location_label: location::label(&page_location_segments(
                     connection,
                     library_id,
                     &item.source_page_id,
-                )?
-                .join(" / "),
+                )?),
                 source_page_id: item.source_page_id,
                 source_block_id: item.source_block_id,
                 source_title: item.source_title,
@@ -1143,141 +1135,6 @@ mod page_key_target_tests {
             ]),
             LibraryPageKeyTarget::Ambiguous,
         );
-    }
-}
-
-fn page_ownership_path(
-    connection: &Connection,
-    library_id: &str,
-    _requesting_project_id: Option<&str>,
-    _requesting_adapter: &AdapterKind,
-    page_id: &str,
-) -> Result<Option<LibraryPageOwnershipPath>, StoreError> {
-    validate_identity(page_id, "Page ownership path")?;
-
-    let Some(hierarchy) = page_hierarchy(connection, library_id, page_id)? else {
-        return Ok(Some(LibraryPageOwnershipPath::Missing {
-            target_page_id: page_id.to_owned(),
-        }));
-    };
-    let visible = hierarchy;
-    if visible.first().is_none_or(|page| page.page_id != page_id) {
-        return Ok(Some(LibraryPageOwnershipPath::Missing {
-            target_page_id: page_id.to_owned(),
-        }));
-    }
-    let ancestors = visible
-        .into_iter()
-        .skip(1)
-        .rev()
-        .map(|page| LibraryPageOwnershipPathAncestor {
-            page_id: page.page_id,
-            title: page.title,
-            lifecycle: page.lifecycle,
-        })
-        .collect();
-    Ok(Some(LibraryPageOwnershipPath::Available {
-        target_page_id: page_id.to_owned(),
-        ancestors,
-    }))
-}
-
-struct PageHierarchyEntry {
-    page_id: String,
-    title: String,
-    lifecycle: LibraryLifecycle,
-}
-
-fn page_hierarchy(
-    connection: &Connection,
-    library_id: &str,
-    page_id: &str,
-) -> Result<Option<Vec<PageHierarchyEntry>>, StoreError> {
-    let mut current = page_id.to_owned();
-    let mut hierarchy = Vec::new();
-    let mut seen = HashSet::new();
-    loop {
-        if hierarchy.len() >= 512 {
-            return Err(corrupt("Library Page hierarchy exceeds 512 Page levels"));
-        }
-        if !seen.insert(current.clone()) {
-            return Err(corrupt("Library Page hierarchy contains a cycle"));
-        }
-        let row = connection
-            .query_row(
-                "SELECT page.library_id, page.parent_kind, page.parent_id, block.lifecycle, \
-                   materialization.title \
-                 FROM pages page \
-                 JOIN blocks block ON block.id = page.block_id \
-                   AND block.library_id = page.library_id \
-                 JOIN documents document ON document.id = page.document_id \
-                   AND document.library_id = page.library_id \
-                 LEFT JOIN document_materializations materialization \
-                   ON materialization.document_id = document.id \
-                   AND materialization.generation = document.generation \
-                   AND materialization.projected_seq = document.head_seq \
-                   AND materialization.schema_version = document.schema_version \
-                 WHERE page.block_id = ?1",
-                [&current],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, Option<String>>(4)?,
-                    ))
-                },
-            )
-            .optional()?;
-        let Some((page_library_id, parent_kind, parent_id, lifecycle, title)) = row else {
-            if hierarchy.is_empty() {
-                return Ok(None);
-            }
-            return Err(corrupt(
-                "Library Page hierarchy points to a missing parent Page",
-            ));
-        };
-        if page_library_id != library_id {
-            return Err(corrupt("Library Page hierarchy crosses Library authority"));
-        }
-        let lifecycle = match lifecycle.as_str() {
-            "active" => LibraryLifecycle::Active,
-            "archived" => LibraryLifecycle::Archived,
-            "deleted" if hierarchy.is_empty() => return Ok(None),
-            "deleted" => {
-                return Err(corrupt(
-                    "Library Page hierarchy points through a deleted parent Page",
-                ));
-            }
-            _ => return Err(corrupt("Library Page has an invalid lifecycle")),
-        };
-        let title = title.ok_or_else(|| corrupt("Library Page projection is unavailable"))?;
-        hierarchy.push(PageHierarchyEntry {
-            page_id: current.clone(),
-            title,
-            lifecycle,
-        });
-        match parent_kind.as_str() {
-            "page" => current = parent_id,
-            "library" if parent_id == library_id => return Ok(Some(hierarchy)),
-            "data_source" => {
-                let source_exists = connection
-                    .query_row(
-                        "SELECT 1 FROM data_sources \
-                         WHERE id = ?1 AND library_id = ?2 AND lifecycle <> 'deleted'",
-                        params![parent_id, library_id],
-                        |_| Ok(()),
-                    )
-                    .optional()?
-                    .is_some();
-                if source_exists {
-                    return Ok(Some(hierarchy));
-                }
-                return Err(corrupt("Library Page has no matching owning Data Source"));
-            }
-            _ => return Err(corrupt("Library Page has an invalid ownership parent")),
-        }
     }
 }
 
@@ -2431,132 +2288,36 @@ fn path(
     library_id: &str,
     target: &LibraryRouteTarget,
 ) -> Result<Vec<LibraryNavigationNode>, StoreError> {
-    match target {
-        LibraryRouteTarget::Page { page_id } => page_path(connection, library_id, page_id),
-        LibraryRouteTarget::Database { database_id } => {
-            database_path(connection, library_id, database_id)
-        }
-        LibraryRouteTarget::Canvas { canvas_id } => canvas_path(connection, library_id, canvas_id),
-        LibraryRouteTarget::View { view_id } => {
-            let database_id = connection
-                .query_row(
-                    "SELECT database_block_id FROM database_views \
-                     WHERE id = ?1 AND lifecycle = 'active'",
-                    [view_id],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()?
-                .ok_or_else(|| not_found("Library View is unavailable"))?;
-            let mut nodes = database_path(connection, library_id, &database_id)?;
-            let view = view_node(connection, library_id, &database_id, view_id)?;
-            nodes.push(view);
-            Ok(nodes)
-        }
-    }
-}
-
-fn page_path(
-    connection: &Connection,
-    library_id: &str,
-    page_id: &str,
-) -> Result<Vec<LibraryNavigationNode>, StoreError> {
-    let mut current = page_id.to_owned();
-    let mut page_ids = Vec::new();
-    let mut seen = HashSet::new();
-    loop {
-        if page_ids.len() >= 512 {
-            return Err(corrupt("Library Page hierarchy exceeds 512 Page levels"));
-        }
-        if !seen.insert(current.clone()) {
-            return Err(corrupt("Library Page hierarchy contains a cycle"));
-        }
-        let row = connection
-            .query_row(
-                "SELECT page.parent_kind, page.parent_id FROM pages page \
-                 INNER JOIN blocks block ON block.id = page.block_id \
-                   AND block.library_id = page.library_id \
-                 WHERE page.block_id = ?1 AND page.library_id = ?2 \
-                   AND block.lifecycle <> 'deleted'",
-                params![current, library_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-            )
-            .optional()?
-            .ok_or_else(|| not_found("Library Page is unavailable"))?;
-        page_ids.push(current.clone());
-        match row.0.as_str() {
-            "library" => break,
-            "page" => current = row.1,
-            "data_source" => {
-                let database_id = connection
-                    .query_row(
-                        "SELECT home_database_block_id FROM data_sources \
-                         WHERE id = ?1 AND library_id = ?2 AND lifecycle <> 'deleted'",
-                        params![row.1, library_id],
-                        |row| row.get::<_, String>(0),
-                    )
-                    .optional()?
-                    .ok_or_else(|| corrupt("Library Page has no owning Data Source"))?;
-                return database_path(connection, library_id, &database_id);
-            }
-            _ => return Err(corrupt("Library Page has an invalid parent")),
-        }
-    }
-    page_ids.reverse();
-    page_ids
+    let location = location::resolve(connection, library_id, target)?
+        .ok_or_else(|| not_found("Library navigation target is unavailable"))?;
+    let mut nodes = location
+        .segments
         .into_iter()
-        .map(|page_id| page_node(connection, &page_id))
-        .collect()
-}
-
-fn database_path(
-    connection: &Connection,
-    library_id: &str,
-    database_id: &str,
-) -> Result<Vec<LibraryNavigationNode>, StoreError> {
-    let database = database_node(connection, database_id)?;
-    let host_page = connection
-        .query_row(
-            "SELECT page.block_id FROM document_block_index entry \
-             INNER JOIN block_documents ownership \
-               ON ownership.document_id = entry.document_id \
-             INNER JOIN pages page ON page.block_id = ownership.block_id \
-               AND page.library_id = ownership.library_id \
-             WHERE entry.block_id = ?1 AND ownership.library_id = ?2",
-            params![database_id, library_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?;
-    let mut nodes = host_page
-        .map(|page_id| page_path(connection, library_id, &page_id))
-        .transpose()?
-        .unwrap_or_default();
-    nodes.push(database);
-    Ok(nodes)
-}
-
-fn canvas_path(
-    connection: &Connection,
-    library_id: &str,
-    canvas_id: &str,
-) -> Result<Vec<LibraryNavigationNode>, StoreError> {
-    let canvas = canvas_node(connection, library_id, canvas_id)?;
-    let host_page = connection
-        .query_row(
-            "SELECT page.block_id FROM document_block_index entry \
-             INNER JOIN block_documents ownership \
-               ON ownership.document_id = entry.document_id \
-             INNER JOIN pages page ON page.block_id = ownership.block_id \
-               AND page.library_id = ownership.library_id \
-             WHERE entry.block_id = ?1 AND ownership.library_id = ?2",
-            params![canvas_id, library_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?;
-    let mut nodes = host_page
-        .map(|page_id| page_path(connection, library_id, &page_id))
-        .transpose()?
-        .unwrap_or_default();
-    nodes.push(canvas);
+        .map(|segment| match segment {
+            LibraryLocationSegment::Page { page_id, .. } => page_node(connection, &page_id),
+            LibraryLocationSegment::Database { database_id, .. } => {
+                database_node(connection, &database_id)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let content = match location.content {
+        LibraryRouteTarget::Page { page_id } => page_node(connection, &page_id)?,
+        LibraryRouteTarget::Database { database_id } => database_node(connection, &database_id)?,
+        LibraryRouteTarget::Canvas { canvas_id } => {
+            canvas_node(connection, library_id, &canvas_id)?
+        }
+        LibraryRouteTarget::View { .. } => unreachable!("View content is a Database"),
+    };
+    if let (
+        LibraryRouteTarget::View { view_id },
+        LibraryNavigationNode::Database { database_id, .. },
+    ) = (target, &content)
+    {
+        let view = view_node(connection, library_id, database_id, view_id)?;
+        nodes.extend([content, view]);
+    } else {
+        nodes.push(content);
+    }
     Ok(nodes)
 }
 
@@ -3016,7 +2777,7 @@ fn page_relocation_page_destinations(
         items.push(LibraryPageRelocationDestinationEntry {
             key: format!("library:{library_id}"),
             kind: LibraryPageRelocationDestinationKind::Library,
-            title: "Pages".to_owned(),
+            title: "Space".to_owned(),
             path: Vec::new(),
             has_children: page_total > 0,
             is_current: source.parent_kind == "library" && source.parent_id == library_id,
@@ -3448,40 +3209,24 @@ pub(super) fn move_destination_path(
     library_id: &str,
     page_id: &str,
 ) -> Result<Vec<String>, StoreError> {
-    let hierarchy = page_hierarchy(connection, library_id, page_id)?
-        .ok_or_else(|| not_found("Library move destination is unavailable"))?;
-    let boundary_page = hierarchy
-        .last()
-        .ok_or_else(|| corrupt("Library move destination hierarchy is empty"))?;
-    let (parent_kind, parent_id) = connection.query_row(
-        "SELECT parent_kind, parent_id FROM pages WHERE block_id = ?1",
-        [&boundary_page.page_id],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-    )?;
-    let boundary = match parent_kind.as_str() {
-        "library" if parent_id == library_id => "Pages".to_owned(),
-        "data_source" => connection
-            .query_row(
-                "SELECT container.name FROM data_sources source \
-                 INNER JOIN database_containers container \
-                   ON container.block_id = source.home_database_block_id \
-                 WHERE source.id = ?1 AND source.library_id = ?2",
-                params![parent_id, library_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .ok_or_else(|| corrupt("Library move destination has no Database boundary"))?,
-        _ => return Err(corrupt("Library move destination has an invalid boundary")),
+    let segments = page_location_segments(connection, library_id, page_id)?;
+    Ok(segments
+        .iter()
+        .map(|segment| location::title(segment).to_owned())
+        .collect())
+}
+
+fn page_location_segments(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+) -> Result<Vec<LibraryLocationSegment>, StoreError> {
+    let target = LibraryRouteTarget::Page {
+        page_id: page_id.to_owned(),
     };
-    let mut path = vec![boundary];
-    path.extend(
-        hierarchy
-            .iter()
-            .rev()
-            .take(hierarchy.len().saturating_sub(1))
-            .map(|entry| entry.title.clone()),
-    );
-    Ok(path)
+    location::resolve(connection, library_id, &target)?
+        .map(|location| location.segments)
+        .ok_or_else(|| not_found("Library Page location is unavailable"))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3539,25 +3284,9 @@ fn catalog(
     let query_limit =
         i64::try_from(limit.saturating_add(1)).map_err(|_| invalid("Library limit overflowed"))?;
     let catalog_cte = "\
-      WITH catalog(id, kind, title, updated_at, location_revision, metadata_revision, location_label) AS ( \
+      WITH catalog(id, kind, title, updated_at, location_revision, metadata_revision) AS ( \
         SELECT page.block_id, 'page', materialization.title, page_block.updated_at, \
-          page_block.placement_revision, page_block.metadata_revision, \
-          CASE page.parent_kind \
-            WHEN 'library' THEN NULL \
-            WHEN 'page' THEN COALESCE(( \
-              SELECT parent_materialization.title FROM pages parent_page \
-              INNER JOIN document_materializations parent_materialization \
-                ON parent_materialization.document_id = parent_page.document_id \
-              WHERE parent_page.block_id = page.parent_id \
-            ), 'Page') \
-            WHEN 'data_source' THEN COALESCE(( \
-              SELECT container.name FROM data_sources source \
-              INNER JOIN database_containers container \
-                ON container.block_id = source.home_database_block_id \
-              WHERE source.id = page.parent_id \
-            ), 'Database') \
-            ELSE NULL \
-          END \
+          page_block.placement_revision, page_block.metadata_revision \
         FROM pages page \
         INNER JOIN blocks page_block ON page_block.id = page.block_id \
           AND page_block.library_id = page.library_id \
@@ -3566,31 +3295,13 @@ fn catalog(
         WHERE ?3 AND page.library_id = ?1 AND page_block.lifecycle = ?2 \
         UNION ALL \
         SELECT container.block_id, 'database', container.name, container.updated_at, \
-          block.placement_revision, container.metadata_revision, \
-          ( \
-            SELECT host_materialization.title FROM document_block_index containing \
-            INNER JOIN block_documents ownership \
-              ON ownership.document_id = containing.document_id \
-            INNER JOIN pages host_page ON host_page.block_id = ownership.block_id \
-            INNER JOIN document_materializations host_materialization \
-              ON host_materialization.document_id = host_page.document_id \
-            WHERE containing.block_id = block.id LIMIT 1 \
-          ) \
+          block.placement_revision, container.metadata_revision \
         FROM database_containers container \
         INNER JOIN blocks block ON block.id = container.block_id \
         WHERE ?4 AND container.library_id = ?1 AND container.lifecycle = ?2 \
         UNION ALL \
         SELECT block.id, 'canvas', COALESCE(json_extract(property.value_json, '$'), 'Canvas'), \
-          canvas.updated_at, block.placement_revision, block.metadata_revision, \
-          ( \
-            SELECT host_materialization.title FROM document_block_index containing \
-            INNER JOIN block_documents ownership \
-              ON ownership.document_id = containing.document_id \
-            INNER JOIN pages host_page ON host_page.block_id = ownership.block_id \
-            INNER JOIN document_materializations host_materialization \
-              ON host_materialization.document_id = host_page.document_id \
-            WHERE containing.block_id = block.id LIMIT 1 \
-          ) \
+          canvas.updated_at, block.placement_revision, block.metadata_revision \
         FROM canvas_owners canvas \
         INNER JOIN blocks block ON block.id = canvas.block_id \
         LEFT JOIN block_properties property ON property.block_id = block.id \
@@ -3599,8 +3310,7 @@ fn catalog(
       ) ";
     let rows_sql = format!(
         "{catalog_cte} \
-         SELECT id, kind, title, updated_at, location_revision, metadata_revision, \
-           COALESCE(location_label, 'Library'), location_label IS NULL \
+         SELECT id, kind, title, updated_at, location_revision, metadata_revision \
          FROM catalog WHERE (?6 = '' OR instr(lower(title), ?6) > 0) \
            AND (?7 IS NULL OR updated_at < ?7 \
              OR (updated_at = ?7 AND id > ?8)) \
@@ -3645,14 +3355,21 @@ fn catalog(
                     updated_at: row.get(3)?,
                     location_revision: row.get(4)?,
                     metadata_revision: row.get(5)?,
-                    location_label: row.get(6)?,
-                    location_is_library_root: row.get(7)?,
+                    location_label: String::new(),
+                    location_is_library_root: false,
                 })
             },
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let has_more = entries.len() > limit;
     entries.truncate(limit);
+    for entry in &mut entries {
+        let target = resource_route_target(&entry.target);
+        let resolved = location::resolve(connection, library_id, &target)?
+            .ok_or_else(|| not_found("Library catalog location is unavailable"))?;
+        entry.location_label = location::label(&resolved.segments);
+        entry.location_is_library_root = resolved.segments.is_empty();
+    }
     let next_cursor = has_more
         .then(|| {
             let last = entries

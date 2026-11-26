@@ -8,10 +8,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::library::{
-    LibraryPageProjectionFileKind, LibrarySearchSnapshotFile, LibrarySearchSnapshotLease,
-    LibrarySearchSnapshotManifest, LibrarySearchSnapshotOwner, LibrarySearchSnapshotOwnerKind,
-    LibrarySearchSnapshotPage, LibrarySearchSnapshotRelease, LibrarySearchSnapshotScope,
-    LibrarySearchSnapshotWarning,
+    LibraryLocationSegment, LibraryPageProjectionFileKind, LibraryRouteTarget,
+    LibrarySearchSnapshotFile, LibrarySearchSnapshotLease, LibrarySearchSnapshotManifest,
+    LibrarySearchSnapshotOwner, LibrarySearchSnapshotOwnerKind, LibrarySearchSnapshotPage,
+    LibrarySearchSnapshotRelease, LibrarySearchSnapshotScope, LibrarySearchSnapshotWarning,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -789,93 +789,29 @@ fn ownership_path(
     library_id: &str,
     page_id: &str,
 ) -> Result<Vec<LibrarySearchSnapshotOwner>, StoreError> {
-    let rows = connection
-        .prepare(
-            "WITH RECURSIVE ancestors(page_id, parent_kind, parent_id, depth, path) AS ( \
-               SELECT block_id, parent_kind, parent_id, 0, '|' || block_id || '|' \
-               FROM pages WHERE block_id = ?1 AND library_id = ?2 \
-               UNION ALL \
-               SELECT parent.block_id, parent.parent_kind, parent.parent_id, \
-                 ancestors.depth + 1, ancestors.path || parent.block_id || '|' \
-               FROM pages parent JOIN ancestors \
-                 ON ancestors.parent_kind = 'page' AND parent.block_id = ancestors.parent_id \
-               WHERE parent.library_id = ?2 \
-                 AND instr(ancestors.path, '|' || parent.block_id || '|') = 0) \
-             SELECT ancestors.page_id, materialization.title, ancestors.parent_kind, \
-               ancestors.parent_id, ancestors.depth \
-             FROM ancestors JOIN pages page ON page.block_id = ancestors.page_id \
-             JOIN documents document ON document.id = page.document_id \
-             LEFT JOIN document_materializations materialization \
-               ON materialization.document_id = document.id \
-               AND materialization.generation = document.generation \
-               AND materialization.projected_seq = document.head_seq \
-               AND materialization.schema_version = document.schema_version \
-             ORDER BY ancestors.depth DESC",
-        )?
-        .query_map(params![page_id, library_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let terminal = rows
-        .first()
-        .map(|row| (row.2.as_str(), row.3.as_str()))
-        .ok_or_else(|| not_found("Search snapshot ownership path is unavailable"))?;
-    let mut owners = match terminal.0 {
-        "library" if terminal.1 == library_id => vec![LibrarySearchSnapshotOwner {
-            kind: LibrarySearchSnapshotOwnerKind::Library,
-            id: library_id.to_owned(),
-            title: "Library".to_owned(),
-        }],
-        "data_source" => {
-            let (source_name, database_id, database_name) = connection
-                .query_row(
-                    "SELECT source.name, container.block_id, container.name \
-                     FROM data_sources source JOIN database_containers container \
-                       ON container.block_id = source.home_database_block_id \
-                     WHERE source.id = ?1 AND source.library_id = ?2",
-                    params![terminal.1, library_id],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, String>(2)?,
-                        ))
-                    },
-                )
-                .optional()?
-                .ok_or_else(|| not_found("Search snapshot ownership root is unavailable"))?;
-            vec![
-                LibrarySearchSnapshotOwner {
-                    kind: LibrarySearchSnapshotOwnerKind::Database,
-                    id: database_id,
-                    title: database_name,
-                },
-                LibrarySearchSnapshotOwner {
-                    kind: LibrarySearchSnapshotOwnerKind::DataSource,
-                    id: terminal.1.to_owned(),
-                    title: source_name,
-                },
-            ]
-        }
-        _ => return Err(corrupt("Search snapshot Page ownership path is invalid")),
+    let target = LibraryRouteTarget::Page {
+        page_id: page_id.to_owned(),
     };
-    for (id, title, _, _, _) in rows {
-        if id == page_id {
-            continue;
-        }
-        owners.push(LibrarySearchSnapshotOwner {
-            kind: LibrarySearchSnapshotOwnerKind::Page,
-            title: title.unwrap_or_else(|| id.clone()),
-            id,
-        });
-    }
-    Ok(owners)
+    let resolved = super::location::resolve(connection, library_id, &target)?
+        .ok_or_else(|| not_found("Search snapshot ownership path is unavailable"))?;
+    Ok(resolved
+        .segments
+        .into_iter()
+        .map(|segment| match segment {
+            LibraryLocationSegment::Page { page_id, title, .. } => LibrarySearchSnapshotOwner {
+                kind: LibrarySearchSnapshotOwnerKind::Page,
+                id: page_id,
+                title,
+            },
+            LibraryLocationSegment::Database {
+                database_id, title, ..
+            } => LibrarySearchSnapshotOwner {
+                kind: LibrarySearchSnapshotOwnerKind::Database,
+                id: database_id,
+                title,
+            },
+        })
+        .collect())
 }
 
 fn terminal_data_source(

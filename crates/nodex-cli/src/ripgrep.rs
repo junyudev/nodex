@@ -632,12 +632,12 @@ mod tests {
                     meta: file(
                         LibraryPageProjectionFileKind::MetaYaml,
                         "pages/hash/meta.yaml",
-                        "Library/CLI~page-1/meta.yaml",
+                        "CLI~page-1/meta.yaml",
                     ),
                     body: file(
                         LibraryPageProjectionFileKind::BodyMarkdown,
                         "pages/hash/body.md",
-                        "Library/CLI~page-1/body.md",
+                        "CLI~page-1/body.md",
                     ),
                 }],
                 warnings: Vec::new(),
@@ -645,7 +645,7 @@ mod tests {
         };
         assert_eq!(
             remap_output(b"pages/hash/body.md:4:Core starts\n2 matches\n", &lease),
-            b"Library/CLI~page-1/body.md:4:Core starts\n2 matches\n"
+            b"CLI~page-1/body.md:4:Core starts\n2 matches\n"
         );
     }
 
@@ -692,13 +692,13 @@ mod tests {
                     meta: projected_file(
                         LibraryPageProjectionFileKind::MetaYaml,
                         "pages/hash/meta.yaml",
-                        "Library/CLI~page-1/meta.yaml",
+                        "CLI~page-1/meta.yaml",
                         meta_bytes,
                     ),
                     body: projected_file(
                         LibraryPageProjectionFileKind::BodyMarkdown,
                         "pages/hash/body.md",
-                        "Library/CLI~page-1/body.md",
+                        "CLI~page-1/body.md",
                         body_bytes,
                     ),
                 }],
@@ -734,7 +734,7 @@ mod tests {
         assert_eq!(matching.exit_status, 0);
         assert_eq!(
             matching.stdout,
-            b"Library/CLI~page-1/body.md:2:Core starts on demand.\n"
+            b"CLI~page-1/body.md:2:Core starts on demand.\n"
         );
 
         let missing = run(

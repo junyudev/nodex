@@ -75,10 +75,12 @@ import {
   type PageLifecycleOperationV2,
 } from "../../shared/page-lifecycle-v2";
 import type { PageTargetReadModel, ResolvePageTargetInput } from "../../shared/page-targets";
-import type {
-  PageOwnershipPathReadModel,
-  ResolvePageOwnershipPathInput,
-} from "../../shared/page-ownership-paths";
+import { parseLibraryRouteTarget } from "../../shared/library-module-transport";
+import {
+  resourceLocationTargetKey,
+  type ResourceLocationReadModel,
+  type ResourceLocationSegment,
+} from "../../shared/resource-locations";
 import { isWorkflowStatus } from "../../shared/workflow-status";
 import { isPriority } from "../../shared/priority";
 import { CoreModuleResponseError } from "./core-client";
@@ -114,9 +116,7 @@ export interface CoreLibraryModuleAdapter {
     pageIds?: string[],
   ): Promise<PageSearchMetadataSnapshot>;
   resolvePageTarget(input: ResolvePageTargetInput): Promise<PageTargetReadModel | null>;
-  resolvePageOwnershipPath(
-    input: ResolvePageOwnershipPathInput,
-  ): Promise<PageOwnershipPathReadModel | null>;
+  resolveResourceLocation(target: LibraryRouteTarget): Promise<ResourceLocationReadModel | null>;
   findPageLocation(
     pageId: string,
   ): Promise<{ readonly pageId: string; readonly projectId: string | null } | null>;
@@ -827,8 +827,8 @@ type CorePageHistoryEntry = CorePageHistory["entries"][number];
 type CorePageTarget = NonNullable<
   Extract<LibraryReadSnapshot["value"], { kind: "page_target" }>["value"]
 >;
-type CorePageOwnershipPath = NonNullable<
-  Extract<LibraryReadSnapshot["value"], { kind: "page_ownership_path" }>["value"]
+type CoreResourceLocation = NonNullable<
+  Extract<LibraryReadSnapshot["value"], { kind: "resource_location" }>["value"]
 >;
 type CorePageLifecyclePreflight = Extract<
   LibraryReadSnapshot["value"],
@@ -1463,26 +1463,39 @@ const mapPageTarget = (
   };
 };
 
-const mapPageOwnershipPath = (
-  value: CorePageOwnershipPath,
+const mapResourceLocation = (
+  value: CoreResourceLocation,
   authority: {
     readonly libraryId: string;
     readonly storeEpoch: string;
     readonly commitSeq: number;
   },
-): PageOwnershipPathReadModel => {
+): ResourceLocationReadModel => {
+  const target = fromCoreRouteTarget(value.target);
   if (value.status === "missing") {
-    return { ...authority, status: value.status, targetPageId: value.target_page_id };
+    return { ...authority, status: value.status, target };
   }
   return {
     ...authority,
     status: value.status,
-    targetPageId: value.target_page_id,
-    ancestors: value.ancestors.map((ancestor) => ({
-      pageId: ancestor.page_id,
-      title: ancestor.title,
-      lifecycle: ancestor.lifecycle,
-    })),
+    target,
+    segments: value.segments.map((segment): ResourceLocationSegment => {
+      if (segment.kind === "page") {
+        return {
+          kind: segment.kind,
+          pageId: segment.page_id,
+          title: segment.title,
+          lifecycle: segment.lifecycle,
+        };
+      }
+      return {
+        kind: segment.kind,
+        databaseId: parseDatabaseId(segment.database_id),
+        title: segment.title,
+        defaultViewId: parseDatabaseViewId(segment.default_view_id),
+        primaryProjectId: segment.primary_project_id ?? null,
+      };
+    }),
   };
 };
 
@@ -2375,24 +2388,26 @@ export const createCoreLibraryModuleAdapter = (
         commitSeq: snapshot.commit_head,
       });
     },
-    resolvePageOwnershipPath: async (request) => {
+    resolveResourceLocation: async (request) => {
+      const target = parseLibraryRouteTarget(request);
       const snapshot = await input.client.libraryRead({
-        kind: "page_ownership_path",
-        page_id: request.targetPageId,
+        kind: "resource_location",
+        target: toCoreRouteTarget(target),
       });
-      if (snapshot.value.kind !== "page_ownership_path") {
-        throw new Error("Core returned a non-ownership-path Library read value");
+      if (snapshot.value.kind !== "resource_location") {
+        throw new Error("Core returned a non-location Library read value");
       }
       const value = snapshot.value.value;
       if (!value) return null;
-      if (value.target_page_id !== request.targetPageId) {
-        throw new Error("Core Page ownership path escaped its requested identity");
-      }
-      return mapPageOwnershipPath(value, {
+      const location = mapResourceLocation(value, {
         libraryId: input.libraryId,
         storeEpoch: snapshot.store_epoch,
         commitSeq: snapshot.commit_head,
       });
+      if (resourceLocationTargetKey(location.target) !== resourceLocationTargetKey(target)) {
+        throw new Error("Core resource location escaped its requested identity");
+      }
+      return location;
     },
     findPageLocation: async (pageId) => {
       const snapshot = await input.client.libraryRead({

@@ -6357,6 +6357,20 @@ export interface components {
             readonly revision: number;
             readonly surfaceId: string;
         };
+        readonly LibraryLocationSegment: {
+            /** @enum {string} */
+            readonly kind: "page";
+            readonly lifecycle: components["schemas"]["LibraryLifecycle"];
+            readonly page_id: string;
+            readonly title: string;
+        } | {
+            readonly database_id: string;
+            readonly default_view_id: string;
+            /** @enum {string} */
+            readonly kind: "database";
+            readonly primary_project_id?: string | null;
+            readonly title: string;
+        };
         readonly LibraryMoveDestinationEntry: {
             /** Format: int64 */
             readonly document_generation: number;
@@ -7130,21 +7144,6 @@ export interface components {
         } | {
             readonly page_etag: string;
         };
-        readonly LibraryPageOwnershipPath: {
-            /** @enum {string} */
-            readonly status: "missing";
-            readonly target_page_id: string;
-        } | {
-            readonly ancestors: readonly components["schemas"]["LibraryPageOwnershipPathAncestor"][];
-            /** @enum {string} */
-            readonly status: "available";
-            readonly target_page_id: string;
-        };
-        readonly LibraryPageOwnershipPathAncestor: {
-            readonly lifecycle: components["schemas"]["LibraryLifecycle"];
-            readonly page_id: string;
-            readonly title: string;
-        };
         readonly LibraryPagePrepareKind: "title_set" | "document_replace" | "page_delete" | {
             readonly page_move: {
                 readonly view_id?: string | null;
@@ -7430,6 +7429,16 @@ export interface components {
         };
         readonly LibraryReadRequest: components["schemas"]["ModuleReadRequest_LibraryRead"];
         readonly LibraryReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_LibraryReadValue"];
+        readonly LibraryResourceLocation: {
+            /** @enum {string} */
+            readonly status: "missing";
+            readonly target: components["schemas"]["LibraryRouteTarget"];
+        } | {
+            readonly segments: readonly components["schemas"]["LibraryLocationSegment"][];
+            /** @enum {string} */
+            readonly status: "available";
+            readonly target: components["schemas"]["LibraryRouteTarget"];
+        };
         readonly LibraryResourceTarget: {
             /** @enum {string} */
             readonly kind: "page";
@@ -10000,8 +10009,8 @@ export interface components {
                 readonly page_key: string;
             } | {
                 /** @enum {string} */
-                readonly kind: "page_ownership_path";
-                readonly page_id: string;
+                readonly kind: "resource_location";
+                readonly target: components["schemas"]["LibraryRouteTarget"];
             } | {
                 /** @enum {string} */
                 readonly kind: "page_location";
@@ -14577,8 +14586,8 @@ export interface components {
                     readonly value: components["schemas"]["LibraryPageKeyTarget"];
                 } | {
                     /** @enum {string} */
-                    readonly kind: "page_ownership_path";
-                    readonly value?: components["schemas"]["LibraryPageOwnershipPath"] | null;
+                    readonly kind: "resource_location";
+                    readonly value?: components["schemas"]["LibraryResourceLocation"] | null;
                 } | {
                     /** @enum {string} */
                     readonly kind: "page_location";

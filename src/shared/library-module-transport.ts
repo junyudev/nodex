@@ -66,10 +66,10 @@ const MAX_STRUCTURAL_REPLACEMENT_BYTES = 64 * 1024 * 1024;
 const MAX_STRUCTURAL_REPLACEMENT_DEPTH = 128;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
 
-const displayText = (value: unknown, label: string): string => {
+const displayText = (value: unknown, label: string, allowEmpty = false): string => {
   if (
     typeof value === "string" &&
-    value.length > 0 &&
+    (allowEmpty || value.length > 0) &&
     value.length <= MAX_TITLE_LENGTH &&
     !value.includes("\0")
   ) {
@@ -478,7 +478,10 @@ const readLimit = (value: unknown, label: string): number | undefined => {
   throw new TypeError(`${label} must be between 1 and ${MAX_LIBRARY_READ_LIMIT}`);
 };
 
-const parseRouteTarget = (value: unknown, label: string): LibraryRouteTarget => {
+export const parseLibraryRouteTarget = (
+  value: unknown,
+  label = "Library route target",
+): LibraryRouteTarget => {
   const target = record(value, label);
   if (target.kind === "page") {
     exactKeys(target, label, ["kind", "pageId"]);
@@ -511,7 +514,7 @@ const parseResourceTarget = (value: unknown, label: string): LibraryResourceTarg
     exactKeys(target, label, ["kind", "fileId"]);
     return { kind: "file", fileId: string(target.fileId, `${label}.fileId`) };
   }
-  const placed = parseRouteTarget(target, label);
+  const placed = parseLibraryRouteTarget(target, label);
   if (placed.kind === "view") throw new TypeError(`${label} cannot be a View`);
   return placed;
 };
@@ -1665,7 +1668,10 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
     const forceIncludeTarget =
       read.forceIncludeTarget === undefined
         ? undefined
-        : parseRouteTarget(read.forceIncludeTarget, "libraryModuleRead.read.forceIncludeTarget");
+        : parseLibraryRouteTarget(
+            read.forceIncludeTarget,
+            "libraryModuleRead.read.forceIncludeTarget",
+          );
     return {
       read: {
         mode: "children",
@@ -1705,7 +1711,7 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
     return {
       read: {
         mode: "path",
-        target: parseRouteTarget(read.target, "libraryModuleRead.read.target"),
+        target: parseLibraryRouteTarget(read.target, "libraryModuleRead.read.target"),
       },
     };
   }
@@ -1959,7 +1965,7 @@ const parseCatalogEntry = (value: unknown, label: string): LibraryCatalogEntry =
     "locationRevision",
     "metadataRevision",
   ]);
-  const target = parseRouteTarget(entry.target, `${label}.target`);
+  const target = parseLibraryRouteTarget(entry.target, `${label}.target`);
   if (target.kind === "view") {
     throw new TypeError(`${label}.target must identify a Library resource`);
   }
@@ -1977,7 +1983,7 @@ const parseCatalogEntry = (value: unknown, label: string): LibraryCatalogEntry =
     title: string(entry.title, `${label}.title`, MAX_TITLE_LENGTH, true),
     kind: entry.kind,
     lifecycle: entry.lifecycle,
-    locationLabel: string(entry.locationLabel, `${label}.locationLabel`, MAX_TITLE_LENGTH, true),
+    locationLabel: displayText(entry.locationLabel, `${label}.locationLabel`, true),
     ...(entry.locationIsLibraryRoot === undefined
       ? {}
       : {
@@ -2261,7 +2267,10 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
     }
     return {
       kind: "path",
-      target: parseRouteTarget(readValue.target, "libraryModuleReadResult.value.value.target"),
+      target: parseLibraryRouteTarget(
+        readValue.target,
+        "libraryModuleReadResult.value.value.target",
+      ),
       nodes: readValue.nodes.map((entry, index) =>
         parseNavigationNode(entry, `library path nodes[${index}]`),
       ),
@@ -2461,10 +2470,9 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
                 label: string(status.label, "Page reference status.label"),
               }
             : null,
-        locationLabel: string(
+        locationLabel: displayText(
           candidate.locationLabel,
           `library Page reference candidates[${index}].locationLabel`,
-          MAX_TITLE_LENGTH,
           true,
         ),
         matchExcerpt:

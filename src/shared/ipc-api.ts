@@ -177,6 +177,7 @@ import type {
   LibraryModuleApplyResult,
   LibraryModuleReadRequest,
   LibraryModuleReadResult,
+  LibraryRouteTarget,
 } from "./library-module";
 import type {
   FileBytes,
@@ -200,10 +201,7 @@ import type { LibraryPageDetailResult, PageDetailResult } from "./page-detail";
 import type { AdditionalDocumentCommandResult } from "./additional-document-commands";
 import type { PublicAdditionalDocumentCommandRequest } from "./additional-document-command-transport";
 import type { PageTargetReadModel, ResolvePageTargetInput } from "./page-targets";
-import type {
-  PageOwnershipPathReadModel,
-  ResolvePageOwnershipPathInput,
-} from "./page-ownership-paths";
+import type { ResourceLocationReadModel } from "./resource-locations";
 import type { DatabaseViewReadModel, ReadDatabaseViewReferenceInput } from "./database-views";
 import type {
   CodexSidebarThreadMoveInput,
@@ -927,9 +925,9 @@ export interface IpcApi
     args: [input: ResolvePageTargetInput];
     result: PageTargetReadModel | null;
   };
-  "page-ownership-path:resolve": {
-    args: [input: ResolvePageOwnershipPathInput];
-    result: PageOwnershipPathReadModel | null;
+  "resource-location:resolve": {
+    args: [target: LibraryRouteTarget];
+    result: ResourceLocationReadModel | null;
   };
   "database-view:reference:get": {
     args: [input: ReadDatabaseViewReferenceInput];
@@ -3285,7 +3283,6 @@ export interface IpcEvents extends DeepLinkOpenEvents {
   "persisted-atom:updated": PersistedAtomEvent;
   "recipient-delivery:message": import("./recipient-delivery").RecipientDeliveryEnvelope;
   "board-changed": BoardChangeEvent;
-  "page-ownership-paths-changed": import("./page-ownership-path-events").PageOwnershipPathsChangedEvent;
   "database-changed": DatabaseChangeEvent;
   "library-navigation-changed": import("./library-events").LibraryNavigationChangedEvent;
   "projects-changed": ProjectsChangeEvent;

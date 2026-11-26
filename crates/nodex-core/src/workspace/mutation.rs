@@ -2000,7 +2000,7 @@ fn set_project_lifecycle(
     if current_lifecycle == "archived" && next_lifecycle != "archived" {
         require_unarchived_project_capacity(connection, library_id)?;
     }
-    let effects = project_mutation_effects(
+    let mut effects = project_mutation_effects(
         "set_project_lifecycle",
         ProjectCatalogChangeKind::LifecycleUpdated,
         project_id,
@@ -2034,6 +2034,17 @@ fn set_project_lifecycle(
                         true,
                     ));
                 }
+                // The lifecycle trigger changes the active Project binding presented by Library reads.
+                effects.database_ids = connection
+                    .query_row(
+                        "SELECT database_block_id FROM project_database_bindings
+                         WHERE project_id = ?1 AND library_id = ?2",
+                        params![project_id, library_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?
+                    .into_iter()
+                    .collect();
                 if next_lifecycle == "archived" {
                     connection.execute(
                         "DELETE FROM pinned_project_order WHERE project_id = ?1",
