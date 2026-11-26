@@ -319,14 +319,14 @@ describe("NodexToolActivityRow", () => {
     expect(view.queryByText("Output")).toBeNull();
   });
 
-  test("lists the Pages a call found once it is opened", async () => {
+  test("lists the Pages and chats a search found once it is opened", async () => {
     targets.current = available("Launch plan");
     const view = renderRow(
       <DynamicToolCall
         item={buildEntry(
           buildCall({
             tool: "search",
-            arguments: { query: "launch", kinds: ["page"] },
+            arguments: { query: "launch" },
             contentItems: [
               {
                 type: "inputText",
@@ -341,6 +341,17 @@ describe("NodexToolActivityRow", () => {
                           { field: "page_key", parts: [{ text: "LAB-2", highlighted: true }] },
                         ],
                       },
+                      {
+                        kind: "chat",
+                        identity: SESSION_ID,
+                        title: "Release prep",
+                        evidence: [
+                          {
+                            field: "message",
+                            parts: [{ text: "Move the launch", highlighted: true }],
+                          },
+                        ],
+                      },
                     ],
                   },
                 }),
@@ -352,19 +363,23 @@ describe("NodexToolActivityRow", () => {
     );
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Searched pages for “launch” · 1 result" }));
+      fireEvent.click(
+        view.getByRole("button", { name: "Searched Space for “launch” · 2 results" }),
+      );
       await Promise.resolve();
     });
+    expect(await view.findByRole("link", { name: "Launch FAQ" })).toBeTruthy();
+    expect(textContent(view.container)).toContain("LAB-2");
+    expect(textContent(view.container)).toContain("Move the launch");
     await act(async () => {
-      fireEvent.click(await view.findByRole("link", { name: "Launch FAQ" }));
+      fireEvent.click(view.getByRole("link", { name: "Release prep" }));
       await Promise.resolve();
     });
 
     expect(view.open).toHaveBeenCalledExactlyOnceWith(
-      { kind: "page", pageId: "page-2" },
-      expect.objectContaining({ titleSnapshot: "Launch FAQ" }),
+      { kind: "session", sessionId: SESSION_ID },
+      expect.objectContaining({ titleSnapshot: "Release prep" }),
     );
-    expect(textContent(view.container)).toContain("LAB-2");
   });
 
   test("a call with nothing to read does not open, and is still inspectable", async () => {

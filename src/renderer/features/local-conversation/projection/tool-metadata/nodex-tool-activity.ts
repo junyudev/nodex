@@ -46,13 +46,24 @@ export interface NodexMarkdownChangePreview {
   readonly omittedLineCount: number;
 }
 
-/** A Page the call found, created or moved, listed when the reader opens the row. */
-export interface NodexToolRelatedPage {
-  readonly pageId: string;
-  readonly title: string | null;
-  readonly pageKey: string | null;
-  readonly excerpt: string | null;
-}
+/**
+ * A Page or chat the call found, created or moved, listed when the reader opens the row. The
+ * excerpt is the text that made it a result, when that is more than its name.
+ */
+export type NodexToolResult =
+  | {
+      readonly kind: "page";
+      readonly pageId: string;
+      readonly title: string | null;
+      readonly pageKey: string | null;
+      readonly excerpt: string | null;
+    }
+  | {
+      readonly kind: "chat";
+      readonly sessionId: string;
+      readonly title: string | null;
+      readonly excerpt: string | null;
+    };
 
 /** How several settled calls of this kind read together in a collapsed group. */
 export interface NodexToolActivityRepeat {
@@ -77,7 +88,7 @@ export interface NodexToolDetail {
   readonly document: string | null;
   /** Text the Agent wrote to someone. */
   readonly message: string | null;
-  readonly pages: readonly NodexToolRelatedPage[];
+  readonly results: readonly NodexToolResult[];
   /** A failure in the tool's own words. */
   readonly failure: string | null;
 }
@@ -88,7 +99,7 @@ const MAX_QUOTED_LENGTH = 96;
 const MAX_MARKDOWN_DIFF_LINES = 80;
 const MAX_PATCH_SIDE_PREVIEW_LINES = 32;
 const MAX_DERIVED_OUTPUT_CHARS = 32_000;
-const MAX_RELATED_PAGES = 20;
+const MAX_LISTED_RESULTS = 20;
 
 const asRecord = (value: unknown): UnknownRecord | null =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -403,13 +414,15 @@ function destinationParts(
   }
 }
 
-function relatedPage(
+function pageResult(
   pageId: string | null,
   source: UnknownRecord | null,
   title: string | null,
   excerpt: string | null = null,
-): readonly NodexToolRelatedPage[] {
-  return pageId ? [{ pageId, title, pageKey: stringValue(source, "pageKey"), excerpt }] : [];
+): readonly NodexToolResult[] {
+  return pageId
+    ? [{ kind: "page", pageId, title, pageKey: stringValue(source, "pageKey"), excerpt }]
+    : [];
 }
 
 const repeatAs = (key: string, label: (count: number) => string): NodexToolActivityRepeat => ({
@@ -1867,52 +1880,60 @@ const NODEX_TOOL_ACTIVITY = {
 export const NODEX_TOOL_ACTIVITY_TOOLS = Object.keys(NODEX_TOOL_ACTIVITY);
 
 /** Bounds a row's expanded list; the exact output stays available beside it. */
-export const boundNodexRelatedPages = (pages: readonly NodexToolRelatedPage[]) => ({
-  shown: pages.slice(0, MAX_RELATED_PAGES),
-  hiddenCount: Math.max(0, pages.length - MAX_RELATED_PAGES),
+export const boundNodexToolResults = (results: readonly NodexToolResult[]) => ({
+  shown: results.slice(0, MAX_LISTED_RESULTS),
+  hiddenCount: Math.max(0, results.length - MAX_LISTED_RESULTS),
 });
 
-function readResultPages(call: CodexDynamicToolCallView, data: UnknownRecord | null) {
+/** Evidence that only repeats what a result row already shows: its name and key. */
+const NAMING_EVIDENCE: ReadonlySet<string> = new Set(["title", "page_key", "identity"]);
+
+const evidenceText = (match: UnknownRecord | null | undefined): string | null =>
+  asArray(match?.parts)
+    .map((part) => rawString(asRecord(part), "text"))
+    .join("")
+    .trim() || null;
+
+/** A search hit as a result row; its excerpt prefers a matched Block or message to metadata. */
+function searchResult(value: unknown): readonly NodexToolResult[] {
+  const result = asRecord(value);
+  if (!result) return [];
+  const evidence = asArray(result.evidence).map(asRecord);
+  const anchored = evidence.find((match) => asRecord(match?.anchor) !== null);
+  const excerpt = evidenceText(
+    anchored ?? evidence.find((match) => !NAMING_EVIDENCE.has(stringValue(match, "field") ?? "")),
+  );
+  const identity = stringValue(result, "identity");
+  const title = stringValue(result, "title");
+  switch (result.kind) {
+    case "chat":
+      return identity ? [{ kind: "chat", sessionId: identity, title, excerpt }] : [];
+    case "block":
+      // A Block result is listed as the Page that holds it.
+      return pageResult(stringValue(asRecord(anchored?.anchor), "pageId"), null, null, excerpt);
+    default: {
+      const pageKey = evidenceText(evidence.find((match) => match?.field === "page_key"));
+      return pageResult(identity, { pageKey }, title, excerpt);
+    }
+  }
+}
+
+function readResults(call: CodexDynamicToolCallView, data: UnknownRecord | null) {
   const args = asRecord(call.arguments);
   switch (call.tool) {
     case "search":
-      return asArray(data?.results).flatMap((value) => {
-        const result = asRecord(value);
-        if (!result || result.kind === "chat") return [];
-        const evidence = asArray(result.evidence).map(asRecord);
-        const text = (match: UnknownRecord | null | undefined) =>
-          asArray(match?.parts)
-            .map((part) => stringValue(asRecord(part), "text") ?? "")
-            .join("") || null;
-        if (result.kind === "block") {
-          const block = evidence.find((match) => asRecord(match?.anchor)?.kind === "block");
-          return relatedPage(
-            stringValue(asRecord(block?.anchor), "pageId") ?? stringValue(result, "ownerPageId"),
-            result,
-            null,
-            text(block) ?? stringValue(result, "excerpt"),
-          );
-        }
-        const pageKey =
-          stringValue(result, "pageKey") ??
-          text(evidence.find((match) => match?.field === "page_key"));
-        return relatedPage(
-          stringValue(result, "identity") ?? stringValue(result, "id"),
-          { ...result, pageKey },
-          stringValue(result, "title"),
-        );
-      });
+      return asArray(data?.results).flatMap(searchResult);
     case "query_database_view":
     case "query_data_source":
       return asArray(data?.rows).flatMap((value) => {
         const row = asRecord(value);
-        return relatedPage(stringValue(row, "pageId"), row, stringValue(row, "title"));
+        return pageResult(stringValue(row, "pageId"), row, stringValue(row, "title"));
       });
     case "create_pages": {
       const drafts = asArray(args?.pages).map(asRecord);
       return asArray(data?.pages).flatMap((value, index) => {
         const page = asRecord(value);
-        return relatedPage(
+        return pageResult(
           stringValue(page, "pageId"),
           page,
           inlineMarkdownText(stringValue(drafts[index] ?? null, "title")),
@@ -1921,7 +1942,7 @@ function readResultPages(call: CodexDynamicToolCallView, data: UnknownRecord | n
     }
     case "move_pages":
       return asArray(args?.pageIds).flatMap((pageId) =>
-        typeof pageId === "string" ? relatedPage(pageId, null, null) : [],
+        typeof pageId === "string" ? pageResult(pageId, null, null) : [],
       );
     default:
       return [];
@@ -1945,7 +1966,7 @@ export function readNodexToolDetail(call: CodexDynamicToolCallView): NodexToolDe
     return {
       document: null,
       message: null,
-      pages: [],
+      results: [],
       failure:
         text === null
           ? null
@@ -1962,7 +1983,7 @@ export function readNodexToolDetail(call: CodexDynamicToolCallView): NodexToolDe
   return {
     document,
     message: readAuthoredMessage(call),
-    pages: readResultPages(call, data),
+    results: readResults(call, data),
     failure: null,
   };
 }

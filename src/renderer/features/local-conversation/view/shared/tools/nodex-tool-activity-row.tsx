@@ -3,7 +3,7 @@ import { defineMessage, getIntl, useIntl, type MessageDescriptor } from "@/lib/i
 import { useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
 import { MessageDocument, MessageText } from "@/components/message/message-document";
-import { PageIcon } from "@/components/shared/icons";
+import { ChatIcon, PageIcon } from "@/components/shared/icons";
 import { usePageTargetReadModel } from "@/lib/block-reference-queries";
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
 import { projectSessionDetailQueryOptions } from "@/lib/query-options";
@@ -15,14 +15,14 @@ import { useNodexReferenceInteraction } from "@/components/nodex-reference/nodex
 import { readMarkdown } from "../../../../../../shared/nodex-markdown";
 import type { PageTargetReadModel } from "../../../../../../shared/page-targets";
 import {
-  boundNodexRelatedPages,
+  boundNodexToolResults,
   joinNodexActivityParts,
   readNodexToolDetail,
   resolveNodexToolActivity,
   splitNodexDocumentBlocks,
   type NodexToolActivity,
   type NodexToolActivityPart,
-  type NodexToolRelatedPage,
+  type NodexToolResult,
 } from "../../../projection/tool-metadata/nodex-tool-activity";
 import { CodexShimmerText } from "../codex-shimmer-text";
 import { DiffStats } from "./diff-file-shared";
@@ -166,6 +166,16 @@ function PageName({
   return !linked && presentation.named ? `“${label}”` : label;
 }
 
+function ChatLink({ sessionId, label }: { readonly sessionId: string; readonly label: string }) {
+  return (
+    <ActivityReference
+      destination={{ kind: "session", sessionId }}
+      href={buildSessionDeepLink({ sessionId })}
+      label={label}
+    />
+  );
+}
+
 function ChatName({
   part,
   linked,
@@ -178,13 +188,7 @@ function ChatName({
   const label = session || part.title ? presentSessionTitle(session ?? part.title, intl) : null;
   if (!label) return null;
   if (!linked) return `“${label}”`;
-  return (
-    <ActivityReference
-      destination={{ kind: "session", sessionId: part.sessionId }}
-      href={buildSessionDeepLink({ sessionId: part.sessionId })}
-      label={label}
-    />
-  );
+  return <ChatLink sessionId={part.sessionId} label={label} />;
 }
 
 /** One activity as a sentence, with Pages and chats under their current names. */
@@ -211,40 +215,59 @@ export function NodexToolActivitySentence({
   ));
 }
 
-function RelatedPageRow({ page }: { readonly page: NodexToolRelatedPage }) {
+const RESULT_ICON_CLASS_NAME = "size-3.5 shrink-0 self-center text-token-description-foreground";
+
+function ResultName({ result }: { readonly result: NodexToolResult }) {
+  const intl = useIntl();
+  if (result.kind === "chat")
+    return (
+      <ChatLink sessionId={result.sessionId} label={presentSessionTitle(result.title, intl)} />
+    );
+  return result.title ? (
+    <PageLink pageId={result.pageId} label={result.title} />
+  ) : (
+    <PageName pageId={result.pageId} title={null} linked />
+  );
+}
+
+/** A Page or chat on one line: its name, then what identifies it or why it matched. */
+function ResultRow({ result }: { readonly result: NodexToolResult }) {
   return (
     <li className="flex min-w-0 items-baseline gap-1.5">
-      <PageIcon className="size-3.5 shrink-0 self-center text-token-description-foreground" />
+      {result.kind === "chat" ? (
+        <ChatIcon className={RESULT_ICON_CLASS_NAME} />
+      ) : (
+        <PageIcon className={RESULT_ICON_CLASS_NAME} />
+      )}
       <span className="max-w-[60%] shrink-0 truncate text-token-foreground">
-        {page.title ? (
-          <PageLink pageId={page.pageId} label={page.title} />
-        ) : (
-          <PageName pageId={page.pageId} title={null} linked />
-        )}
+        <ResultName result={result} />
       </span>
-      {page.pageKey ? (
-        <span className="shrink-0 text-token-description-foreground">{page.pageKey}</span>
+      {result.kind === "page" && result.pageKey ? (
+        <span className="shrink-0 text-token-description-foreground">{result.pageKey}</span>
       ) : null}
-      {page.excerpt ? (
-        <span className="min-w-0 truncate text-token-description-foreground">{page.excerpt}</span>
+      {result.excerpt ? (
+        <span className="min-w-0 truncate text-token-description-foreground">{result.excerpt}</span>
       ) : null}
     </li>
   );
 }
 
-function RelatedPages({ pages }: { readonly pages: readonly NodexToolRelatedPage[] }) {
+function ResultList({ results }: { readonly results: readonly NodexToolResult[] }) {
   const intl = useIntl();
-  const { shown, hiddenCount } = boundNodexRelatedPages(pages);
+  const { shown, hiddenCount } = boundNodexToolResults(results);
   return (
-    <ul className="flex min-w-0 flex-col gap-1 text-size-chat-sm" data-nodex-tool-related-pages="">
-      {shown.map((page, index) => (
-        <RelatedPageRow key={`${page.pageId}:${index}`} page={page} />
+    <ul className="flex min-w-0 flex-col gap-1 text-size-chat-sm" data-nodex-tool-results="">
+      {shown.map((result, index) => (
+        <ResultRow
+          key={`${result.kind === "chat" ? result.sessionId : result.pageId}:${index}`}
+          result={result}
+        />
       ))}
       {hiddenCount > 0 ? (
         <li className="text-token-description-foreground">
           {intl.formatMessage(
             {
-              id: "conversation.nodexToolActivityRow.morePages",
+              id: "conversation.nodexToolActivityRow.moreResults",
               defaultMessage: "{count, number} more",
             },
             { count: hiddenCount },
@@ -267,7 +290,8 @@ function NodexReadDocument({ markdown }: { readonly markdown: string }) {
     ? markdown.slice(0, lastBreak > 0 ? lastBreak : MAX_DOCUMENT_CHARS)
     : markdown;
   const { blocks, childPageIds } = splitNodexDocumentBlocks(readMarkdown(bounded));
-  const pages = childPageIds.map((pageId) => ({
+  const pages = childPageIds.map((pageId): NodexToolResult => ({
+    kind: "page",
     pageId,
     title: null,
     pageKey: null,
@@ -287,7 +311,7 @@ function NodexReadDocument({ markdown }: { readonly markdown: string }) {
       {blocks.length > 0 ? (
         <MessageDocument blocks={blocks} contentKey={markdown} fileAuthority={fileAuthority} />
       ) : null}
-      {pages.length > 0 ? <RelatedPages pages={pages} /> : null}
+      {pages.length > 0 ? <ResultList results={pages} /> : null}
       {truncated ? (
         <p className="text-size-chat-sm text-token-description-foreground">
           {intl.formatMessage({
@@ -311,12 +335,12 @@ function NodexToolActivityDetails({
   const intl = useIntl();
   const call = item.dynamicToolCall!;
   const { error, available } = useToolCallOutputDetail(item, true, call.outputOmitted);
-  const { document, message, pages, failure } = readNodexToolDetail(call);
+  const { document, message, results, failure } = readNodexToolDetail(call);
   const hasResult =
     activity.change !== null ||
     document !== null ||
     message !== null ||
-    pages.length > 0 ||
+    results.length > 0 ||
     failure !== null;
   return (
     <div className="flex min-w-0 flex-col gap-2">
@@ -327,7 +351,7 @@ function NodexToolActivityDetails({
         </div>
       ) : null}
       {document !== null ? <NodexReadDocument markdown={document} /> : null}
-      {pages.length > 0 ? <RelatedPages pages={pages} /> : null}
+      {results.length > 0 ? <ResultList results={results} /> : null}
       {failure ? <ToolErrorDetail error={failure} showLabel={false} /> : null}
       {hasResult && !call.outputOmitted ? null : error ? (
         <p role="alert">{error}</p>
@@ -346,8 +370,8 @@ function NodexToolActivityDetails({
       ) : !hasResult ? (
         <p className="text-token-description-foreground">
           {intl.formatMessage({
-            id: "conversation.nodexToolActivityRow.noContent",
-            defaultMessage: "Nothing to read here. Inspect the call for its exact output.",
+            id: "conversation.nodexToolActivityRow.noDetails",
+            defaultMessage: "No details to show.",
           })}
         </p>
       ) : null}

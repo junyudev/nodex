@@ -852,9 +852,12 @@ into one clause such as `read 3 pages`. Each settled call keeps the names, ident
 and counts its row shows; result bodies stay on demand.
 
 Opening a row shows its result for a person: a read's Page as a formatted document
-with child Pages as links, an edit's diff, the Pages a search found or a batch created
-or moved, what the Agent wrote to another chat or the Inbox, or a failure's message.
-A call with nothing to read, such as listing Projects, does not open.
+with child Pages as links, an edit's diff, the Pages and chats a search found (with the
+text that matched when it is more than their name), the Pages a batch created or moved,
+what the Agent wrote to another chat or the Inbox, or a failure's message. A row's
+count and its list agree. A call with nothing to read, such as listing Projects, does
+not open; an output Nodex cannot read says `No details to show`, and the exact call
+stays behind the inspect control.
 
 Hovering or focusing the row of a Nodex, MCP or other application tool reveals an
 inspect control at its end. It opens the exact call for whoever needs to know precisely
