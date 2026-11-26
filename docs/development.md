@@ -931,6 +931,29 @@ Reuse these mechanisms for UI verification. Keep fixture data with its test or
 subsystem owner instead of introducing a separate component gallery or parallel
 display state model. Fixture classes and runtime commands are detailed below.
 
+### Screenshots
+
+Use `vp run capture` for screenshots of the desktop app. Start a seeded development
+instance, open the feature, and pass the same absolute home to the capture command.
+
+```bash
+task_home="$HOME/repo/nodex/runs.local/release-capture"
+vp run dev --home "$task_home" --seed release/capture
+
+vp run capture -- --home "$task_home" --out "$HOME/repo/nodex/notes.local/artifacts/release-capture/workbench.png"
+vp run capture -- --home "$task_home" --hero changes/added/YYYY-MM-DD-slug.md --selector '<css>' --caption "Describe what the image shows"
+```
+
+Screenshots default to a 1440 × 900 CSS-pixel viewport at 2× and save as PNG.
+Use `--selector` and `--padding` to frame a feature, and `--theme` or `--locale`
+to choose an appearance or display language for the capture.
+
+For a hero shot, show the feature in its final state with realistic seed data.
+Frame the feature and clear unrelated banners through the scenario or the app.
+Hero mode captures light and dark PNGs and attaches them to the change entry.
+The `release/capture` seed supplies Pages, chats, and Inbox activity with a
+scripted Codex sign-in and no failed GitHub check.
+
 ### Choosing checks
 
 Run `vp run check:changed` for fast local feedback. It checks changed-file
