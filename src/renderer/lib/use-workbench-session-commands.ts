@@ -1,7 +1,7 @@
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
-import { composerDraftIntents } from "./composer-draft-intents";
+import { composerDraftIntents, requestComposerFocus } from "./composer-draft-intents";
 import { requestTerminalFocus } from "./terminal-focus";
 import { collectCodexSubagentThreadIds } from "../../shared/codex-subagent-metadata";
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
@@ -785,14 +785,7 @@ export function useWorkbenchSessionCommands({
           fullWidth: false,
         },
       });
-      composerDraftIntents.set(
-        { kind: "session", sessionId: session.id },
-        {
-          prompt: "",
-          attachmentMode: "append",
-          focusNonce: Date.now(),
-        },
-      );
+      requestComposerFocus({ kind: "session", sessionId: session.id });
     },
     [ensureDefaultDraftSessionForProject],
   );
@@ -840,7 +833,9 @@ export function useWorkbenchSessionCommands({
           documentItems: text ? [{ type: "text", text: `${text}\n\n` }] : [],
         },
       };
-      composerDraftIntents.set({ kind: "session", sessionId: input.sessionId }, intent);
+      composerDraftIntents.set({ kind: "session", sessionId: input.sessionId }, intent, {
+        reveal: true,
+      });
     },
     [],
   );
@@ -1652,6 +1647,7 @@ export function useWorkbenchSessionCommands({
         browserViewScopeId: windowSessionId,
       });
       if ("pendingWorktreeId" in result) {
+        requestComposerFocus({ kind: "pending-worktree", clientThreadId: result.clientThreadId });
         setPendingWorktreeClientThreadId(result.clientThreadId);
         return;
       }
@@ -1661,6 +1657,8 @@ export function useWorkbenchSessionCommands({
           { kind: "session", sessionId: result.session.id },
           result.composerIntent,
         );
+      } else {
+        requestComposerFocus({ kind: "session", sessionId: result.session.id });
       }
       // The selected task owns resume/hydration; it must not extend the source task's fork action.
       if (!result.session.executionRef)
@@ -1717,10 +1715,12 @@ export function useWorkbenchSessionCommands({
         browserViewScopeId: windowSessionId,
       });
       if ("pendingWorktreeId" in result) {
+        requestComposerFocus({ kind: "pending-worktree", clientThreadId: result.clientThreadId });
         setPendingWorktreeClientThreadId(result.clientThreadId);
         return;
       }
       selectSession(result.session);
+      requestComposerFocus({ kind: "session", sessionId: result.session.id });
     },
     [
       projectlessSessions,

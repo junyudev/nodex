@@ -1,7 +1,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi, it } from "vite-plus/test";
 import {
+  captureComposerFocus,
   composerDraftIntents,
+  holdComposerFocusForFirstSend,
   useComposerDraftIntent,
   type ComposerChatKey,
 } from "./composer-draft-intents";
@@ -19,7 +21,7 @@ describe("Composer draft intents", () => {
     const next = renderHook(() => useComposerDraftIntent({ ...chat }));
     expect(next.result.current).toBe(intent);
     await act(async () => {
-      composerDraftIntents.consume(chat, 1);
+      composerDraftIntents.acknowledge(chat, intent);
     });
     expect(next.result.current).toBeNull();
     next.unmount();
@@ -38,7 +40,7 @@ describe("Composer draft intents", () => {
     });
     expect(view.result.current).toBe(intent);
     await act(async () => {
-      composerDraftIntents.consume(chat, 2);
+      composerDraftIntents.acknowledge(chat, intent);
     });
     expect(view.result.current).toBeNull();
     view.unmount();
@@ -48,17 +50,18 @@ describe("Composer draft intents", () => {
     const chat = { kind: "session", sessionId: "consume-fence" } as const;
     const listener = vi.fn();
     const stop = composerDraftIntents.subscribe(chat, listener);
-    composerDraftIntents.set(chat, { prompt: "Older", focusNonce: 3 });
-    const newer = { prompt: "Newer", focusNonce: 4 };
+    const older = { prompt: "Older", focusNonce: 3 };
+    composerDraftIntents.set(chat, older);
+    const newer = { prompt: "Newer", focusNonce: 3 };
     composerDraftIntents.set(chat, newer);
     listener.mockClear();
-    composerDraftIntents.consume(chat, 3);
+    composerDraftIntents.acknowledge(chat, older);
     expect(composerDraftIntents.read(chat)).toBe(newer);
     expect(listener).not.toHaveBeenCalled();
-    composerDraftIntents.consume(chat, 4);
+    composerDraftIntents.acknowledge(chat, newer);
     expect(composerDraftIntents.read(chat)).toBeNull();
     expect(listener).toHaveBeenCalledOnce();
-    composerDraftIntents.consume(chat, 4);
+    composerDraftIntents.acknowledge(chat, newer);
     expect(listener).toHaveBeenCalledOnce();
     stop();
   });
@@ -82,7 +85,10 @@ describe("Composer draft intents", () => {
     );
     expect(listener).toHaveBeenCalledOnce();
     stop();
-    chats.forEach((chat, index) => composerDraftIntents.consume(chat, index));
+    chats.forEach((chat) => {
+      const intent = composerDraftIntents.read(chat);
+      if (intent) composerDraftIntents.acknowledge(chat, intent);
+    });
     expect(listener).toHaveBeenCalledOnce();
   });
   test("materializing a Project draft preserves pending intents and captured subscriptions", () => {
@@ -99,11 +105,32 @@ describe("Composer draft intents", () => {
     const later = { prompt: "Captured handoff", focusNonce: 11 };
     composerDraftIntents.set(draft, later);
     expect(composerDraftIntents.read(session)).toBe(later);
-    composerDraftIntents.consume(session, 10);
+    composerDraftIntents.acknowledge(session, intent);
     expect(composerDraftIntents.read(draft)).toBe(later);
-    composerDraftIntents.consume(draft, 11);
+    composerDraftIntents.acknowledge(draft, later);
     expect(composerDraftIntents.read(session)).toBeNull();
     stop();
+  });
+
+  test("a first send waits through the provisional composer until the chat is open", () => {
+    const chat = { kind: "session", sessionId: "first-send-focus" } as const;
+    const source = document.createElement("textarea");
+    const target = document.createElement("textarea");
+    document.body.append(source);
+    source.focus();
+    const transfer = captureComposerFocus(source);
+    source.remove();
+    if (!transfer) throw new Error("Expected the submitting editor to own focus");
+
+    const intent = holdComposerFocusForFirstSend(chat, transfer);
+    expect(composerDraftIntents.focusFor(chat, intent, target, false).status).toBe("waiting");
+    expect(composerDraftIntents.focusFor(chat, intent, target, true).status).toBe("waiting");
+    composerDraftIntents.completeFirstSend(chat);
+    const ready = composerDraftIntents.read(chat);
+    if (!ready) throw new Error("Expected a focus request after opening the chat");
+    expect(composerDraftIntents.focusFor(chat, ready, target, false).status).toBe("waiting");
+    expect(composerDraftIntents.focusFor(chat, ready, target, true).status).toBe("ready");
+    composerDraftIntents.acknowledge(chat, ready);
   });
 
   test("materialization keeps the newest handoff and cannot rebind a draft to a different Session", () => {
@@ -116,7 +143,7 @@ describe("Composer draft intents", () => {
     composerDraftIntents.materializeProjectDraft(draft, "other-session");
     expect(composerDraftIntents.read(draft)).toBe(newer);
     expect(composerDraftIntents.read({ kind: "session", sessionId: "other-session" })).toBeNull();
-    composerDraftIntents.consume(session, 50);
+    composerDraftIntents.acknowledge(session, newer);
   });
 });
 

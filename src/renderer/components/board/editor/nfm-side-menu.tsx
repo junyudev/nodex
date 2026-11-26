@@ -191,6 +191,7 @@ interface NfmSideMenuOpenState {
 export type NfmSideMenuCloseReason =
   | "action"
   | "clipboard-command"
+  | "composer-handoff"
   | "escape"
   | "editor-outside-pointer"
   | "outside-pointer";
@@ -437,7 +438,7 @@ export function shouldReturnFocusAfterNfmSideMenuClose({
   returnFocusElement: HTMLElement | null;
 }) {
   if (!returnFocusElement) return false;
-  return reason !== "outside-pointer";
+  return reason !== "outside-pointer" && reason !== "composer-handoff";
 }
 
 export function resolveNfmSideMenuReturnFocusElement({
@@ -460,7 +461,8 @@ export function resolveNfmSideMenuFormattingToolbarSuppressionRange({
   reason: NfmSideMenuCloseReason;
   selectionRange: NfmSideMenuSelectionRange | null;
 }) {
-  if (reason === "action" || reason === "clipboard-command") return null;
+  if (reason === "action" || reason === "clipboard-command" || reason === "composer-handoff")
+    return null;
   if (!selectionRange) return null;
   if (selectionRange.from === selectionRange.to) return null;
   return selectionRange;
@@ -1787,21 +1789,25 @@ function NfmSideMenuPopup({
         const blockIds = selectedBlocks.flatMap((candidate) =>
           typeof candidate.id === "string" ? [candidate.id] : [],
         );
-        const preferredTarget = runtimeSnapshot.sendToThreadPreferredTarget;
-        const run =
-          key === "add-to-composer"
-            ? runtimeSnapshot.onAddBlocksToComposer?.(blockIds)
-            : preferredTarget
-              ? runtimeSnapshot.onSendBlocksToThread?.(
-                  { target: resolveNfmSendToThreadPreferredDestination(preferredTarget) },
-                  blockIds,
-                )
-              : undefined;
-        if (!run) return;
-        close("action");
-        void Promise.resolve(run).catch((error: unknown) =>
-          reportNfmChatSendFailure(key === "add-to-composer" ? "add-to-composer" : "send", error),
-        );
+        const { sendToThreadPreferredTarget, onAddBlocksToComposer, onSendBlocksToThread } =
+          runtimeSnapshot;
+        const addToComposer = key === "add-to-composer";
+        const action = addToComposer
+          ? onAddBlocksToComposer && (() => onAddBlocksToComposer(blockIds))
+          : sendToThreadPreferredTarget &&
+            onSendBlocksToThread &&
+            (() =>
+              onSendBlocksToThread(
+                { target: resolveNfmSendToThreadPreferredDestination(sendToThreadPreferredTarget) },
+                blockIds,
+              ));
+        if (!action) return;
+        close(addToComposer ? "composer-handoff" : "action");
+        void Promise.resolve()
+          .then(action)
+          .catch((error: unknown) =>
+            reportNfmChatSendFailure(addToComposer ? "add-to-composer" : "send", error),
+          );
         return;
       }
 

@@ -24,6 +24,7 @@ import {
   createAgentSmokeDraft,
   invokeIpc,
   sendAgentPrompt,
+  sendAgentPromptWithEvidence,
   setAgentExecutionProfile,
   waitForAgentThreadExecutionProfile,
   waitForFinalMarker,
@@ -401,10 +402,12 @@ test("runs a real shell tool through the scripted model boundary @automatic", as
             harness.profile.projectsDirectory,
             "Scripted Agent file smoke",
           );
-          const threadId = await sendAgentPrompt(
+          const { threadId } = await sendAgentPromptWithEvidence(
             page,
             draft.projectSessionId,
             `${promptMarker}: create the requested deterministic fixture`,
+            undefined,
+            "keyboard",
           );
           const target = { sessionId: draft.projectSessionId, threadId };
           await waitForAgentThreadExecutionProfile(page, target, selectedProfile);
@@ -417,6 +420,12 @@ test("runs a real shell tool through the scripted model boundary @automatic", as
             );
           }
           await waitForFinalMarker(page, finalMarker);
+          const followUp = page.locator(
+            '[data-codex-composer="true"][aria-label="Ask for follow-up changes"]',
+          );
+          await expect(followUp).toBeFocused();
+          await page.keyboard.insertText("Draft a follow-up");
+          await expect(followUp).toHaveText("Draft a follow-up");
 
           expect(fs.readFileSync(filePath, "utf8")).toBe(fileContents);
           expect(snapshot.snapshot.projection.runs).toHaveLength(1);

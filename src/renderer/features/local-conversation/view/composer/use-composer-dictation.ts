@@ -1,3 +1,5 @@
+import { hasOpenComposerBlockingDialog } from "@/lib/composer-draft-intents";
+import { classifyKeyboardActionSurface } from "@/lib/keyboard-action-runtime";
 import { recordFeatureUsed } from "@/lib/product-analytics";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
@@ -105,9 +107,58 @@ export function isComposerDictationShortcut(
   return matchesKeyboardEventToCommand(event, commandKeymapState, "composerDictationHold");
 }
 
-export function isComposerDictationShortcutTargetBlocked(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return Boolean(target.closest("[data-codex-terminal]"));
+/** A release matches the admitted physical chord, even after its modifiers have changed. */
+export function isComposerDictationShortcutRelease(
+  down: KeyboardEvent,
+  up: KeyboardEvent,
+): boolean {
+  return (
+    (down.code && down.code !== "Unidentified" ? down.code === up.code : down.key === up.key) ||
+    (down.ctrlKey && !up.ctrlKey) ||
+    (down.metaKey && !up.metaKey) ||
+    (down.shiftKey && !up.shiftKey) ||
+    (down.altKey && !up.altKey)
+  );
+}
+
+export function isComposerDictationShortcutTargetBlocked(
+  target: EventTarget | null,
+  editor: HTMLElement | null | undefined,
+): boolean {
+  if (!editor || !isVisibleDictationEditor(editor)) return true;
+  const document = editor.ownerDocument;
+  const active = document.activeElement;
+  const targetSurface = classifyKeyboardActionSurface({ target });
+  const activeSurface = classifyKeyboardActionSurface({ target: active });
+  // A Terminal, dialog, menu or another editor keeps the gesture; the composer's own editor does not.
+  if (targetSurface === "terminal" || activeSurface === "terminal") return true;
+  if (targetSurface === "local" || hasOpenComposerBlockingDialog(document)) return true;
+  if (active === editor) return false;
+  if (activeSurface === "editable" || targetSurface === "editable") return true;
+
+  // With no typing surface focused, prefer the composer in the active Conversation, then the
+  // main visible Composer. This keeps an incidental side chat from claiming the same gesture.
+  const footer = '[data-thread-find-composer="true"]';
+  const localFooter = active?.closest(footer);
+  const candidates = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-composer-prompt-frame="true"] [data-codex-composer="true"]',
+    ),
+  ).filter(isVisibleDictationEditor);
+  const intended =
+    candidates.find((candidate) => localFooter && localFooter.contains(candidate)) ??
+    candidates.find((candidate) => !candidate.closest("[data-panel-group-leaf-id]")) ??
+    candidates[0];
+  return intended !== editor;
+}
+
+function isVisibleDictationEditor(editor: HTMLElement): boolean {
+  return (
+    editor.isConnected &&
+    editor.getAttribute("contenteditable") === "true" &&
+    !editor.closest('[hidden], [aria-hidden="true"], [inert], [data-base-ui-inert]') &&
+    editor.checkVisibility?.({ visibilityProperty: true }) !== false
+  );
 }
 
 const defaultClock: DictationControllerPorts["clock"] = {

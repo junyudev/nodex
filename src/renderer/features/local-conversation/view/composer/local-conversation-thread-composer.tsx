@@ -3,7 +3,6 @@ import { getIntl, useIntl } from "@/lib/i18n";
 import { resolveThreadInProgressFollowUpMode } from "@/lib/thread-composer-follow-up-mode";
 import { registerBrowserAnnotationAdmission } from "../../../browser-sidebar/browser-annotation-delivery";
 import { resolveBrowserAnnotationDestination } from "../../../../../shared/browser-annotation";
-import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useRegisterPluginAppFollowUp } from "@/features/local-conversation/view/plugin-app-conversation";
 import {
   buildMcpAppFollowUpPrompt,
@@ -15,7 +14,16 @@ import { useComposerExecutionHold } from "./use-composer-execution-hold";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useAgentApprovals } from "../../use-agent-approvals";
 import { agentApprovalComposerPlaceholder } from "../../agent-approval";
-import { composerDraftIntents } from "@/lib/composer-draft-intents";
+import {
+  captureComposerFocus,
+  composerDraftIntents,
+  hasOpenComposerBlockingDialog,
+  holdComposerFocusForFirstSend,
+  type ComposerChatKey,
+  type ComposerFocusTransfer,
+} from "@/lib/composer-draft-intents";
+import { hasOpenNodexFloatingEscapeLayer } from "@/components/ui/floating-surface";
+import { useComposerIntentFocus } from "./use-composer-intent-focus";
 import type { PageReference } from "../../../../../shared/page-reference";
 import { useComposerPageContext } from "./use-composer-page-context";
 import { ComposerPageContextChips } from "./composer-page-context-chips";
@@ -42,6 +50,7 @@ import {
   useState,
   useSyncExternalStore,
   type DragEvent,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import { resolveContextWindowIndicatorState } from "@/lib/context-window";
@@ -128,6 +137,7 @@ import { ComposerTipLine } from "./composer-tip-line";
 import {
   isComposerDictationShortcut,
   isComposerDictationShortcutTargetBlocked,
+  isComposerDictationShortcutRelease,
   useComposerDictation,
 } from "./use-composer-dictation";
 import { resolveComposerGlobalDictationAdmission } from "./composer-global-dictation-admission";
@@ -238,7 +248,8 @@ import {
   clearComposerCompletedDraftAtom,
   composerAddedFilesAtom,
   composerAppshotContextsAtom,
-  composerConsumedIntentNonceAtom,
+  composerAppliedIntentAtom,
+  composerQueuedFollowUpEditAtom,
   composerDraftInitializedAtom,
   composerDraftTransferFamily,
   composerFileAttachmentsAtom,
@@ -251,7 +262,6 @@ import {
   restoreComposerImages,
   useComposerImageDraft,
   composerPastedTextAttachmentsAtom,
-  composerResetGenerationAtom,
   composerReviewCommentAttachmentsFamily,
   useComposerPromptDraft,
   type ComposerCompletedDraftSnapshot,
@@ -381,6 +391,8 @@ interface ThreadComposerProps {
   contextRailLeadingContent?: ReactNode;
   backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   intelligenceController?: ComposerIntelligenceController;
+  onReleasePromptFocus?: (editor: HTMLElement | null | undefined) => boolean;
+  captureUnmountedPromptFocus?: (transfer: ComposerFocusTransfer) => void;
 }
 
 function isElectronLikeComposerEnvironment(): boolean {
@@ -1189,8 +1201,8 @@ function applyCompletedDraftSnapshot(input: {
 }
 
 interface HydratedThreadComposerProps extends ThreadComposerProps {
-  readonly intentFocusNonce: number | null;
-  readonly onIntentFocused: (nonce: number) => void;
+  readonly focusIntent: CodexComposerIntent | null;
+  readonly onIntentSettled: (intent: CodexComposerIntent) => void;
   readonly prompt: string;
   readonly readPrompt: () => string;
   readonly readPromptDocument: () => ComposerPromptDocument;
@@ -1235,16 +1247,13 @@ function ControlledThreadComposer(
   const promptDraft = useComposerPromptDraft(composerThreadId, rootSessionId);
   const imageDraft = useComposerImageDraft(composerThreadId, rootSessionId);
   const [initialized, setInitialized] = useScopedAtom(composerDraftInitializedAtom);
-  const [consumedIntentNonce, setConsumedIntentNonce] = useScopedAtom(
-    composerConsumedIntentNonceAtom,
-  );
+  const [appliedIntent, setAppliedIntent] = useScopedAtom(composerAppliedIntentAtom);
   const [, setFileAttachments] = useScopedAtom(composerFileAttachmentsAtom);
   const [, setAddedFiles] = useScopedAtom(composerAddedFilesAtom);
   const [imageAttachments, setImageAttachments] = useScopedAtom(composerImageAttachmentsAtom);
   const [, setAppshotContexts] = useScopedAtom(composerAppshotContextsAtom);
   const [, setPastedTextAttachments] = useScopedAtom(composerPastedTextAttachmentsAtom);
   const [, setGoalModeActive] = useScopedAtom(composerGoalModeActiveAtom);
-  const resetGeneration = useScopedAtomValue(composerResetGenerationAtom);
   const clearCompletedDraft = useSetScopedAtom(clearComposerCompletedDraftAtom);
   const submittedDraftCleanupRef = useRef({
     clearCompletedDraft,
@@ -1257,23 +1266,10 @@ function ControlledThreadComposer(
     composerThreadId ?? `inactive:${composerHandle.path}`,
   );
   const [transfer, setTransfer] = useScopedAtom(transferDefinition);
-  const consumedIntentNonceRef = useRef(consumedIntentNonce);
-  const [intentFocusNonce, setIntentFocusNonce] = useState<number | null>(null);
-  const [queuedFollowUpEdit, setQueuedFollowUpEdit] = useState<
-    CodexComposerIntent["queuedFollowUpEdit"] | null
-  >(null);
+  const [settledIntent, setSettledIntent] = useState<CodexComposerIntent | null>(null);
+  const [queuedFollowUpEdit, setQueuedFollowUpEdit] = useScopedAtom(composerQueuedFollowUpEditAtom);
   const consumedTransferIdRef = useRef<string | null>(null);
   const intent = model.composerIntent;
-  const [queuedEditIntentNonce, setQueuedEditIntentNonce] = useState(consumedIntentNonce);
-  if (
-    promptDraft.loadable.status !== "loading" &&
-    imageDraft.loadable.status !== "loading" &&
-    intent &&
-    intent.focusNonce !== queuedEditIntentNonce
-  ) {
-    setQueuedEditIntentNonce(intent.focusNonce);
-    if (intent.queuedFollowUpEdit) setQueuedFollowUpEdit(intent.queuedFollowUpEdit);
-  }
 
   useLayoutEffect(() => {
     if (promptDraft.loadable.status === "loading" || imageDraft.loadable.status === "loading")
@@ -1342,101 +1338,103 @@ function ControlledThreadComposer(
       setTransfer(null);
     }
 
-    if (intent && consumedIntentNonceRef.current !== intent.focusNonce) {
-      consumedIntentNonceRef.current = intent.focusNonce;
-      const restored = buildComposerAttachmentStateFromPromptInput(
-        intent.promptInput,
-        model.hostId,
-      );
-      const mentionPrompt = buildPersistedMentionPrompt(intent.promptInput);
-      const documentPrompt = buildPersistedPromptDocument(intent.promptInput);
-      const append = intent.attachmentMode === "append";
-      restoreComposerAppModelContext(
-        composerHandle,
-        intent.promptInput?.mcpAppModelContextAttachments ?? [],
-        append,
-      );
-      selectionDraft.replace(
-        {
-          responseTextAnnotations: restored.responseTextAnnotations ?? [],
-          selectedTextAttachments: restored.selectedTextAttachments ?? [],
-        },
-        append,
-      );
-      if (append) {
-        setFileAttachments((current) =>
-          appendUniqueBy(
-            current,
-            restored.fileAttachments,
-            (attachment) =>
-              attachment.attachment.fsPath ?? attachment.attachment.path ?? attachment.uiId,
-          ),
-        );
-        setAddedFiles((current) =>
-          appendUniqueBy(
-            current,
-            restored.addedFiles,
-            (attachment) =>
-              attachment.attachment.fsPath ?? attachment.attachment.path ?? attachment.uiId,
-          ),
-        );
-        setImageAttachments((current) =>
-          appendUniqueBy(current, restored.imageAttachments, (attachment) => attachment.id),
-        );
-        setAppshotContexts((current) =>
-          appendUniqueBy(current, restored.appshotContexts, (context) => context.id),
-        );
-        setPastedTextAttachments((current) =>
-          appendUniqueBy(current, restored.pastedTextAttachments, (attachment) => attachment.id),
-        );
-        for (const attachment of restored.commentAttachments) {
-          addReviewDiffCommentAttachment(composerThreadId, attachment);
-        }
-      } else {
-        setFileAttachments(restored.fileAttachments);
-        setAddedFiles(restored.addedFiles);
-        setImageAttachments(restored.imageAttachments);
-        setAppshotContexts(restored.appshotContexts);
-        setPastedTextAttachments(restored.pastedTextAttachments);
-        replaceReviewCommentAttachments(composerThreadId, restored.commentAttachments);
-      }
+    if (!initialized) setInitialized(true);
+    if (!intent || composerHandle.get(composerAppliedIntentAtom)?.deref() === intent) return;
 
-      if (
-        intent.prompt.length > 0 ||
-        intent.clearText === true ||
-        mentionPrompt.length > 0 ||
-        documentPrompt !== null
-      ) {
-        const nextPrompt =
-          intent.clearText === true
-            ? ""
-            : documentPrompt !== null
-              ? append
-                ? appendPersistedPromptDocument(promptDraft.prompt, documentPrompt)
-                : documentPrompt
-              : mergePersistedMentionPrompt(
-                  append
-                    ? intent.prompt || promptDraft.prompt
-                    : removePersistedMentionPrompt(intent.prompt || promptDraft.prompt),
-                  mentionPrompt,
-                );
-        void promptDraft.setPrompt(nextPrompt).catch((error: unknown) => {
-          toastFailure(
-            getIntl().formatMessage({
-              id: "conversation.localConversationThreadComposer.addToMessageFailed",
-              defaultMessage: "Couldn’t add that to your message",
-            }),
-            error,
-          );
-        });
+    setAppliedIntent(new WeakRef(intent));
+    if (intent.queuedFollowUpEdit) setQueuedFollowUpEdit(intent.queuedFollowUpEdit);
+    // Focus-only requests leave the draft and its attachments untouched.
+    if (
+      !intent.prompt &&
+      !intent.promptInput &&
+      !intent.clearText &&
+      intent.attachmentMode === "append"
+    )
+      return;
+
+    const restored = buildComposerAttachmentStateFromPromptInput(intent.promptInput, model.hostId);
+    const mentionPrompt = buildPersistedMentionPrompt(intent.promptInput);
+    const documentPrompt = buildPersistedPromptDocument(intent.promptInput);
+    const append = intent.attachmentMode === "append";
+    restoreComposerAppModelContext(
+      composerHandle,
+      intent.promptInput?.mcpAppModelContextAttachments ?? [],
+      append,
+    );
+    selectionDraft.replace(
+      {
+        responseTextAnnotations: restored.responseTextAnnotations ?? [],
+        selectedTextAttachments: restored.selectedTextAttachments ?? [],
+      },
+      append,
+    );
+    if (append) {
+      setFileAttachments((current) =>
+        appendUniqueBy(
+          current,
+          restored.fileAttachments,
+          (attachment) =>
+            attachment.attachment.fsPath ?? attachment.attachment.path ?? attachment.uiId,
+        ),
+      );
+      setAddedFiles((current) =>
+        appendUniqueBy(
+          current,
+          restored.addedFiles,
+          (attachment) =>
+            attachment.attachment.fsPath ?? attachment.attachment.path ?? attachment.uiId,
+        ),
+      );
+      setImageAttachments((current) =>
+        appendUniqueBy(current, restored.imageAttachments, (attachment) => attachment.id),
+      );
+      setAppshotContexts((current) =>
+        appendUniqueBy(current, restored.appshotContexts, (context) => context.id),
+      );
+      setPastedTextAttachments((current) =>
+        appendUniqueBy(current, restored.pastedTextAttachments, (attachment) => attachment.id),
+      );
+      for (const attachment of restored.commentAttachments) {
+        addReviewDiffCommentAttachment(composerThreadId, attachment);
       }
-      setConsumedIntentNonce(intent.focusNonce);
-      setIntentFocusNonce(intent.focusNonce);
-      if (model.composerChatKey)
-        composerDraftIntents.consume(model.composerChatKey, intent.focusNonce);
+    } else {
+      setFileAttachments(restored.fileAttachments);
+      setAddedFiles(restored.addedFiles);
+      setImageAttachments(restored.imageAttachments);
+      setAppshotContexts(restored.appshotContexts);
+      setPastedTextAttachments(restored.pastedTextAttachments);
+      replaceReviewCommentAttachments(composerThreadId, restored.commentAttachments);
     }
 
-    if (!initialized) setInitialized(true);
+    if (
+      intent.prompt.length > 0 ||
+      intent.clearText === true ||
+      mentionPrompt.length > 0 ||
+      documentPrompt !== null
+    ) {
+      const nextPrompt =
+        intent.clearText === true
+          ? ""
+          : documentPrompt !== null
+            ? append
+              ? appendPersistedPromptDocument(promptDraft.prompt, documentPrompt)
+              : documentPrompt
+            : mergePersistedMentionPrompt(
+                append
+                  ? intent.prompt || promptDraft.prompt
+                  : removePersistedMentionPrompt(intent.prompt || promptDraft.prompt),
+                mentionPrompt,
+              );
+      void promptDraft.setPrompt(nextPrompt).catch((error: unknown) => {
+        toastFailure(
+          getIntl().formatMessage({
+            id: "conversation.localConversationThreadComposer.addToMessageFailed",
+            defaultMessage: "Couldn’t add that to your message",
+          }),
+          error,
+        );
+      });
+    }
   }, [
     composerThreadId,
     composerHandle,
@@ -1448,12 +1446,13 @@ function ControlledThreadComposer(
     promptDraft,
     setAddedFiles,
     setAppshotContexts,
-    setConsumedIntentNonce,
+    setAppliedIntent,
     setFileAttachments,
     setGoalModeActive,
     setImageAttachments,
     setInitialized,
     setPastedTextAttachments,
+    setQueuedFollowUpEdit,
     setTransfer,
     selectionDraft,
     transfer,
@@ -1519,7 +1518,20 @@ function ControlledThreadComposer(
     });
   }, []);
 
-  if (promptDraft.loadable.status === "loading" || !initialized) {
+  const chat = model.composerChatKey;
+  const onIntentSettled = useCallback(
+    (settled: CodexComposerIntent) => {
+      if (chat) composerDraftIntents.acknowledge(chat, settled);
+      else setSettledIntent(settled);
+    },
+    [chat],
+  );
+
+  if (
+    promptDraft.loadable.status === "loading" ||
+    imageDraft.loadable.status === "loading" ||
+    !initialized
+  ) {
     return (
       <ApplicationPending active={composerVisible}>
         <div
@@ -1536,13 +1548,10 @@ function ControlledThreadComposer(
 
   return (
     <HydratedThreadComposer
-      key={resetGeneration}
       {...props}
       intelligenceController={intelligenceController}
-      intentFocusNonce={intentFocusNonce}
-      onIntentFocused={(nonce) =>
-        setIntentFocusNonce((current) => (current === nonce ? null : current))
-      }
+      focusIntent={intent === appliedIntent?.deref() && intent !== settledIntent ? intent : null}
+      onIntentSettled={onIntentSettled}
       prompt={promptDraft.prompt}
       readPrompt={promptDraft.readPrompt}
       readPromptDocument={promptDraft.readDocument}
@@ -1636,8 +1645,10 @@ function HydratedThreadComposer({
   queuedFollowUpEdit,
   clearQueuedFollowUpEdit,
   intelligenceController,
-  intentFocusNonce,
-  onIntentFocused,
+  focusIntent,
+  onIntentSettled,
+  onReleasePromptFocus,
+  captureUnmountedPromptFocus,
 }: HydratedThreadComposerProps) {
   const intl = useIntl();
   const executionHold = useComposerExecutionHold(
@@ -1716,25 +1727,18 @@ function HydratedThreadComposer({
   const approvalPlaceholder = agentApprovalComposerPlaceholder(answerableApprovals);
   const openSkill = useOpenSkill();
   const promptEditorRef = useRef<ComposerPromptEditorHandle>(null);
-  const lastFocusedIntentRef = useRef<number | null>(null);
   useLayoutEffect(() => {
-    if (
-      intentFocusNonce === null ||
-      !composerVisible ||
-      lastFocusedIntentRef.current === intentFocusNonce
-    )
-      return;
     const editor = promptEditorRef.current;
-    if (!editor?.getElement()?.isConnected) return;
-    editor.focusAtEnd();
-    lastFocusedIntentRef.current = intentFocusNonce;
-    onIntentFocused(intentFocusNonce);
-  }, [intentFocusNonce, composerVisible, onIntentFocused]);
+    return () => {
+      if (!captureUnmountedPromptFocus || !editor) return;
+      const transfer = captureComposerFocus(editor.getElement(), editor.getSelection());
+      if (transfer) captureUnmountedPromptFocus(transfer);
+    };
+  }, [captureUnmountedPromptFocus]);
   const dictationEditorRef = useRef<ComposerPromptEditorHandle | null>(null);
   const addContextMenuRef = useRef<ComposerAddContextMenuHandle>(null);
   const appendPromptToHistoryRef = useRef<(text: string) => void>(() => {});
   const resetPromptHistorySelectionRef = useRef<() => void>(() => {});
-  const dictationShortcutActiveRef = useRef(false);
   const attachmentGenerationRef = useRef(0);
   const pastedTextSourcesRef = useRef(new Map<string, string>());
   const pastedTextOperationGenerationRef = useRef(new Map<string, number>());
@@ -2410,6 +2414,9 @@ function HydratedThreadComposer({
         }
 
         const submittedPresentation = actions.onCaptureSubmissionPresentation?.();
+        const firstSendFocus = captureComposerFocus(promptEditorRef.current?.getElement());
+        const focusChat = model.composerChatKey;
+        let firstSendFocusIntent: CodexComposerIntent | null = null;
         setBusyAction("send");
         let prompt = draft.objective;
         const threadGoalDraft: CodexThreadGoalDraftInput = {
@@ -2437,6 +2444,9 @@ function HydratedThreadComposer({
 
         return runWithCleanup(
           async () => {
+            if (focusChat && firstSendFocus?.isCurrent()) {
+              firstSendFocusIntent = holdComposerFocusForFirstSend(focusChat, firstSendFocus);
+            }
             const startCompletion = startThreadForSession({
               projectId: target.projectId,
               sessionId: target.sessionId,
@@ -2462,6 +2472,9 @@ function HydratedThreadComposer({
               setBusyAction(null);
             },
             onError: async (error) => {
+              if (focusChat && firstSendFocusIntent) {
+                composerDraftIntents.acknowledge(focusChat, firstSendFocusIntent);
+              }
               if (threadGoalMaterializedDraft) {
                 await cleanupMaterializedThreadGoalDraft(goalHostId, threadGoalMaterializedDraft);
               }
@@ -2545,6 +2558,7 @@ function HydratedThreadComposer({
       isDraftCaptureLocked,
       model.conversation,
       model.hostId,
+      model.composerChatKey,
       model.newThreadTarget,
       recordSuccessfulPromptSubmit,
       restoreAdmittedSubmission,
@@ -2838,6 +2852,10 @@ function HydratedThreadComposer({
       return false;
     }
 
+    const firstSendFocus =
+      model.conversation === null && !preserveDraft
+        ? captureComposerFocus(promptEditorRef.current?.getElement())
+        : null;
     setBusyAction("send");
     const optimisticImageEdit =
       isImageEditFollowUp &&
@@ -2850,6 +2868,8 @@ function HydratedThreadComposer({
         ? beginOptimisticGeneratedImageEdit(model.conversation.threadId)
         : null;
     let completedFirstSubmission = false;
+    const focusChat = model.composerChatKey;
+    let firstSendFocusIntent: CodexComposerIntent | null = null;
 
     return runWithCleanup(
       async () => {
@@ -2868,6 +2888,9 @@ function HydratedThreadComposer({
             await intelligenceController.flush();
             const startThreadForSession = actions.onStartThreadForSession;
             await submitContext(async (mcpAppModelContextAttachments) => {
+              if (focusChat && firstSendFocus?.isCurrent()) {
+                firstSendFocusIntent = holdComposerFocusForFirstSend(focusChat, firstSendFocus);
+              }
               const startCompletion = startThreadForSession({
                 projectId: target.projectId,
                 sessionId: target.sessionId,
@@ -3075,6 +3098,9 @@ function HydratedThreadComposer({
         },
         onError: (error) => {
           optimisticImageEdit?.rollback();
+          if (focusChat && firstSendFocusIntent) {
+            composerDraftIntents.acknowledge(focusChat, firstSendFocusIntent);
+          }
           if (!preserveDraft && completedFirstSubmission) {
             // Submission admission clears the draft immediately so its presentation can move to the
             // transcript. A terminal launch failure restores the exact local payload, making the
@@ -3496,47 +3522,40 @@ function HydratedThreadComposer({
   }, [startDictation, stopDictation]);
 
   useEffect(() => {
-    if (!isDictationSupported || isRealtimeVoiceActive || !composerVisible) {
-      dictationShortcutActiveRef.current = false;
-      return;
-    }
+    if (!isDictationSupported || isRealtimeVoiceActive || !composerVisible) return;
 
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.repeat || !isComposerDictationShortcut(event, commandKeymapQuery.data)) {
+    let held: KeyboardEvent | null = null;
+    const releaseActiveShortcut = (): void => {
+      if (!held) return;
+      held = null;
+      stopDictationRef.current("insert");
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || !isComposerDictationShortcut(event, commandKeymapQuery.data)) return;
+      if (
+        isComposerDictationShortcutTargetBlocked(
+          event.target,
+          promptEditorRef.current?.getElement(),
+        )
+      )
         return;
-      }
-      if (isComposerDictationShortcutTargetBlocked(event.target)) {
-        return;
-      }
 
       event.preventDefault();
       event.stopPropagation();
-      if (dictationShortcutActiveRef.current) {
-        return;
-      }
-
-      dictationShortcutActiveRef.current = true;
+      if (held) return;
+      held = event;
       void startDictationRef.current("hold");
     };
 
-    const handleKeyUp = (event: globalThis.KeyboardEvent) => {
-      if (!isComposerDictationShortcut(event, commandKeymapQuery.data)) {
-        return;
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!held || !isComposerDictationShortcutRelease(held, event)) return;
+      // A modifier keyup still belongs to the rest of the window.
+      if (event.code === held.code && event.key === held.key) {
+        event.preventDefault();
+        event.stopPropagation();
       }
-      event.preventDefault();
-      event.stopPropagation();
-      if (!dictationShortcutActiveRef.current) {
-        return;
-      }
-
-      dictationShortcutActiveRef.current = false;
-      stopDictationRef.current("insert");
-    };
-
-    const releaseActiveShortcut = (): void => {
-      if (!dictationShortcutActiveRef.current) return;
-      dictationShortcutActiveRef.current = false;
-      stopDictationRef.current("insert");
+      releaseActiveShortcut();
     };
 
     const handleVisibilityChange = (): void => {
@@ -4013,6 +4032,7 @@ function HydratedThreadComposer({
   };
 
   const handleKeyDown = (event: ComposerPromptEditorKeyboardEvent): boolean => {
+    const isComposing = "nativeEvent" in event ? event.nativeEvent.isComposing : event.isComposing;
     if (isDictating && event.key === "Escape" && !slashMenuOpen) {
       event.preventDefault();
       event.stopPropagation();
@@ -4035,12 +4055,37 @@ function HydratedThreadComposer({
       return true;
     }
 
+    if (
+      event.key === "Escape" &&
+      !event.defaultPrevented &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !isComposing &&
+      !event.repeat &&
+      !isFloatingComposer &&
+      !isStarting &&
+      !isComposerDictationActive &&
+      !suggestionState.active &&
+      !slashMenuOpen &&
+      !goalModeActive &&
+      !hasAttachments &&
+      promptEditorRef.current?.getPersistedText() === "" &&
+      !hasOpenNodexFloatingEscapeLayer(document) &&
+      !hasOpenComposerBlockingDialog(document) &&
+      onReleasePromptFocus?.(promptEditorRef.current?.getElement())
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
+
     if (handlePromptHistoryKeyDown(event)) {
       return true;
     }
 
     const hasMultilinePrompt = prompt.includes("\n");
-    const isComposing = "nativeEvent" in event ? event.nativeEvent.isComposing : event.isComposing;
     const actionState = resolveStageThreadsComposerActionState({
       canSendPrompt: !sendHeld && (model.conversation !== null || canStartNewThread),
       isThreadRunning: model.isThreadRunning,
@@ -4412,6 +4457,16 @@ function HydratedThreadComposer({
     (model.conversation === null && !canStartNewThread) ||
     busyAction !== null ||
     draftCaptureLocked;
+  useComposerIntentFocus({
+    chat: model.composerChatKey,
+    intent: focusIntent,
+    editorRef: promptEditorRef,
+    visible: composerVisible,
+    disabled: isPromptEditorDisabled,
+    conversationReady: model.conversation !== null,
+    onSettled: onIntentSettled,
+  });
+
   const captureReaderRef = useRef<() => ComposerDraftCaptureResult>(() => ({
     status: "blocked",
     reason: "unavailable",
@@ -4738,6 +4793,12 @@ function HydratedThreadComposer({
         )}
       </NodexTooltip>
     ) : null;
+  const preservePromptFocusForPointerSubmit = (event: MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    const editor = promptEditorRef.current?.getElement();
+    if (editor && editor.ownerDocument.activeElement === editor) event.preventDefault();
+  };
+
   const primaryActionButton = (
     <span className="inline-flex">
       <button
@@ -4750,6 +4811,11 @@ function HydratedThreadComposer({
             "opacity-50",
           isPrimaryActionPending && "cursor-wait",
         )}
+        onMouseDown={
+          composerActionState.primarySubmitAction === null
+            ? undefined
+            : preservePromptFocusForPointerSubmit
+        }
         onClick={
           stopUnavailableReason !== null
             ? undefined
@@ -4805,6 +4871,7 @@ function HydratedThreadComposer({
           })}
           aria-busy={transcriptionAction === "send"}
           disabled={transcriptionAction === "send"}
+          onMouseDown={preservePromptFocusForPointerSubmit}
           onClick={() => stopDictation("send")}
         >
           {transcriptionAction === "send" ? (
@@ -5053,6 +5120,7 @@ function HydratedThreadComposer({
             id: "conversation.localConversationThreadComposer.transcribeAndSend",
             defaultMessage: "Transcribe and send",
           })}
+          onMouseDown={preservePromptFocusForPointerSubmit}
           onClick={() => stopDictation("send")}
           disabled={transcriptionAction === "send"}
           aria-busy={transcriptionAction === "send"}

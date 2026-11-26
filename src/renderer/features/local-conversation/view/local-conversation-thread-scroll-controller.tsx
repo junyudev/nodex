@@ -139,13 +139,31 @@ interface LocalConversationThreadScrollControllerContextValue extends LocalConve
 }
 
 const THREAD_SCROLL_VIEWPORT_CLASS_NAME =
-  "thread-scroll-container relative h-full overflow-x-hidden overflow-y-auto overscroll-y-contain [overflow-anchor:none] [scroll-padding-bottom:var(--thread-scroll-padding-bottom,0px)] electron:[scrollbar-gutter:stable_both-edges] pt-(--thread-content-top-inset) [container-name:thread-content] [container-type:inline-size] [&:has([data-thread-scroll-footer='true']:focus-within)]:[scroll-padding-bottom:0px] flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+  "thread-scroll-container relative h-full overflow-x-hidden overflow-y-auto overscroll-y-contain [overflow-anchor:none] [scroll-padding-bottom:var(--thread-scroll-padding-bottom,0px)] electron:[scrollbar-gutter:stable_both-edges] pt-(--thread-content-top-inset) [container-name:thread-content] [container-type:inline-size] [&:has([data-thread-scroll-footer='true']:focus-within)]:[scroll-padding-bottom:0px] flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-thread-focus-return:ring-0";
 
 const THREAD_SCROLL_CONTENT_WRAPPER_CLASS_NAME =
   "mx-auto w-full max-w-(--thread-content-max-width) px-toolbar";
 
 const LocalConversationThreadScrollControllerContext =
   createContext<LocalConversationThreadScrollControllerContextValue | null>(null);
+
+/**
+ * Hands the keyboard to the Conversation so it scrolls with the keys and app shortcuts reach it.
+ * The region shows no focus ring for this programmatic handoff; keyboard Tab focus still does.
+ */
+export function focusThreadScrollRegion(region: HTMLElement | null | undefined): boolean {
+  if (!region) return false;
+  region.setAttribute("data-thread-focus-return", "");
+  region.focus({ preventScroll: true });
+  if (region.ownerDocument.activeElement !== region) {
+    region.removeAttribute("data-thread-focus-return");
+    return false;
+  }
+  region.addEventListener("blur", () => region.removeAttribute("data-thread-focus-return"), {
+    once: true,
+  });
+  return true;
+}
 
 export function isThreadScrollNearBottom({
   scrollDistanceFromBottomPx,

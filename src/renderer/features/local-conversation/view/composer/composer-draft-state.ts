@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useMemo } from "react";
 import { atom, useAtomValue, type Atom } from "jotai";
 import type {
   CodexComposerAppshotContext,
+  CodexComposerIntent,
   CodexLiveFileAttachment,
   CodexPastedTextAttachment,
   CodexReviewDiffCommentAttachment,
@@ -265,9 +266,17 @@ export const composerDraftInitializedAtom = scopedAtom(ComposerScope, false, {
   debugLabel: "composer-draft-initialized",
 });
 
-export const composerConsumedIntentNonceAtom = scopedAtom<number | null>(ComposerScope, null, {
-  debugLabel: "composer-consumed-intent-nonce",
-});
+export const composerAppliedIntentAtom = scopedAtom<WeakRef<CodexComposerIntent> | null>(
+  ComposerScope,
+  null,
+  {
+    debugLabel: "composer-applied-intent",
+  },
+);
+
+export const composerQueuedFollowUpEditAtom = scopedAtom<NonNullable<
+  CodexComposerIntent["queuedFollowUpEdit"]
+> | null>(ComposerScope, null, { debugLabel: "composer-queued-follow-up-edit" });
 
 export const composerFileAttachmentsAtom = scopedAtom<readonly ComposerFileAttachment[]>(
   ComposerScope,
@@ -301,21 +310,16 @@ export const composerGoalModeActiveAtom = scopedAtom(ComposerScope, false, {
   debugLabel: "composer-goal-mode-active",
 });
 
-export const composerResetGenerationAtom = scopedAtom(ComposerScope, 0, {
-  debugLabel: "composer-reset-generation",
-});
-
 export const clearComposerCompletedDraftAtom = scopedWritableAtom(
   ComposerScope,
-  (get) => get(composerResetGenerationAtom),
-  (get, set) => {
+  () => undefined,
+  (_get, set) => {
     set(composerFileAttachmentsAtom, []);
     set(composerAddedFilesAtom, []);
     set(composerImageAttachmentsAtom, []);
     set(composerAppshotContextsAtom, []);
     set(composerPastedTextAttachmentsAtom, []);
     set(composerGoalModeActiveAtom, false);
-    set(composerResetGenerationAtom, get(composerResetGenerationAtom) + 1);
   },
   { debugLabel: "clear-composer-completed-draft" },
 );

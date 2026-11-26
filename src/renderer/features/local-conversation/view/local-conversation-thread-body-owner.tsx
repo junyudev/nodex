@@ -95,7 +95,10 @@ import type {
   ThreadUserMessageNavigationItem,
 } from "../thread-stage-types";
 import { LocalConversationForkFromTurnDialog } from "./local-conversation-fork-from-turn-dialog";
-import { useLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
+import {
+  focusThreadScrollRegion,
+  useLocalConversationThreadScrollController,
+} from "./local-conversation-thread-scroll-controller";
 import {
   localConversationTurnCollapseOverrideFamily,
   normalizeThreadRestoreDistanceFromBottomPx,
@@ -1316,7 +1319,7 @@ export function LocalConversationThreadBodyOwner({
         });
       },
       returnFocus() {
-        searchReads.readRoot()?.focus({ preventScroll: true });
+        focusThreadScrollRegion(searchScrollControllerRef.current.getScrollElement());
       },
       clear() {
         searchHighlights.clear();
@@ -1613,7 +1616,6 @@ export function LocalConversationThreadBodyOwner({
           <div
             ref={setContentRoot}
             data-thread-find-target="conversation"
-            tabIndex={-1}
             className={LOCAL_CONVERSATION_CONTENT_CLASS_NAME}
           >
             {attachmentFailure ? (

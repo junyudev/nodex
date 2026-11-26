@@ -795,6 +795,7 @@ export interface ComposerPromptEditorHandle {
   getElement: () => HTMLElement | null;
   focus: () => void;
   focusAtEnd: () => void;
+  focusAtSelection: (range?: { from: number; to: number } | null) => void;
   setText: (text: string) => string;
   setPromptText: (text: string) => string;
   insertText: (text: string) => string;
@@ -878,16 +879,21 @@ export function measureComposerPromptIntrinsicWidth(element: HTMLElement): numbe
 function buildPromptEditorAttributes({
   placeholder,
   singleLine,
+  disabled,
   compact = false,
 }: {
   placeholder: string;
   singleLine: boolean;
+  disabled: boolean;
   compact?: boolean;
 }) {
   return {
     "aria-label": placeholder,
     "data-virtualkeyboard": "true",
     "data-codex-composer": "true",
+    // Explicit focusability keeps the caret through readonly submit state. Skip it on Tab
+    // while it cannot take input.
+    tabindex: disabled ? "-1" : "0",
     spellcheck: "true",
     translate: "no",
     style: [
@@ -1387,6 +1393,18 @@ export const ComposerPromptEditor = forwardRef<
     return readPromptDocText(view.state.doc);
   }, []);
 
+  const focusAtSelection = useCallback((range?: { from: number; to: number } | null) => {
+    const view = viewRef.current;
+    if (!view) return;
+    const { doc, tr } = view.state;
+    const selection =
+      range && range.to <= doc.content.size
+        ? TextSelection.between(doc.resolve(range.from), doc.resolve(range.to))
+        : getPromptDocEndSelection(doc);
+    view.dispatch(tr.setSelection(selection).scrollIntoView());
+    view.focus();
+  }, []);
+
   useImperativeHandle(
     ref,
     () =>
@@ -1396,14 +1414,8 @@ export const ComposerPromptEditor = forwardRef<
           focus: () => {
             viewRef.current?.focus();
           },
-          focusAtEnd: () => {
-            const view = viewRef.current;
-            if (!view) return;
-            view.dispatch(
-              view.state.tr.setSelection(getPromptDocEndSelection(view.state.doc)).scrollIntoView(),
-            );
-            view.focus();
-          },
+          focusAtEnd: () => focusAtSelection(),
+          focusAtSelection,
           setText,
           setPromptText: setText,
           insertText: (text: string) => {
@@ -1653,7 +1665,7 @@ export const ComposerPromptEditor = forwardRef<
         },
         () => dictationRef.current,
       ),
-    [dispatchSuggestionMeta, replaceTextRange, setText],
+    [dispatchSuggestionMeta, focusAtSelection, replaceTextRange, setText],
   );
 
   const focusedSelectionRef = useRef<ReturnType<Selection["toJSON"]> | null>(null);
@@ -1675,6 +1687,7 @@ export const ComposerPromptEditor = forwardRef<
       attributes: buildPromptEditorAttributes({
         placeholder: placeholderRef.current,
         singleLine: singleLineRef.current,
+        disabled: disabledRef.current,
         compact: compactRef.current,
       }),
       handleKeyDown: (currentView, event) =>
@@ -1735,7 +1748,7 @@ export const ComposerPromptEditor = forwardRef<
     if (!view) return;
     view.setProps({
       editable: () => !disabled,
-      attributes: buildPromptEditorAttributes({ placeholder, singleLine, compact }),
+      attributes: buildPromptEditorAttributes({ placeholder, singleLine, compact, disabled }),
       handleKeyDown: (currentView, event) =>
         handleSuggestionKeyDown(currentView, event) ||
         acceptComposerPrediction(currentView, event) ||

@@ -1,3 +1,5 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
+import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
@@ -491,14 +493,33 @@ export function PendingWorktreeRoute({
   }, [pendingWorktreeId]);
 
   useEffect(() => {
+    const sessionId =
+      (snapshot.entry?.launchMode === "start-conversation"
+        ? snapshot.entry.projectSessionId
+        : null) ?? firstSubmission?.targetSessionId;
+    if (sessionId) {
+      composerDraftIntents.moveFocusTransfer(
+        { kind: "session", sessionId },
+        { kind: "pending-worktree", clientThreadId },
+      );
+    }
     if (!snapshot.entry || !firstSubmission) return;
     sessionFirstSubmissionOwner.complete(firstSubmission.launchId);
-  }, [firstSubmission, snapshot.entry]);
+  }, [clientThreadId, firstSubmission, snapshot.entry]);
 
   const openResolvedThread = useCallback(
     (threadId: string) => {
       if (openingThreadIdRef.current === threadId) return;
       openingThreadIdRef.current = threadId;
+      const entry = snapshot.entry;
+      composerDraftIntents.resolvePendingWorktree(
+        clientThreadId,
+        expectedHostId ??
+          (entry?.launchMode === "start-conversation" ? entry.threadStartHostId : null) ??
+          entry?.hostId ??
+          DEFAULT_CODEX_HOST_ID,
+        threadId,
+      );
 
       void onOpenThread(threadId)
         .then((opened) => {
@@ -517,7 +538,7 @@ export function PendingWorktreeRoute({
           setActionError(errorMessage(error));
         });
     },
-    [onClose, onOpenThread],
+    [clientThreadId, expectedHostId, onClose, onOpenThread, snapshot.entry],
   );
 
   useEffect(() => {
@@ -538,6 +559,9 @@ export function PendingWorktreeRoute({
         if (action === "cancel") {
           await transport.cancel(hostId, pendingWorktreeId);
           await transport.discardForkSidePanelTransfer(pendingWorktreeId);
+          const chat = { kind: "pending-worktree", clientThreadId } as const;
+          const intent = composerDraftIntents.read(chat);
+          if (intent) composerDraftIntents.acknowledge(chat, intent);
           await onCancelToSource?.(entry);
           onClose();
           return;

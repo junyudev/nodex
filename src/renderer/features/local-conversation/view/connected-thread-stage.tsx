@@ -2,7 +2,11 @@ import { agentDefinition } from "../../../../shared/agents/registry";
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { toastFailure } from "@/lib/failure-toast";
-import { useComposerDraftIntent, type ComposerChatKey } from "@/lib/composer-draft-intents";
+import {
+  composerDraftIntents,
+  useComposerDraftIntent,
+  type ComposerChatKey,
+} from "@/lib/composer-draft-intents";
 import { useConversationBodyPresentation } from "../use-conversation-body-presentation";
 import { useShownConversationReadState } from "../use-shown-conversation-read-state";
 import { ConversationTaskDialog } from "./conversation-task-dialog";
@@ -25,6 +29,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useId,
   useRef,
@@ -735,6 +740,11 @@ export function ConnectedThreadStageFooter({
     [input.composerChatKey, sessionId, activeThreadId, hostId],
   );
   const composerIntent = useComposerDraftIntent(composerChatKey);
+  useLayoutEffect(() => {
+    if (composerChatKey && activeThreadId && !input.sideChatContext) {
+      composerDraftIntents.adoptResolvedWorktree(composerChatKey, hostId, activeThreadId);
+    }
+  }, [activeThreadId, composerChatKey, hostId, input.sideChatContext]);
   const primaryRequest = useConversationPrimaryRequest(activeThreadId);
   const liveCollaborationMode = useConversationCollaborationMode(activeThreadId);
   const liveThreadSettings = useConversationThreadSettings(activeThreadId);

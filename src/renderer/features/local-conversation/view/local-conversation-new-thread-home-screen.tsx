@@ -29,8 +29,9 @@ export function LocalConversationNewThreadHomeScreen({
         <motion.div className="flex min-h-0 flex-1 flex-col" style={{ x: contentShiftX }}>
           <div className="@container/left-panel relative flex h-full flex-col">
             <div
-              className="[container-type:size] relative min-h-[43.75rem] w-full flex-1 overflow-y-auto [container-name:home-main-content]"
+              className="[container-type:size] relative min-h-[43.75rem] w-full flex-1 overflow-y-auto outline-none [container-name:home-main-content]"
               role="main"
+              tabIndex={-1}
               data-new-thread-home-main="true"
               {...{
                 [REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE]: REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
