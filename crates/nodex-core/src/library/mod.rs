@@ -4402,6 +4402,35 @@ mod tests {
             promotion_policy: nodex_core_contracts::library::LibraryPagePromotionPolicy::Literal,
         };
 
+        let plan_read = |intent| {
+            module.read(
+                &local_context,
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::BlockTransferPresentationPlan {
+                        operation_id: "copy-granted-page-to-library".into(),
+                        store_epoch: "epoch-1".into(),
+                        intent,
+                    },
+                },
+            )
+        };
+        let LibraryReadValue::BlockTransferPresentationPlan { value: plan } =
+            plan_read(copy_foreign_page.clone())
+                .expect("read-only Page copy plan")
+                .value
+        else {
+            panic!("Page copy plan");
+        };
+        let mut foreign_library = copy_foreign_page.clone();
+        foreign_library.source = LibraryBlockTransferSource::Library {
+            library_id: "other-library".into(),
+        };
+        assert_eq!(
+            plan_read(foreign_library).unwrap_err().code,
+            CoreErrorCode::Unauthorized
+        );
+
         let copied_page = module
             .apply(
                 &local_context,
@@ -4423,6 +4452,7 @@ mod tests {
             .expect("Page copy result")
             .copied_block_ids[FOREIGN_SOURCE_PAGE]
             .clone();
+        assert_eq!(plan.roots[0].result_page_id, copied_page_id);
 
         let copied = module
             .apply(

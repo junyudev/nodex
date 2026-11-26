@@ -35,10 +35,10 @@ impl RemoteAdmission for LibraryRead {
             | Self::ProjectPageSearchMetadata { .. }
             | Self::PageReferenceCandidates { .. }
             | Self::PageBacklinks { .. }
-            | Self::PageHistory { .. } => true,
-            Self::StructuralHistoryStates { .. }
-            | Self::BlockTransferPresentationPlan { .. }
-            | Self::PreparePageOperation { .. }
+            | Self::PageHistory { .. }
+            | Self::StructuralHistoryStates { .. }
+            | Self::BlockTransferPresentationPlan { .. } => true,
+            Self::PreparePageOperation { .. }
             | Self::PageProjectionFile { .. }
             | Self::PageDraftProjection { .. }
             | Self::AcquireSearchSnapshot { .. }

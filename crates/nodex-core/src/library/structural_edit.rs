@@ -8130,6 +8130,32 @@ mod tests {
             .expect("merge result")
             .history
             .expect("merge history");
+        let mut forged = history.clone();
+        forged.recipe_hash = "0".repeat(64);
+        kernel
+            .readers()
+            .read_default(|connection| {
+                use nodex_core_contracts::library::StructuralHistoryState;
+                let valid = read_history_states(
+                    connection,
+                    "library-1",
+                    "epoch-1",
+                    std::slice::from_ref(&history),
+                )?;
+                let mismatched =
+                    read_history_states(connection, "library-1", "epoch-1", &[forged])?;
+                let foreign = read_history_states(
+                    connection,
+                    "another-library",
+                    "epoch-1",
+                    std::slice::from_ref(&history),
+                )?;
+                assert_eq!(valid[0].state, StructuralHistoryState::Available);
+                assert_eq!(mismatched[0].state, StructuralHistoryState::Unavailable);
+                assert_eq!(foreign[0].state, StructuralHistoryState::Unavailable);
+                Ok(())
+            })
+            .expect("read only the state of a retained Library recipe");
 
         let assert_tree = |merged: bool| {
             kernel
