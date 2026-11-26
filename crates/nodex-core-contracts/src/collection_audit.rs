@@ -243,7 +243,7 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::PageFileInventory { .. }
         | LibraryRead::PageHistory { .. }
         | LibraryRead::PageBacklinks { .. } => ReadBudgetPolicy::CollectionWindow,
-        LibraryRead::Path { .. } | LibraryRead::PageOwnershipPath { .. } => {
+        LibraryRead::Path { .. } | LibraryRead::ResourceLocation { .. } => {
             ReadBudgetPolicy::FixedDomain
         }
         LibraryRead::Members

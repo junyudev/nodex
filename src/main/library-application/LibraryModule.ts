@@ -9,6 +9,7 @@ import type {
   LibraryModuleApplyResult,
   LibraryModuleReadRequest,
   LibraryModuleReadResult,
+  LibraryRouteTarget,
 } from "../../shared/library-module";
 import type { LibraryPageDetailResult, PageDetailResult } from "../../shared/page-detail";
 import type { ListPageHistoryRequest } from "../../shared/page-history";
@@ -24,8 +25,7 @@ import type {
   PageLifecycleMutationRequestV2,
 } from "../../shared/page-lifecycle-v2";
 import type { PageLifecyclePreflightResultV2 } from "../../shared/page-lifecycle-v2-runtime";
-import type { PageOwnershipPathReadModel } from "../../shared/page-ownership-paths";
-import type { ResolvePageOwnershipPathInput } from "../../shared/page-ownership-paths";
+import type { ResourceLocationReadModel } from "../../shared/resource-locations";
 import type { PageTargetReadModel, ResolvePageTargetInput } from "../../shared/page-targets";
 import type {
   PageSearchInput,
@@ -106,9 +106,9 @@ export class LibraryModule extends Context.Service<
     readonly resolvePageTarget: (
       input: ResolvePageTargetInput,
     ) => LibraryEffect<PageTargetReadModel | null>;
-    readonly resolvePageOwnershipPath: (
-      input: ResolvePageOwnershipPathInput,
-    ) => LibraryEffect<PageOwnershipPathReadModel | null>;
+    readonly resolveResourceLocation: (
+      target: LibraryRouteTarget,
+    ) => LibraryEffect<ResourceLocationReadModel | null>;
     readonly findPageLocation: (
       pageId: string,
     ) => LibraryEffect<{ readonly pageId: string; readonly projectId: string | null } | null>;
@@ -259,11 +259,9 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
           use("library.resolvePageTarget", projectIdForAccess(input.routingContext), (core) =>
             core.resolvePageTarget(input),
           ),
-        resolvePageOwnershipPath: (input) =>
-          use(
-            "library.resolvePageOwnershipPath",
-            projectIdForAccess(input.routingContext),
-            (core) => core.resolvePageOwnershipPath(input),
+        resolveResourceLocation: (target) =>
+          use("library.resolveResourceLocation", undefined, (core) =>
+            core.resolveResourceLocation(target),
           ),
         findPageLocation: (pageId) =>
           use("library.findPageLocation", undefined, (core) => core.findPageLocation(pageId)),

@@ -13,10 +13,10 @@ use nodex_core_contracts::database::{
     DatabaseIdentityTarget, DatabaseRead, DatabaseReadValue, DatabaseViewReadTarget,
 };
 use nodex_core_contracts::library::{
-    LibraryCatalogKind, LibraryLifecycle, LibraryNavigationNode, LibraryNavigationParent,
-    LibraryPageHistoryCursor, LibraryPageKeyTarget, LibraryPageOperation, LibraryPageOwnershipPath,
+    LibraryCatalogKind, LibraryLifecycle, LibraryLocationSegment, LibraryNavigationNode,
+    LibraryNavigationParent, LibraryPageHistoryCursor, LibraryPageKeyTarget, LibraryPageOperation,
     LibraryPageProjectionFileKind, LibraryPlacedResourceTarget, LibraryRead, LibraryReadValue,
-    LibrarySearchSnapshotScope,
+    LibraryResourceLocation, LibraryRouteTarget, LibrarySearchSnapshotScope,
 };
 use nodex_core_contracts::workspace::{
     ProjectLifecycle, ProjectWorkspaceProject, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
@@ -1498,19 +1498,32 @@ fn resolve_page_title_selector(
         }
         let ownership = unwrap_library(client.library_read(
             Some(project_id),
-            LibraryRead::PageOwnershipPath {
-                page_id: candidate.clone(),
+            LibraryRead::ResourceLocation {
+                target: LibraryRouteTarget::Page {
+                    page_id: candidate.clone(),
+                },
             },
         ))?;
-        let LibraryReadValue::PageOwnershipPath { value: Some(path) } = ownership.value else {
+        let LibraryReadValue::ResourceLocation { value: Some(path) } = ownership.value else {
             continue;
         };
-        let LibraryPageOwnershipPath::Available { ancestors, .. } = *path else {
+        let LibraryResourceLocation::Available { segments, .. } = *path else {
             continue;
         };
-        let mut titles = ancestors
+        // Title selectors match only the contiguous Page path within its owning Database or Space.
+        let first_page = segments
+            .iter()
+            .rposition(|segment| matches!(segment, LibraryLocationSegment::Database { .. }))
+            .map_or(0, |index| index + 1);
+        let mut titles = segments
             .into_iter()
-            .map(|ancestor| ancestor.title)
+            .skip(first_page)
+            .map(|segment| match segment {
+                LibraryLocationSegment::Page { title, .. } => title,
+                LibraryLocationSegment::Database { .. } => {
+                    unreachable!("after the closest Database")
+                }
+            })
             .collect::<Vec<_>>();
         titles.push(content.title);
         if titles

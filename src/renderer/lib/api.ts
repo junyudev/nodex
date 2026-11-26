@@ -30,10 +30,7 @@ import type {
 } from "../../shared/block-documents/contracts";
 import type { DocumentSyncCommandResult } from "../../shared/block-documents/document-sync";
 import type { PageTargetReadModel, ResolvePageTargetInput } from "../../shared/page-targets";
-import type {
-  PageOwnershipPathReadModel,
-  ResolvePageOwnershipPathInput,
-} from "../../shared/page-ownership-paths";
+import type { ResourceLocationReadModel } from "../../shared/resource-locations";
 import type {
   DatabaseViewReadModel,
   ReadDatabaseViewReferenceInput,
@@ -55,6 +52,7 @@ import type {
   LibraryModuleApplyResult,
   LibraryModuleReadRequest,
   LibraryModuleReadResult,
+  LibraryRouteTarget,
 } from "../../shared/library-module";
 import type {
   FileBytes,
@@ -677,10 +675,10 @@ export function resolvePageTarget(
   return invokeRendererQuery("page-target:resolve", input);
 }
 
-export function resolvePageOwnershipPath(
-  input: ResolvePageOwnershipPathInput,
-): Promise<PageOwnershipPathReadModel | null> {
-  return invokeRendererQuery("page-ownership-path:resolve", input);
+export function resolveResourceLocation(
+  target: LibraryRouteTarget,
+): Promise<ResourceLocationReadModel | null> {
+  return invokeRendererQuery("resource-location:resolve", target);
 }
 
 export function readDatabaseViewReference(

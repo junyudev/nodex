@@ -28,8 +28,8 @@ use crate::database::{self, current_page_keys_in_library, resolve_page_key_match
 use crate::domain::page_key::is_explicit_page_key_search;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
-use super::block_search;
 use super::search_match::{SearchTermMatchQuality, normalize_search_text};
+use super::{block_search, location};
 
 const MAX_PROJECT_SCOPES: usize = 256;
 const MAX_RECENT_HINTS: usize = 100;
@@ -295,19 +295,28 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
         .collect::<rusqlite::Result<HashMap<_, _>>>()?;
     populate_project_associations(connection, library_id, &data_source_databases, &mut pages)?;
     let page_keys = current_page_keys_in_library(connection, library_id)?;
-    let data_source_names = connection
-        .prepare(
-            "SELECT source.id, container.name FROM data_sources source \
-             JOIN database_containers container ON container.block_id = source.home_database_block_id \
-             WHERE source.library_id = ?1",
-        )?
-        .query_map([library_id], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect::<rusqlite::Result<HashMap<String, String>>>()?;
+    let indexed_owners = location::IndexedOwners::load(connection, library_id)?;
     let locations = pages
         .keys()
         .map(|page_id| {
-            let label = page_location_label(&pages, &data_source_names, library_id, page_id)
-                .unwrap_or_else(|error| {
+            let label = match indexed_owners.page_trail(library_id, page_id, |id| {
+                pages.get(id).map(|page| location::IndexedPagePlacement {
+                    title: &page.title,
+                    lifecycle: &page.lifecycle,
+                    parent_kind: &page.parent_kind,
+                    parent_id: &page.parent_id,
+                })
+            }) {
+                Ok(Some(segments)) => location::label(&segments),
+                Ok(None) => {
+                    tracing::warn!(
+                        subsystem = "library_page_search",
+                        page_id = %page_id,
+                        "Page search location trail points to a missing owner"
+                    );
+                    String::new()
+                }
+                Err(error) => {
                     tracing::warn!(
                         subsystem = "library_page_search",
                         page_id = %page_id,
@@ -315,7 +324,8 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
                         "Page search location label is unavailable"
                     );
                     String::new()
-                });
+                }
+            };
             (page_id.clone(), label)
         })
         .collect::<HashMap<_, _>>();
@@ -441,51 +451,6 @@ fn read_search_property_names(
         }
     }
     Ok(names)
-}
-
-fn page_location_label(
-    pages: &BTreeMap<String, IndexedPage>,
-    data_source_names: &HashMap<String, String>,
-    library_id: &str,
-    page_id: &str,
-) -> Result<String, StoreError> {
-    let mut current = pages
-        .get(page_id)
-        .ok_or_else(|| corrupt("Page search location is missing"))?;
-    let mut ancestors = Vec::new();
-    let mut seen = HashSet::new();
-    loop {
-        if !seen.insert(current.id.as_str()) {
-            return Err(corrupt("Page search location contains a cycle"));
-        }
-        match current.parent_kind.as_str() {
-            "page" => {
-                current = pages
-                    .get(&current.parent_id)
-                    .ok_or_else(|| corrupt("Page search parent is missing"))?;
-                ancestors.push(current.title.clone());
-            }
-            "library" if current.parent_id == library_id => {
-                ancestors.reverse();
-                return Ok(std::iter::once("Pages".to_owned())
-                    .chain(ancestors)
-                    .collect::<Vec<_>>()
-                    .join(" / "));
-            }
-            "data_source" => {
-                let boundary = data_source_names
-                    .get(&current.parent_id)
-                    .ok_or_else(|| corrupt("Page search Database boundary is missing"))?
-                    .clone();
-                ancestors.reverse();
-                return Ok(std::iter::once(boundary)
-                    .chain(ancestors)
-                    .collect::<Vec<_>>()
-                    .join(" / "));
-            }
-            _ => return Err(corrupt("Page search location has an invalid boundary")),
-        }
-    }
 }
 
 fn kernel_workflow_status(status: LibraryPageWorkflowStatus) -> KernelWorkflowStatus {
@@ -2411,7 +2376,7 @@ mod tests {
             assignee: None,
             owner: None,
             page_key: None,
-            location_label: "Pages".to_owned(),
+            location_label: String::new(),
             data_source_ids: BTreeSet::new(),
             project_ids: BTreeSet::from(["project:test".to_owned()]),
         };
@@ -2733,7 +2698,7 @@ mod tests {
                     assignee: None,
                     owner: None,
                     page_key: None,
-                    location_label: "Pages".to_owned(),
+                    location_label: String::new(),
                     data_source_ids: BTreeSet::new(),
                     project_ids: if index >= 3_000 {
                         BTreeSet::from(["project:test".to_owned()])

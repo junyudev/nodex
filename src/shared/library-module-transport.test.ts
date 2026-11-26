@@ -443,7 +443,7 @@ describe("Library Module transport", () => {
               title: "Projection notes",
               pageKey: "NDX-42",
               status: { optionId: "doing", label: "Drafting" },
-              locationLabel: "Product / Editor",
+              locationLabel: " / Editor",
               matchExcerpt: "The projection stays bounded.",
               matchSource: "content",
               titleParts: [
@@ -478,6 +478,7 @@ describe("Library Module transport", () => {
             {
               pageId: "page:target",
               status: { optionId: "doing", label: "Drafting" },
+              locationLabel: " / Editor",
               matchSource: "content",
             },
           ],
@@ -1035,7 +1036,7 @@ describe("Library Module transport", () => {
               title: "Canvas",
               kind: "canvas",
               lifecycle: "active",
-              locationLabel: "Library",
+              locationLabel: "",
               locationIsLibraryRoot: true,
               updatedAt: "2026-07-31T00:00:00.000Z",
               locationRevision: 1,
@@ -1054,7 +1055,7 @@ describe("Library Module transport", () => {
           items: [
             {
               target: { kind: "canvas", canvasId: primaryCanvasId },
-              locationLabel: "Library",
+              locationLabel: "",
               locationIsLibraryRoot: true,
             },
           ],

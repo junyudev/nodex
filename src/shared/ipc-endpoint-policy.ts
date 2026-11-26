@@ -263,7 +263,7 @@ type QueryEndpointPolicy =
   | "inbox:prepare-confirmation"
   | "inbox:skill-availability"
   | "files:read"
-  | "page-ownership-path:resolve"
+  | "resource-location:resolve"
   | "page-target:resolve"
   | "pages:detail:get"
   | "pages:history:list"

@@ -233,17 +233,25 @@ const pageTargetSnapshot = () => ({
   },
 });
 
-const pageOwnershipPathSnapshot = () => ({
+const resourceLocationSnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 14,
   value: {
-    kind: "page_ownership_path" as const,
+    kind: "resource_location" as const,
     value: {
       status: "available" as const,
-      target_page_id: "page:one",
-      ancestors: [
+      target: { kind: "page" as const, page_id: "page:one" },
+      segments: [
         {
+          kind: "database" as const,
+          database_id: "database:test",
+          title: "Work",
+          default_view_id: "view:test",
+          primary_project_id: "project:test",
+        },
+        {
+          kind: "page" as const,
           page_id: "page:root",
           title: "Root",
           lifecycle: "active" as const,
@@ -615,7 +623,7 @@ describe("Core Library Module Adapter", () => {
   test("maps Project-scoped Page references and trusted root locations", async () => {
     const client = new FakeCoreClient();
     client.enqueueRead(pageTargetSnapshot());
-    client.enqueueRead(pageOwnershipPathSnapshot());
+    client.enqueueRead(resourceLocationSnapshot());
     client.enqueueRead(pageLocationSnapshot());
     client.enqueueRead(viewLocationSnapshot());
     const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
@@ -632,18 +640,23 @@ describe("Core Library Module Adapter", () => {
       document: { readiness: "ready", schemaKey: "nodex.page" },
     });
     await expect(
-      adapter.resolvePageOwnershipPath({
-        routingContext: { kind: "project", projectId: "project:test" },
-        targetPageId: "page:one",
-      }),
+      adapter.resolveResourceLocation({ kind: "page", pageId: "page:one" }),
     ).resolves.toEqual({
       libraryId: "library:test",
       storeEpoch: "epoch:test",
       commitSeq: 14,
       status: "available",
-      targetPageId: "page:one",
-      ancestors: [
+      target: { kind: "page", pageId: "page:one" },
+      segments: [
         {
+          kind: "database",
+          databaseId: "database:test",
+          title: "Work",
+          defaultViewId: "view:test",
+          primaryProjectId: "project:test",
+        },
+        {
+          kind: "page",
           pageId: "page:root",
           title: "Root",
           lifecycle: "active",
@@ -662,7 +675,7 @@ describe("Core Library Module Adapter", () => {
     });
     expect(client.reads).toEqual([
       { kind: "page_target", page_id: "page:one" },
-      { kind: "page_ownership_path", page_id: "page:one" },
+      { kind: "resource_location", target: { kind: "page", page_id: "page:one" } },
       { kind: "page_location", page_id: "page:one" },
       { kind: "view_location", view_id: "view:test" },
     ]);
@@ -1248,10 +1261,9 @@ describe("Core Library Module Adapter", () => {
     const rootClient = new FakeCoreClient();
     const projectClient = new FakeCoreClient();
     projectClient.enqueueRead(pageTargetSnapshot());
-    projectClient.enqueueRead(pageOwnershipPathSnapshot());
     projectClient.enqueueRead(pageLifecyclePreflightSnapshot());
     rootClient.enqueueRead(pageTargetSnapshot());
-    rootClient.enqueueRead(pageOwnershipPathSnapshot());
+    rootClient.enqueueRead(resourceLocationSnapshot());
     rootClient.enqueueRead(pageLocationSnapshot());
     rootClient.enqueueRead(viewLocationSnapshot());
     const rootAdapter = createCoreLibraryModuleAdapter({ client: rootClient, ...identity });
@@ -1261,33 +1273,26 @@ describe("Core Library Module Adapter", () => {
       routingContext: { kind: "project", projectId: "project:test" },
       targetPageId: "page:one",
     });
-    await projectAdapter.resolvePageOwnershipPath({
-      routingContext: { kind: "project", projectId: "project:test" },
-      targetPageId: "page:one",
-    });
     await rootAdapter.resolvePageTarget({
       routingContext: { kind: "library" },
       targetPageId: "page:one",
     });
-    await rootAdapter.resolvePageOwnershipPath({
-      routingContext: { kind: "library" },
-      targetPageId: "page:one",
-    });
+    await rootAdapter.resolveResourceLocation({ kind: "page", pageId: "page:one" });
     await expect(
       projectAdapter.readPageLifecyclePreflight("project:test", "page:one"),
     ).resolves.toMatchObject({ ok: true });
     await rootAdapter.findPageLocation("page:one");
     await rootAdapter.findViewLocation("view:test");
 
-    expect(projectClient.reads).toHaveLength(3);
+    expect(projectClient.reads).toHaveLength(2);
     expect(rootClient.reads).toEqual([
       {
         kind: "page_target",
         page_id: "page:one",
       },
       {
-        kind: "page_ownership_path",
-        page_id: "page:one",
+        kind: "resource_location",
+        target: { kind: "page", page_id: "page:one" },
       },
       {
         kind: "page_location",

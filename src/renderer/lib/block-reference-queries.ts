@@ -1,16 +1,9 @@
-import { useEffect } from "react";
 import { hashKey, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import {
-  projectIdFromContentRoutingContext,
-  type ContentRoutingContext,
-} from "../../shared/content-routing-context";
+import { type ContentRoutingContext } from "../../shared/content-routing-context";
 import type { PageTargetReadModel } from "../../shared/page-targets";
-import type { PageOwnershipPathReadModel } from "../../shared/page-ownership-paths";
 import type { DatabaseViewReadModel } from "../../shared/database-views";
-import { readDatabaseViewReference, resolvePageOwnershipPath, resolvePageTarget } from "./api";
+import { readDatabaseViewReference, resolvePageTarget } from "./api";
 import { queryKeys } from "./query-keys";
-import { resolveRendererTransport } from "./renderer-transport";
-import { createProjectEventSubscriptionHub } from "./project-event-subscription-hub";
 import { invalidateExactQuery } from "./query-invalidation";
 import { useProjectionRegistration } from "./projection-invalidation-context";
 import type { ProjectionDependencies } from "./projection-invalidation-registry";
@@ -27,11 +20,6 @@ const toError = (error: unknown): Error | null => {
   if (error === null || error === undefined) return null;
   return error instanceof Error ? error : new Error(String(error));
 };
-
-const pageOwnershipPathChangeSubscriptions = createProjectEventSubscriptionHub({
-  subscribeToProject: (projectId, listener) =>
-    resolveRendererTransport().subscribePageOwnershipPathChanges(projectId, listener),
-});
 
 const pageTargetQueryOptions = (routingContext: ContentRoutingContext, targetBlockId: string) => {
   return {
@@ -114,64 +102,6 @@ export const usePageTargetReadModel = (
       : null,
     queryKey,
   });
-  return {
-    data: query.data ?? null,
-    loading: enabled && query.status === "pending",
-    error: toError(query.error),
-  };
-};
-
-export const usePageOwnershipPathReadModel = (
-  routingContext: ContentRoutingContext,
-  targetPageId: string,
-): ReferenceQueryResult<PageOwnershipPathReadModel> => {
-  const queryClient = useQueryClient();
-  const enabled = targetPageId.length > 0;
-  const projectId = projectIdFromContentRoutingContext(routingContext);
-  const library = useLibraryMetadata(enabled);
-  const queryKey = queryKeys.pageOwnershipPaths.byPage(routingContext, targetPageId);
-  const query = useQuery({
-    queryKey,
-    queryFn: async () => await resolvePageOwnershipPath({ routingContext, targetPageId }),
-    enabled,
-    staleTime: 5_000,
-    refetchOnWindowFocus: true,
-  });
-  const libraryId = library.data?.libraryId ?? query.data?.libraryId ?? null;
-  const observedPageIds =
-    query.data?.status === "available"
-      ? [targetPageId, ...query.data.ancestors.map((ancestor) => ancestor.pageId)]
-      : [targetPageId];
-  useProjectionQueryRefresh({
-    scope:
-      enabled && libraryId
-        ? routingContext.kind === "library"
-          ? { kind: "library", libraryId }
-          : {
-              kind: "project",
-              libraryId,
-              projectId: routingContext.projectId,
-            }
-        : null,
-    dependencies: { pageIds: observedPageIds },
-    cursor: query.data
-      ? { storeEpoch: query.data.storeEpoch, commitSeq: query.data.commitSeq }
-      : null,
-    queryKey,
-  });
-
-  useEffect(() => {
-    if (!enabled || !projectId) return;
-    return pageOwnershipPathChangeSubscriptions.subscribe(projectId, "page-ownership-paths", () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.pageOwnershipPaths.byScope({
-          kind: "project",
-          projectId,
-        }),
-      });
-    });
-  }, [enabled, projectId, queryClient]);
-
   return {
     data: query.data ?? null,
     loading: enabled && query.status === "pending",

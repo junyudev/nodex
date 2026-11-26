@@ -2189,30 +2189,17 @@ describe("Electron native data authority", () => {
         document: { readiness: "ready" },
       });
       await expect(
-        library.resolvePageOwnershipPath({
-          routingContext: { kind: "project", projectId },
-          targetPageId: "page:electron-library-adapter",
+        library.resolveResourceLocation({
+          kind: "page",
+          pageId: "page:electron-library-adapter",
         }),
       ).resolves.toMatchObject({
         libraryId: runtime.rootClient.handshake.library_id,
         storeEpoch: runtime.rootClient.handshake.store_epoch,
         commitSeq: expect.any(Number),
         status: "available",
-        targetPageId: "page:electron-library-adapter",
-        ancestors: [],
-      });
-      await expect(
-        library.resolvePageOwnershipPath({
-          routingContext: { kind: "library" },
-          targetPageId: "page:electron-library-adapter",
-        }),
-      ).resolves.toMatchObject({
-        libraryId: runtime.rootClient.handshake.library_id,
-        storeEpoch: runtime.rootClient.handshake.store_epoch,
-        commitSeq: expect.any(Number),
-        status: "available",
-        targetPageId: "page:electron-library-adapter",
-        ancestors: [],
+        target: { kind: "page", pageId: "page:electron-library-adapter" },
+        segments: [],
       });
       await expect(
         library.listPageHistory({

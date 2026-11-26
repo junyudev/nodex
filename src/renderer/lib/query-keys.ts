@@ -91,12 +91,9 @@ export const queryKeys = {
     byId: (routingContext: ContentRoutingContext, targetBlockId: string) =>
       spaceQueryKey(["pageTargets", routingContext, targetBlockId] as const),
   },
-  pageOwnershipPaths: {
-    all: () => spaceQueryKey(["pageOwnershipPaths"] as const),
-    byScope: (routingContext: ContentRoutingContext) =>
-      spaceQueryKey(["pageOwnershipPaths", routingContext] as const),
-    byPage: (routingContext: ContentRoutingContext, targetPageId: string) =>
-      spaceQueryKey(["pageOwnershipPaths", routingContext, targetPageId] as const),
+  resourceLocations: {
+    all: () => spaceQueryKey(["resourceLocations"] as const),
+    byTarget: (targetKey: string) => spaceQueryKey(["resourceLocations", targetKey] as const),
   },
   blockReferences: {
     databaseView: (

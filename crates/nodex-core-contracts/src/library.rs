@@ -1087,8 +1087,8 @@ pub enum LibraryRead {
     PageKeyTarget {
         page_key: String,
     },
-    PageOwnershipPath {
-        page_id: String,
+    ResourceLocation {
+        target: LibraryRouteTarget,
     },
     PageLocation {
         page_id: String,
@@ -1366,21 +1366,30 @@ pub enum LibraryPageKeyTarget {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPageOwnershipPathAncestor {
-    pub page_id: String,
-    pub title: String,
-    pub lifecycle: LibraryLifecycle,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryLocationSegment {
+    Page {
+        page_id: String,
+        title: String,
+        lifecycle: LibraryLifecycle,
+    },
+    Database {
+        database_id: String,
+        title: String,
+        default_view_id: String,
+        primary_project_id: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "snake_case")]
-pub enum LibraryPageOwnershipPath {
+pub enum LibraryResourceLocation {
     Missing {
-        target_page_id: String,
+        target: LibraryRouteTarget,
     },
     Available {
-        target_page_id: String,
-        ancestors: Vec<LibraryPageOwnershipPathAncestor>,
+        target: LibraryRouteTarget,
+        segments: Vec<LibraryLocationSegment>,
     },
 }
 
@@ -3052,8 +3061,8 @@ pub enum LibraryReadValue {
     PageKeyTarget {
         value: LibraryPageKeyTarget,
     },
-    PageOwnershipPath {
-        value: Option<Box<LibraryPageOwnershipPath>>,
+    ResourceLocation {
+        value: Option<Box<LibraryResourceLocation>>,
     },
     PageLocation {
         value: Option<LibraryPageLocation>,

@@ -158,12 +158,6 @@ export interface RendererTransport {
     scope: ProjectionScope,
     listener: (message: ProjectionStreamMessage) => void,
   ) => () => void;
-  subscribePageOwnershipPathChanges: (
-    projectId: string,
-    callback: (
-      event: import("../../shared/page-ownership-path-events").PageOwnershipPathsChangedEvent,
-    ) => void,
-  ) => () => void;
   subscribeDatabaseChanges: (
     projectId: string,
     callback: (event: DatabaseChangeEvent) => void,

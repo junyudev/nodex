@@ -105,8 +105,8 @@ export const live: Layer.Layer<
     yield* handleQuery("page-target:resolve", (event, input) =>
       authorize(event).pipe(Effect.andThen(library.resolvePageTarget(input))),
     );
-    yield* handleQuery("page-ownership-path:resolve", (event, input) =>
-      authorize(event).pipe(Effect.andThen(library.resolvePageOwnershipPath(input))),
+    yield* handleQuery("resource-location:resolve", (event, input) =>
+      authorize(event).pipe(Effect.andThen(library.resolveResourceLocation(input))),
     );
     yield* handleQuery("database-view:reference:get", (event, input) =>
       authorize(event).pipe(Effect.andThen(database.resolveDatabaseViewReference(input))),
