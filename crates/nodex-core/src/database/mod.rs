@@ -147,7 +147,7 @@ impl DatabaseModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<DatabaseRead>,
     ) -> Result<ModuleReadSnapshot<DatabaseReadValue>, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(context, "database_read", &request.read)?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.read)?;
         self.validate_context(context)?;
         if request.contract_version != DATABASE_CONTRACT_VERSION {
             return Err(invalid("unsupported Database contract version"));
@@ -213,7 +213,7 @@ impl DatabaseModule {
         request: ModuleApplyRequest<Vec<DatabaseIntent>>,
     ) -> Result<DatabaseApplyOutcome, CoreError> {
         for intent in &request.intent {
-            nodex_core_contracts::remote_admission::authorize(context, "database_apply", intent)?;
+            nodex_core_contracts::remote_admission::authorize(context, intent)?;
         }
         self.validate_context(context)?;
         if request.contract_version != DATABASE_CONTRACT_VERSION {

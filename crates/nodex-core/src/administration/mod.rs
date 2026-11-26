@@ -301,11 +301,7 @@ impl StoreAdministrationModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<StoreAdministrationRead>,
     ) -> Result<ModuleReadSnapshot<StoreAdministrationReadValue>, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(
-            context,
-            "administration_read",
-            &request.read,
-        )?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.read)?;
         self.validate_context(context)?;
         if request.contract_version != STORE_ADMINISTRATION_CONTRACT_VERSION {
             return Err(invalid("unsupported Store Administration contract version"));
@@ -470,11 +466,7 @@ impl StoreAdministrationModule {
         context: &BoundModuleContext,
         request: ModuleApplyRequest<StoreAdministrationIntent>,
     ) -> Result<StoreAdministrationApplyOutcome, CoreError> {
-        nodex_core_contracts::remote_admission::authorize(
-            context,
-            "administration_apply",
-            &request.intent,
-        )?;
+        nodex_core_contracts::remote_admission::authorize(context, &request.intent)?;
         self.validate_context(context)?;
         let bound = self
             .readers
