@@ -55,11 +55,18 @@ describe("parseAntigravityStoredSignIn", () => {
 });
 
 /** Answers keyring reads with a shell result, so a test never reads this computer's keyring. */
-const keyringAnswering = (script: string | "missing", reads: string[]) =>
+const keyringAnswering = (
+  script: string | "missing",
+  reads: string[],
+  environments: Array<Record<string, string | undefined> | undefined> = [],
+) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     return ChildProcessSpawner.make((command) => {
-      if (command._tag === "StandardCommand") reads.push(command.command);
+      if (command._tag === "StandardCommand") {
+        reads.push(command.command);
+        environments.push(command.options.env);
+      }
       return script === "missing"
         ? spawner.spawn(ChildProcess.make("/nonexistent/secret-tool", []))
         : spawner.spawn(ChildProcess.make("/bin/sh", ["-c", script]));
@@ -75,10 +82,16 @@ describe("readAntigravityStoredSignIn", () => {
         const path = yield* Path.Path;
         const profileDirectory = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-agy-signin-" });
         const reads: string[] = [];
+        const environments: Array<Record<string, string | undefined> | undefined> = [];
+        const environment = {
+          HOME: "/agy/home",
+          PATH: "/usr/bin",
+          DBUS_SESSION_BUS_ADDRESS: "bus",
+        };
         const read = (input: { shared: boolean; platform: NodeJS.Platform }, script: string) =>
-          keyringAnswering(script, reads).pipe(
+          keyringAnswering(script, reads, environments).pipe(
             Effect.flatMap((spawner) =>
-              readAntigravityStoredSignIn({ profileDirectory, ...input }).pipe(
+              readAntigravityStoredSignIn({ profileDirectory, environment, ...input }).pipe(
                 Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
               ),
             ),
@@ -102,6 +115,10 @@ describe("readAntigravityStoredSignIn", () => {
         expect(yield* read({ shared: true, platform: "linux" }, "exit 1")).toEqual({
           status: "signed-out",
         });
+        // Each keyring is read where agy reads it: security searches its HOME's keychains, and
+        // secret-tool asks the session bus agy's environment names. A Nodex running agy in another
+        // home, such as a development Profile, must not read the account's sign-in agy can't use.
+        expect(environments).toEqual([{ HOME: "/agy/home" }, { HOME: "/agy/home" }, environment]);
         expect(yield* read({ shared: true, platform: "darwin" }, "exit 36")).toEqual({
           status: "unknown",
         });

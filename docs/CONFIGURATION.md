@@ -322,9 +322,11 @@ Antigravity starts with one enabled profile whose authentication method is `comp
 sign-in on this computer. That profile runs agy with the person's `~/.gemini` as its Gemini
 folder and agy's sign-in in the OS keyring, or in agy's sign-in file where there is no keyring;
 Nodex keeps its chats in that folder's `antigravity-acp` data, apart from the `antigravity-cli`
-history of agy in a terminal, and writes no other files there. At most one profile uses
-`computer`. The other methods are `oauth-personal`, `oauth-business`, `gemini-api-key` and
-`agent-platform`; a profile using one of them keeps an isolated Gemini folder under the Nodex
+history of agy in a terminal, and writes no other files there. The folder and the keyring are
+those of the `HOME` agy runs with, so a Nodex whose environment sets another home, such as a
+development environment, finds agy signed out there instead of reading the account's sign-in. At
+most one profile uses `computer`. The other methods are `oauth-personal`, `oauth-business`,
+`gemini-api-key` and `agent-platform`; a profile using one of them keeps an isolated Gemini folder under the Nodex
 Profile, with its own credentials. `gcpProject` and `gcpLocation` specify the Google Cloud project
 and region when the method uses them. An empty executable selects the Nodex-managed runtime, then
 a compatible `agy` on PATH.

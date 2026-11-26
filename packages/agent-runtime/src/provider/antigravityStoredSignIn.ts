@@ -12,7 +12,9 @@ export const ANTIGRAVITY_SIGN_IN_FILE = "antigravity-oauth-token";
 
 // agy stores its Google sign-in through go-keyring under one service and account for every
 // Gemini folder. On macOS go-keyring writes through /usr/bin/security, which therefore reads it
-// back without a Keychain prompt; on Linux it uses the Secret Service attributes below.
+// back without a Keychain prompt; on Linux it uses the Secret Service attributes below. Neither
+// keyring is global: security searches the keychains of its HOME and secret-tool asks the session
+// bus of its environment, so a read only describes agy when it runs in agy's environment.
 const KEYRING_SERVICE = "gemini";
 const KEYRING_ACCOUNT = "antigravity";
 const MAC_ITEM_NOT_FOUND = 44;
@@ -77,19 +79,26 @@ export function parseAntigravityStoredSignIn(value: string): AntigravityStoredSi
   };
 }
 
-const readKeyring = Effect.fn("readAntigravityKeyring")(function* (platform: NodeJS.Platform) {
+const readKeyring = Effect.fn("readAntigravityKeyring")(function* (
+  platform: NodeJS.Platform,
+  environment: NodeJS.ProcessEnv,
+) {
   const command =
     platform === "darwin"
       ? ChildProcess.make(
           "/usr/bin/security",
           ["find-generic-password", "-s", KEYRING_SERVICE, "-a", KEYRING_ACCOUNT, "-w"],
-          { env: {}, extendEnv: false, shell: false },
+          {
+            env: environment.HOME === undefined ? {} : { HOME: environment.HOME },
+            extendEnv: false,
+            shell: false,
+          },
         )
       : platform === "linux"
         ? ChildProcess.make(
             "secret-tool",
             ["lookup", "service", KEYRING_SERVICE, "username", KEYRING_ACCOUNT],
-            { extendEnv: true, shell: false },
+            { env: environment, extendEnv: false, shell: false },
           )
         : undefined;
   if (command === undefined) return UNKNOWN;
@@ -121,13 +130,17 @@ const readKeyring = Effect.fn("readAntigravityKeyring")(function* (platform: Nod
 /**
  * The Google sign-in an instance's agy would use. A private profile keeps it in its own file. This
  * computer's sign-in is the file agy writes where there is no keyring, otherwise the keyring entry
- * agy shares with its terminal. Reading never signs in, refreshes or prompts.
+ * agy shares with its terminal, read in the environment agy runs with: a Nodex whose agy runs in
+ * another home, such as a development Profile, finds agy signed out as agy does, rather than the
+ * account's sign-in that agy itself can't use. Reading never signs in, refreshes or prompts.
  */
 export const readAntigravityStoredSignIn = Effect.fn("readAntigravityStoredSignIn")(
   function* (input: {
     readonly profileDirectory: string;
     readonly shared: boolean;
     readonly platform: NodeJS.Platform;
+    /** The environment the instance runs agy with. */
+    readonly environment: NodeJS.ProcessEnv;
   }): Effect.fn.Return<
     AntigravityStoredSignIn,
     never,
@@ -143,6 +156,6 @@ export const readAntigravityStoredSignIn = Effect.fn("readAntigravityStoredSignI
       const signIn = parseAntigravityStoredSignIn(stored);
       if (signIn.status === "signed-in" || !input.shared) return signIn;
     }
-    return input.shared ? yield* readKeyring(input.platform) : SIGNED_OUT;
+    return input.shared ? yield* readKeyring(input.platform, input.environment) : SIGNED_OUT;
   },
 );

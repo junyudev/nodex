@@ -14,9 +14,8 @@ import {
   makeUnavailableUsageLimits,
   makeUsageLimits,
 } from "@nodex/provider-core/server/usageLimits";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import { readAntigravityStoredSignIn } from "./antigravityStoredSignIn.ts";
+import type { AntigravityStoredSignIn } from "./antigravityStoredSignIn.ts";
 
 export function antigravityUserAgent(platform: NodeJS.Platform, architecture: NodeJS.Architecture) {
   return `antigravity/hub/2.24.0 (aidev_client; os_type=${platform}; arch=${architecture}; cl=963137146)`;
@@ -212,6 +211,8 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
   /** The profile directory is the person's own Gemini folder, signed in like agy in a terminal. */
   readonly shared: boolean;
   readonly authMethod: AntigravitySettings["authMethod"];
+  /** The sign-in the instance's agy would use, as `readAntigravityStoredSignIn` reads it. */
+  readonly storedSignIn: Effect.Effect<AntigravityStoredSignIn>;
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -219,17 +220,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
   const crypto = yield* Crypto.Crypto;
   const platform = yield* HostProcess.Platform;
   const architecture = yield* HostProcess.Architecture;
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const tokenPath = path.join(input.profileDirectory, "antigravity-acp", "acp_token.json");
-  const storedSignIn = readAntigravityStoredSignIn({
-    profileDirectory: input.profileDirectory,
-    shared: input.shared,
-    platform,
-  }).pipe(
-    Effect.provideService(FileSystem.FileSystem, fs),
-    Effect.provideService(Path.Path, path),
-    Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-  );
   let cached:
     | { fingerprint: string; account: string; accessToken: string; expiresAt: number }
     | undefined;
@@ -260,7 +251,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
       input.authMethod === "oauth-business" ? "oauth-business" : "oauth-personal";
     if (input.shared || !(yield* fs.exists(tokenPath))) {
       cached = undefined;
-      const signIn = yield* storedSignIn;
+      const signIn = yield* input.storedSignIn;
       if (signIn.status === "unknown") {
         return makeUnavailableUsageLimits({
           checkedAt,

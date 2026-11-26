@@ -207,14 +207,18 @@ export const AntigravityDriver: ProviderDriver<
       accentColor,
       continuationGroupKey: continuationIdentity.continuationKey,
     });
+    const readSignIn = readAntigravityStoredSignIn({
+      profileDirectory,
+      shared: directories.shared,
+      platform,
+      environment: processEnvironment,
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+    );
     // Absent for a profile with its own sign-in: only this computer's can change outside Nodex.
-    const storedSignIn = directories.shared
-      ? readAntigravityStoredSignIn({ profileDirectory, shared: true, platform }).pipe(
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        )
-      : undefined;
+    const storedSignIn = directories.shared ? readSignIn : undefined;
     const classifyModels = (draft: ServerProviderDraft) =>
       currentCatalog.pipe(
         Effect.map((catalog) => stampIdentity(ModelCatalog.applyModelCatalog(draft, catalog))),
@@ -597,8 +601,8 @@ export const AntigravityDriver: ProviderDriver<
       profileDirectory,
       shared: directories.shared,
       authMethod: auth.authMethod,
+      storedSignIn: readSignIn,
     }).pipe(
-      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
       Effect.provideService(Crypto.Crypto, digest),

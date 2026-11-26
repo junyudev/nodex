@@ -10,6 +10,9 @@ import * as Path from "effect/Path";
 import * as TestClock from "effect/testing/TestClock";
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
 
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+
+import { readAntigravityStoredSignIn } from "./antigravityStoredSignIn.ts";
 import { makeAntigravityUsageProbe } from "./antigravityUsageLimits.ts";
 
 const summary = {
@@ -135,10 +138,25 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
       ),
     ),
   );
+  const shared = options.authMethod === "computer";
   const usage = yield* makeAntigravityUsageProbe({
     profileDirectory,
-    shared: options.authMethod === "computer",
+    shared,
     authMethod: options.authMethod ?? "oauth-personal",
+    // A home with no keychain keeps the probe off this computer's own sign-in.
+    storedSignIn: readAntigravityStoredSignIn({
+      profileDirectory,
+      shared,
+      platform: process.platform,
+      environment: { HOME: profileDirectory },
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(
+        ChildProcessSpawner.ChildProcessSpawner,
+        yield* ChildProcessSpawner.ChildProcessSpawner,
+      ),
+    ),
   }).pipe(Effect.provideService(HttpClient.HttpClient, http));
   return { ...usage, requests, writeToken, tokenPath };
 });
