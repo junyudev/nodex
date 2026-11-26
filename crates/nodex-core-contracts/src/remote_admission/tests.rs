@@ -1,7 +1,7 @@
 use super::{RemoteAdmission, authorize};
 use crate::agent::AgentTurnProvenance;
 use crate::automation::{AutomationIntent, AutomationRead};
-use crate::library::MemberRole;
+use crate::library::{LibraryRead, MemberRole};
 use crate::workspace::{ProjectWorkspaceIntent as Intent, ProjectWorkspaceRead as Read};
 use crate::{
     AdapterKind, BoundModuleContext, CoreErrorCode, LibraryId, ProfileId, RemotePrincipal,
@@ -478,4 +478,23 @@ fn remote_automation_access_preserves_source_reads_without_granting_producer_aut
             ],
         );
     }
+}
+
+#[test]
+fn members_can_reconcile_structural_edits_and_plan_block_transfers() {
+    let context = remote(MemberRole::Member);
+    admitted(
+        &context,
+        &[
+            LibraryRead::StructuralHistoryStates { tokens: vec![] },
+            decode(json!({
+                "kind":"block_transfer_presentation_plan","operation_id":"operation",
+                "store_epoch":"epoch","intent":{
+                    "mode":"move","root_block_ids":["root"],"causal_dependencies":[],
+                    "source":{"kind":"page","page_id":"source"},
+                    "target":{"kind":"library","library_id":"space"},"promotion_policy":"literal"
+                }
+            })),
+        ],
+    );
 }
