@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, SecondsFormat, Timelike, Utc};
+use chrono::{DateTime, Datelike, SecondsFormat, Timelike};
 use nodex_core_contracts::CoreErrorRecovery;
 use nodex_core_contracts::inbox::{InboxSnooze, InboxSnoozeNotification};
 use nodex_core_contracts::workspace::ProjectWorkspaceIntent;
@@ -26,22 +26,14 @@ const CURRENT_NOTIFICATIONS: &str = "
        (?3 AND intent.push_claimed=0) OR (NOT ?3 AND intent.member_id=?2 AND intent.claimed=0))
 ";
 
-fn canonical(instant: DateTime<Utc>) -> String {
-    instant.to_rfc3339_opts(SecondsFormat::Nanos, true)
-}
-
-fn parse(value: &str) -> Result<DateTime<Utc>, StoreError> {
+pub(super) fn normalize_time(value: &str) -> Result<String, StoreError> {
     let instant = DateTime::parse_from_rfc3339(value)
         .map_err(|_| invalid("snoozed_until must be an ISO 8601 instant with an offset"))?
         .to_utc();
     if !(0..=9999).contains(&instant.year()) || instant.nanosecond() >= 1_000_000_000 {
         return Err(invalid("snoozed_until must name a representable instant"));
     }
-    Ok(instant)
-}
-
-pub(super) fn normalize_time(value: &str) -> Result<String, StoreError> {
-    Ok(canonical(parse(value)?))
+    Ok(instant.to_rfc3339_opts(SecondsFormat::Millis, true))
 }
 
 pub(in crate::workspace) fn now(connection: &Connection) -> Result<String, StoreError> {

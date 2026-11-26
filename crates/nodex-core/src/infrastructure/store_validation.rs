@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, SecondsFormat, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, SecondsFormat, Timelike, Utc};
 use nodex_core_contracts::database::DatabaseViewFilter;
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::{Map, Value};
@@ -15,6 +15,15 @@ use super::schema::{CURRENT_STORE_REVISION, validate_schema_identity};
 use super::sqlite::{StoreError, StoreErrorCode, validate_store};
 
 const CORE_SCHEMA_OWNER: &str = "rust_core";
+pub(super) const SNOOZE_MILLIS_STORE_REVISION: i64 = 221;
+pub(super) const LEGACY_SNOOZE_TIMESTAMP_COLUMNS: &[(&str, &str)] = &[
+    ("inbox_deferrals", "set_at"),
+    ("inbox_deferrals", "until_at"),
+    ("inbox_snooze_notifications", "returned_at"),
+    ("page_turn_notification_intents", "claimed_at"),
+    ("member_session_snoozes", "snoozed_until"),
+    ("member_session_snooze_deliveries", "snoozed_until"),
+];
 
 #[derive(Clone, Copy)]
 pub(crate) enum DatabaseViewStorageContract {
@@ -323,7 +332,7 @@ pub(crate) fn validate_store_semantics(connection: &Connection) -> Result<(), St
         DatabaseViewStorageContract::V6,
         true,
         CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
-        false,
+        None,
     )
 }
 
@@ -334,13 +343,14 @@ pub(crate) fn validate_migration_source_semantics(
     view_contract: DatabaseViewStorageContract,
     has_library_files: bool,
     materialization_derivation_version: i64,
+    source_revision: i64,
 ) -> Result<(), StoreError> {
     validate_store_semantics_for_view_contract(
         connection,
         view_contract,
         has_library_files,
         materialization_derivation_version,
-        true,
+        Some(source_revision),
     )
 }
 
@@ -349,12 +359,12 @@ fn validate_store_semantics_for_view_contract(
     view_contract: DatabaseViewStorageContract,
     has_library_files: bool,
     materialization_derivation_version: i64,
-    migration_source: bool,
+    source_revision: Option<i64>,
 ) -> Result<(), StoreError> {
     let started_at = Instant::now();
     validate_codex_thread_timestamp_invariants(connection)?;
     let canonical_timestamp_started_at = Instant::now();
-    validate_canonical_text_timestamp_invariants(connection, migration_source)?;
+    validate_canonical_text_timestamp_invariants(connection, source_revision)?;
     tracing::info!(
         durationMs = duration_millis(canonical_timestamp_started_at.elapsed()),
         "Canonical Store timestamp validation completed"
@@ -1142,7 +1152,7 @@ fn validate_document_materialization_derivation(
 
 fn validate_canonical_text_timestamp_invariants(
     connection: &Connection,
-    migration_source: bool,
+    source_revision: Option<i64>,
 ) -> Result<(), StoreError> {
     let columns = connection
         .prepare(
@@ -1160,6 +1170,12 @@ fn validate_canonical_text_timestamp_invariants(
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for (table, column) in columns {
+        // The return notification table was renamed in v217. Both names held the same deadline.
+        let legacy_snooze_column = source_revision.is_some_and(|revision| {
+            (211..SNOOZE_MILLIS_STORE_REVISION).contains(&revision)
+                && (LEGACY_SNOOZE_TIMESTAMP_COLUMNS.contains(&(table.as_str(), column.as_str()))
+                    || (table == "inbox_later_notifications" && column == "returned_at"))
+        });
         let query = format!(
             "SELECT {} FROM {} WHERE {} IS NOT NULL",
             quote_identifier(&column),
@@ -1174,11 +1190,14 @@ fn validate_canonical_text_timestamp_invariants(
                 continue;
             }
             // The cleanup enqueue path used SQLite datetime('now') before v202.
-            if migration_source
+            if source_revision.is_some()
                 && table == "nodex_agent_runtime_execution_cleanups"
                 && column == "created_at"
                 && legacy_cleanup_timestamp(&value).is_some()
             {
+                continue;
+            }
+            if legacy_snooze_column && legacy_snooze_timestamp(&value).is_some() {
                 continue;
             }
             return Err(corrupt(format!(
@@ -1187,6 +1206,16 @@ fn validate_canonical_text_timestamp_invariants(
         }
     }
     Ok(())
+}
+
+pub(super) fn legacy_snooze_timestamp(value: &str) -> Option<String> {
+    if value.len() != 30 {
+        return None;
+    }
+    let timestamp = DateTime::parse_from_rfc3339(value).ok()?.to_utc();
+    (timestamp.nanosecond() < 1_000_000_000
+        && timestamp.to_rfc3339_opts(SecondsFormat::Nanos, true) == value)
+        .then(|| timestamp.to_rfc3339_opts(SecondsFormat::Millis, true))
 }
 
 pub(super) fn legacy_cleanup_timestamp(value: &str) -> Option<String> {
