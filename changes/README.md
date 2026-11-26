@@ -32,18 +32,28 @@ without a leading `- `. Use inline Markdown like `**Settings > Agents**` for a p
 
 ## Show the change
 
-Include a hero shot for Added and Changed entries when you can. Capture the final state in light
-and dark with English UI and realistic seed data. Crop to the feature and clear unrelated banners
-before shooting. Use PNG for screenshots and MP4 for clips.
+Give each Added and Changed entry a picture of what changed. The changelog page shows it with the
+entry, the change gets a page of its own that people can share, and the release post starts from
+it.
+
+Take it from a seeded development instance with `vp run capture -- --hero <change file>`, which
+shoots the feature in light and dark and attaches both; see
+[Screenshots](../docs/development.md#screenshots). Show the finished state with realistic data,
+frame the feature, and keep unrelated banners out. Pictures show the English interface; screenshots
+are PNG and clips are MP4. To attach files you already have:
 
 ```bash
-vp run media:add -- changes/added/2026-11-26-example.md --caption "See the finished view" --light light.png --dark dark.png
+vp run media:add -- changes/changed/2026-11-26-example.md --caption "What the picture shows" --light light.png --dark dark.png
 ```
 
-The command stores the files by SHA-256 in `notes.local/media/sha256/` and writes their references
-under `media` in the change file. Use a plain-text caption of up to 120 characters and supply at
-least one theme. Reuse the caption to replace a shot. Commit the change file before the Nightly
-that will be promoted.
+Pictures stay out of the repository. The change file names each one by its SHA-256 under `media`,
+and the files wait in `notes.local/media/` until the release publishes them. A caption is one line
+of plain text, and reusing a caption replaces that picture. Attach pictures before the Nightly you
+promote: a release publishes what its source holds.
+
+Only a release uploads pictures, and only those its change files still name, so drafts and
+reshoots never leave the computer. `vp run media:prune` lists stored pictures that no worktree,
+branch or tag mentions and that were stored more than 14 days ago; add `--delete` to remove them.
 
 ## Update or remove a change
 

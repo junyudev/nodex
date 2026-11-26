@@ -933,26 +933,29 @@ display state model. Fixture classes and runtime commands are detailed below.
 
 ### Screenshots
 
-Use `vp run capture` for screenshots of the desktop app. Start a seeded development
-instance, open the feature, and pass the same absolute home to the capture command.
+Take every screenshot of the desktop app with `vp run capture`, so captures share one size and
+scale: a 1440 × 900 CSS-pixel window at 2×, saved as PNG. Start a seeded development instance,
+open what you want to show, and pass the same absolute home to the command. Review screenshots are
+evidence and may show edge and failure states; save them under the task's
+`notes.local/artifacts/<slug>/`.
 
 ```bash
-task_home="$HOME/repo/nodex/runs.local/release-capture"
+task_home="$HOME/repo/nodex/runs.local/<slug>"
 vp run dev --home "$task_home" --seed release/capture
 
-vp run capture -- --home "$task_home" --out "$HOME/repo/nodex/notes.local/artifacts/release-capture/workbench.png"
-vp run capture -- --home "$task_home" --hero changes/added/YYYY-MM-DD-slug.md --selector '<css>' --caption "Describe what the image shows"
+vp run capture -- --home "$task_home" --out "$HOME/repo/nodex/notes.local/artifacts/<slug>/inbox.png"
+vp run capture -- --home "$task_home" --hero changes/changed/YYYY-MM-DD-slug.md --selector '[role=dialog]' --padding 0 --caption "What the picture shows"
 ```
 
-Screenshots default to a 1440 × 900 CSS-pixel viewport at 2× and save as PNG.
-Use `--selector` and `--padding` to frame a feature, and `--theme` or `--locale`
-to choose an appearance or display language for the capture.
+`--selector` frames one element, with `--padding` CSS pixels around it; `--padding 0` captures the
+element alone, with what lies behind its rounded corners transparent. `--theme` and `--locale`
+choose an appearance and display language, and the app returns to its own afterwards.
 
-For a hero shot, show the feature in its final state with realistic seed data.
-Frame the feature and clear unrelated banners through the scenario or the app.
-Hero mode captures light and dark PNGs and attaches them to the change entry.
-The `release/capture` seed supplies Pages, chats, and Inbox activity with a
-scripted Codex sign-in and no failed GitHub check.
+A hero shot is the picture a change file carries to the changelog and the release post; see
+[Show the change](../changes/README.md#show-the-change). `--hero` captures light and dark and
+attaches both. Show the finished state with realistic data, frame the feature, and fix unrelated
+banners in the scenario rather than in the picture. The `release/capture` seed has Pages, chats
+and Inbox activity, a signed-in Codex and no failing GitHub check.
 
 ### Choosing checks
 

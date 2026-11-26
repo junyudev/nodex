@@ -585,26 +585,33 @@ Apple signing, updater, Agent runtime, Browser runtime, or provenance changes.
    through the ordinary source workflow. `vp run release:check` validates the
    version sources, `CHANGELOG.md` and every change file, including media references.
 2. Wait for **Nightly Release** to succeed and test the published Nightly.
-3. Preview the Nightly and publish its media before writing the headline. A
-   blank tag selects the newest published Nightly. The preview includes the
-   source SHA, release entries, Added and Changed entries without media, and
-   media still to publish. Promotion dispatches **Release** and returns the run
-   URL once all referenced media is published.
+3. Read what the Nightly would publish, publish its pictures, then write the
+   release's headline and dispatch **Release** with both. A blank tag selects
+   the newest published Nightly. Without `--headline`, the local command prints
+   the tag, source, age, version and entries, lists Added and Changed entries
+   that have no picture, and names any picture not yet published, with the
+   command that publishes it. With a headline, it dispatches once every picture
+   is published and returns the run URL.
 
    ```bash
    vp run release:promote -- v0.5.5-nightly.20261111.2531
-   python3 notes.local/secrets/use.py run cloudflare.r2_media -- vp run media:publish -- <source-sha> --report notes.local/artifacts/release-media/publish.json
+   python3 notes.local/secrets/use.py run cloudflare.r2_media -- vp run media:publish -- <source-sha> --report notes.local/artifacts/release-media/<source-sha>.json
    vp run release:promote -- v0.5.5-nightly.20261111.2531 --headline "Team Spaces and coordinated Agent work"
    ```
 
+   Publishing uploads each picture to `https://media.nodex.jyu.app` under its
+   SHA-256, with web encodings and a description; it never replaces an
+   existing file. `use.py` hides the command's output, so read the report.
    The headline sums up the one or two changes people will care about most. What's
    new, the changelog page and the release notes lead with it, so write a short
    phrase in product words, about 36 characters and never more than 48, with no
    Markdown and no closing period.
 
-4. Once the stable release is published, run `vp run release:card -- <version>`
-   to build the growth card from the release notes and media. The growth Agent
-   uses the card to write the Chinese promotional post.
+4. Once the stable release is published, build its post card on the growth
+   Project's board: `vp run release:card -- <version>`. The card,
+   `<version> 更新帖`, lists every entry by kind with its pictures and names the
+   Added and Changed entries still missing one. An Agent in the growth Project
+   writes the post from it, and the person publishes it.
 
 ### Promotion path
 
