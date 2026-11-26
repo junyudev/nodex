@@ -175,7 +175,7 @@ export function StandingInstructionsRow() {
   );
 }
 
-type InstructionLayer = "nodex" | "yours" | "codex";
+type InstructionLayer = "nodex" | "yours" | "desktopApp";
 
 /** Everything the Nodex layer sends, as the Agent reads it, one layer at a time. */
 export function EffectiveInstructionsRow() {
@@ -216,7 +216,7 @@ function InstructionLayers() {
       label: intl.formatMessage(settingsMessages.chatsYourInstructions),
       text: renderPersonalInstructions(value),
     },
-    codex: {
+    desktopApp: {
       label: intl.formatMessage({
         id: "settings.agentInstructions.codexDesktopApp",
         defaultMessage: "Codex desktop app",
