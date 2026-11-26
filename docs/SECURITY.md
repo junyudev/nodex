@@ -76,10 +76,11 @@ Semantic admission fails closed and decides each command: every Module command
 variant is explicitly admitted or refused for remote Members, a new variant does
 not compile until it is, and Clippy rejects a wildcard arm that would decide one
 silently. Source commands, native execution bindings, Runner administration,
-backups, restore and maintenance stay host-only. Receipt admission checks the
-initiating Member, including exact retries and explicit
-resolution. Physical connection and session identities do not change the
-operation identity.
+backups, restore and maintenance stay host-only. A remote Member reads a chat's
+linked Thread without the host's folders, writable roots and tool catalogs.
+Receipt admission checks the initiating Member, including exact retries and
+explicit resolution. Physical connection and session identities do not change
+the operation identity.
 Revocation is checked on new requests, at the durable writer boundary, and every
 second while responses remain open. Library blobs and all SSE routes share this
 boundary. A reverse proxy must forward HTTPS without substituting a local Host

@@ -674,16 +674,13 @@ pub(super) fn read(
             validate_id("session_id", &session_id)?;
             let row = read_session(connection, library_id, &session_id, &member)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
-            // A hosted chat has only a Runtime binding. Linked Native Threads also carry
-            // host-local workspace and tool metadata, which this Member read cannot disclose.
-            if context.adapter == AdapterKind::RemoteMember && row.thread_id.is_some() {
-                return Err(StoreError::new(
-                    StoreErrorCode::Unauthorized,
-                    "Native Thread details are unavailable to remote Members",
-                    false,
-                ));
-            }
             let thread = read_linked_thread(connection, library_id, &row)?;
+            // A remote Member sees which Agent runs the chat, never how the host executes it.
+            let thread = if context.adapter == AdapterKind::RemoteMember {
+                thread.map(|thread| Box::new(thread.without_host_execution()))
+            } else {
+                thread
+            };
             Ok(ProjectWorkspaceReadValue::SessionDetail {
                 session: session_summary(row),
                 thread,
@@ -1740,6 +1737,91 @@ mod tests {
             )
             .expect_err("foreign Library Thread must remain hidden");
         assert_eq!(foreign_thread.code, CoreErrorCode::NotFound);
+    }
+
+    #[test]
+    fn remote_members_read_a_chat_and_its_thread_without_host_execution_details() {
+        let (_directory, kernel, module) = seeded_module();
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.execute_batch(
+                    "UPDATE libraries SET space_kind='team' WHERE id='library-1';
+                     INSERT INTO members(id, library_id, display_name, lifecycle, role)
+                     VALUES ('remote-member', 'library-1', 'Member', 'active', 'member');
+                     INSERT INTO member_devices(id, library_id, member_id, label, credential_hash, created_at, last_seen)
+                     VALUES ('device', 'library-1', 'remote-member', 'Desktop', 'credential', unixepoch(), unixepoch());
+                     INSERT INTO member_sessions(id, device_id, token_hash, created_at, expires_at)
+                     VALUES ('remote-session', 'device', 'token', unixepoch(), unixepoch() + 3600);",
+                )?;
+                Ok(())
+            })
+            .expect("seed a current remote Member");
+        let host = context();
+        let context = BoundModuleContext {
+            adapter: AdapterKind::RemoteMember,
+            principal: Some(nodex_core_contracts::RemotePrincipal {
+                space_id: "library-1".into(),
+                member_id: "remote-member".into(),
+                device_id: "device".into(),
+                session_id: "remote-session".into(),
+                role: nodex_core_contracts::library::MemberRole::Member,
+            }),
+            ..host.clone()
+        };
+        let read_detail = |session_id: &str| {
+            module.read(
+                &context,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::SessionDetail {
+                        session_id: session_id.into(),
+                    },
+                },
+            )
+        };
+
+        let ProjectWorkspaceReadValue::SessionDetail {
+            session,
+            thread: None,
+        } = read_detail("session-projectless")
+            .expect("remote Member can read a Session without a Thread")
+            .value
+        else {
+            panic!("Session detail without a linked Thread");
+        };
+        assert_eq!(session.id, "session-projectless");
+
+        let ProjectWorkspaceReadValue::SessionDetail {
+            thread: Some(host_view),
+            ..
+        } = module
+            .read(
+                &host,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::SessionDetail {
+                        session_id: "session-project".into(),
+                    },
+                },
+            )
+            .expect("the host reads the linked Thread")
+            .value
+        else {
+            panic!("the host sees the linked Thread");
+        };
+        assert!(host_view.managed_worktree_path.is_some());
+        let ProjectWorkspaceReadValue::SessionDetail {
+            thread: Some(member_view),
+            ..
+        } = read_detail("session-project")
+            .expect("remote Member can read a chat with a linked Thread")
+            .value
+        else {
+            panic!("remote Member sees the linked Thread");
+        };
+        assert_eq!(*member_view, host_view.without_host_execution());
+        assert_eq!(member_view.managed_worktree_path, None);
     }
 
     #[test]
