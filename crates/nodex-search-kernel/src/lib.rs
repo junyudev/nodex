@@ -5,8 +5,7 @@ mod chat_metadata;
 mod file_name_search;
 mod text_match;
 
-use analyzer::fold;
-pub use analyzer::{ANALYZER_VERSION, Segment, analyze};
+pub use analyzer::{ANALYZER_VERSION, Segment, analyze, fold};
 pub use text_match::{
     MatchQuality, QueryWord, RowMatch, TextKind, TextMatch, TextPart, match_text_rows,
     match_word_evidence, match_words, matches_ordered, query_words,

@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
+use rusqlite::functions::FunctionFlags;
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, ErrorCode, OpenFlags, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -282,6 +283,12 @@ pub fn configure_reader(connection: &Connection) -> Result<(), StoreError> {
     connection.pragma_update(None, "foreign_keys", true)?;
     connection.pragma_update(None, "query_only", true)?;
     apply_runtime_limits(connection)?;
+    connection.create_scalar_function(
+        "nodex_fold_text",
+        1,
+        FunctionFlags::SQLITE_DETERMINISTIC | FunctionFlags::SQLITE_DIRECTONLY,
+        |context| Ok(nodex_search_kernel::fold(&context.get::<String>(0)?)),
+    )?;
     Ok(())
 }
 

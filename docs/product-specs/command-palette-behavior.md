@@ -144,7 +144,8 @@ Text searches file contents through Main's scoped workspace search service. This
 
 Page and chat discovery share the same rules. Search ignores case, character width,
 and accents on Latin, Greek, and Cyrillic letters. Straight and curly apostrophes
-are equivalent. Highlights keep the original text.
+are equivalent. Highlights keep the original text. Library title filters use
+the same text folding for literal substring matches.
 
 Search recognizes segments at punctuation, case boundaries such as `pageSearch`
 and `JSONSchema`, and between letters and digits. Chinese and Japanese characters

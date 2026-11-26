@@ -3239,7 +3239,7 @@ fn catalog(
     requested_cursor: Option<String>,
     limit: Option<u32>,
 ) -> Result<LibraryReadValue, StoreError> {
-    let query = query.unwrap_or_default().trim().to_lowercase();
+    let query = nodex_search_kernel::fold(query.as_deref().unwrap_or_default().trim());
     if query.len() > 256 {
         return Err(invalid("Library catalog query exceeds its bound"));
     }
@@ -3307,12 +3307,14 @@ fn catalog(
         LEFT JOIN block_properties property ON property.block_id = block.id \
           AND property.property_key = 'document.display_name' \
         WHERE ?5 AND canvas.library_id = ?1 AND block.lifecycle = ?2 \
+      ), matching_catalog AS ( \
+        SELECT * FROM catalog WHERE (?6 = '' OR instr(nodex_fold_text(title), ?6) > 0) \
       ) ";
     let rows_sql = format!(
         "{catalog_cte} \
          SELECT id, kind, title, updated_at, location_revision, metadata_revision \
-         FROM catalog WHERE (?6 = '' OR instr(lower(title), ?6) > 0) \
-           AND (?7 IS NULL OR updated_at < ?7 \
+         FROM matching_catalog \
+         WHERE (?7 IS NULL OR updated_at < ?7 \
              OR (updated_at = ?7 AND id > ?8)) \
          ORDER BY updated_at DESC, id LIMIT ?9"
     );
@@ -3388,11 +3390,7 @@ fn catalog(
             )
         })
         .transpose()?;
-    let total_sql = format!(
-        "{catalog_cte} \
-         SELECT COUNT(*) FROM catalog \
-         WHERE (?6 = '' OR instr(lower(title), ?6) > 0)"
-    );
+    let total_sql = format!("{catalog_cte} SELECT COUNT(*) FROM matching_catalog");
     let total = connection.query_row(
         &total_sql,
         params![
