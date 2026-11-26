@@ -18,7 +18,6 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
-import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { make } from "./HostBridge.ts";
@@ -127,51 +126,6 @@ it.live(
       yield* Scope.close(nativeScope, Exit.void);
       expect(yield* Fiber.join(retired)).toBeUndefined();
       expect(yield* bridge.resolveNativeCallById(call)).toBeUndefined();
-    }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
-);
-
-it.live(
-  "forwards a captured root Turn before projection readback and keeps a child on its parent Turn",
-  () =>
-    Effect.gen(function* () {
-      const emitted = yield* Queue.unbounded<AgentHostRequest>();
-      const bridge = yield* make(
-        { home: "/runtime", cwd: "/workspace", providers: {} },
-        (notification) =>
-          notification.type === "host.request"
-            ? Queue.offer(emitted, notification).pipe(Effect.asVoid)
-            : Effect.void,
-      );
-      const call = Effect.fnUntraced(function* (nativeSubagent?: true, nativeTurnId?: string) {
-        const key = yield* bridge.captureNativeToolCall({
-          identity: turn,
-          nativeCallId: "call",
-          ...(nativeSubagent ? { nativeSubagent } : {}),
-          nativeThreadId: "native:thread",
-          nativeTurnId: "native:source-turn",
-        });
-        const actor = yield* bridge.resolveNativeCallById({
-          nativeCallId: "call",
-          nativeTurnId: "native:source-turn",
-        });
-        if (!actor) throw new Error("Missing captured call");
-        const pending = yield* bridge
-          .callTool(
-            { ...actor, ...(nativeTurnId === undefined ? {} : { nativeTurnId }) },
-            "report_work",
-            {},
-          )
-          .pipe(Effect.forkChild);
-        const request = yield* Queue.take(emitted);
-        yield* bridge.accept({ type: "host.result", id: request.id, success: true, output: {} });
-        yield* Fiber.join(pending);
-        yield* bridge.releaseNativeToolCall(key);
-        if (request.operation !== "tool.call") throw new Error("Missing Host tool request");
-        return request.identity.nativeTurnId;
-      });
-      expect(yield* call()).toBe("native:source-turn");
-      expect(yield* call(true)).toBeUndefined();
-      expect(yield* call(true, "native:parent-turn")).toBe("native:parent-turn");
     }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
 );
 

@@ -84,8 +84,8 @@ const request = (identity: AgentHostToolIdentity = actor(), id = "request"): Age
   input: {},
   identity,
 });
-const proofOf = (
-  identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity,
+const proofOf = <Identity extends AgentHostTurnIdentity | AgentHostNativeSessionIdentity>(
+  identity: Identity,
   nativeTurnId: string | null = null,
 ) => ({
   ...identity,
@@ -616,23 +616,21 @@ it.effect("a Run call carries engine coordinates, its bound Session, and the Run
   }).pipe(Effect.scoped),
 );
 
-it.effect("a registered tool call waits for its exact native Turn to reach the projection", () =>
+it.effect("a captured Codex call stays bound to its Run as Turn history catches up", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
-    const identity = { ...codexTurn("run:codex"), nativeTurnId: "native-turn" };
-    f.bind(identity);
-
-    const pending = yield* f
-      .execute(request(identity))
-      .pipe(Effect.forkScoped({ startImmediately: true }));
-    assert.isUndefined(f.caller());
-    f.live.set("run:codex", proofOf(identity, "native-turn"));
-    yield* TestClock.adjust("1 second");
-    assert.deepEqual(yield* Fiber.join(pending), { content: [] });
-
+    const run = codexTurn("run:answer");
+    f.bind(run);
+    yield* f.execute(request({ ...run, nativeCallKey: "captured:answer" }));
     const caller = f.caller();
-    yield* Effect.flip(f.execute(request({ ...identity, nativeTurnId: "another-turn" })));
-    assert.strictEqual(f.caller(), caller);
+    assert.equal((yield* captureHostedAppToolAuthority(caller))?.turnId, run.runId);
+
+    const observed = proofOf(run, "native:answer-turn");
+    f.live.set(run.runId, observed);
+    assert.equal((yield* captureHostedAppToolAuthority(caller))?.turnId, run.runId);
+
+    f.live.set(run.runId, { ...observed, attemptId: "attempt:replacement" });
+    assert.isNull(yield* captureHostedAppToolAuthority(caller));
   }).pipe(Effect.scoped),
 );
 

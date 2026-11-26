@@ -609,7 +609,7 @@ it.live(
           operation: "tool.call",
           tool: "hand_back_message",
           input: { reason: "The other card owns this request." },
-          identity: { ...proof!, nativeTurnId: proof!.nativeTurnId! },
+          identity: proof!,
         });
         expect("isError" in result && result.isError).not.toBe(true);
         const inbox = yield* Effect.promise(() => scenario.seed.readInbox());
@@ -738,7 +738,7 @@ it.live(
           operation: "tool.call",
           tool: "follow_thread",
           input: { url: thread.url },
-          identity: { ...firstProof!, nativeTurnId: firstProof!.nativeTurnId! },
+          identity: firstProof!,
         });
         expect("isError" in followed && followed.isError).not.toBe(true);
         yield* f.runtime.request("thread.execution", { threadId: chat.threadId }).pipe(
@@ -901,7 +901,7 @@ it.live(
           operation: "tool.call",
           tool: "hand_back_message",
           input: { reason: "The other card owns these GitHub updates." },
-          identity: { ...proof!, nativeTurnId: proof!.nativeTurnId! },
+          identity: proof!,
         });
         expect("isError" in result && result.isError).not.toBe(true);
         const inbox = yield* Effect.promise(() => scenario.seed.readInbox());

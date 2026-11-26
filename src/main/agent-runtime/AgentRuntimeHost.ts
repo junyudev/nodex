@@ -35,7 +35,6 @@ import type {
   HostTurnPreparation,
 } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 import { ScopedAgentCore } from "../../host/ScopedAgentCore";
@@ -70,6 +69,20 @@ const failed = (operation: string) =>
   new AgentRuntimeHostError({ operation, message: "Nodex could not complete this request" });
 
 type ExecutionProof = AgentThreadAuthority | AgentNativeSessionAuthority;
+type ExecutionRefusal =
+  | "runtime_closed"
+  | "runtime_lease_mismatch"
+  | "proof_missing"
+  | "native_frame_mismatch"
+  | "run_revoked"
+  | "execution_held";
+
+const refuseExecution = (reason: ExecutionRefusal) =>
+  Effect.logWarning("Agent Runtime execution authority refused").pipe(
+    Effect.annotateLogs({ reason }),
+    Effect.andThen(Effect.fail(unavailable("identity"))),
+  );
+
 const isRevokedRun = (status: AgentThreadAuthority["status"] | null) =>
   status === "cancelled" || status === "interrupted" || status === "rolled_back";
 const sameNativeFrame = (left: AgentHostExecutionIdentity, right: ExecutionProof) =>
@@ -174,8 +187,8 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   const readProof = Effect.fn("AgentRuntimeHost.readProof")(function* (
     identity: AgentHostExecutionIdentity,
   ) {
-    if (!open || identity.runtimeId !== runtimeId || identity.runtimeGeneration !== leaseId)
-      return yield* unavailable("identity");
+    if (!open) return yield* refuseExecution("runtime_closed");
+    if (!isCurrentLease(identity)) return yield* refuseExecution("runtime_lease_mismatch");
     const proof =
       identity.runId === null
         ? yield* connection.request("native-session.authority", {
@@ -188,30 +201,20 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             threadId: identity.threadId,
             runId: identity.runId,
           });
-    if (!open || !proof || !sameNativeFrame(identity, proof) || isRevokedRun(proof.status))
-      return yield* unavailable("identity");
+    if (!open) return yield* refuseExecution("runtime_closed");
+    if (!proof) return yield* refuseExecution("proof_missing");
+    if (!sameNativeFrame(identity, proof)) return yield* refuseExecution("native_frame_mismatch");
+    if (isRevokedRun(proof.status)) return yield* refuseExecution("run_revoked");
     return proof;
   });
-  /** Every use re-proves the execution live; a tool call also proves its native Turn is current. */
+  /** The Runtime attests the native call. The Host re-proves its Run or incarnation and Core scope. */
   const authorize = Effect.fn("AgentRuntimeHost.authorize")(function* (
     identity: AgentHostExecutionIdentity,
-    nativeTurnId?: string | null,
     pauseIfHeld = false,
   ) {
-    // Native notifications can register an exact call before its Turn reaches the Runtime
-    // projection. Re-read the same live attempt while only that Turn identity is missing.
-    const proof = yield* readProof(identity).pipe(
-      Effect.repeat({
-        while: (proof) =>
-          nativeTurnId != null && proof.runId !== null && proof.nativeTurnId === null,
-        schedule: Schedule.exponential("10 millis"),
-        times: 7,
-      }),
-    );
-    if (nativeTurnId !== undefined && proof.nativeTurnId !== nativeTurnId)
-      return yield* unavailable("identity");
+    const proof = yield* readProof(identity);
     const authorized = yield* authorizeExecution(proof, projectIdOf(proof.projectId));
-    if (!open) return yield* unavailable("identity");
+    if (!open) return yield* refuseExecution("runtime_closed");
     const holds = yield* effectiveHolds(core, {
       kind: "session",
       session_id: authorized.sessionId,
@@ -224,7 +227,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
           threadId: proof.rootThreadId,
           revision: holds.map((hold) => hold.revision).join(":"),
         });
-      return yield* unavailable("identity");
+      return yield* refuseExecution("execution_held");
     }
     return { ...authorized, proof };
   });
@@ -294,7 +297,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   const prepare = Effect.fn("AgentRuntimeHost.prepare")(function* (
     identity: AgentHostTurnIdentity,
   ) {
-    const { proof, sessionId, context } = yield* authorize(identity, undefined, true);
+    const { proof, sessionId, context } = yield* authorize(identity, true);
     if (proof.runId === null) return yield* unavailable("turn.prepare");
     const componentError = yield* (
       options.checkClaudeCode?.(proof.providerInstanceId) ?? Effect.succeed(null)
@@ -627,7 +630,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
               request.identity.mcpClientId ?? null,
               request.identity.mcpRequestId,
             ]));
-      const capture = authorize(request.identity, request.identity.nativeTurnId ?? null);
+      const capture = authorize(request.identity);
       const { proof, sessionId, context } = yield* capture;
       const decision =
         context.actorProjectId === null ? yield* readDecisionRun(core, sessionId) : null;
@@ -676,6 +679,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     // and the Runtime is only told the request could not be served.
     (effect, request) =>
       effect.pipe(
+        Effect.annotateLogs({ hostOperation: request.operation }),
         Effect.catch((error) =>
           error instanceof AgentRuntimeHostError
             ? Effect.fail(error)
