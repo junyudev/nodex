@@ -8865,7 +8865,7 @@ mod tests {
                         ))
                     },
                 )?;
-                assert_eq!(evidence, (2, "Native Rust edit".to_owned(), 1, 1, 1));
+                assert_eq!(evidence, (2, "Native Rust edit".to_owned(), 1, 1, 2));
                 let fts: i64 = connection.query_row(
                     "SELECT count(*) FROM page_search_words
                      JOIN block_search_units unit ON unit.rowid = page_search_words.rowid
@@ -9472,7 +9472,8 @@ mod tests {
             .read_default(|connection| {
                 let (payload_json, database_ids_json): (String, String) = connection.query_row(
                     "SELECT payload_json, database_block_ids_json FROM change_log \
-                     WHERE operation_id = 'update:database-impact'",
+                     WHERE operation_id = 'update:database-impact' \
+                       AND kind = 'owned_document.document_updated'",
                     [],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )?;
@@ -11430,7 +11431,7 @@ mod tests {
                     params![DOCUMENT_ID, operation_id],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )?;
-                assert_eq!(evidence, ("Prepared Agent authority".to_owned(), 1, 1));
+                assert_eq!(evidence, ("Prepared Agent authority".to_owned(), 1, 2));
                 let adapter: String = connection.query_row(
                     "SELECT adapter_kind FROM core_module_receipts \
                      WHERE module_name = 'owned_document' AND operation_id = ?1",

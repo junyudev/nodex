@@ -12,6 +12,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use super::event_log::PAGE_TITLE_CHANGED_KIND;
 use super::projection_impact::{canonicalize, decode, encode};
 use super::projection_scope_head;
 use super::sqlite::{StoreError, StoreErrorCode};
@@ -2572,7 +2573,11 @@ pub(crate) fn module_from_kind(kind: &str) -> Result<ModuleName, StoreError> {
         return Ok(ModuleName::OwnedDocument);
     }
     match kind {
-        "library.changed" | "block_mutation" | "block_relocation" | "block_transfer"
+        "library.changed"
+        | PAGE_TITLE_CHANGED_KIND
+        | "block_mutation"
+        | "block_relocation"
+        | "block_transfer"
         | "structural_edit" => Ok(ModuleName::Library),
         "database.changed" => Ok(ModuleName::Database),
         "project_workspace.changed" => Ok(ModuleName::ProjectWorkspace),

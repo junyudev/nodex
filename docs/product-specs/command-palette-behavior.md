@@ -94,6 +94,7 @@ Pages is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, the Pages scope contr
 - Pages shows Page rows only.
 - Commands and chats are hidden entirely in Pages.
 - Empty query shows default Page suggestions.
+- Page search previews refresh the affected Page's metadata after a title edit is saved.
 - Typing a newer query or closing the palette cancels obsolete body enrichment as normal control flow. Superseded work never produces a Main-process error or changes the current query to an unavailable state.
 - A failed enrichment keeps synchronous metadata rows and shows `Full Page search is unavailable`. It never falls back to an incomplete corpus assembled from mounted Boards.
 
