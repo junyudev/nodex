@@ -434,7 +434,7 @@ export const live = (spaceId: string) =>
       );
       const events = coreEventHubLive({}).pipe(Layer.provideMerge(projections));
       const ingress = Layer.mergeAll(
-        CoreMutationIpc.live,
+        CoreMutationIpc.remote,
         CoreDocumentIpc.live,
         DatabaseProjectionIpc.live,
         ProjectionDeliveryIpc.live,
