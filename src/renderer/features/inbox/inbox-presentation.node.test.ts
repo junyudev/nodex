@@ -83,6 +83,7 @@ describe("inbox presentation", () => {
     chat: null,
     failureMessage: null,
     failureKind: null,
+    decisionSessionId: null,
     createdAt: "2026-10-11T10:00:01.000Z",
     updatedAt: "2026-10-11T10:00:01.000Z",
     ...overrides,

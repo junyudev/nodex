@@ -3000,6 +3000,17 @@ export interface components {
             readonly identity: components["schemas"]["CommitIdentity"];
             readonly operation_id: string;
         };
+        readonly CompactInboxHandoff: {
+            readonly confirmed_by?: components["schemas"]["InboxConfirmedBy"] | null;
+            readonly decided_at: string;
+            readonly session_id?: string | null;
+        };
+        readonly CompactPageIntake: {
+            readonly handoff: components["schemas"]["CompactInboxHandoff"] | null;
+            readonly source: components["schemas"]["InboxMessageSource"];
+            readonly suggestion: components["schemas"]["InboxSuggestionSummary"] | null;
+            readonly waiting: boolean;
+        };
         /** @enum {string} */
         readonly CompatibilityAxis: "manifest" | "transport" | "event" | "module" | "store";
         readonly CompatibilityMismatch: {
@@ -5348,6 +5359,17 @@ export interface components {
             readonly receipt_id: string;
             readonly returned_at: string;
         };
+        /** @description The latest decision sent this message to a chat. */
+        readonly InboxHandoff: {
+            readonly actor: components["schemas"]["Actor"];
+            readonly actor_label: string;
+            readonly decided_at: string;
+            readonly proposal: components["schemas"]["ProjectWorkspaceInboxProposal"];
+        };
+        readonly InboxMessageSource: {
+            readonly kind: string;
+            readonly label?: string | null;
+        };
         /**
          * @description Bounded routing context for the suggestion Agent. It intentionally carries
          *     no transcripts or Page bodies other than the entries being considered. For a
@@ -5386,6 +5408,8 @@ export interface components {
             readonly request_id: string;
             readonly run_id?: string | null;
         };
+        /** @enum {string} */
+        readonly InboxReadSuggestionState: "waiting" | "running" | "settled" | "failed" | "outdated";
         readonly InboxReplyContext: {
             readonly body: string;
             readonly page_id: string;
@@ -5449,6 +5473,11 @@ export interface components {
             readonly name: string;
             readonly reason: string;
         };
+        readonly InboxSuggestionSummary: {
+            readonly action_type?: string | null;
+            readonly state: components["schemas"]["InboxReadSuggestionState"];
+            readonly summary?: string | null;
+        };
         readonly InboxTurn: {
             readonly active_chat?: components["schemas"]["ProjectWorkspaceInboxChat"] | null;
             readonly delivery_error?: string | null;
@@ -5486,6 +5515,7 @@ export interface components {
             /** Format: int64 */
             readonly document_head_seq: number;
             readonly document_id: string;
+            readonly intake?: components["schemas"]["CompactPageIntake"] | null;
             readonly lifecycle: string;
             readonly owner_page: components["schemas"]["LibraryPageDetail"];
             readonly owner_page_id: string;
@@ -10578,6 +10608,10 @@ export interface components {
                 readonly page_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "inbox_page_intake";
+                readonly page_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "inbox_summary";
                 readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
             } | {
@@ -10882,6 +10916,24 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "reset";
+        };
+        /** @description What the Inbox knows about one Page for the reader. */
+        readonly PageIntake: {
+            readonly handoff?: components["schemas"]["InboxHandoff"] | null;
+            readonly message?: components["schemas"]["ProjectWorkspaceInboxItem"] | null;
+            readonly page_id: string;
+        };
+        /** @description Capture and suggestion details shared by the Agent read surfaces. */
+        readonly PageIntakeMetadata: {
+            readonly captured_at: string;
+            readonly important: boolean;
+            readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
+            readonly page_keys: {
+                readonly [key: string]: string | null;
+            };
+            readonly source: components["schemas"]["InboxMessageSource"];
+            readonly suggestion?: components["schemas"]["InboxSuggestionSummary"] | null;
+            readonly suggestion_decision_session_id?: string | null;
         };
         readonly PageLatestWorkReport: {
             readonly at: string;
@@ -11767,6 +11819,8 @@ export interface components {
             readonly created_at: string;
             /** @description Created cards in plan-step order; empty until confirmation. */
             readonly created_page_ids?: readonly string[];
+            /** @description The Decision run that wrote this suggestion. */
+            readonly decision_session_id?: string | null;
             readonly explicit_request: boolean;
             readonly failure_kind?: components["schemas"]["ProjectWorkspaceInboxFailureKind"] | null;
             readonly failure_message?: string | null;
@@ -15104,6 +15158,11 @@ export interface components {
                     readonly item?: components["schemas"]["ProjectWorkspaceInboxItem"] | null;
                     /** @enum {string} */
                     readonly kind: "inbox_entry";
+                } | {
+                    readonly intake: components["schemas"]["PageIntake"];
+                    /** @enum {string} */
+                    readonly kind: "inbox_page_intake";
+                    readonly metadata?: components["schemas"]["PageIntakeMetadata"] | null;
                 } | {
                     /** @enum {string} */
                     readonly kind: "inbox_summary";

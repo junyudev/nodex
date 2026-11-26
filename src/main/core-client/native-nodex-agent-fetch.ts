@@ -280,6 +280,7 @@ async function readFetchObservation(
               ? pageLocation(detail)
               : { kind: "page", pageId: target.owner_page_id },
             ...(properties ? { properties } : {}),
+            ...(ownsDocument && target.intake ? { intake: target.intake } : {}),
           },
           content,
           ...(membership ? { dataSource: membership } : {}),

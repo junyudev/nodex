@@ -123,10 +123,7 @@ pub(super) fn window(
                     .and_then(|id| messages.get(id))
                     .cloned();
             }
-            row.actor_label = format!(
-                "by {}",
-                crate::infrastructure::actors::label(c, &row.actor, member)?
-            );
+            row.actor_label = actor_label(c, &row.actor, member)?;
             labels.requester = requester
                 .map(|requester| {
                     crate::infrastructure::actors::member_possessive(c, &requester, member)
@@ -159,6 +156,17 @@ pub(super) fn window(
         },
         |coordinate| cursor::mint(c, subject, CursorDirection::Forward, coordinate.clone()),
     )
+}
+
+pub(super) fn actor_label(
+    connection: &Connection,
+    actor: &ActivityActor,
+    member: &str,
+) -> Result<String, StoreError> {
+    Ok(format!(
+        "by {}",
+        crate::infrastructure::actors::label(connection, actor, member)?
+    ))
 }
 
 fn row(

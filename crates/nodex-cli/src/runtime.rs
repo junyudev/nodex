@@ -960,11 +960,13 @@ fn read_page(
 }
 
 #[derive(Serialize, utoipa::ToSchema)]
-pub(crate) struct PageShowResult {
+pub(crate) struct PageShowResult<'a> {
     pub page: LinkedPage<nodex_core_contracts::library::LibraryPageProjectionFile>,
     pub turn: nodex_core_contracts::workspace::PageTurn,
     pub follows: Vec<nodex_core_contracts::sources::PageThreadFollow>,
     pub unresolved_deliveries: Vec<nodex_core_contracts::sources::ThreadDelivery>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intake: Option<crate::inbox::PageShowIntake<'a>>,
 }
 fn show_page(
     client: &CoreClient,
@@ -973,10 +975,17 @@ fn show_page(
     selector: &str,
     json_output: bool,
 ) -> Result<CommandOutput, CliError> {
-    let project = selected_project(client, explicit_project, cwd)?;
-    let page_id = resolve_page_selector(client, &project.id, selector)?;
+    let project = match selected_project(client, explicit_project, cwd) {
+        Ok(project) => Some(project.id),
+        Err(error) if explicit_project.is_none() && error.code == CliErrorCode::ProjectNotFound => {
+            None
+        }
+        Err(error) => return Err(error),
+    };
+    let project_id = project.as_deref();
+    let page_id = resolve_page_selector_in(client, project_id, selector)?;
     let snapshot = unwrap_library(client.library_read(
-        Some(&project.id),
+        project_id,
         LibraryRead::PageProjectionFile {
             page_id: page_id.clone(),
             file_kind: LibraryPageProjectionFileKind::MetaYaml,
@@ -987,7 +996,7 @@ fn show_page(
         return Err(internal("Core returned the wrong Page metadata"));
     };
     let snapshot = unwrap_workspace(client.workspace_read(
-        Some(&project.id),
+        project_id,
         ProjectWorkspaceRead::PageTurn {
             page_id: page_id.clone(),
         },
@@ -995,11 +1004,23 @@ fn show_page(
     let ProjectWorkspaceReadValue::PageTurn { turn, .. } = snapshot.value else {
         return Err(internal("Core returned the wrong Page Turn"));
     };
+    let snapshot = unwrap_workspace(client.workspace_read(
+        project_id,
+        ProjectWorkspaceRead::InboxPageIntake {
+            page_id: page_id.clone(),
+        },
+    ))?;
+    let ProjectWorkspaceReadValue::InboxPageIntake { intake, metadata } = snapshot.value else {
+        return Err(internal("Core returned the wrong Page intake"));
+    };
+    let intake = metadata
+        .as_deref()
+        .map(|metadata| crate::inbox::PageShowIntake::new(&intake, metadata));
     let mut follows = Vec::new();
     let mut after = None;
     loop {
         let snapshot = unwrap_workspace(client.workspace_read(
-            Some(&project.id),
+            project_id,
             ProjectWorkspaceRead::Sources {
                 read: nodex_core_contracts::sources::SourceRead::PageFollows {
                     page_id: page_id.clone(),
@@ -1022,7 +1043,7 @@ fn show_page(
         }
     }
     let snapshot = unwrap_workspace(client.workspace_read(
-        Some(&project.id),
+        project_id,
         ProjectWorkspaceRead::Sources {
             read: nodex_core_contracts::sources::SourceRead::Deliveries {
                 page_id: Some(page_id),
@@ -1048,12 +1069,18 @@ fn show_page(
                 turn,
                 follows,
                 unresolved_deliveries,
+                intake,
             })
             .map_err(internal)?,
         ));
     }
+    let intake_text = intake
+        .map(|intake| serde_json::to_string(&intake).map(|json| format!("intake: {json}\n")))
+        .transpose()
+        .map_err(internal)?
+        .unwrap_or_default();
     Ok(CommandOutput::Text(format!(
-        "{}\nturn: {}\nfollowing: {}\nunresolved_deliveries: {}\n",
+        "{}\nturn: {}\nfollowing: {}\nunresolved_deliveries: {}\n{intake_text}",
         page.content,
         serde_json::to_string(&turn).map_err(internal)?,
         serde_json::to_string(&follows).map_err(internal)?,
@@ -1339,13 +1366,21 @@ pub(crate) fn resolve_page_selector(
     project_id: &str,
     selector: &str,
 ) -> Result<String, CliError> {
+    resolve_page_selector_in(client, Some(project_id), selector)
+}
+
+fn resolve_page_selector_in(
+    client: &CoreClient,
+    project_id: Option<&str>,
+    selector: &str,
+) -> Result<String, CliError> {
     if let Some(page_id) = canonical_page_selector(selector)? {
         return Ok(page_id.to_owned());
     }
     // Stable imported IDs need not be UUIDs; identity wins over a matching title.
     if !selector.contains('/') && !selector.trim().starts_with('#') {
         let snapshot = unwrap_library(client.library_read(
-            Some(project_id),
+            project_id,
             LibraryRead::PageLifecyclePreflight {
                 page_id: selector.to_owned(),
             },
@@ -1366,7 +1401,7 @@ pub(crate) fn resolve_page_selector(
                 if selector.trim().starts_with('#') {
                     return Err(CliError::new(
                         CliErrorCode::InvalidInput,
-                        "the explicit Page key was not found in this Project",
+                        "the explicit Page key was not found in this Library",
                     ));
                 }
             }
@@ -1380,11 +1415,11 @@ pub(crate) fn resolve_page_selector(
 
 fn resolve_page_key_selector(
     client: &CoreClient,
-    project_id: &str,
+    project_id: Option<&str>,
     selector: &str,
 ) -> Result<Option<String>, CliError> {
     let key_target = unwrap_library(client.library_read(
-        Some(project_id),
+        project_id,
         LibraryRead::PageKeyTarget {
             page_key: selector.to_owned(),
         },
@@ -1410,7 +1445,7 @@ fn page_key_target_selector_outcome(
 
 fn resolve_page_title_selector(
     client: &CoreClient,
-    project_id: &str,
+    project_id: Option<&str>,
     selector: &str,
 ) -> Result<String, CliError> {
     let components = selector.split('/').collect::<Vec<_>>();
@@ -1474,7 +1509,7 @@ fn resolve_page_title_selector(
     let mut matches = Vec::new();
     for candidate in candidates {
         let content = match unwrap_library(client.library_read(
-            Some(project_id),
+            project_id,
             LibraryRead::PageContent {
                 page_id: candidate.clone(),
             },
@@ -1497,7 +1532,7 @@ fn resolve_page_title_selector(
             continue;
         }
         let ownership = unwrap_library(client.library_read(
-            Some(project_id),
+            project_id,
             LibraryRead::ResourceLocation {
                 target: LibraryRouteTarget::Page {
                     page_id: candidate.clone(),

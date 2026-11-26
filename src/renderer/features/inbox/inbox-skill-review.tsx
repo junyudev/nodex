@@ -70,6 +70,35 @@ export function useInboxSkillAvailability(
  * as a reference the chat will use; off, it fades and is struck through like a dropped addition.
  * Hovering says why the skill was suggested, or that the chosen Agent cannot use it.
  */
+const SKILL_CHIP_CLASS_NAME =
+  "flex h-6 max-w-full items-center gap-1 rounded-md ps-1.5 pe-2 text-[13px] leading-none ring-[0.5px] ring-token-border ring-inset";
+
+/** The skills a chat received, as they read when they were suggested. */
+export function InboxSkillList({ skills }: { readonly skills: readonly InboxSuggestedSkill[] }) {
+  const intl = useIntl();
+  if (!skills.length) return null;
+  return (
+    <ul
+      aria-label={intl.formatMessage({
+        id: "inbox.inboxSkillReview.skills",
+        defaultMessage: "Skills",
+      })}
+      className="flex min-w-0 flex-wrap gap-1.5"
+    >
+      {skills.map(({ name, reason }) => (
+        <li key={name} className="min-w-0">
+          <NodexTooltip tooltipContent={reason} side="top">
+            <span className={cn(SKILL_CHIP_CLASS_NAME, "text-token-foreground")}>
+              <SkillCubeIcon className="icon-2xs shrink-0" />
+              <span className="min-w-0 truncate">{name}</span>
+            </span>
+          </NodexTooltip>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function InboxSkillToggles({
   skills,
   dropped,
@@ -118,7 +147,8 @@ export function InboxSkillToggles({
                 aria-pressed={kept}
                 aria-disabled={pending || missing}
                 className={cn(
-                  "flex h-6 max-w-full cursor-interaction items-center gap-1 rounded-md ps-1.5 pe-2 text-[13px] leading-none ring-[0.5px] ring-token-border outline-hidden transition-colors ring-inset hover:bg-token-foreground/5 focus-visible:bg-token-foreground/10",
+                  SKILL_CHIP_CLASS_NAME,
+                  "cursor-interaction outline-hidden transition-colors hover:bg-token-foreground/5 focus-visible:bg-token-foreground/10",
                   kept ? "text-token-foreground" : "text-token-description-foreground",
                   missing && "cursor-default hover:bg-transparent",
                 )}

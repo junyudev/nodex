@@ -258,6 +258,7 @@ type QueryEndpointPolicy =
   | "page-chats:activity-summaries"
   | "page-chats:list"
   | "inbox:entry"
+  | "inbox:page-intake"
   | "inbox:reply-destination"
   | "inbox:summary"
   | "inbox:counts"

@@ -101,7 +101,12 @@ export const appContentResults = {
     fetch,
     fetch.safeExtend({
       data: fetch.shape.data.safeExtend({
-        resource: fetch.shape.data.shape.resource.safeExtend({ url: url.optional() }),
+        resource: fetch.shape.data.shape.resource.safeExtend({
+          url: url.optional(),
+          intake: fetch.shape.data.shape.resource.shape.intake.describe(
+            "Inbox capture and routing status for a message Page. Use nodex page show or query_content with inbox_suggestions for the prompt, rationale and reviewed additions.",
+          ),
+        }),
       }),
     }),
     (output) => {

@@ -14,17 +14,18 @@ When a reply names a Nodex Page, Database View or chat the person can open, use 
 
 ## Choose a route for the task
 
-| Task                                          | Default route                                                                                               |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Filter, join, summarize or read several Pages | `sql query`; select the needed fields, bodies and validators together                                       |
-| Read one known Page body                      | `read`                                                                                                      |
-| Find ranked candidates                        | `search`; use SQL `search_hits` for combined filters and joins                                              |
-| Change exact text or add content              | `patch` or `page insert`                                                                                    |
-| Set Properties on existing Pages              | MCP `set_page_properties` for known Pages or CLI `page properties set --selection -` for SQL-selected Pages |
-| Apply heterogeneous fenced or Relation edits  | `page properties apply`                                                                                     |
-| Change Property definitions or saved Views    | `data-source configure`; combine related changes in one script                                              |
-| Substantial rewrite or local diff             | `draft`                                                                                                     |
-| Leave an out-of-scope follow-up for the user  | `inbox send`; it starts no work, and the user decides where it goes                                         |
+| Task                                                              | Default route                                                                                               |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Filter, join, summarize or read several Pages                     | `sql query`; select the needed fields, bodies and validators together                                       |
+| Read how an Inbox message was routed or what waits for a decision | `page show` for one Page or `sql query` with `inbox_messages` and `inbox_suggestions`                       |
+| Read one known Page body                                          | `read`                                                                                                      |
+| Find ranked candidates                                            | `search`; use SQL `search_hits` for combined filters and joins                                              |
+| Change exact text or add content                                  | `patch` or `page insert`                                                                                    |
+| Set Properties on existing Pages                                  | MCP `set_page_properties` for known Pages or CLI `page properties set --selection -` for SQL-selected Pages |
+| Apply heterogeneous fenced or Relation edits                      | `page properties apply`                                                                                     |
+| Change Property definitions or saved Views                        | `data-source configure`; combine related changes in one script                                              |
+| Substantial rewrite or local diff                                 | `draft`                                                                                                     |
+| Leave an out-of-scope follow-up for the user                      | `inbox send`; it starts no work, and the user decides where it goes                                         |
 
 ## Discover only what you need
 

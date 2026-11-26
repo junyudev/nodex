@@ -676,6 +676,13 @@ suggestion grouping two related messages, a suggestion that failed, and a messag
 that opens with a Library image before its text. It uses Core operations without starting
 an Agent: `vp run dev --home "$HOME/repo/nodex/runs.local/inbox-suggestion-spend" --seed inbox/suggestion-spend`.
 
+`inbox/page-suggestions` seeds a Nodex Project Inbox for reading suggestions on their Pages:
+a New chat suggestion with additions, a skill and a rationale, a failed suggestion, a message
+with no advice, and three messages already sent to the Board polish chat or a new chat: one
+the reader confirmed after dropping an addition, one Nodex started under the reader's
+standing consent, and one written by hand. Open any of them from the Board:
+`vp run dev --home "$HOME/repo/nodex/runs.local/inbox-page-suggestions" --seed inbox/page-suggestions`.
+
 `agent/cross-provider-delegation` creates the fictional `lumen-web` Project with
 two empty chats and credential-free Claude Code, Codex, and OpenCode peers:
 

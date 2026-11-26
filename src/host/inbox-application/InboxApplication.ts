@@ -76,6 +76,7 @@ import {
   inboxDispatchActionToCore,
   activityWindowFromCore,
   inboxItemFromCore,
+  pageIntakeFromCore,
   inboxScopeToCore,
   inboxStopSuggestionToCore,
   inboxSummaryFromCore,
@@ -153,6 +154,7 @@ export class InboxApplication extends Context.Service<
     ) => InboxEffect<void>;
     readonly chatTargets: (input: InboxChatTargetsInput) => InboxEffect<InboxChatTargets>;
     readonly entry: (pageId: string) => InboxEffect<import("../../shared/inbox").InboxItem | null>;
+    readonly pageIntake: (pageId: string) => InboxEffect<import("../../shared/inbox").PageIntake>;
     readonly summary: (input: InboxSummaryInput) => InboxEffect<InboxSummary>;
     readonly ensureNotes: (input: InboxEnsureNotesInput) => InboxMutation<InboxEnsureNotesResult>;
     /** Messages waiting in the Library Inbox and in each Project's Inbox. */
@@ -449,6 +451,13 @@ export const make = Effect.gen(function* () {
         const item = expectVariant(snapshot, "inbox_entry").item;
         return item ? inboxItemFromCore(item) : null;
       }),
+    );
+
+  const pageIntake = (pageId: string) =>
+    read("page-intake", { kind: "inbox_page_intake", page_id: pageId }).pipe(
+      Effect.map((snapshot) =>
+        pageIntakeFromCore(expectVariant(snapshot, "inbox_page_intake").intake),
+      ),
     );
 
   const resolveReply = Effect.fn("InboxApplication.resolveReply")(function* (
@@ -1383,6 +1392,7 @@ export const make = Effect.gen(function* () {
     prepareSuggestions,
     suggestionRequests,
     entry,
+    pageIntake,
     settleSuggestion,
     suggestionRequest,
     beginRouting,

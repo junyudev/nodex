@@ -25,8 +25,28 @@ export const PageKeyV6Schema = z
   .max(28)
   .regex(/^[A-Z][A-Z0-9]{1,7}-[1-9]\d*$/, "Expected a canonical Page key");
 
+const FetchIntakeSchema = z.strictObject({
+  source: z.strictObject({ kind: z.string(), label: z.string().nullable() }),
+  waiting: z.boolean(),
+  suggestion: z
+    .strictObject({
+      state: z.enum(["waiting", "running", "settled", "failed", "outdated"]),
+      action_type: z.string().nullable(),
+      summary: z.string().nullable(),
+    })
+    .nullable(),
+  handoff: z
+    .strictObject({
+      session_id: z.string().nullable(),
+      decided_at: z.string(),
+      confirmed_by: z.enum(["user", "nodex"]).nullable(),
+    })
+    .nullable(),
+});
+
 const FetchResourceV6Schema = FetchResourceV3Schema.extend({
   pageKey: PageKeyV6Schema.nullable(),
+  intake: FetchIntakeSchema.optional(),
 });
 
 const FetchV6DataSchema = FetchV3DataSchema.extend({

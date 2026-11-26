@@ -577,8 +577,8 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     throw new Error("Member consent scenarios must seed through Core");
   }
 
-  async confirmInboxRequestByNodex(): Promise<never> {
-    throw new Error("Nodex confirmation is seeded only through Core");
+  async confirmInboxSuggestion(): Promise<never> {
+    throw new Error("Inbox confirmations are seeded only through Core");
   }
 
   async prepareInboxSuggestions(): Promise<void> {

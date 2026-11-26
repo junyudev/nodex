@@ -9187,3 +9187,292 @@ fn location_only_moves_keep_the_current_status_and_follow_the_page_project() {
     assert!(waits_in(ProjectWorkspaceInboxScope::Library));
     assert!(!waits_in(project_scope()));
 }
+
+pub(super) fn page_intake(
+    module: &ProjectWorkspaceModule,
+    id: &str,
+) -> (
+    nodex_core_contracts::inbox::PageIntake,
+    Option<Box<nodex_core_contracts::inbox::PageIntakeMetadata>>,
+) {
+    let ProjectWorkspaceReadValue::InboxPageIntake { intake, metadata } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxPageIntake { page_id: id.into() },
+    ) else {
+        panic!("Expected Page intake");
+    };
+    (*intake, metadata)
+}
+
+pub(super) fn inbox_sql(
+    workspace: &TestWorkspace,
+    context: &BoundModuleContext,
+    sql: &str,
+) -> Vec<Vec<serde_json::Value>> {
+    use nodex_core_contracts::{
+        QUERY_CONTRACT_VERSION,
+        query::{QueryRead, QueryReadValue},
+        sql::SqlQuery,
+    };
+    let snapshot = crate::query::QueryModule::new("profile-1", "library-1", &workspace.kernel)
+        .read(
+            context,
+            ModuleReadRequest {
+                contract_version: QUERY_CONTRACT_VERSION,
+                read: QueryRead::Query {
+                    query: SqlQuery {
+                        sql: sql.into(),
+                        scope: Default::default(),
+                        parameters: Default::default(),
+                    },
+                },
+            },
+        )
+        .unwrap();
+    let QueryReadValue::Query { value } = snapshot.value else {
+        panic!("Expected SQL results");
+    };
+    value.rows
+}
+
+#[test]
+fn page_intake_follows_group_suggestion_review_handoff_and_return() {
+    use nodex_core_contracts::inbox::{InboxConfirmedBy, InboxReadSuggestionState};
+    use serde_json::json;
+
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let pages = vec!["page:a".to_owned(), "page:b".to_owned()];
+    send(module, "a", "Review the homepage");
+    send(module, "b", "Check the empty state");
+    let action = |additions: &[&str]| ProjectWorkspaceInboxDispatchAction::NewChat {
+        project_id: None,
+        prompt: "Review both designs".into(),
+        additions: additions.iter().map(|add| (*add).to_owned()).collect(),
+        skills: vec![],
+        agent: None,
+    };
+    apply_proposal(
+        module,
+        "suggest:group-intake",
+        TestProposal {
+            proposal_id: "proposal:group-intake".into(),
+            page_ids: pages.clone(),
+            basis: pages_basis(module, pages.clone()),
+            action: action(&["Keep this", "Drop this"]),
+            entry_kind: None,
+            summary: "Review the two designs together".into(),
+            rationale: Some("They share the same flow".into()),
+            produced_by: Some("Test Agent".into()),
+        },
+    )
+    .unwrap();
+
+    let mut decision_id = None;
+    for page in &pages {
+        let (intake, metadata) = page_intake(module, page);
+        let expected = item(module, page);
+        assert_eq!(intake.message.as_ref(), Some(&expected));
+        assert!(intake.handoff.is_none());
+        let proposal = expected.proposal.unwrap();
+        assert_eq!(proposal.page_ids, pages);
+        assert!(!proposal.outdated);
+        assert!(proposal.decision_session_id.is_some());
+        if let Some(decision_id) = &decision_id {
+            assert_eq!(proposal.decision_session_id.as_ref(), Some(decision_id));
+        }
+        decision_id = proposal.decision_session_id;
+        let metadata = metadata.unwrap();
+        assert_eq!(metadata.page_keys.len(), 2);
+        assert_eq!(
+            metadata.suggestion.unwrap().state,
+            InboxReadSuggestionState::Settled
+        );
+    }
+    assert_eq!(inbox_sql(&workspace, &host(),
+        "SELECT member_index,member_count,stage,origin,json_array_length(additions),decision_session_id
+         FROM inbox_suggestions ORDER BY member_index"),
+        vec![vec![json!(0),json!(2),json!("suggested"),json!("nodex"),json!(2),json!(decision_id)],
+             vec![json!(1),json!(2),json!("suggested"),json!("nodex"),json!(2),json!(decision_id)]],
+    );
+
+    let head = workspace
+        .kernel
+        .readers()
+        .read_default(|connection| {
+            crate::document::read_document_authority(connection, "document:a")
+        })
+        .unwrap()
+        .unwrap()
+        .head;
+    crate::document::OwnedDocumentModule::new("profile-1", "library-1", &workspace.kernel)
+        .apply(
+            &host(),
+            ModuleApplyRequest {
+                contract_version: nodex_core_contracts::OWNED_DOCUMENT_CONTRACT_VERSION,
+                operation_id: "edit:group-intake".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: nodex_core_contracts::document::OwnedDocumentIntent::ReplaceFromMarkdown {
+                    document_id: head.id,
+                    generation: head.generation,
+                    expected_head_seq: head.head_seq,
+                    markdown: "Review the new homepage".into(),
+                    rich_title: None,
+                    actor: serde_json::Value::Null,
+                },
+            },
+        )
+        .unwrap();
+    let (before, metadata) = page_intake(module, &pages[1]);
+    let proposal = before.message.unwrap().proposal.unwrap();
+    assert!(proposal.outdated);
+    assert_eq!(
+        metadata.unwrap().suggestion.unwrap().state,
+        InboxReadSuggestionState::Outdated
+    );
+    assert_eq!(
+        inbox_sql(
+            &workspace,
+            &host(),
+            "SELECT source_kind,waiting,suggestion_state FROM inbox_messages WHERE page_id='page:a'"
+        ),
+        vec![vec![json!("user"), json!(1), json!("outdated")]],
+    );
+
+    apply_host(
+        module,
+        "confirm:group-intake",
+        ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: vec![],
+            confirmed_by: InboxConfirmedBy::User,
+            expected_store_epoch: "epoch-1".into(),
+            proposal_id: proposal.proposal_id,
+            expected_revision: proposal.revision,
+            basis: proposal.basis,
+            action: Some(action(&["Keep this"])),
+            session_id: Some("session:group-intake".into()),
+            execution_selection: Some(selection()),
+        },
+    );
+    for page in &pages {
+        let (intake, metadata) = page_intake(module, page);
+        assert!(intake.message.is_none());
+        assert!(metadata.unwrap().suggestion.is_none());
+        let handoff = intake.handoff.unwrap();
+        assert_eq!(handoff.proposal.confirmed_by, Some(InboxConfirmedBy::User));
+        assert_eq!(handoff.actor_label, "by You");
+        assert_eq!(handoff.proposal.decision_session_id, decision_id);
+        assert_eq!(handoff.proposal.action, action(&["Keep this"]));
+        assert_eq!(
+            handoff.proposal.action_details().session_id,
+            Some("session:group-intake")
+        );
+    }
+    assert_eq!(inbox_sql(&workspace, &host(),
+        "SELECT inbox_messages.waiting, stage, action_type, session_id, json_extract(additions,'$[0]'),
+                json_array_length(additions), confirmed_by
+         FROM inbox_messages JOIN inbox_suggestions USING(page_id) WHERE inbox_messages.page_id='page:a'"),
+        vec![vec![json!(0),json!("sent"),json!("new_chat"),json!("session:group-intake"),json!("Keep this"),json!(1),json!("user")]],
+    );
+
+    let delivery = outbox(module).remove(0);
+    apply_host(
+        module,
+        "fail:group-intake",
+        ProjectWorkspaceIntent::FailInboxDispatch {
+            proposal_id: delivery.proposal_id,
+            expected_revision: delivery.revision,
+            message_id: delivery.message_id,
+            failure_kind: nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind::Rejected,
+            message: "Delivery was refused".into(),
+        },
+    );
+    let recovery = page_intake(module, &pages[0]).0;
+    assert!(recovery.handoff.is_some());
+    assert_eq!(recovery.message.as_ref(), Some(&item(module, &pages[0])));
+    apply_host(
+        module,
+        "delete:group-intake-chat",
+        ProjectWorkspaceIntent::DeleteSession {
+            session_id: "session:group-intake".into(),
+        },
+    );
+    assert!(page_intake(module, &pages[0]).0.handoff.is_some());
+    apply_host(
+        module,
+        "return:group-intake",
+        ProjectWorkspaceIntent::ReturnInboxMessages {
+            page_ids: pages.clone(),
+        },
+    );
+    let returned = page_intake(module, &pages[0]).0;
+    assert!(returned.message.is_some());
+    assert!(returned.handoff.is_none());
+    apply_host(
+        module,
+        "keep:group-intake",
+        ProjectWorkspaceIntent::KeepInboxEntries { page_ids: pages },
+    );
+    let (kept, metadata) = page_intake(module, "page:a");
+    assert!(kept.message.is_none() && kept.handoff.is_none() && metadata.is_some());
+    assert!(inbox_sql(&workspace, &host(), "SELECT stage FROM inbox_suggestions").is_empty());
+}
+
+#[test]
+fn page_intake_erases_deleted_intake_and_redacts_surviving_handoffs() {
+    use serde_json::json;
+
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "erased", "private input");
+    send(module, "remaining", "shareable input");
+    dispatch(
+        module,
+        "redacted-intake",
+        &["page:erased", "page:remaining"],
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id: None,
+            prompt: "private input".into(),
+            additions: vec!["private input in an addition".into()],
+            skills: vec![],
+            agent: None,
+        },
+        Some("session:redacted-intake"),
+    );
+    apply_host(
+        module,
+        "erase:intake",
+        ProjectWorkspaceIntent::DeleteInboxMessages {
+            page_ids: vec!["page:erased".into()],
+        },
+    );
+    let (erased, metadata) = page_intake(module, "page:erased");
+    assert!(erased.message.is_none() && erased.handoff.is_none() && metadata.is_none());
+    let remaining = page_intake(module, "page:remaining").0;
+    assert!(remaining.message.is_some());
+    let handoff = remaining.handoff.unwrap();
+    assert_eq!(handoff.proposal.page_ids, ["page:remaining"]);
+    assert_eq!(
+        handoff.proposal.action_details().session_id,
+        Some("session:redacted-intake")
+    );
+    assert!(handoff.proposal.action_details().additions.is_empty());
+    assert_eq!(
+        inbox_sql(
+            &workspace,
+            &host(),
+            "SELECT page_id,member_count,prompt,additions,skills FROM inbox_suggestions"
+        ),
+        vec![vec![
+            json!("page:remaining"),
+            json!(1),
+            json!("Review the remaining Inbox messages"),
+            json!("[]"),
+            json!("[]")
+        ]],
+    );
+    assert_eq!(
+        inbox_sql(&workspace, &host(), "SELECT page_id FROM inbox_messages"),
+        vec![vec![json!("page:remaining")]],
+    );
+}

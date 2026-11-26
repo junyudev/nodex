@@ -408,6 +408,9 @@ pub enum ProjectWorkspaceRead {
     InboxEntry {
         page_id: String,
     },
+    InboxPageIntake {
+        page_id: String,
+    },
     InboxSummary {
         scope: ProjectWorkspaceInboxScope,
     },
@@ -714,6 +717,10 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxEntry {
         item: Option<Box<ProjectWorkspaceInboxItem>>,
+    },
+    InboxPageIntake {
+        intake: Box<crate::inbox::PageIntake>,
+        metadata: Option<Box<crate::inbox::PageIntakeMetadata>>,
     },
     InboxSummary {
         summary: ProjectWorkspaceInboxSummary,

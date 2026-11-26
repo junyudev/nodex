@@ -57,6 +57,7 @@ import {
   inboxDecisionFromCore,
   activityWindowFromCore,
   inboxItemFromCore,
+  pageIntakeFromCore,
   inboxScopeToCore,
   inboxSummaryFromCore,
   inboxPageBasisToCore,
@@ -67,6 +68,7 @@ import {
   InboxWindowInputSchema,
   InboxEditInputSchema,
   InboxPageIdsInputSchema,
+  InboxPageIdSchema,
   InboxSetSnoozeInputSchema,
   InboxSetKindInputSchema,
   InboxSetImportantInputSchema,
@@ -347,6 +349,19 @@ const readModels = Layer.effectDiscard(
           projectionRevision: rows.authority.projection_revision,
           storeEpoch: snapshot.store_epoch,
         };
+      }),
+    );
+    yield* ipc.handleQuery("inbox:page-intake", (_, pageId) =>
+      Effect.gen(function* () {
+        const id = yield* Effect.try(() => InboxPageIdSchema.parse(pageId));
+        const snapshot = yield* core.workspace.read(
+          { kind: "inbox_page_intake", page_id: id },
+          undefined,
+          null,
+        );
+        if (snapshot.value.kind !== "inbox_page_intake")
+          throw new Error("Invalid Page intake response");
+        return pageIntakeFromCore(snapshot.value.intake);
       }),
     );
     yield* ipc.handleQuery("inbox:entry", (_, pageId) =>

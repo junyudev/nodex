@@ -65,6 +65,7 @@ import { inboxScopeProjectId, LIBRARY_INBOX, type InboxScope } from "../../../sh
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
 import { parseDatabaseId, type DatabaseId } from "../../../shared/database-identities";
 import { useInboxCounts, useInboxInvalidation } from "@/features/inbox/use-inbox";
+import { InboxPageHostProvider, type InboxPageHost } from "@/features/inbox/inbox-page-host";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
 import { ContentIssuesControl } from "@/components/shared/content-issues-control";
@@ -3500,6 +3501,14 @@ export function WorkbenchRuntime({
           projectId,
         }),
       ),
+  };
+  // A message's Page decides it with the same window, Projects and navigation its Inbox does.
+  const inboxPageHost: InboxPageHost = {
+    windowSessionId,
+    projects,
+    openSession: sessionCommands.openProjectSessionById,
+    showPagesInChat: sessionCommands.showPagesInChat,
+    ...(isRemoteSpace() ? {} : { openAutomation: automationsNavigation.openTask }),
   };
   // A tip leads to the Inbox of where the person is, as the Inbox shortcut does.
   const tipsNavigation: TipsNavigation = { openInbox: captureInbox };
@@ -6992,7 +7001,9 @@ export function WorkbenchRuntime({
               }}
             >
               <OpenAgentsTabContext value={agentsTabScene ? openAgentsTab : null}>
-                <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+                <InboxPageHostProvider host={inboxPageHost}>
+                  <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+                </InboxPageHostProvider>
               </OpenAgentsTabContext>
             </SkillNavigationContext>
             {/* Its grace period counts from when it can be seen, which setup would prevent. */}

@@ -3,6 +3,7 @@ import type { components } from "@nodex/core-protocol";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { UpdatePageV3InputSchema } from "../../shared/nodex-agent-tools/v3-write-schemas";
+import { appContentResults } from "../../shared/nodex-app-tools/content-results";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { CoreClient } from "./core-client";
 import {
@@ -417,7 +418,10 @@ describe("native-nodex-agent-fetch", () => {
     },
   };
 
-  const fixture = (snapshotEpoch = authority.storeEpoch) => {
+  const fixture = (
+    snapshotEpoch = authority.storeEpoch,
+    intake?: components["schemas"]["CompactPageIntake"],
+  ) => {
     const client = new FakeCoreClient();
     client.enqueueRead({
       contract_version: 52,
@@ -432,6 +436,7 @@ describe("native-nodex-agent-fetch", () => {
           owner_page_id: pageId,
           document_id: documentId,
           document_generation: 2,
+          ...(intake ? { intake } : {}),
           owner_page: {
             page: {
               title: "Old detail title",
@@ -527,6 +532,29 @@ describe("native-nodex-agent-fetch", () => {
         false,
       );
     });
+  });
+
+  it("preserves compact Inbox routing on the Page fetch resource", async () => {
+    const intake = {
+      source: { kind: "agent", label: "Release chat" },
+      waiting: false,
+      suggestion: null,
+      handoff: {
+        session_id: "session:destination",
+        decided_at: "2026-11-26T00:00:00Z",
+        confirmed_by: "user",
+      },
+    } as const;
+    const result = await readNativeFetch(request, fixture(authority.storeEpoch, intake).runtime);
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.tool !== "fetch") return;
+    const published = appContentResults.fetch.serializeOutput(result.output);
+    expect(published.success && published.data.data.resource.intake).toEqual(intake);
+
+    const regular = await readNativeFetch(request, fixture().runtime);
+    expect(
+      regular.ok && regular.tool === "fetch" && regular.output.data.resource.intake,
+    ).toBeUndefined();
   });
 
   it("reads projectless content through the unbound client with exact Library provenance", async () => {

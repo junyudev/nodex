@@ -45,6 +45,14 @@ const id = z.string().trim().min(1).max(512);
 const operationId = id.refine(isBoundedOperationId, "Operation identity is invalid");
 const utf8Bytes = (value: string) => new TextEncoder().encode(value).length;
 
+export const InboxPageIdSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => value === value.trim() && !/\p{Cc}/u.test(value) && utf8Bytes(value) <= 512,
+    "Expected a canonical Page ID of at most 512 bytes",
+  );
+
 const pageIds = (maximum: number) =>
   z
     .array(id)

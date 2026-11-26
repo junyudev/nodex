@@ -12241,6 +12241,70 @@
           }
         }
       },
+      "CompactInboxHandoff": {
+        "type": "object",
+        "required": [
+          "decided_at"
+        ],
+        "properties": {
+          "confirmed_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InboxConfirmedBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decided_at": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CompactPageIntake": {
+        "type": "object",
+        "required": [
+          "source",
+          "waiting",
+          "suggestion",
+          "handoff"
+        ],
+        "properties": {
+          "handoff": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompactInboxHandoff"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/InboxMessageSource"
+          },
+          "suggestion": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InboxSuggestionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting": {
+            "type": "boolean"
+          }
+        }
+      },
       "CompatibilityAxis": {
         "type": "string",
         "enum": [
@@ -21623,6 +21687,47 @@
           }
         }
       },
+      "InboxHandoff": {
+        "type": "object",
+        "description": "The latest decision sent this message to a chat.",
+        "required": [
+          "proposal",
+          "decided_at",
+          "actor",
+          "actor_label"
+        ],
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "actor_label": {
+            "type": "string"
+          },
+          "decided_at": {
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxProposal"
+          }
+        }
+      },
+      "InboxMessageSource": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "InboxNotesOutlineItem": {
         "type": "object",
         "description": "Bounded routing context for the suggestion Agent. It intentionally carries\nno transcripts or Page bodies other than the entries being considered. For a\nProject's Inbox, Projects and chats are narrowed to that Project.",
@@ -21761,6 +21866,16 @@
             ]
           }
         }
+      },
+      "InboxReadSuggestionState": {
+        "type": "string",
+        "enum": [
+          "waiting",
+          "running",
+          "settled",
+          "failed",
+          "outdated"
+        ]
       },
       "InboxReplyContext": {
         "type": "object",
@@ -22004,6 +22119,29 @@
           }
         }
       },
+      "InboxSuggestionSummary": {
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "action_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/InboxReadSuggestionState"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "InboxTurn": {
         "type": "object",
         "required": [
@@ -22157,6 +22295,16 @@
           },
           "document_id": {
             "type": "string"
+          },
+          "intake": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompactPageIntake"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "lifecycle": {
             "type": "string"
@@ -44296,6 +44444,24 @@
               {
                 "type": "object",
                 "required": [
+                  "page_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_page_intake"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "scope",
                   "kind"
                 ],
@@ -45519,6 +45685,97 @@
             }
           }
         ]
+      },
+      "PageIntake": {
+        "type": "object",
+        "description": "What the Inbox knows about one Page for the reader.",
+        "required": [
+          "page_id"
+        ],
+        "properties": {
+          "handoff": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InboxHandoff"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_id": {
+            "type": "string"
+          }
+        }
+      },
+      "PageIntakeMetadata": {
+        "type": "object",
+        "description": "Capture and suggestion details shared by the Agent read surfaces.",
+        "required": [
+          "source",
+          "important",
+          "captured_at",
+          "page_keys"
+        ],
+        "properties": {
+          "captured_at": {
+            "type": "string"
+          },
+          "important": {
+            "type": "boolean"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_keys": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "$ref": "#/components/schemas/InboxMessageSource"
+          },
+          "suggestion": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InboxSuggestionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "suggestion_decision_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "PageLatestWorkReport": {
         "type": "object",
@@ -48891,6 +49148,13 @@
               "type": "string"
             },
             "description": "Created cards in plan-step order; empty until confirmation."
+          },
+          "decision_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Decision run that wrote this suggestion."
           },
           "explicit_request": {
             "type": "boolean"
@@ -64264,6 +64528,34 @@
                             "type": "string",
                             "enum": [
                               "inbox_entry"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "intake",
+                          "kind"
+                        ],
+                        "properties": {
+                          "intake": {
+                            "$ref": "#/components/schemas/PageIntake"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_page_intake"
+                            ]
+                          },
+                          "metadata": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/PageIntakeMetadata"
+                              },
+                              {
+                                "type": "null"
+                              }
                             ]
                           }
                         }

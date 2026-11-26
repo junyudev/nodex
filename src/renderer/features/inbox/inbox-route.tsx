@@ -76,7 +76,7 @@ import {
 import { InboxDeleteDialog, type InboxDeleteRequest } from "./inbox-delete-dialog";
 import { InboxIconAction } from "./inbox-icon-action";
 import { InboxImportantBar } from "./inbox-important";
-import { InboxMessage, InboxMessageMenu } from "./inbox-message";
+import { InboxMessage, InboxMessageMenu, inboxMessageMenuHandlers } from "./inbox-message";
 import { INBOX_EASE_OUT, InboxStreamItem } from "./inbox-stream-item";
 import {
   inboxChatPageIds,
@@ -768,24 +768,11 @@ export function InboxRoute({
       <InboxMessageMenu
         item={item}
         rowOffers={rowOffers}
-        handlers={{
+        handlers={inboxMessageMenuHandlers(item, actions, {
           onDispatch: handleManually,
-          onSuggestAgain: suggestionsOffered
-            ? () =>
-                void actions.requestSuggestion(
-                  proposal?.pageIds ?? [item.pageId],
-                  proposal?.basis ?? [item.basis],
-                )
-            : undefined,
-          onSetDone: (done) => void actions.setState([item.pageId], done ? "done" : "open"),
-          onHold: (hold) =>
-            void (hold === "notes"
-              ? actions.saveToNotes([item.pageId], [item.basis])
-              : actions.keep([item.pageId])),
-          onSetKind: (kind) => void actions.setKind(item.pageId, kind),
-          onSetImportant: (marked) => void actions.setImportant(item.pageId, marked),
+          suggestionsOffered,
           onDelete: () => requestDelete([item]),
-        }}
+        })}
       />
     );
     return (

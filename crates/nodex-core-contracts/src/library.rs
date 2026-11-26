@@ -2410,6 +2410,8 @@ pub struct LibraryAgentBlockTarget {
     pub document_generation: i64,
     pub document_head_seq: i64,
     pub owner_page: Box<LibraryPageDetail>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intake: Option<crate::inbox::CompactPageIntake>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

@@ -1101,6 +1101,7 @@ export interface IpcApi
     args: [pageId: string, body: string];
     result: import("./inbox").InboxReplyDestination;
   };
+  "inbox:page-intake": { args: [pageId: string]; result: import("./inbox").PageIntake };
   "inbox:entry": { args: [pageId: string]; result: import("./inbox").InboxItem | null };
   "work:holds": { args: []; result: readonly import("./work-application").ExecutionHold[] };
   "work:effective-hold": {
