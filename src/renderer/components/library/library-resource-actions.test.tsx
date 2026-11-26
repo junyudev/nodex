@@ -141,7 +141,7 @@ describe("Library resource actions", () => {
 
     await openActions();
     await openMoveSubmenu();
-    const moveButton = await screen.findByRole("option", { name: /Pages\s*Top level/ });
+    const moveButton = await screen.findByRole("option", { name: /Space\s*Top level/ });
     await act(async () => {
       fireEvent.click(moveButton);
       await Promise.resolve();

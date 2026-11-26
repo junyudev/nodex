@@ -11,7 +11,6 @@ import type {
   PageStageSessionSnapshot,
 } from "@/components/board/page-stage/types";
 import { NodexButton } from "@/components/ui/button";
-import { usePageOwnershipPathReadModel } from "@/lib/block-reference-queries";
 import {
   commitPageDetailMetadataPatch,
   commitPageDetailPropertyEdit,
@@ -38,6 +37,7 @@ import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
 import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
 import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import type { WorkbenchProjectionPageStageTabConfig } from "../../../shared/types";
+import type { DatabaseId } from "../../../shared/database-identities";
 import { PageStage } from "./workbench-page-stage";
 import { usePageChatSendPort } from "./use-page-chat-send-port";
 import { usePageLinkedChats } from "@/lib/use-page-linked-chats";
@@ -137,6 +137,7 @@ export function PageStageSessionTab({
   onOpenPageInNewWindow,
   onOpenPageFile,
   onOpenCanvasStage,
+  onOpenDatabase,
   onOpenThread,
   onOpenRelatedChat,
   onOpenPageInNewChat,
@@ -174,6 +175,8 @@ export function PageStageSessionTab({
   onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
   onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
   onOpenCanvasStage: OpenCanvasStageHandler;
+  /** Opens a Database in this Page's tab group, as the Page's location and references do. */
+  onOpenDatabase: (databaseId: DatabaseId) => void;
   onOpenThread: (threadId: string) => Promise<void>;
   onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
@@ -249,34 +252,6 @@ export function PageStageSessionTab({
     !page && (detailSnapshot.loading || (!detailSnapshot.error && !stageProjection.error));
   useApplicationPending(isActivePanelTab && project != null && pageHydrating);
 
-  const ownershipPath = usePageOwnershipPathReadModel(
-    projectContentRoute(project?.id ?? pageAccessProjectId),
-    tab.config.pageId,
-  );
-  const ownershipAncestors =
-    ownershipPath.data?.status === "available" ? ownershipPath.data.ancestors : [];
-  const breadcrumb =
-    ownershipAncestors.length > 0
-      ? {
-          ancestors: ownershipAncestors.map((ancestor) => ({
-            projectId: pageAccessProjectId,
-            pageId: ancestor.pageId,
-            title:
-              ancestor.title.trim() ||
-              intl.formatMessage({
-                id: "workbench.workbenchPageStagePanel.untitled",
-                defaultMessage: "Untitled",
-              }),
-            disabled: false,
-          })),
-          onOpenAncestor: (ancestor: { projectId: string; pageId: string; title: string }) => {
-            void onOpenPageTab(ancestor.projectId, ancestor.pageId, ancestor.title, {
-              placement: { kind: "same-group", sourceSurfaceId: tab.id },
-              openMode: "durable",
-            });
-          },
-        }
-      : undefined;
   const chatSendPort = usePageChatSendPort({
     routingContext: projectContentRoute(pageAccessProjectId),
     pageId: tab.config.pageId,
@@ -309,7 +284,7 @@ export function PageStageSessionTab({
 
   if (pageHydrating) {
     return (
-      <PageStageLoadingFrame titleSnapshot={tab.config.titleSnapshot} breadcrumb={breadcrumb} />
+      <PageStageLoadingFrame titleSnapshot={tab.config.titleSnapshot} pageId={tab.config.pageId} />
     );
   }
 
@@ -508,7 +483,6 @@ export function PageStageSessionTab({
             }
             historyPanelActive={historyPanelActive}
             isActivePanelTab={isActivePanelTab}
-            breadcrumb={breadcrumb}
             sessionId={sessionId}
             sessionThread={sessionThread}
             canStartThreadInSession={canStartThreadInSession}
@@ -557,6 +531,7 @@ export function PageStageSessionTab({
                 blockId: sourceBlockId,
               });
             }}
+            onOpenDatabase={onOpenDatabase}
             onOpenCanvas={({ routingContext, canvasBlockId, titleSnapshot }) => {
               if (routingContext.kind !== "project") return;
               void onOpenCanvasStage(routingContext.projectId, canvasBlockId, titleSnapshot, {

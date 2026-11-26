@@ -468,6 +468,17 @@ export function WorkbenchTabProjectionPanel({
         onOpenPageTab={onOpenPageTab}
         onOpenPageFile={onOpenPageFile}
         onOpenCanvasStage={onOpenCanvasStage}
+        onOpenDatabase={(databaseId) => {
+          void onOpenLibraryTarget(
+            { kind: "database", databaseId },
+            {
+              owner: sceneOwner,
+              sourceSurfaceId: tab.id,
+              targetPanelId: tab.panelId,
+              placement: { kind: "same-group", sourceSurfaceId: tab.id },
+            },
+          );
+        }}
         onOpenThread={onOpenThread}
         onOpenRelatedChat={onOpenRelatedChat}
         onOpenPageInNewChat={onOpenPageInNewChat}

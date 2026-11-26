@@ -6,7 +6,6 @@ import { readPageStageContentWidthPreference } from "@/lib/page-stage-layout";
 import { RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE } from "@/lib/right-panel-composer-overlay-reserve";
 import { cn } from "@/lib/utils";
 import { PageStageToolbar } from "./toolbar";
-import type { PageStageBreadcrumbProps } from "./breadcrumb";
 
 const PAGE_STAGE_SCROLL_CONTAINER_TEST_ID = "page-stage-scroll-container";
 
@@ -142,10 +141,11 @@ export function PageStageBodyPlaceholder({ seed }: { readonly seed: string }) {
 /** The Page Stage before its Page Detail is readable: known chrome and title, nothing invented. */
 export function PageStageLoadingFrame({
   titleSnapshot,
-  breadcrumb,
+  pageId,
 }: {
   readonly titleSnapshot?: string;
-  readonly breadcrumb?: PageStageBreadcrumbProps;
+  /** Shows where the Page lives while it opens; the trail navigates once the Page is ready. */
+  readonly pageId?: string;
 }) {
   const intl = useIntl();
 
@@ -171,7 +171,7 @@ export function PageStageLoadingFrame({
           pending={true}
           menu={null}
           editorCommands={null}
-          breadcrumb={breadcrumb}
+          {...(pageId ? { location: { pageId } } : {})}
         />
       }
     >

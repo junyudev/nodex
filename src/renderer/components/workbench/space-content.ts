@@ -1,5 +1,6 @@
 import type { IntlShape } from "@/lib/i18n";
 import { useMemo } from "react";
+import { presentSpaceTopLevel } from "@/lib/resource-location-presentation";
 import { useInteractivePageSearch } from "@/lib/interactive-page-search";
 import { useInfiniteLibraryCatalog } from "@/lib/use-library-navigation";
 import { MAX_LIBRARY_QUERY_LENGTH } from "../../../shared/library-module";
@@ -39,12 +40,10 @@ export const DEFAULT_SPACE_CONTENT_DATA_SOURCE: SpaceContentDataSource = {
 
 export const ALL_SPACE_CONTENT_KINDS: readonly SpaceContentKind[] = ["page", "database", "canvas"];
 
+/** Where a Space content row lives; content at the top level of Space reads as Space. */
 export function presentSpaceContentLocation(item: SpaceContentItem, intl: IntlShape): string {
-  return item.locationIsLibraryRoot
-    ? intl.formatMessage({
-        id: "workbench.contentTabLocation.library",
-        defaultMessage: "Library",
-      })
+  return item.locationIsLibraryRoot || !item.locationLabel
+    ? presentSpaceTopLevel(intl)
     : item.locationLabel;
 }
 

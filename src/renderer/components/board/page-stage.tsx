@@ -53,6 +53,7 @@ import {
   type PageStageViewportLease,
 } from "@/lib/page-stage-viewport-session";
 import { contentRoutingContextKey } from "../../../shared/content-routing-context";
+import type { DatabaseId } from "../../../shared/database-identities";
 import { ApplicationPending } from "@/bootstrap/application-surface";
 import { useAutomationsNavigation } from "@/features/automations/automations-navigation";
 import { selectEditableLeafContent } from "@/lib/editable-leaf-selection";
@@ -699,7 +700,27 @@ export function PageStage(props: PageStageProps) {
               : null
           }
           onCopyLink={() => writeTextToClipboard(buildPageDeepLink({ pageId: page.id }))}
-          breadcrumb={props.breadcrumb}
+          location={{
+            pageId: page.id,
+            ...(props.onOpenPage
+              ? {
+                  onOpenPage: (pageId: string, titleSnapshot: string) => {
+                    void props.onOpenPage?.({
+                      routingContext: props.contentRoutingContext,
+                      pageId,
+                      titleSnapshot,
+                    });
+                  },
+                }
+              : {}),
+            ...(props.onOpenDatabase
+              ? {
+                  onOpenDatabase: (databaseId: DatabaseId) => {
+                    void props.onOpenDatabase?.(databaseId);
+                  },
+                }
+              : {}),
+          }}
         />
       }
     >

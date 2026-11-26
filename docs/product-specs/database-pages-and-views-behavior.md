@@ -878,8 +878,11 @@ beside the Page:
   `Open on right`, `Open in new window`, the `Full width` and
   `Show Markdown source` view toggles, `Pause work` or `Resume work`,
   `Schedule`, and `Delete` where the Page can be deleted. An action the Page's
-  host cannot perform is absent. A nested Page shows its ancestors before the
-  menu; each opens on click.
+  host cannot perform is absent. Before the menu, a Page below the top level of
+  Space shows where it lives: the Databases and Pages that own it, outermost
+  first, each opening on click in the Page's tab group (in a Project, its own
+  Database opens as its Board). The trail is the Page's ownership, so it reads
+  the same however the Page was opened.
 - **Editing tools** act on the body's caret without taking its focus.
   `Text style` sets the line at the caret, or the selected Blocks, to text, a
   heading, or a list, and marks the current style. `Image` and `Table` insert

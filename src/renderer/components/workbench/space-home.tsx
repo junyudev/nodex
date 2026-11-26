@@ -116,7 +116,7 @@ function SpaceHomeRow({
           </span>
         </span>
         <span className={cn(COLUMN_LOCATION_CLASS, "text-[13px] text-text-secondary-solid")}>
-          {presentSpaceContentLocation(item, intl) || "—"}
+          {presentSpaceContentLocation(item, intl)}
         </span>
         <span className={cn(COLUMN_EDITED_CLASS, "text-[13px] text-text-secondary-solid")}>
           {item.updatedAt ? formatCompactRelativeTime(Date.parse(item.updatedAt), nowMs) : "—"}

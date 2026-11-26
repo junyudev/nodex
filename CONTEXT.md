@@ -666,6 +666,17 @@ Document registries are keyed by Library; Project IDs on receipts, changes,
 automation, recovery, and delivery records are actor/execution/delivery
 coordinates and never content ownership.
 
+### Location
+
+A placed resource's location is its ownership trail: the Pages and Databases
+that own it, outermost first, ending at its direct owner. A Data
+Source-parented Page lives in the Source's home Database, and a Database or
+Canvas hosted in a Page lives in that Page. An empty trail is the top level of
+Space. Core derives every location from parents alone, so the routing context a
+surface was opened through, a Project presentation, and any reference, View,
+or relation never change where content is said to live. A Database segment
+names the Project whose primary Database it is, if any.
+
 ### Database
 
 A Database is a placeable Block and Container. It owns metadata, lifecycle,

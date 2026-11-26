@@ -388,11 +388,12 @@ function toContentOption(
             id: "workbench.workbenchNewTabPage.database",
             defaultMessage: "Database",
           }));
+  // Every Space resource names where it lives; the top level reads as Space.
   const context = excerptParts ? (
     <MatchText parts={excerptParts} />
-  ) : item.locationLabel ? (
+  ) : (
     presentSpaceContentLocation(item, intl)
-  ) : null;
+  );
   const updatedAt = item.updatedAt ? new Date(item.updatedAt) : null;
   return {
     id: `content:${contentItemKey(item.target)}`,
@@ -413,16 +414,13 @@ function toContentOption(
           {titleParts ? <MatchText parts={titleParts} /> : title}
         </>
       ) : undefined,
-    detail:
-      context === null
-        ? lead
-        : intl.formatMessage(
-            {
-              id: "workbench.workbenchNewTabPage.locationSubtitle",
-              defaultMessage: "{kind} · {location}",
-            },
-            { kind: lead, location: context },
-          ),
+    detail: intl.formatMessage(
+      {
+        id: "workbench.workbenchNewTabPage.locationSubtitle",
+        defaultMessage: "{kind} · {location}",
+      },
+      { kind: lead, location: context },
+    ),
     trailing:
       updatedAt && Number.isFinite(updatedAt.getTime()) ? (
         <time dateTime={item.updatedAt}>{formatNewTabRecentTime(updatedAt, now, intl.locale)}</time>
