@@ -1,3 +1,5 @@
+import type { CreateLibraryDatabaseOperation } from "../../src/shared/library-module";
+import type { Page } from "../../src/shared/page";
 import type { AgentSelection } from "../../src/shared/work-graph";
 import type { PageDocumentEnvelope } from "../../src/shared/block-documents/page-document";
 import type {
@@ -80,6 +82,15 @@ export interface ScenarioStandalonePageSeed {
   readonly title: string;
 }
 
+export interface ScenarioHostedDatabaseSeed extends Pick<
+  CreateLibraryDatabaseOperation,
+  "databaseId" | "dataSourceId" | "viewId" | "name"
+> {
+  readonly operationId: string;
+  readonly projectId: string;
+  readonly parentPageId: string;
+}
+
 export interface ScenarioDocumentReplacement {
   readonly mutationId: string;
   readonly operationId: string;
@@ -124,6 +135,8 @@ export interface ScenarioPageObservation {
   readonly pageId: string;
   readonly title: string;
   readonly descriptionPreview: string;
+  readonly parent: Page["parent"];
+  readonly parentRevision: number;
   readonly documentReadiness: "pending_genesis" | "ready" | "failed";
   readonly commitSeq: number;
   readonly pageWork?: PageWork | null;
@@ -246,6 +259,7 @@ export interface ScenarioSeedPort {
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;
   createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void>;
+  createHostedDatabase(input: ScenarioHostedDatabaseSeed): Promise<void>;
   createStandaloneCanvas(input: {
     readonly projectId: string;
     readonly canvasId: string;

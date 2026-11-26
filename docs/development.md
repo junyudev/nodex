@@ -580,6 +580,10 @@ UI behavior belongs in a dedicated Playwright spec such as
 `tests/e2e/board-dense.spec.ts`; `vp run dev --seed ...` never starts
 Playwright, focuses a Page, or performs assertions.
 
+`library/locations` seeds where content lives: Projects Atlas and Beacon each hold a card titled
+Launch plan, Atlas's card holds a nested Page, and a Space Page hosts Research DB with one row. An
+Atlas chat without a Thread lets those Pages open beside a Project chat.
+
 `sidebar/chat-status` creates waiting, running, unread, and quiet chats in
 Status Project, two Projects for comparing collapsed status priority, and a
 Review Section with waiting and unread chats. Status Project also holds a chat

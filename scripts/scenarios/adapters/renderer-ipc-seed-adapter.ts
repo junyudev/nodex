@@ -20,6 +20,7 @@ import type {
   ScenarioBoardObservation,
   ScenarioDocumentCheckpointSeed,
   ScenarioDocumentReplacement,
+  ScenarioHostedDatabaseSeed,
   ScenarioLibraryFileSeed,
   ScenarioPageObservation,
   ScenarioPageFileEntrySeed,
@@ -166,6 +167,39 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
         },
       ),
       `Create standalone ${input.title}`,
+    );
+  }
+
+  async createHostedDatabase({
+    projectId,
+    parentPageId,
+    operationId,
+    ...database
+  }: ScenarioHostedDatabaseSeed): Promise<void> {
+    const parent = requireSuccess(
+      await this.#invoke("block-document:owned:prepare", projectId, parentPageId),
+      "Prepare Database host Page",
+    );
+    requireSuccess(
+      await this.#invoke(
+        "library-module:apply",
+        { kind: "library" },
+        {
+          operationId,
+          storeEpoch: parent.storeEpoch,
+          operation: {
+            kind: "create_database",
+            ...database,
+            parent: {
+              kind: "page",
+              pageId: parentPageId,
+              expectedDocumentGeneration: parent.generation,
+              expectedDocumentHeadSeq: parent.headSeq,
+            },
+          },
+        },
+      ),
+      `Create ${database.name}`,
     );
   }
 
@@ -452,6 +486,8 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       pageId: detail.page.pageId,
       title: detail.page.title,
       descriptionPreview: detail.page.preview,
+      parent: detail.page.parent,
+      parentRevision: detail.page.parentRevision,
       documentReadiness: detail.document.readiness,
       pageWork: parsePageWork(
         detail.intrinsicProperties.find((item) => item.key === "work")?.value ?? null,
