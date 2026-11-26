@@ -223,9 +223,16 @@ orchestration, and deleted source files promote selection to `full`.
 
 ## Static jobs
 
-The reusable workflow schedules types, UI contracts, repository contracts, and
-tooling contracts (`vp run tooling:verify`, selected only for tooling, lint,
-workflow, config, and dependency changes) in separate Linux jobs. Selected
+The reusable workflow schedules types, UI contracts, startup bundles, repository
+contracts, and tooling contracts (`vp run tooling:verify`, selected only for
+tooling, lint, workflow, config, and dependency changes) in separate Linux jobs.
+The `startup-bundles` group builds the production Electron bundles and enforces
+the renderer bootstrap and startup closure budgets
+(`vp run startup-bundles:verify`). Any change to application or package source,
+bundler configuration, or JavaScript dependencies selects it, so a budget
+overrun fails before it lands rather than in a later local or Nightly build.
+The local fast check leaves it to CI, because the production build replaces the
+checkout's `out/` that a running development app serves. Selected
 source ownership, CI contracts, dependency security, generated resources, and
 landing checks share one job and one dependency install. Each group still
 reports its own command timing, and the shared job fails if any selected check

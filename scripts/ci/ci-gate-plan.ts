@@ -9,6 +9,7 @@ export const STATIC_GROUPS = [
   "types",
   "source-ownership",
   "ui-contracts",
+  "startup-bundles",
   "ci-contracts",
   "repository-contracts",
   "tooling-contracts",

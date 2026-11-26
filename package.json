@@ -113,6 +113,7 @@
     "semantic-theme:verify-build": "tsx scripts/semantic-theme/cli.ts verify-build",
     "renderer-bootstrap:verify-build": "tsx scripts/verify-renderer-bootstrap.ts",
     "startup-closure:verify-build": "tsx scripts/verify-startup-closure.ts",
+    "startup-bundles:verify": "electron-vite build --config config/electron.vite.config.ts --logLevel warn && vp run renderer-bootstrap:verify-build && vp run startup-closure:verify-build",
     "ascii-bundles:verify-build": "tsx scripts/verify-ascii-bundles.ts",
     "agent-tools:measure": "tsx scripts/measure-nodex-agent-tools.ts",
     "agent-skills:generate": "tsx scripts/official-agent-skills.ts generate",

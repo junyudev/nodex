@@ -108,7 +108,7 @@ describe("CI change classification", () => {
       appTestSuites: ["unit", "renderer", "browser"],
       relatedPaths: ["src/renderer/components/app.tsx"],
       rustFast: false,
-      staticGroups: ["types", "source-ownership", "ui-contracts"],
+      staticGroups: ["types", "source-ownership", "ui-contracts", "startup-bundles"],
       testMode: "related",
     });
   });
@@ -190,7 +190,13 @@ describe("CI change classification", () => {
     expect(classifyChangedPaths([source, nightly])).toMatchObject({
       appTestSuites: ["unit", "core-client", "main", "integration"],
       relatedPaths: [source, nightly],
-      staticGroups: ["types", "source-ownership", "ci-contracts", "repository-contracts"],
+      staticGroups: [
+        "types",
+        "source-ownership",
+        "startup-bundles",
+        "ci-contracts",
+        "repository-contracts",
+      ],
       testMode: "related",
     });
     expect(classifyChangedPaths([source, nightly], { forceFullTests: true })).toMatchObject({
