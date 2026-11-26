@@ -592,10 +592,13 @@ async function answerHosted(prompt, server, native) {
     });
     return "Here is the host screenshot.";
   }
-  if (fs.existsSync(marker))
-    return prompt.includes("<send_user_message_question_reply>")
-      ? await finishHostedAnswer(prompt, server, native)
-      : "Host received your reply.";
+  if (fs.existsSync(marker)) {
+    if (prompt.includes("<send_user_message_question_reply>"))
+      return finishHostedAnswer(prompt, server, native);
+    if (prompt.includes("Finish hosted work after the refused reply"))
+      return reportHostedWork(server, native);
+    return "Host received your reply.";
+  }
   if (!prompt.startsWith("# ") || !prompt.includes(`Page ID: ${recipe.pageId}`))
     return "The hosted chat is ready.";
   fs.writeFileSync(marker, recipe.pageId);
@@ -683,10 +686,13 @@ async function answerHosted(prompt, server, native) {
   return "The host is waiting for your scope choice.";
 }
 
-async function finishHostedAnswer(prompt, server, native) {
-  const pageId = fs.readFileSync(path.join(home, `host-work-${native.threadId}`), "utf8");
-  const response = prompt;
+function finishHostedAnswer(response, server, native) {
   record({ event: "host.answer", ...native, response });
+  return reportHostedWork(server, native);
+}
+
+async function reportHostedWork(server, native) {
+  const pageId = fs.readFileSync(path.join(home, `host-work-${native.threadId}`), "utf8");
   fs.writeFileSync(
     path.join(load().threads[native.threadId].cwd, "host-result.txt"),
     "Host work verified.\n",

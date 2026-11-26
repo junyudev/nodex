@@ -783,9 +783,10 @@ test("a joined desktop starts host work, answers its question and accepts it acr
         await expect(page.getByText("Not sent", { exact: true })).toBeVisible({ timeout: 20_000 });
         await expect(page.getByText("Sending", { exact: true })).toHaveCount(0);
         await page.screenshot({ path: path.join(screenshots, "04c-not-sent.png") });
+        // Follow-ups start new rounds. Give the Page a fresh Ready report to accept after restart.
         await invokeIpc(page, "agent-runtime:session:message", {
           sessionId: turn.activeChat.session_id,
-          message: { messageId: randomUUID(), text: "Continue after the refused reply" },
+          message: { messageId: randomUUID(), text: "Finish hosted work after the refused reply" },
         });
         await expect
           .poll(
@@ -798,6 +799,9 @@ test("a joined desktop starts host work, answers its question and accepts it acr
             { timeout: 30_000 },
           )
           .toBe("completed");
+        await expect
+          .poll(async () => (await invokeIpc(page, "work:turn", created.page_id)).turn?.reason)
+          .toBe("review");
         // A Member starts a chat of their own on the host from New chat, as on their own
         // desktop, and edits the message they sent there; no other Member may.
         const { memberId: desktopMember } = (await readWindowBinding(page)).space;
