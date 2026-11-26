@@ -55,11 +55,16 @@ test("a chat a Project Inbox starts in a repository opens at once and runs in it
       await expect.poll(async () => (await session())?.executionRef ?? null).not.toBeNull();
       const sessionId = (await session())!.id;
       // The conversation is there from the start: reading it never fails while Git works.
-      const opened = await invokeIpc(page, "agent-runtime:session:read", { sessionId });
-      // The Inbox sends the message with its provenance, so the prompt contains the text.
-      expect(
-        opened.snapshot.projection.messages.some((message) => message.text.includes(text)),
-      ).toBe(true);
+      const read = () => invokeIpc(page, "agent-runtime:session:read", { sessionId });
+      await read();
+      // The Inbox prompt is projected after the Thread is readable.
+      await expect
+        .poll(async () =>
+          (await read()).snapshot.projection.messages.some((message) =>
+            message.text.includes(text),
+          ),
+        )
+        .toBe(true);
       // Its first Run starts only in the Page's own checkout, on the Page's branch.
       const inspect = async () =>
         (await invokeIpc(page, "agent-runtime:session:inspect", { sessionId })).thread;
@@ -77,12 +82,9 @@ test("a chat a Project Inbox starts in a repository opens at once and runs in it
       ).toBe(thread.branch);
       // The Run was released from preparation and started; a failed preparation never starts.
       await expect
-        .poll(
-          async () =>
-            (await invokeIpc(page, "agent-runtime:session:read", { sessionId })).snapshot.projection
-              .runs[0]?.startedAt ?? null,
-          { timeout: 60_000 },
-        )
+        .poll(async () => (await read()).snapshot.projection.runs[0]?.startedAt ?? null, {
+          timeout: 60_000,
+        })
         .not.toBeNull();
       await expect(page.getByText("Thread could not be restored", { exact: true })).toHaveCount(0);
       await expect(page.getByText("Couldn’t prepare the worktree", { exact: true })).toHaveCount(0);
