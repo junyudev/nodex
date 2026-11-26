@@ -444,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn a_member_cannot_list_side_chats_of_another_members_draft() {
+    fn a_member_cannot_read_another_members_draft_or_list_its_side_chats() {
         let workspace = seeded_workspace();
         let opener = test_support::enroll_remote_member(&workspace, "Opener");
         let reader = test_support::enroll_remote_member(&workspace, "Reader");
@@ -473,6 +473,34 @@ mod tests {
         };
         assert!(read(&opener).is_ok());
         assert_eq!(read(&reader).unwrap_err().code, CoreErrorCode::NotFound);
+        // Reading the draft itself by its ID answers as its lists do.
+        for read in [
+            ProjectWorkspaceRead::Session {
+                session_id: "draft".into(),
+            },
+            ProjectWorkspaceRead::SessionDetail {
+                session_id: "draft".into(),
+            },
+            ProjectWorkspaceRead::SessionStart {
+                session_id: "draft".into(),
+            },
+        ] {
+            let request = |caller| {
+                workspace.module.read(
+                    caller,
+                    ModuleReadRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read: read.clone(),
+                    },
+                )
+            };
+            assert!(request(&opener).is_ok(), "{read:?}");
+            assert_eq!(
+                request(&reader).unwrap_err().code,
+                CoreErrorCode::NotFound,
+                "{read:?}"
+            );
+        }
     }
 
     #[test]
