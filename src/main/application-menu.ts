@@ -13,6 +13,7 @@ import {
 import type { WindowZoomCommand } from "./window-navigation-chrome";
 import { getMainIntl, defineMessages } from "./i18n/main-intl";
 
+export const NEW_WINDOW_MENU_ITEM_ID = "file.newWindow";
 export const TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID = "view.toggleBottomPanel";
 export const TOGGLE_FULL_VIEW_MENU_ITEM_ID = "view.toggleFullView";
 export const INSTALL_CLI_MENU_ITEM_ID = "app.installCli";
@@ -133,7 +134,7 @@ export function buildWindowFileMenu(options: WindowFileMenuOptions): MenuItemCon
     label: getMainIntl().formatMessage({ id: "main.appMenu.file.title", defaultMessage: "File" }),
     submenu: [
       {
-        id: "file.newWindow",
+        id: NEW_WINDOW_MENU_ITEM_ID,
         label: newWindowMenuLabel(),
         accelerator: accelerator("newWindow"),
         click: options.onNewWindow,

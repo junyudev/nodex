@@ -2,6 +2,11 @@ import {
   matchesKeyboardEventToAccelerator,
   type KeyboardShortcutEventLike,
 } from "../shared/command-keybindings";
+import {
+  NEW_WINDOW_MENU_ITEM_ID,
+  TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID,
+  TOGGLE_FULL_VIEW_MENU_ITEM_ID,
+} from "./application-menu";
 import type { Menu, MenuItem } from "electron";
 import type { ApplicationMenuEntry, ApplicationMenuSnapshot } from "../shared/application-menu";
 
@@ -63,7 +68,17 @@ export class ApplicationMenuSnapshots {
   }
 }
 
-/** Native-only accelerators still work after Windows removes its per-window menu surface. */
+const MENU_OWNED_ACCELERATOR_IDS = new Set([
+  NEW_WINDOW_MENU_ITEM_ID,
+  TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID,
+  TOGGLE_FULL_VIEW_MENU_ITEM_ID,
+  "file.closeWindow",
+  "view.resetZoom",
+  "view.zoomIn",
+  "view.zoomOut",
+]);
+
+/** Preserve menu-owned accelerators after Windows removes its per-window menu surface. */
 export function findNativeMenuAccelerator(
   menu: Menu | null,
   matches: (accelerator: string) => boolean,
@@ -75,9 +90,7 @@ export function findNativeMenuAccelerator(
       if (found) return found;
       continue;
     }
-    const isNative =
-      Boolean(item.role) ||
-      ["file.closeWindow", "view.resetZoom", "view.zoomIn", "view.zoomOut"].includes(item.id);
+    const isNative = Boolean(item.role) || MENU_OWNED_ACCELERATOR_IDS.has(item.id);
     if (isNative && item.accelerator && matches(item.accelerator)) return item;
   }
   return null;

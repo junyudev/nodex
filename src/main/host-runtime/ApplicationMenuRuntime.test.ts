@@ -282,9 +282,10 @@ it.effect("routes renderer menu commands to their requesting window and focused 
       };
       return menu as unknown as Menu;
     };
-    const sent: Array<{ id: number; channel: string }> = [];
+    const sent: Array<{ id: number; channel: string; payload?: unknown }> = [];
     const closed: number[] = [];
     const removed: number[] = [];
+    let newWindows = 0;
     const windowAt = (id: number) =>
       ({
         isDestroyed: () => false,
@@ -294,7 +295,7 @@ it.effect("routes renderer menu commands to their requesting window and focused 
         webContents: {
           id,
           isDestroyed: () => false,
-          send: (channel: string) => sent.push({ id, channel }),
+          send: (channel: string, payload: unknown) => sent.push({ id, channel, payload }),
         },
       }) as unknown as BrowserWindow;
     const first = windowAt(1);
@@ -308,7 +309,9 @@ it.effect("routes renderer menu commands to their requesting window and focused 
         checkForUpdates: Effect.void,
         isPackaged: false,
         resourcesPath: "/resources",
-        requestNewWindow: () => {},
+        requestNewWindow: () => {
+          newWindows++;
+        },
         showMessage: () => Effect.succeed({ response: 0, checkboxChecked: false }),
         windows: {
           all: () => [first, second],
@@ -375,6 +378,28 @@ it.effect("routes renderer menu commands to their requesting window and focused 
     assert.deepEqual(reloaded, [1]);
     inputListeners.get(1)?.(event, { ...input, isAutoRepeat: true });
     assert.deepEqual(reloaded, [1]);
+    const press = (key: string, shift = false): boolean => {
+      prevented = false;
+      inputListeners.get(1)?.(event, { ...input, key, code: `Key${key.toUpperCase()}`, shift });
+      return prevented;
+    };
+    assert.isTrue(press("n", true));
+    assert.strictEqual(newWindows, 1);
+    assert.isTrue(press("f", true));
+    assert.isTrue(press("j"));
+    assert.deepEqual(sent.splice(0), [
+      {
+        id: 1,
+        channel: "execute-workbench-command",
+        payload: { commandId: "toggleFullView", source: "menu" },
+      },
+      {
+        id: 1,
+        channel: "execute-workbench-command",
+        payload: { commandId: "toggleBottomPanel", source: "menu" },
+      },
+    ]);
+    assert.isFalse(press("n"));
     const generation = yield* runtime.bindHistory(1);
     yield* runtime.publishHistory(1, { generation, sequence: 1, snapshot: null });
     let undoCount = 0;
@@ -398,7 +423,7 @@ it.effect("routes renderer menu commands to their requesting window and focused 
     focused = { ...focused, hostWebContents: { id: 2 } };
     assert.isTrue(yield* runtime.invoke(1, undo.id));
     assert.strictEqual(undoCount, 1);
-    assert.deepEqual(sent, [{ id: 1, channel: "execute-focused-history" }]);
+    assert.deepEqual(sent, [{ id: 1, channel: "execute-focused-history", payload: "undo" }]);
     yield* runtime.snapshot(1);
     assert.isFalse(yield* runtime.invoke(1, undo.id));
     yield* Scope.close(scope, Exit.void);

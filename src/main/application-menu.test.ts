@@ -245,12 +245,17 @@ describe("application-menu-snapshot", () => {
       accelerator: "Ctrl+R",
     } as MenuItem;
     const workspaceAction = {
-      label: "New Window",
-      id: "file.newWindow",
+      label: "New Chat",
+      id: "file.newThread",
       enabled: true,
       visible: true,
       accelerator: "Ctrl+N",
     } as MenuItem;
+    const menuOwnedActions = [
+      ["file.newWindow", "Ctrl+Shift+N"],
+      ["view.toggleFullView", "Ctrl+Shift+F"],
+      ["view.toggleBottomPanel", "Ctrl+J"],
+    ].map(([id, accelerator]) => ({ id, enabled: true, visible: true, accelerator }) as MenuItem);
     const closeWindow = {
       label: "Close Window",
       id: "file.closeWindow",
@@ -258,10 +263,13 @@ describe("application-menu-snapshot", () => {
       visible: true,
       accelerator: "Ctrl+Shift+W",
     } as MenuItem;
-    parent.submenu!.items.push(reload, workspaceAction, closeWindow);
+    parent.submenu!.items.push(reload, workspaceAction, closeWindow, ...menuOwnedActions);
     expect(findNativeMenuAccelerator(menu, (key) => key === "Ctrl+R")).toBe(reload);
     expect(findNativeMenuAccelerator(menu, (key) => key === "Ctrl+N")).toBeNull();
     expect(findNativeMenuAccelerator(menu, (key) => key === "Ctrl+Shift+W")).toBe(closeWindow);
+    for (const item of menuOwnedActions) {
+      expect(findNativeMenuAccelerator(menu, (key) => key === item.accelerator)).toBe(item);
+    }
     parent.enabled = false;
     expect(findNativeMenuAccelerator(menu, () => true)).toBeNull();
   });
