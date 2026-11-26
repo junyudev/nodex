@@ -1,4 +1,7 @@
 import { useState, type FocusEvent } from "react";
+import { presentSnoozedLane, type SnoozedLanePresentation } from "@/lib/chat-snooze";
+import { useIntl } from "@/lib/i18n";
+import { useClockAt } from "@/lib/use-clock-at";
 import {
   anchorSidebarChat,
   holdSidebarLanes,
@@ -96,4 +99,19 @@ export function useSidebarLaneHold() {
       },
     },
   };
+}
+
+/**
+ * The Snoozed lane as it reads now: when each chat returns, which ones return after tomorrow, and
+ * what the fold after the last sooner chat hides. It reads again as each day turns and as a return comes within hours.
+ */
+export function useSnoozedLanePresentation(
+  chats: readonly { readonly id: string; readonly snoozedUntil: string | null }[],
+  shownId: string | null,
+): SnoozedLanePresentation {
+  const intl = useIntl();
+  const [now, setNow] = useState(Date.now);
+  const presentation = presentSnoozedLane(chats, new Date(now), intl.locale, shownId);
+  useClockAt(presentation.nextChangeAt, setNow);
+  return presentation;
 }

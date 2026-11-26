@@ -92,6 +92,7 @@ import {
   resolveSettleableReadChats,
   sidebarChatNeedsReader,
   type SidebarAutoSettleDays,
+  type SidebarChatPreviewLines,
   type SidebarLifecycleChat,
   type SidebarOptionalShelf,
   type SidebarOrganize,
@@ -141,7 +142,11 @@ import {
 } from "@/lib/sidebar-session-placement";
 import { SidebarPaginatedItems, SidebarPaginatedRows } from "./sidebar-paginated-items";
 import { SidebarChatLaneSection, SidebarSettleReadChatsButton } from "./sidebar-chat-lanes";
-import { useSidebarChatLanes, useSidebarLaneHold } from "./use-sidebar-chat-lanes";
+import {
+  useSidebarChatLanes,
+  useSidebarLaneHold,
+  useSnoozedLanePresentation,
+} from "./use-sidebar-chat-lanes";
 import { pageTurnPhrase, type PageTurnHolder } from "@/lib/page-turn-phrase";
 import { reviewKey, useAcceptedReviews } from "@/lib/page-accept-undo";
 import { sidebarSectionChatIds } from "@/lib/sidebar-section-navigation";
@@ -268,6 +273,9 @@ export interface SidebarChatLifecycle {
   /** The lists the attention arrangement leaves out. */
   readonly hiddenShelves: readonly SidebarOptionalShelf[];
   readonly onHiddenShelvesChange: (shelves: readonly SidebarOptionalShelf[]) => void;
+  /** The lines its rows give to what each chat is about. */
+  readonly previewLines: SidebarChatPreviewLines;
+  readonly onPreviewLinesChange: (lines: SidebarChatPreviewLines) => void;
 }
 
 /**
@@ -897,7 +905,7 @@ function SidebarThreadOrganizerSections({
 }: {
   /** The reader points at or works in the sidebar, so its lanes hold still. */
   laneHolding: boolean;
-  /** Adjusts what the attention arrangement shows; it sits beside its first heading. */
+  /** Adjusts what the attention arrangement shows; it stays beside its first heading. */
   laneViewMenu: ReactNode;
   /** Messages waiting in each Project's own Inbox. */
   projectInboxCounts: Readonly<Record<string, number>>;
@@ -1505,7 +1513,11 @@ function SidebarThreadOrganizerSections({
         /** A list spanning Projects names each chat's own on its row. */
         showProject?: boolean;
         /** Rows arranged by attention say what each chat is about under their title. */
-        preview?: boolean;
+        previewLines?: 1 | 2;
+        /** A snoozed row names when its chat returns. */
+        wakeLabel?: string | null;
+        /** The row steps back: its chat returns later than the ones around it. */
+        quiet?: boolean;
       } = {},
     ) => {
       const item = sidebarThreadItemsByKey.get(threadKey);
@@ -1533,7 +1545,9 @@ function SidebarThreadOrganizerSections({
           contextMenuOpen={Boolean(sessionId && contextMenuSessionId === sessionId)}
           hoverCardProjectLabel={hoverCardProjectLabel}
           trailingLabel={options.showProject ? hoverCardProjectLabel : null}
-          preview={options.preview === true}
+          previewLines={options.previewLines}
+          wakeLabel={options.wakeLabel}
+          quiet={options.quiet}
           // A draft has no conversation to finish; it waits as the next New chat.
           onToggleSettled={
             session && !session.archived && hasSessionConversation(session)
@@ -1683,6 +1697,11 @@ function SidebarThreadOrganizerSections({
     activeSessionId,
     holding: laneHolding,
   });
+  // The Snoozed lane reads each chat by its row's key.
+  const snoozedLane = useSnoozedLanePresentation(
+    chatLanes.snoozed.map((chat) => ({ id: chat.threadKey, snoozedUntil: chat.snoozedUntil })),
+    activeThreadKey,
+  );
   const settledThreadKeys = useMemo(
     () =>
       settledLaneSessions.flatMap((session) => {
@@ -2026,12 +2045,23 @@ function SidebarThreadOrganizerSections({
     );
   };
 
-  // Arranged by attention, every row says what its chat is about under its title.
+  // Showing one Project, every row is that Project's; the name would only repeat.
+  const showLaneProject = !(arrangedByAttention && lifecycle.scopeProjectId);
+  // Arranged by attention, a row whose chat may need the reader says what it is about.
+  const previewLines =
+    arrangedByAttention && lifecycle.previewLines > 0
+      ? (lifecycle.previewLines as 1 | 2)
+      : undefined;
   const renderLaneThread = (threadKey: string) =>
+    renderThreadRow(threadKey, { showProject: showLaneProject, previewLines });
+  // Snoozed and settled chats ask nothing now; their rows keep to the title line.
+  const renderRestingThread = (threadKey: string) =>
+    renderThreadRow(threadKey, { showProject: showLaneProject });
+  const renderSnoozedThread = (threadKey: string) =>
     renderThreadRow(threadKey, {
-      // Showing one Project, every row is that Project's; the name would only repeat.
-      showProject: !(arrangedByAttention && lifecycle.scopeProjectId),
-      preview: arrangedByAttention,
+      showProject: showLaneProject,
+      wakeLabel: snoozedLane.wakeLabels.get(threadKey) ?? null,
+      quiet: snoozedLane.later.has(threadKey),
     });
   const toggleShelf = (shelf: "active" | "working" | "snoozed" | "settled") => () =>
     onSetSidebarSectionCollapsed(shelf, !sidebarCollapsibleSections[shelf]);
@@ -2062,7 +2092,7 @@ function SidebarThreadOrganizerSections({
       extraPages={sidebarListExtraPages.settled ?? 0}
       onExtraPagesChange={(extraPages) => onSidebarListExtraPagesChange("settled", extraPages)}
       forcedVisibleKey={activeThreadKey}
-      renderThread={renderLaneThread}
+      renderThread={renderRestingThread}
     />
   );
 
@@ -2083,7 +2113,7 @@ function SidebarThreadOrganizerSections({
       forcedVisibleKey: activeThreadKey,
     };
     const shows = (shelf: SidebarOptionalShelf) => !hiddenShelves.includes(shelf);
-    // The view options sit beside the first heading: Pinned when it shows, otherwise Active,
+    // The view options stay beside the first heading: Pinned when it shows, otherwise Active,
     // which always does.
     const pinnedLeads = shows("pinned") && chatLanes.pinned.length > 0;
     return (
@@ -2092,7 +2122,7 @@ function SidebarThreadOrganizerSections({
           <SidebarChatLaneSection
             {...laneProps}
             shelf="pinned"
-            actions={laneViewMenu}
+            tool={laneViewMenu}
             renderThread={renderLaneThread}
             renderRows={(visibleThreadKeys) => (
               // Chats join and leave Pinned through their row actions; here they only reorder.
@@ -2119,18 +2149,14 @@ function SidebarThreadOrganizerSections({
           shelf="active"
           renderThread={renderLaneThread}
           actions={
-            settleableReadSessions.length > 0 || !pinnedLeads ? (
-              <>
-                {settleableReadSessions.length > 0 ? (
-                  <SidebarSettleReadChatsButton
-                    count={settleableReadSessions.length}
-                    onSettle={() => lifecycle.onSettleSessions(settleableReadSessions)}
-                  />
-                ) : null}
-                {pinnedLeads ? null : laneViewMenu}
-              </>
+            settleableReadSessions.length > 0 ? (
+              <SidebarSettleReadChatsButton
+                count={settleableReadSessions.length}
+                onSettle={() => lifecycle.onSettleSessions(settleableReadSessions)}
+              />
             ) : undefined
           }
+          tool={pinnedLeads ? undefined : laneViewMenu}
           threadKeys={chatLanes.active.map((chat) => chat.threadKey)}
           collapsed={sidebarCollapsibleSections.active}
           onToggle={toggleShelf("active")}
@@ -2162,7 +2188,8 @@ function SidebarThreadOrganizerSections({
           <SidebarChatLaneSection
             {...laneProps}
             shelf="snoozed"
-            renderThread={renderLaneThread}
+            renderThread={renderSnoozedThread}
+            fold={snoozedLane.fold}
             threadKeys={chatLanes.snoozed.map((chat) => chat.threadKey)}
             collapsed={sidebarCollapsibleSections.snoozed}
             onToggle={toggleShelf("snoozed")}
@@ -2772,6 +2799,8 @@ export function ProjectSessionSidebar({
                   <SidebarLaneViewMenu
                     hiddenShelves={lifecycle.hiddenShelves}
                     onHiddenShelvesChange={lifecycle.onHiddenShelvesChange}
+                    previewLines={lifecycle.previewLines}
+                    onPreviewLinesChange={lifecycle.onPreviewLinesChange}
                     scopeProjectId={scopeProjectId}
                     projects={scopeProjects}
                     libraryInboxCount={inboxCounts.library}

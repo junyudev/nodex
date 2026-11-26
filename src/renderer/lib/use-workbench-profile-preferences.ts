@@ -18,10 +18,13 @@ import {
 } from "./sidebar-section-prefs";
 import {
   DEFAULT_SIDEBAR_AUTO_SETTLE_DAYS,
+  DEFAULT_SIDEBAR_CHAT_PREVIEW_LINES,
   normalizeSidebarAutoSettleDays,
+  normalizeSidebarChatPreviewLines,
   normalizeSidebarHiddenShelves,
   normalizeSidebarOrganize,
   type SidebarAutoSettleDays,
+  type SidebarChatPreviewLines,
   type SidebarOptionalShelf,
   type SidebarOrganize,
 } from "./sidebar-chat-lifecycle";
@@ -49,6 +52,8 @@ export interface WorkbenchSidebarPreferences {
   readonly scopeProjectId: string | null;
   /** The lists the attention arrangement leaves out. */
   readonly hiddenShelves: readonly SidebarOptionalShelf[];
+  /** The lines the attention arrangement's rows give to what each chat is about. */
+  readonly previewLines: SidebarChatPreviewLines;
   readonly autoSettleDays: SidebarAutoSettleDays;
 }
 
@@ -85,6 +90,7 @@ function makeDefaultWorkbenchProfilePreferences(): WorkbenchProfilePreferences {
       organize: normalizeSidebarOrganize(undefined),
       scopeProjectId: null,
       hiddenShelves: [],
+      previewLines: DEFAULT_SIDEBAR_CHAT_PREVIEW_LINES,
       autoSettleDays: DEFAULT_SIDEBAR_AUTO_SETTLE_DAYS,
     },
     databaseViewTabs: { displayModeByDatabaseId: {}, ruleBarOpenByViewId: {} },
@@ -176,6 +182,7 @@ function normalizeWorkbenchProfilePreferencesAtBoundary(
           ? sidebar.scopeProjectId
           : null,
       hiddenShelves: normalizeSidebarHiddenShelves(sidebar?.hiddenShelves),
+      previewLines: normalizeSidebarChatPreviewLines(sidebar?.previewLines),
       autoSettleDays: normalizeSidebarAutoSettleDays(sidebar?.autoSettleDays),
     },
     databaseViewTabs: {
@@ -418,6 +425,16 @@ export function useWorkbenchProfilePreferences() {
     [update],
   );
 
+  const setSidebarPreviewLines = useCallback(
+    (previewLines: SidebarChatPreviewLines) => {
+      update((current) => {
+        if (current.sidebar.previewLines === previewLines) return current;
+        return { ...current, sidebar: { ...current.sidebar, previewLines } };
+      });
+    },
+    [update],
+  );
+
   const setSidebarAutoSettleDays = useCallback(
     (autoSettleDays: SidebarAutoSettleDays) => {
       update((current) => {
@@ -501,6 +518,7 @@ export function useWorkbenchProfilePreferences() {
       setSidebarOrganize,
       setSidebarScopeProjectId,
       setSidebarHiddenShelves,
+      setSidebarPreviewLines,
       setSidebarAutoSettleDays,
       setDatabaseViewTabDisplayMode,
       setDatabaseViewRuleBarOpen,
@@ -518,6 +536,7 @@ export function useWorkbenchProfilePreferences() {
       setSidebarOrganize,
       setSidebarScopeProjectId,
       setSidebarHiddenShelves,
+      setSidebarPreviewLines,
       setSidebarAutoSettleDays,
       setDatabaseViewTabDisplayMode,
       setDatabaseViewRuleBarOpen,

@@ -67,6 +67,17 @@ function isNextLocalDay(day: Date, now: Date): boolean {
   return isSameLocalDay(day, tomorrow);
 }
 
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/** Calendar days from `now`'s day to `date`'s, in local time: 0 today, 1 tomorrow, -1 yesterday. */
+export function localDayDistance(date: Date, now: Date): number {
+  return Math.round(
+    (startOfLocalDay(date).getTime() - startOfLocalDay(now).getTime()) / 86_400_000,
+  );
+}
+
 function formatTime(date: Date, locale?: string): string {
   return new Intl.DateTimeFormat(locale ?? getIntl().locale, {
     hour: "numeric",
@@ -262,4 +273,119 @@ export function describeChatSnooze(snoozedUntil: string, now: Date, locale?: str
     { id: "lib.chatSnooze.relativeTime", defaultMessage: "Snoozed until {time}" },
     { time: formatChatSnoozeTime(snoozedUntil, now, locale) },
   );
+}
+
+/**
+ * How far off a snoozed chat's return is. One back by the end of tomorrow is `soon`: its person
+ * meets it again within a day. Anything after that is `later`, and steps back until it nears.
+ */
+export type SnoozeHorizon = "soon" | "later";
+
+export function resolveSnoozeHorizon(snoozedUntil: string, now: Date): SnoozeHorizon {
+  const at = new Date(snoozedUntil);
+  return Number.isFinite(at.getTime()) && localDayDistance(at, now) > 1 ? "later" : "soon";
+}
+
+/** A return this close names its time even past midnight, as a late three-hour snooze does. */
+const WAKE_CLOCK_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * When a snoozed chat returns, short enough for a row's trailing edge: its time within the day or
+ * the next few hours, then "Tomorrow", a weekday within the week, and a date beyond it.
+ */
+export function formatSnoozeWakeLabel(
+  snoozedUntil: string,
+  now: Date,
+  locale?: string,
+): string | null {
+  const at = new Date(snoozedUntil);
+  if (!Number.isFinite(at.getTime())) return null;
+  const days = localDayDistance(at, now);
+  if (days <= 0 || at.getTime() - now.getTime() <= WAKE_CLOCK_WINDOW_MS)
+    return formatTime(at, locale);
+  if (days === 1)
+    return getIntl().formatMessage({
+      id: "lib.chatSnooze.tomorrowName",
+      defaultMessage: "Tomorrow",
+    });
+  const resolvedLocale = locale ?? getIntl().locale;
+  if (days < 7) return new Intl.DateTimeFormat(resolvedLocale, { weekday: "short" }).format(at);
+  return new Intl.DateTimeFormat(resolvedLocale, {
+    month: "short",
+    day: "numeric",
+    ...(at.getFullYear() === now.getFullYear() ? {} : { year: "numeric" as const }),
+  }).format(at);
+}
+
+/** What the Snoozed lane says about its chats at one moment. */
+export interface SnoozedLanePresentation {
+  /** When each chat returns, as its row says it, by chat id. */
+  readonly wakeLabels: ReadonlyMap<string, string>;
+  /** The chats returning after tomorrow; their rows step back. */
+  readonly later: ReadonlySet<string>;
+  /**
+   * Where the fold begins: after the last chat returning soon, so a held lane that lists a later
+   * chat above a sooner one never folds the sooner one. Null when the fold would hide nothing.
+   */
+  readonly fold: {
+    readonly from: number;
+    /** The chats it hides; the chat on screen always shows. */
+    readonly count: number;
+    /** When the hidden chats return, from the earliest to the latest: "Mon – Dec 8". */
+    readonly range: string | null;
+  } | null;
+  /** The next moment any row reads differently: the day turns, or a return comes within hours. */
+  readonly nextChangeAt: number | null;
+}
+
+/** Reads the Snoozed lane in the order it shows at `now`; `shownId` is the chat on screen. */
+export function presentSnoozedLane(
+  chats: readonly { readonly id: string; readonly snoozedUntil: string | null }[],
+  now: Date,
+  locale?: string,
+  shownId: string | null = null,
+): SnoozedLanePresentation {
+  const wakeLabels = new Map<string, string>();
+  const later = new Set<string>();
+  let lastSoon = -1;
+  const tomorrow = startOfLocalDay(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  let nextChangeAt = chats.length > 0 ? tomorrow.getTime() : null;
+  chats.forEach((chat, index) => {
+    if (!chat.snoozedUntil || resolveSnoozeHorizon(chat.snoozedUntil, now) === "soon")
+      lastSoon = index;
+    else later.add(chat.id);
+    if (!chat.snoozedUntil) return;
+    const label = formatSnoozeWakeLabel(chat.snoozedUntil, now, locale);
+    if (label) wakeLabels.set(chat.id, label);
+    const clockFrom = Date.parse(chat.snoozedUntil) - WAKE_CLOCK_WINDOW_MS;
+    if (nextChangeAt !== null && clockFrom > now.getTime() && clockFrom < nextChangeAt)
+      nextChangeAt = clockFrom;
+  });
+  const from = lastSoon + 1;
+  const hidden = chats
+    .slice(from)
+    .flatMap((chat) =>
+      chat.id !== shownId && chat.snoozedUntil
+        ? [{ id: chat.id, at: Date.parse(chat.snoozedUntil) }]
+        : [],
+    )
+    .toSorted((left, right) => left.at - right.at);
+  const first = hidden[0] ? wakeLabels.get(hidden[0].id) : undefined;
+  const last = hidden.at(-1) ? wakeLabels.get(hidden.at(-1)!.id) : undefined;
+  const range =
+    first === undefined || last === undefined
+      ? null
+      : first === last
+        ? first
+        : getIntl().formatMessage(
+            { id: "lib.chatSnooze.wakeRange", defaultMessage: "{first} – {last}" },
+            { first, last },
+          );
+  return {
+    wakeLabels,
+    later,
+    fold: hidden.length > 0 ? { from, count: hidden.length, range } : null,
+    nextChangeAt,
+  };
 }

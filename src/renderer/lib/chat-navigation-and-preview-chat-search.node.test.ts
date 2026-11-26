@@ -8,6 +8,9 @@ import {
   describeChatSnoozeAbsolute,
   formatChatSnoozeConfirmation,
   formatChatSnoozeTime,
+  formatSnoozeWakeLabel,
+  presentSnoozedLane,
+  resolveSnoozeHorizon,
 } from "./chat-snooze";
 import {
   earliestSnoozeInstant,
@@ -222,6 +225,87 @@ describe("chat snooze", () => {
     it("calls a snooze at or past now due", () => {
       expect(describeChatSnooze(now.toISOString(), now, "en-US")).toBe("Snooze ended");
       expect(describeChatSnooze("not a time", now, "en-US")).toBe("Snooze ended");
+    });
+  });
+
+  describe("the Snoozed lane", () => {
+    // Friday, Nov 6 2026, 6:00 PM
+    const now = local(2026, 11, 6, 18);
+    const at = (...parts: Parameters<typeof local>) => local(...parts).toISOString();
+
+    it("names a return by the nearest thing that tells it apart", () => {
+      expect(formatSnoozeWakeLabel(at(2026, 11, 6, 19), now, "en-US")).toBe("7:00 PM");
+      // A late three-hour snooze crosses midnight and still reads as a time.
+      const late = local(2026, 11, 6, 22);
+      expect(formatSnoozeWakeLabel(at(2026, 11, 7, 1), late, "en-US")).toBe("1:00 AM");
+      expect(formatSnoozeWakeLabel(at(2026, 11, 7, 9), now, "en-US")).toBe("Tomorrow");
+      expect(formatSnoozeWakeLabel(at(2026, 11, 9, 9), now, "en-US")).toBe("Mon");
+      expect(formatSnoozeWakeLabel(at(2026, 11, 13, 9), now, "en-US")).toBe("Nov 13");
+      expect(formatSnoozeWakeLabel(at(2027, 1, 4, 9), now, "en-US")).toBe("Jan 4, 2027");
+    });
+
+    it("keeps tomorrow near and steps back from everything after it", () => {
+      expect(resolveSnoozeHorizon(at(2026, 11, 7, 23, 59), now)).toBe("soon");
+      expect(resolveSnoozeHorizon(at(2026, 11, 8, 0), now)).toBe("later");
+      // On Sunday, next week's Monday is tomorrow, so it stays near.
+      expect(resolveSnoozeHorizon(at(2026, 11, 9, 9), local(2026, 11, 8, 20))).toBe("soon");
+    });
+
+    it("folds the chats returning later and names when they return", () => {
+      const lane = presentSnoozedLane(
+        [
+          { id: "hour", snoozedUntil: at(2026, 11, 6, 19) },
+          { id: "morning", snoozedUntil: at(2026, 11, 7, 9) },
+          { id: "monday", snoozedUntil: at(2026, 11, 9, 9) },
+          { id: "month", snoozedUntil: at(2026, 12, 8, 9) },
+        ],
+        now,
+        "en-US",
+      );
+      expect(lane.fold).toEqual({ from: 2, count: 2, range: "Mon – Dec 8" });
+      expect([...lane.later]).toEqual(["monday", "month"]);
+      expect([...lane.wakeLabels.values()]).toEqual(["7:00 PM", "Tomorrow", "Mon", "Dec 8"]);
+      // Nothing comes within hours before midnight, so the turning day is the next change.
+      expect(lane.nextChangeAt).toBe(local(2026, 11, 7, 0).getTime());
+    });
+
+    it("never folds a sooner chat that a held lane lists below a later one", () => {
+      const lane = presentSnoozedLane(
+        [
+          { id: "december", snoozedUntil: at(2026, 12, 5, 9) },
+          { id: "tomorrow", snoozedUntil: at(2026, 11, 7, 9) },
+          { id: "monday", snoozedUntil: at(2026, 11, 9, 9) },
+        ],
+        now,
+        "en-US",
+      );
+      expect(lane.fold).toEqual({ from: 2, count: 1, range: "Mon" });
+      expect([...lane.later]).toEqual(["december", "monday"]);
+    });
+
+    it("leaves the chat on screen out of what the fold counts and names", () => {
+      const chats = [
+        { id: "monday", snoozedUntil: at(2026, 11, 9, 9) },
+        { id: "eighth", snoozedUntil: at(2026, 12, 8, 9) },
+        { id: "ninth", snoozedUntil: at(2026, 12, 9, 9) },
+      ];
+      expect(presentSnoozedLane(chats, now, "en-US", "monday").fold).toEqual({
+        from: 0,
+        count: 2,
+        range: "Dec 8 – Dec 9",
+      });
+      expect(presentSnoozedLane(chats, now, "en-US", "ninth").fold?.range).toBe("Mon – Dec 8");
+    });
+
+    it("reads again when a return comes within hours, before the day turns", () => {
+      const lane = presentSnoozedLane(
+        [{ id: "late", snoozedUntil: at(2026, 11, 7, 1) }],
+        now,
+        "en-US",
+      );
+      expect(lane.wakeLabels.get("late")).toBe("Tomorrow");
+      expect(lane.nextChangeAt).toBe(local(2026, 11, 6, 19).getTime());
+      expect(lane.fold).toBeNull();
     });
   });
 

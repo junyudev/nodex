@@ -598,8 +598,8 @@ vp run dev --home "$HOME/repo/nodex/runs.local/chat-status" --seed sidebar/chat-
 ```
 
 `sidebar/attention` seeds chats across Nodex, Core, Web, and the Library,
-including a pending snooze, a woken chat, and a Release Section that By project
-shows. Core has a question and an intake message, and Web has a Page ready for
+including snoozes that return in two hours, tomorrow morning, in four days and
+in three weeks, a woken chat, and a Release Section that By project shows. Core has a question and an intake message, and Web has a Page ready for
 review. Turn on `Arrange by attention` (`⌥⌘U`) to see the lanes, then expand
 Snoozed and Settled to see their chats.
 

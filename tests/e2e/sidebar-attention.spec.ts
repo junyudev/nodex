@@ -94,7 +94,18 @@ test("arranges chats by attention and applies sidebar actions to their live lane
         await expect(
           thread(active, chats.releaseCore).locator("[data-app-action-sidebar-thread-preview]"),
         ).toHaveText(/^Needs your answer/);
-        await expectChats(snoozed, [chats.snoozed]);
+        // Chats back by tomorrow name their return; later ones fold behind one row.
+        await expectChats(snoozed, [chats.snoozedSoon, chats.snoozed]);
+        await expect(
+          thread(snoozed, chats.snoozed).locator("[data-app-action-sidebar-thread-wake]"),
+        ).toBeVisible();
+        await snoozed.getByRole("button", { name: /^2 later · / }).click();
+        await expectChats(snoozed, [
+          chats.snoozedSoon,
+          chats.snoozed,
+          chats.snoozedWeek,
+          chats.snoozedMonth,
+        ]);
         await expectChats(settled, initialSettled);
         await expect(
           thread(active, chats.woke).locator('[data-sidebar-status="woke"]'),
@@ -114,10 +125,8 @@ test("arranges chats by attention and applies sidebar actions to their live lane
 
       await test.step("scope both chats and Inbox to Core", async () => {
         await expect(arrangeByAttention).toHaveAttribute("aria-pressed", "true");
-        // The view options show beside the first heading while it is pointed at.
-        const pinned = section(page, "Pinned");
-        await pinned.locator("[data-app-action-sidebar-section-toggle]").hover();
-        await pinned.getByRole("button", { name: "View options" }).click();
+        // The view options stay beside the first heading without pointing at it.
+        await section(page, "Pinned").getByRole("button", { name: "View options" }).click();
         await page.getByRole("menuitem", { name: /^Chats from/ }).hover();
         await page.locator(`[data-app-action-sidebar-scope-option="${coreProjectId}"]`).click();
         const clearScope = page.getByRole("button", { name: "Showing Core. Show all projects" });
@@ -188,7 +197,13 @@ test("arranges chats by attention and applies sidebar actions to their live lane
         await snooze.click();
         await page.getByRole("menuitem", { name: /^In 1 hour/ }).click();
         await expect(chat).toHaveCount(0);
-        await expectChats(snoozed, [chats.snoozed, chats.quietWeb]);
+        await expectChats(snoozed, [
+          chats.snoozedSoon,
+          chats.snoozed,
+          chats.quietWeb,
+          chats.snoozedWeek,
+          chats.snoozedMonth,
+        ]);
       });
     },
   );

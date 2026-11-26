@@ -43,6 +43,8 @@ export function paginateCodexSidebarItems<T>(input: {
   maxItems?: number | null;
   /** Show more steps beyond the first page; 0 is the first page. */
   extraPages: number;
+  /** Rows each Show more step reveals. */
+  pageIncrement?: number;
   forcedVisibleKey?: string | null;
   suppressedKeys?: ReadonlySet<string>;
   pagerEnabled?: boolean;
@@ -56,7 +58,7 @@ export function paginateCodexSidebarItems<T>(input: {
   const pageEnd = (extraPages: number) =>
     maxItems === null
       ? filteredItems.length
-      : maxItems + CODEX_SIDEBAR_PAGE_INCREMENT * Math.max(0, extraPages);
+      : maxItems + (input.pageIncrement ?? CODEX_SIDEBAR_PAGE_INCREMENT) * Math.max(0, extraPages);
   // The forced item is guaranteed visible without taking a page slot from anything else:
   // inside the page nothing changes, and beyond it the item joins in list order as one extra row.
   const forcedIndex =
