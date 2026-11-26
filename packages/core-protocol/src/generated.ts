@@ -9089,6 +9089,8 @@ export interface components {
                 readonly delivery_id: string;
                 /** @enum {string} */
                 readonly kind: "record_chat_delivery";
+                /** @description Identifies the pending question on a Member's live response invocation. */
+                readonly question_answer_request_id?: string | null;
                 readonly question_answer_run_id?: string | null;
                 readonly session_id: string;
             } | {
@@ -12508,6 +12510,8 @@ export interface components {
             readonly delivery_id: string;
             /** @enum {string} */
             readonly kind: "record_chat_delivery";
+            /** @description Identifies the pending question on a Member's live response invocation. */
+            readonly question_answer_request_id?: string | null;
             readonly question_answer_run_id?: string | null;
             readonly session_id: string;
         } | {

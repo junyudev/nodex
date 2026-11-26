@@ -2,7 +2,7 @@
 use super::*;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use nodex_core::workspace::HostChatAction;
-use nodex_core_contracts::{RemotePrincipal, team::*};
+use nodex_core_contracts::{RemotePrincipal, team::*, workspace::SessionExecutionRequestKind};
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::{Notify, mpsc};
 
@@ -50,6 +50,13 @@ fn channel_id(event: &PhoneHostEvent) -> &str {
         | PhoneHostEvent::Close { channel_id } => channel_id,
     }
 }
+fn answers_question(params: &serde_json::Value) -> bool {
+    params
+        .pointer("/response/kind")
+        .and_then(|value| value.as_str())
+        == Some("answers")
+}
+
 fn authorize_response(
     workspace: &ProjectWorkspaceModule,
     principal: &RemotePrincipal,
@@ -94,7 +101,13 @@ fn authorize_response(
         Some(serde_json::Value::String(run)) => Some(run.as_str()),
         _ => return Err(unauthorized("A phone response requires its original Run")),
     };
-    workspace.authorize_host_response(principal, id("sessionId")?, run, id("requestId")?)
+    workspace.authorize_host_response(
+        principal,
+        id("sessionId")?,
+        run,
+        id("requestId")?,
+        answers_question(params).then_some(SessionExecutionRequestKind::Question),
+    )
 }
 impl PhoneBridge {
     pub(crate) fn observation(&self, token: &str) -> bool {
@@ -180,21 +193,31 @@ impl PhoneBridge {
         })
     }
     pub(crate) fn authorizes_launch(&self, token: &str, session: &str, launch: &str) -> bool {
-        let Ok(inner) = self.inner.lock() else {
-            return false;
-        };
-        inner.channels.values().any(|channel| {
-            channel.requests.values().any(|request| {
-                request.delivered
-                    && request.created.elapsed() < DEADLINE
-                    && constant_time_equal(request.credential.as_bytes(), token.as_bytes())
-                    && request.method == "chats.start"
-                    && request.params.get("sessionId").and_then(|v| v.as_str()) == Some(session)
-                    && request.params.get("launchId").and_then(|v| v.as_str()) == Some(launch)
-            })
+        self.any_live_request(token, |request| {
+            request.method == "chats.start"
+                && request.params.get("sessionId").and_then(|v| v.as_str()) == Some(session)
+                && request.params.get("launchId").and_then(|v| v.as_str()) == Some(launch)
+        })
+    }
+    pub(crate) fn authorizes_question_answer(
+        &self,
+        token: &str,
+        answer: &host_bridge::QuestionAnswerDelivery<'_>,
+    ) -> bool {
+        self.any_live_request(token, |request| {
+            request.method == "chat.respond"
+                && answers_question(&request.params)
+                && answer.matches(&request.params)
         })
     }
     pub(crate) fn authorizes_message(&self, token: &str, session: &str, message: &str) -> bool {
+        self.any_live_request(token, |request| {
+            matches!(request.method.as_str(), "chat.send" | "chats.start")
+                && request.params.get("sessionId").and_then(|v| v.as_str()) == Some(session)
+                && request.params.get("messageId").and_then(|v| v.as_str()) == Some(message)
+        })
+    }
+    fn any_live_request(&self, token: &str, matches: impl Fn(&Invocation) -> bool) -> bool {
         let Ok(inner) = self.inner.lock() else {
             return false;
         };
@@ -203,9 +226,7 @@ impl PhoneBridge {
                 request.delivered
                     && request.created.elapsed() < DEADLINE
                     && constant_time_equal(request.credential.as_bytes(), token.as_bytes())
-                    && matches!(request.method.as_str(), "chat.send" | "chats.start")
-                    && request.params.get("sessionId").and_then(|v| v.as_str()) == Some(session)
-                    && request.params.get("messageId").and_then(|v| v.as_str()) == Some(message)
+                    && matches(request)
             })
         })
     }
@@ -630,6 +651,7 @@ pub(crate) async fn response_entitlements(
                         &input.session_id,
                         r.run_id.as_deref(),
                         &r.request_id,
+                        None,
                     )
                     .is_ok()
                     .then_some(r.request_id)

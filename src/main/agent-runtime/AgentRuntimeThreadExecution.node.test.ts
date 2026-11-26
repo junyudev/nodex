@@ -1095,11 +1095,18 @@ describe("ChatMessageDelivery", () => {
         .pipe(Effect.provideService(CoreApplicationAgent, null));
       assert.isEmpty(f.writes);
       yield* f
-        .record("chat", { messageId: "answer", text: "Yes" }, { questionRunId: "answered-run" })
+        .record(
+          "chat",
+          { messageId: "answer", text: "Yes" },
+          {
+            question: { runId: "answered-run", requestId: "question" },
+          },
+        )
         .pipe(Effect.provideService(CoreApplicationAgent, null));
       assert.deepInclude(f.writes[0]!.intent, {
         delivery_id: "answer",
         question_answer_run_id: "answered-run",
+        question_answer_request_id: "question",
       });
     }),
   );

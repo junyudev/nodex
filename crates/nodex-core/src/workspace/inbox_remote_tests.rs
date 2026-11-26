@@ -81,7 +81,13 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
     let principal = bob.principal.as_ref().unwrap();
     assert!(
         w.module
-            .authorize_host_response(principal, "session:standalone", Some("run"), "approval")
+            .authorize_host_response(
+                principal,
+                "session:standalone",
+                Some("run"),
+                "approval",
+                None
+            )
             .is_err()
     );
     let observation = serde_json::from_value(serde_json::json!({
@@ -118,7 +124,13 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
         "approval"
     );
     w.module
-        .authorize_host_response(principal, "session:standalone", Some("run"), "approval")
+        .authorize_host_response(
+            principal,
+            "session:standalone",
+            Some("run"),
+            "approval",
+            None,
+        )
         .unwrap();
     assert_eq!(
         w.module
@@ -126,7 +138,8 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
                 alice.principal.as_ref().unwrap(),
                 "session:standalone",
                 Some("run"),
-                "approval"
+                "approval",
+                None,
             )
             .unwrap_err()
             .code,

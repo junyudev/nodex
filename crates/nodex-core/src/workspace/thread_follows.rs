@@ -581,6 +581,7 @@ pub(super) fn prepare_batch(
             author,
             attachment_count: 0,
             question_answer_run_id: None,
+            question_answer_request_id: None,
         },
         now,
     )?;

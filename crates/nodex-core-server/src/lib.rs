@@ -1797,6 +1797,74 @@ async fn workspace_read(
     ))))
 }
 
+fn authorize_member_delivery(
+    state: &ServerState,
+    headers: &HeaderMap,
+    intent: &nodex_core_contracts::workspace::ProjectWorkspaceIntent,
+) -> Result<(), CoreError> {
+    use nodex_core_contracts::workspace::{ProjectSessionIntent, ProjectWorkspaceIntent};
+    let (session, message, run, question) = match intent {
+        ProjectWorkspaceIntent::MutateSession {
+            session_id,
+            intent: ProjectSessionIntent::RecordUserMessage { message_id },
+        } => (session_id, message_id, None, None),
+        ProjectWorkspaceIntent::RecordChatDelivery {
+            session_id,
+            delivery_id,
+            question_answer_run_id,
+            question_answer_request_id,
+            ..
+        } => (
+            session_id,
+            delivery_id,
+            question_answer_run_id.as_deref(),
+            question_answer_request_id.as_deref(),
+        ),
+        _ => return Ok(()),
+    };
+    let proof = optional_header(headers, host_bridge::INVOCATION_HEADER, "Host invocation")
+        .ok()
+        .flatten();
+    if run.is_some() || question.is_some() {
+        let missing_response = || unauthorized("Accepted answers require their live Host response");
+        let (Some(token), Some(run), Some(request)) = (proof, run, question) else {
+            return Err(missing_response());
+        };
+        // Resolving the invocation in module_context has already rechecked the original
+        // question's entitlement. The delivery must name that same response.
+        let answer = host_bridge::QuestionAnswerDelivery {
+            session,
+            run,
+            request,
+            submission: message,
+        };
+        return if state
+            .host_bridge
+            .authorizes_question_answer(&token, &answer)
+            || state
+                .phone_bridge
+                .authorizes_question_answer(&token, &answer)
+        {
+            Ok(())
+        } else {
+            Err(missing_response())
+        };
+    }
+    if proof.is_some_and(|token| {
+        state
+            .host_bridge
+            .authorizes_message(&token, session, message)
+            || state
+                .phone_bridge
+                .authorizes_message(&token, session, message)
+    }) {
+        return Ok(());
+    }
+    Err(unauthorized(
+        "Accepted messages require their live Host delivery",
+    ))
+}
+
 async fn workspace_apply(
     State(state): State<Arc<ServerState>>,
     Extension(bound): Extension<BoundConnection>,
@@ -1813,35 +1881,12 @@ async fn workspace_apply(
             )))));
         }
     };
-    let accepted_message = match &request.intent {
-        nodex_core_contracts::workspace::ProjectWorkspaceIntent::MutateSession {
-            session_id,
-            intent:
-                nodex_core_contracts::workspace::ProjectSessionIntent::RecordUserMessage { message_id },
-        } => Some((session_id, message_id)),
-        nodex_core_contracts::workspace::ProjectWorkspaceIntent::RecordChatDelivery {
-            session_id,
-            delivery_id,
-            ..
-        } => Some((session_id, delivery_id)),
-        _ => None,
-    };
     if context.principal.is_some()
-        && let Some((session_id, message_id)) = accepted_message
+        && let Err(error) = authorize_member_delivery(&state, &headers, &request.intent)
     {
-        let proof = optional_header(&headers, host_bridge::INVOCATION_HEADER, "Host invocation");
-        if !proof.ok().flatten().is_some_and(|token| {
-            state
-                .host_bridge
-                .authorizes_message(&token, session_id, message_id)
-                || state
-                    .phone_bridge
-                    .authorizes_message(&token, session_id, message_id)
-        }) {
-            return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
-                unauthorized("Accepted messages require their live Host delivery"),
-            )))));
-        }
+        return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+            error,
+        )))));
     }
     // A Member's Inbox decision reaches Core through the Space host, which resolves its
     // Agent from the host's catalog and carries the Member's live invocation proof.

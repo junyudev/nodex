@@ -21,6 +21,7 @@ pub(super) fn authorize(
     session: &str,
     run: Option<&str>,
     request: &str,
+    expected_kind: Option<SessionExecutionRequestKind>,
 ) -> Result<(), StoreError> {
     member_admission::require_principal(connection, library, principal)?;
     super::session_mutation::validate_id("session_id", session)?;
@@ -39,7 +40,7 @@ pub(super) fn authorize(
     let pending = observation
         .pending_requests
         .iter()
-        .find(|p| p.id == request)
+        .find(|p| p.id == request && expected_kind.is_none_or(|kind| p.kind == kind))
         .ok_or_else(denied)?;
     let member = entitled_member(connection, library, session, run, pending.kind)?;
     if member.as_deref() != Some(&principal.member_id) {

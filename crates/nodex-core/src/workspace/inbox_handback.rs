@@ -93,6 +93,7 @@ pub(in crate::workspace) fn record(
         author,
         attachment_count,
         question_answer_run_id,
+        ..
     } = intent
     else {
         unreachable!()
@@ -211,6 +212,7 @@ fn bind(
                 author: author.clone(),
                 attachment_count,
                 question_answer_run_id: None,
+                question_answer_request_id: None,
             },
             now,
         )?;

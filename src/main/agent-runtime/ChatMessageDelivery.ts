@@ -19,7 +19,7 @@ export const make = Effect.gen(function* () {
       readonly host?: boolean;
       readonly senderThreadId?: string;
       readonly senderRunId?: string | null;
-      readonly questionRunId?: string | null;
+      readonly question?: { readonly runId: string; readonly requestId: string };
     },
   ) {
     const session = yield* core.workspace
@@ -30,7 +30,7 @@ export const make = Effect.gen(function* () {
       )
       .pipe(Effect.provideService(CoreApplicationAgent, null));
     if (session.value.kind !== "session") return;
-    if (!session.value.session.managed && !options?.questionRunId) return;
+    if (!session.value.session.managed && !options?.question) return;
     const caller = yield* CoreApplicationAgent;
     const author: components["schemas"]["ProjectWorkspaceInboxSource"] =
       caller || options?.senderThreadId || options?.host
@@ -59,7 +59,8 @@ export const make = Effect.gen(function* () {
               ).length ??
               message.images?.length ??
               0,
-            question_answer_run_id: options?.questionRunId ?? null,
+            question_answer_run_id: options?.question?.runId ?? null,
+            question_answer_request_id: options?.question?.requestId,
           },
         },
         undefined,
