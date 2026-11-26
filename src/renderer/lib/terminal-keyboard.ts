@@ -63,7 +63,7 @@ export function handleKey({
   sendText: (data: string) => void;
 }): boolean {
   if (event.type !== "keydown") return true;
-  // Left unconsumed, so the application menu's accelerator hides the Terminal that opening focused.
+  // Keep this out of the PTY. In Electron the application menu owns the chord, including the Windows shim.
   if (isBottomPanelToggle?.(event)) return false;
   if (onNewTerminalTab && metaOnly(event, ["t"])) {
     consume(event);
