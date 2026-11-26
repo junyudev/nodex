@@ -12,7 +12,8 @@ import {
 } from "@/lib/workbench-ui-scopes";
 import { useEffect, useEffectEvent, useRef, type Dispatch, type SetStateAction } from "react";
 import { flushSync } from "react-dom";
-import { keyboardActionMayRun } from "@/lib/keyboard-action-runtime";
+import { matchesKeyboardActionCommand } from "@/lib/keyboard-action-runtime";
+import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import { copySessionConversationMarkdown } from "@/lib/session-conversation-markdown";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
 import type { useWorkbenchPanelOpeners } from "@/lib/use-workbench-panel-openers";
@@ -29,7 +30,6 @@ import {
 } from "../../../shared/workbench-commands";
 import {
   createCommandKeymapState,
-  matchesKeyboardEventToCommand,
   type CommandKeymapState,
 } from "../../../shared/command-keybindings";
 import type { CommandMenuMode } from "@/lib/command-palette";
@@ -190,30 +190,22 @@ export function WorkbenchCommandPaletteHost({
       },
     );
   };
-  const handleFolderShortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      !keyboardActionMayRun(event, {
-        runWithEditableFocus: true,
-        runInsideLocalSurface: true,
-        runInsideTerminal: false,
-        allowRepeat: false,
-      })
-    )
-      return;
+  const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
     const keymap =
-      commandKeymapState ??
-      createCommandKeymapState(
-        {},
-        navigator.platform.toUpperCase().includes("MAC") ? "macOS" : "windows",
-      );
-    if (!matchesKeyboardEventToCommand(event, keymap, "openFolder")) return;
+      commandKeymapState ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform());
+    if (matchesKeyboardActionCommand(event, keymap, "toggleSidePanel")) {
+      event.preventDefault();
+      toggleSidePanel();
+      return;
+    }
+    if (!matchesKeyboardActionCommand(event, keymap, "openFolder")) return;
     event.preventDefault();
     flushSync(() => setOpen(false));
     void openFolder();
   });
   useEffect(() => {
-    window.addEventListener("keydown", handleFolderShortcut);
-    return () => window.removeEventListener("keydown", handleFolderShortcut);
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
   }, []);
   const panelCapabilities = panelCommands.resolveActivePanelCapabilities("right");
   const activeLineBlame = useWorkspaceFileActiveLineBlame();

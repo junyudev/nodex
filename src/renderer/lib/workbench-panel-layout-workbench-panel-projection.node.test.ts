@@ -735,6 +735,7 @@ describe("workbench panel slot keys", () => {
 describe("workbench panel tab cycle", () => {
   function keyEvent(input: Partial<KeyboardEvent> & Pick<KeyboardEvent, "key">): KeyboardEvent {
     return {
+      target: null,
       altKey: false,
       code: "",
       ctrlKey: false,
@@ -744,6 +745,8 @@ describe("workbench panel tab cycle", () => {
     } as KeyboardEvent;
   }
 
+  const mac = createCommandKeymapState({}, "macOS");
+  const windows = createCommandKeymapState({}, "windows");
   const tabs = ["one", "two", "three"].map((id) => ({
     id,
     label: id,
@@ -763,8 +766,18 @@ describe("workbench panel tab cycle", () => {
         true,
         1,
       ],
-      ["windows previous", keyEvent({ key: "{", ctrlKey: true, shiftKey: true }), false, -1],
-      ["windows next", keyEvent({ key: "}", ctrlKey: true, shiftKey: true }), false, 1],
+      [
+        "windows previous",
+        keyEvent({ key: "{", code: "BracketLeft", ctrlKey: true, shiftKey: true }),
+        false,
+        -1,
+      ],
+      [
+        "windows next",
+        keyEvent({ key: "}", code: "BracketRight", ctrlKey: true, shiftKey: true }),
+        false,
+        1,
+      ],
       ["missing shift", keyEvent({ key: "]", metaKey: true }), true, null],
       [
         "alt blocked",
@@ -773,7 +786,7 @@ describe("workbench panel tab cycle", () => {
         null,
       ],
     ] as const)("%s", (_label, event, isMac, expected) => {
-      expect(resolvePanelTabCycleDirection(event, isMac)).toBe(expected);
+      expect(resolvePanelTabCycleDirection(event, isMac ? mac : windows)).toBe(expected);
     });
 
     test("wraps and rejects missing or singular active scopes", () => {
@@ -787,10 +800,15 @@ describe("workbench panel tab cycle", () => {
     test("maps native directions and platform close shortcuts", () => {
       expect(panelTabCycleRequestDirectionToOffset("previous")).toBe(-1);
       expect(panelTabCycleRequestDirectionToOffset("next")).toBe(1);
-      expect(resolvePanelTabCloseShortcut(keyEvent({ key: "w", metaKey: true }), true)).toBe(true);
-      expect(resolvePanelTabCloseShortcut(keyEvent({ key: "W", ctrlKey: true }), false)).toBe(true);
+      expect(resolvePanelTabCloseShortcut(keyEvent({ key: "w", metaKey: true }), mac)).toBe(true);
+      expect(resolvePanelTabCloseShortcut(keyEvent({ key: "W", ctrlKey: true }), windows)).toBe(
+        true,
+      );
       expect(
-        resolvePanelTabCloseShortcut(keyEvent({ key: "w", ctrlKey: true, shiftKey: true }), false),
+        resolvePanelTabCloseShortcut(
+          keyEvent({ key: "w", ctrlKey: true, shiftKey: true }),
+          windows,
+        ),
       ).toBe(false);
     });
 
@@ -804,21 +822,19 @@ describe("workbench panel tab cycle", () => {
       expect(
         resolvePanelTabCycleDirection(
           keyEvent({ key: "p", metaKey: true, altKey: true }),
-          true,
           customPrevious,
         ),
       ).toBe(-1);
       expect(
         resolvePanelTabCycleDirection(
           keyEvent({ key: "[", code: "BracketLeft", metaKey: true, shiftKey: true }),
-          true,
           customPrevious,
         ),
       ).toBeNull();
 
       const unassignedClose = createCommandKeymapState({ closeTab: [] }, "macOS");
       expect(
-        resolvePanelTabCloseShortcut(keyEvent({ key: "w", metaKey: true }), true, unassignedClose),
+        resolvePanelTabCloseShortcut(keyEvent({ key: "w", metaKey: true }), unassignedClose),
       ).toBe(false);
     });
   });

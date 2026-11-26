@@ -510,9 +510,13 @@ import {
   commandTitleMessage,
   createCommandKeymapState,
   formatCommandShortcutLabel,
-  matchesKeyboardEventToCommand,
   type CommandKeymapState,
 } from "../../../shared/command-keybindings";
+import {
+  matchesKeyboardActionCommand,
+  readPageKeyboardSelection,
+} from "@/lib/keyboard-action-runtime";
+import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import { KeyboardShortcutHelpDialog } from "./keyboard-shortcut-help-dialog";
 import type { CommandMenuMode } from "@/lib/command-palette";
 import type { CodexBackgroundTerminalProcessThreadRef } from "@/lib/codex-background-terminal-processes";
@@ -2322,7 +2326,10 @@ export function WorkbenchRuntime({
   const captureToInbox = (source: WorkbenchCommandInvocation["source"]): boolean => {
     const destination = resolveInboxCaptureDestination();
     const seed =
-      source === "keyboard_shortcut" ? readCaptureSelection(window.getSelection()) : null;
+      source === "keyboard_shortcut"
+        ? (readCaptureSelection(window.getSelection()) ??
+          readPageKeyboardSelection(document.activeElement))
+        : null;
     const homeOwner: WorkbenchSceneOwner =
       destination.scope.kind === "project"
         ? { kind: "project", projectId: destination.scope.projectId }
@@ -2350,15 +2357,15 @@ export function WorkbenchRuntime({
   useInboxInvalidation();
   useEffect(() => {
     const keymap =
-      commandKeymapState ?? createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows");
+      commandKeymapState ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform());
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!matchesKeyboardEventToCommand(event, keymap, "openInbox")) return;
+      if (!matchesKeyboardActionCommand(event, keymap, "openInbox")) return;
       event.preventDefault();
       captureInbox();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [captureInbox, commandKeymapState, isMacPlatform]);
+  }, [captureInbox, commandKeymapState]);
 
   const openAutomations = useCallback(
     (path = buildAutomationsPath()) => {
@@ -3600,9 +3607,10 @@ export function WorkbenchRuntime({
   const panelCommands = useWorkbenchPanelCommandRouter({
     activeSession,
     activePanelOwnerKey,
+    activeProjectSceneId: activeProjectScene ? selectedProjectSceneId : null,
+    openProjectScenePanelAction,
     projects,
     windowSessionId,
-    isMacPlatform,
     sidePanelOpen,
     bottomPanelOpen,
     controller: panelController,
@@ -4298,6 +4306,7 @@ export function WorkbenchRuntime({
   };
 
   const executeWorkbenchCommand = ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
+    if (commandId === "focusBrowserAddressBar") return panelCommands.focusActiveBrowserAddress();
     if (commandId === "settings") {
       openSettings();
       return true;
@@ -4337,7 +4346,11 @@ export function WorkbenchRuntime({
       closeFocusedPanelTab(null, { respectActiveElementGuard: true });
     },
     execute: (commandId, source) => {
-      if (commandId === CAPTURE_TO_INBOX_COMMAND_ID || commandId === "settings") {
+      if (
+        commandId === CAPTURE_TO_INBOX_COMMAND_ID ||
+        commandId === "settings" ||
+        commandId === "focusBrowserAddressBar"
+      ) {
         return executeWorkbenchCommand({ commandId, source });
       }
       if (!selectedSessionDetailReady) {

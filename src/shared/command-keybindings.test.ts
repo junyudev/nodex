@@ -16,6 +16,7 @@ import {
   keyboardEventToAccelerator,
   matchKeyboardShortcutSequence,
   matchesKeyboardEventToCommand,
+  matchesKeyboardEventToAccelerator,
   matchesMouseEventToCommand,
   normalizeAccelerator,
   normalizeCommandKeybindingOverrides,
@@ -316,6 +317,19 @@ describe("command keybindings", () => {
         keyboardLayout: dvorak,
       }),
     ).toBe("Alt+F");
+  });
+
+  test("matches project-number shortcuts on the physical Option-layer digit", () => {
+    const secondDigit = keyboardEvent("™", { code: "Digit2", metaKey: true, altKey: true });
+    expect(matchesKeyboardEventToAccelerator(secondDigit, "CmdOrCtrl+Alt+2", "macOS")).toBe(true);
+    expect(matchesKeyboardEventToAccelerator(secondDigit, "CmdOrCtrl+Alt+3", "macOS")).toBe(false);
+    expect(
+      matchesKeyboardEventToAccelerator(
+        { ...secondDigit, shiftKey: true },
+        "CmdOrCtrl+Alt+2",
+        "macOS",
+      ),
+    ).toBe(false);
   });
 
   test("applies set append remove and reset update shapes", () => {

@@ -1,12 +1,15 @@
 import { defineMessage, defineMessages, getIntl } from "@/lib/i18n";
 import type { ComponentType } from "react";
 import {
+  matchesKeyboardActionCommand,
+  type KeyboardActionEventLike,
+} from "./keyboard-action-runtime";
+import {
   createCommandKeymapState,
   formatAcceleratorLabel,
   formatCommandShortcutLabel,
   getCommandEntry,
-  getPrimaryCommandAccelerator,
-  matchesKeyboardEventToCommand,
+  type CommandId,
   type CommandKeymapState,
 } from "../../shared/command-keybindings";
 import {
@@ -43,7 +46,7 @@ export interface PanelNewTabAction {
   label: string;
   description: string;
   shortcut?: PanelActionShortcut;
-  commandId?: string;
+  commandId?: CommandId;
   Icon: ComponentType<{ className?: string }>;
 }
 
@@ -322,52 +325,19 @@ export function resolvePanelActionShortcutLabel(
     if (label && entry?.isCustom !== true && action.shortcut) {
       return resolvePanelShortcutLabel(action.shortcut, isMac);
     }
-    if (label) return label;
+    return label ?? null;
   }
   return resolvePanelShortcutLabel(action.shortcut, isMac);
 }
 
-export function matchesPanelShortcut(
-  event: Pick<KeyboardEvent, "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey">,
-  shortcut: PanelActionShortcut,
-  isMac: boolean,
-): boolean {
-  const key = event.key.toLowerCase();
-  const modifier = isMac ? event.metaKey : event.ctrlKey;
-  if (shortcut === "mod+shift+e") {
-    return modifier && !event.altKey && event.shiftKey && key === "e";
-  }
-  if (shortcut === "mod+t") {
-    return modifier && !event.altKey && !event.shiftKey && key === "t";
-  }
-  if (shortcut === "ctrl+shift+g") {
-    return event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && key === "g";
-  }
-  if (shortcut === "alt+mod+s") {
-    return modifier && event.altKey && !event.shiftKey && key === "s";
-  }
-  return (
-    event.ctrlKey &&
-    !event.metaKey &&
-    !event.altKey &&
-    !event.shiftKey &&
-    (event.key === "`" || event.code === "Backquote")
-  );
-}
-
 export function matchesPanelActionShortcut(
-  event: Pick<KeyboardEvent, "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey">,
+  event: KeyboardActionEventLike,
   action: PanelNewTabAction,
-  isMac: boolean,
-  commandKeymapState?: CommandKeymapState | null,
+  keymap: CommandKeymapState,
 ): boolean {
-  if (action.commandId) {
-    const state = commandKeymapState ?? createCommandKeymapState({}, isMac ? "macOS" : "windows");
-    if (matchesKeyboardEventToCommand(event, state, action.commandId)) return true;
-    // Unassigning the command also releases its default gesture, such as to a focused Terminal.
-    if (!getPrimaryCommandAccelerator(state, action.commandId)) return false;
-  }
-  return action.shortcut ? matchesPanelShortcut(event, action.shortcut, isMac) : false;
+  return (
+    action.commandId !== undefined && matchesKeyboardActionCommand(event, keymap, action.commandId)
+  );
 }
 
 export function getDefaultPanelIdForTabKind(kind: WorkbenchTabProjection["kind"]): PanelId {

@@ -33,13 +33,13 @@ import { readPastedTextAttachment } from "./api";
 import { agentRuntimePromptImages } from "./agent-runtime-prompt";
 import {
   createCommandKeymapState,
-  matchesKeyboardEventToCommand,
+  type CommandId,
   type CommandKeymapState,
 } from "../../shared/command-keybindings";
-import {
-  isNewChatShortcutBlocked,
-  isWorkbenchShortcutTargetEditable,
-} from "./workbench-panel-shortcut-scope";
+import { matchesKeyboardActionCommand } from "./keyboard-action-runtime";
+import { copySessionConversationMarkdown } from "./session-conversation-markdown";
+import { resolveSessionMarkdownExport, resolveSessionExecution } from "./session-execution";
+import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
 import { getDefaultPanelIdForTabKind } from "./workbench-panel-actions";
 import {
   resolveLeafIdForPanelTab,
@@ -885,106 +885,62 @@ export function useWorkbenchSessionCommands({
   );
 
   useEffect(() => {
-    const isMacPlatformForShortcut =
-      typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
-    const shortcutState =
-      commandKeymapState ??
-      createCommandKeymapState({}, isMacPlatformForShortcut ? "macOS" : "windows");
-
+    const keymap =
+      commandKeymapState ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform());
     const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        (matchesKeyboardEventToCommand(event, shortcutState, "newThread") ||
-          matchesKeyboardEventToCommand(event, shortcutState, "quickChat")) &&
-        !isNewChatShortcutBlocked(event)
-      ) {
+      const matches = (commandId: CommandId) =>
+        matchesKeyboardActionCommand(event, keymap, commandId);
+      if (matches("newThread") || matches("quickChat")) {
         event.preventDefault();
         void startNewChatInProject(activeProjectId);
         return;
       }
-
-      if (isWorkbenchShortcutTargetEditable(event.target)) return;
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "archiveThread")) {
-        if (!activeSession) return;
-        event.preventDefault();
-        void archiveSession(activeSession);
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "openProcessManager")) {
+      if (matches("openProcessManager")) {
         event.preventDefault();
         setProcessManagerOpen(true);
         return;
       }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "openThreadInNewWindow")) {
-        if (!activeSession) return;
+      const step = matches("nextThread") ? "next" : matches("previousThread") ? "previous" : null;
+      if (step) {
         event.preventDefault();
-        void onOpenProjectSessionInNewWindow?.(activeSession);
+        void chatLifecycle.stepChat(step);
         return;
       }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "toggleThreadPin")) {
-        if (!activeSession) return;
-        event.preventDefault();
-        void toggleSessionPin(activeSession);
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "toggleThreadUnread")) {
-        if (!activeSession) return;
-        event.preventDefault();
-        void toggleSessionUnread(activeSession);
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "settleThread")) {
-        if (!activeSession) return;
-        event.preventDefault();
-        void chatLifecycle.toggleSessionSettled(activeSession);
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "snoozeThread")) {
-        if (!activeSession) return;
-        event.preventDefault();
-        // The palette lists the snooze times for the chat on screen.
-        openCommandPalette({ mode: "root", query: snoozeCommandQuery() });
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "nextThread")) {
-        event.preventDefault();
-        void chatLifecycle.stepChat("next");
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "previousThread")) {
-        event.preventDefault();
-        void chatLifecycle.stepChat("previous");
-        return;
-      }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "nextThreadNeedingAttention")) {
+      if (matches("nextThreadNeedingAttention")) {
         event.preventDefault();
         void chatLifecycle.openNextChatNeedingReader();
         return;
       }
-
-      if (matchesKeyboardEventToCommand(event, shortcutState, "toggleSidebarOrganize")) {
+      if (matches("toggleSidebarOrganize")) {
         event.preventDefault();
         chatLifecycle.toggleOrganize();
         return;
       }
+      if (!activeSession) return;
 
-      if (matchesKeyboardEventToCommand(event, shortcutState, "focusBrowserAddressBar")) {
-        const input = document.querySelector<HTMLInputElement>(
-          "[data-browser-sidebar-address-input='true']",
-        );
-        if (!input) return;
+      if (matches("archiveThread")) {
         event.preventDefault();
-        input.focus();
-        input.select();
+        void archiveSession(activeSession);
+      } else if (matches("copyConversationMarkdown")) {
+        if (!resolveSessionMarkdownExport(resolveSessionExecution(activeSession))) return;
+        event.preventDefault();
+        void copySessionConversationMarkdown(activeSession, activeSession.displayTitle);
+      } else if (matches("openThreadInNewWindow") && onOpenProjectSessionInNewWindow) {
+        event.preventDefault();
+        void onOpenProjectSessionInNewWindow(activeSession);
+      } else if (matches("toggleThreadPin")) {
+        event.preventDefault();
+        void toggleSessionPin(activeSession);
+      } else if (matches("toggleThreadUnread")) {
+        event.preventDefault();
+        void toggleSessionUnread(activeSession);
+      } else if (matches("settleThread")) {
+        event.preventDefault();
+        void chatLifecycle.toggleSessionSettled(activeSession);
+      } else if (matches("snoozeThread")) {
+        event.preventDefault();
+        // The palette lists the snooze times for the chat on screen.
+        openCommandPalette({ mode: "root", query: snoozeCommandQuery() });
       }
     };
 

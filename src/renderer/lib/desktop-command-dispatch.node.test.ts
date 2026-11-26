@@ -88,6 +88,11 @@ describe("keyboard action runtime", () => {
   function event(overrides: Partial<KeyboardActionEventLike> = {}): KeyboardActionEventLike {
     return {
       target: null,
+      key: "c",
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
       defaultPrevented: false,
       isComposing: false,
       repeat: false,

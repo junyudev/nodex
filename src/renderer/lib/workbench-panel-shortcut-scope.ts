@@ -21,35 +21,6 @@ export function isCodexTerminalShortcutTarget(target: EventTarget | null): boole
   return Boolean(element.closest("[data-codex-terminal]"));
 }
 
-export function isDialogShortcutTarget(target: EventTarget | null): boolean {
-  const element = target as ShortcutTargetLike | null;
-  return Boolean(element?.closest?.("[role='dialog']"));
-}
-
-/**
- * New chat works while typing, as a native menu item would. Dialogs and Terminals keep their keys,
- * and so does a field receiving text: Windows reports AltGr as Ctrl+Alt, so AltGr+N typing `ń`
- * would otherwise match Ctrl+Alt+N.
- */
-export function isNewChatShortcutBlocked(event: KeyboardEvent): boolean {
-  if (event.defaultPrevented) return true;
-  const { target } = event;
-  if (isDialogShortcutTarget(target) || isCodexTerminalShortcutTarget(target)) return true;
-  if (!isWorkbenchShortcutTargetEditable(target)) return false;
-  return event.isComposing || event.key === "Process" || event.getModifierState("AltGraph");
-}
-
-export function isWorkbenchShortcutTargetEditable(target: EventTarget | null): boolean {
-  const element = target as ShortcutTargetLike | null;
-  if (!element) return false;
-  if (element.isContentEditable) return true;
-  if (element.tagName === "INPUT" || element.tagName === "TEXTAREA") {
-    return true;
-  }
-  if (!element.closest) return false;
-  return Boolean(element.closest(".nfm-editor, .bn-editor, .bn-container, [role='dialog']"));
-}
-
 /** Marks a field, such as a Browser address bar, where tab shortcuts still close and switch tabs. */
 const PANEL_TAB_SHORTCUTS_PASS_THROUGH_SELECTOR = "[data-panel-tab-shortcuts-pass-through]";
 
@@ -91,4 +62,60 @@ export function resolveFocusedPanelTabCycleScope(
 export function isDocumentLevelShortcutTarget(target: EventTarget | null): boolean {
   if (typeof document === "undefined") return false;
   return target === document || target === document.body || target === document.documentElement;
+}
+
+const BROWSER_ADDRESS_SELECTOR = "[data-browser-sidebar-address-input='true']";
+
+/** The focused guest lives outside the panel tree. Its in-panel host carries the same identity. */
+function resolveFocusedBrowserLeaf(document: Document, target: Element | null): Element | null {
+  const leaf = target?.closest(PANEL_GROUP_LEAF_SELECTOR);
+  if (leaf) return leaf;
+  const guest = target?.closest(
+    '[data-browser-sidebar-webview-manager-root][data-browser-sidebar-webview-host-kind="panel"]',
+  );
+  const tabId = guest?.getAttribute("data-browser-sidebar-browser-tab-id");
+  const conversationId = guest?.getAttribute("data-browser-sidebar-conversation-id");
+  if (!tabId || !conversationId) return null;
+
+  const hosts = document.querySelectorAll("div[data-browser-sidebar-webview-host-root]");
+  for (const host of hosts) {
+    if (host.getAttribute("data-browser-sidebar-browser-tab-id") !== tabId) continue;
+    if (host.getAttribute("data-browser-sidebar-conversation-id") !== conversationId) continue;
+    const hostLeaf = host.closest(PANEL_GROUP_LEAF_SELECTOR);
+    if (hostLeaf) return hostLeaf;
+  }
+  return null;
+}
+
+/** Prefer the focused Browser group, then the remembered group, then active groups. */
+export function focusBrowserAddressBar(
+  document: Document,
+  rememberedScope: PanelTabCycleScope | null,
+): boolean {
+  const target = document.activeElement;
+  const focusedLeaf = resolveFocusedBrowserLeaf(document, target);
+  const addresses = Array.from(
+    document.querySelectorAll<HTMLInputElement>(BROWSER_ADDRESS_SELECTOR),
+  ).filter(
+    (input) =>
+      !input.disabled &&
+      !input.closest("[hidden], [inert]") &&
+      (input.checkVisibility?.({ visibilityProperty: true }) ?? true),
+  );
+  const address =
+    addresses.find((input) => input === target || focusedLeaf?.contains(input)) ??
+    addresses.find((input) => {
+      const scope = resolveFocusedPanelTabCycleScope(input);
+      return (
+        scope !== null &&
+        scope.panelId === rememberedScope?.panelId &&
+        scope.leafId === rememberedScope.leafId
+      );
+    }) ??
+    addresses.find((input) => input.closest('[data-panel-group-leaf-active="true"]')) ??
+    (addresses.length === 1 ? addresses[0] : undefined);
+  if (!address) return false;
+  address.focus();
+  address.select();
+  return true;
 }

@@ -1,13 +1,13 @@
 import {
-  matchesKeyboardEventToAccelerator,
-  type KeyboardShortcutEventLike,
-} from "../../../../shared/command-keybindings";
-import type { RuntimePlatform } from "../../../../shared/runtime-platform";
+  matchesKeyboardActionCommand,
+  type KeyboardActionEventLike,
+} from "@/lib/keyboard-action-runtime";
+import type { CommandKeymapState } from "../../../../shared/command-keybindings";
 
-/** Local Find owns only its exact chord; modified F chords remain available to the shell. */
+/** Page Find uses the same binding as the shell and preserves the Page-specific search seed. */
 export function matchesNfmFindShortcut(
-  event: KeyboardShortcutEventLike,
-  platform: RuntimePlatform,
+  event: KeyboardActionEventLike,
+  keymap: CommandKeymapState,
 ): boolean {
-  return matchesKeyboardEventToAccelerator(event, "CmdOrCtrl+F", platform);
+  return matchesKeyboardActionCommand(event, keymap, "findInThread");
 }
