@@ -270,7 +270,7 @@ test("Agent tool rows name what they touched in plain language", async () => {
 
     const searchRow = page.getByRole("button", { name: /^Searched pages for/ });
     await toggle(searchRow);
-    await expect(page.locator("[data-nodex-tool-related-pages]")).toContainText("Launch checklist");
+    await expect(page.locator("[data-nodex-tool-results]")).toContainText("Launch checklist");
     await settle(page);
     await saveEvidence(page, "06-search-opened");
     await toggle(searchRow);

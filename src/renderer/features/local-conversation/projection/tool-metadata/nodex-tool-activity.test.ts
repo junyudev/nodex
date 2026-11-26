@@ -150,11 +150,11 @@ describe("resolveNodexToolActivity", () => {
     const search = call(
       "search",
       { query: "launch" },
-      wrap({ results: [{ kind: "page", id: PAGE_ID }] }),
+      wrap({ results: [{ kind: "page", identity: PAGE_ID }] }),
     );
 
     expect(label(search)).toBe("Searched Space for “launch” · 1 result");
-    expect(readNodexToolDetail(search).pages).toHaveLength(1);
+    expect(readNodexToolDetail(search).results).toHaveLength(1);
   });
 
   test("does not mistake a result's own content field for an envelope", () => {
@@ -178,7 +178,7 @@ describe("resolveNodexToolActivity", () => {
       "Searched pages for “launch” · 3 results",
     );
     expect(
-      label(call("search", args, { data: { results: [{ kind: "page", id: PAGE_ID }] } })),
+      label(call("search", args, { data: { results: [{ kind: "page", identity: PAGE_ID }] } })),
     ).toBe("Searched pages for “launch” · 1 result");
     expect(label(call("search", { query: "launch" }))).toBe("Searched Space for “launch”");
     expect(label(call("search", args, undefined, running))).toBe("Searching pages for “launch”");
@@ -228,7 +228,10 @@ describe("resolveNodexToolActivity", () => {
       { data: { pages: [{ pageId: PAGE_ID, pageKey: "LAB-1" }, { pageId: PARENT_ID }] } },
     );
     expect(label(several)).toBe("Created 2 pages in page");
-    expect(readNodexToolDetail(several).pages.map((page) => page.title)).toEqual(["Alpha", "Beta"]);
+    expect(readNodexToolDetail(several).results.map((page) => page.title)).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
   });
 
   test("survives arguments the timeline withheld", () => {
@@ -492,7 +495,7 @@ describe("what opening a row offers", () => {
     expect(readNodexToolDetail(call("fetch", { id: PAGE_ID }, digest, withheld))).toEqual({
       document: null,
       message: null,
-      pages: [],
+      results: [],
       failure: null,
     });
     expect(
@@ -539,23 +542,63 @@ describe("what opening a row offers", () => {
     expect(detail("Error: account_unavailable")).toBe("account_unavailable");
   });
 
-  test("lists the Pages behind a search, using the owning Page for a Block match", () => {
+  test("lists the Pages and chats a search found, with what matched beyond their name", () => {
+    const parts = (text: string) => [{ text, highlighted: true }];
     const search = call(
       "search",
       { query: "launch" },
       {
         data: {
           results: [
-            { kind: "page", id: PAGE_ID, title: "Launch plan", pageKey: "LAB-13" },
-            { kind: "block", id: "block-1", ownerPageId: PARENT_ID, excerpt: "launch window" },
+            {
+              kind: "page",
+              identity: PAGE_ID,
+              title: "Launch plan",
+              evidence: [
+                { field: "title", parts: parts("Launch plan") },
+                { field: "page_key", parts: parts("LAB-13") },
+              ],
+            },
+            {
+              kind: "block",
+              identity: "block-1",
+              title: "Roadmap",
+              evidence: [
+                {
+                  field: "body",
+                  parts: parts("launch window"),
+                  anchor: { kind: "block", pageId: PARENT_ID, blockId: "block-1" },
+                },
+              ],
+            },
+            {
+              kind: "chat",
+              identity: SESSION_ID,
+              title: "Release prep",
+              evidence: [
+                { field: "title", parts: parts("Release prep") },
+                { field: "branch", parts: parts("launch-week") },
+                {
+                  field: "message",
+                  parts: [
+                    { text: "Move the ", highlighted: false },
+                    { text: "launch", highlighted: true },
+                  ],
+                  anchor: { kind: "chat_item", sessionId: SESSION_ID },
+                },
+              ],
+            },
+            { kind: "chat", identity: "chat-2", title: "", evidence: [] },
           ],
         },
       },
     );
 
-    expect(readNodexToolDetail(search).pages).toEqual([
-      { pageId: PAGE_ID, title: "Launch plan", pageKey: "LAB-13", excerpt: null },
-      { pageId: PARENT_ID, title: null, pageKey: null, excerpt: "launch window" },
+    expect(readNodexToolDetail(search).results).toEqual([
+      { kind: "page", pageId: PAGE_ID, title: "Launch plan", pageKey: "LAB-13", excerpt: null },
+      { kind: "page", pageId: PARENT_ID, title: null, pageKey: null, excerpt: "launch window" },
+      { kind: "chat", sessionId: SESSION_ID, title: "Release prep", excerpt: "Move the launch" },
+      { kind: "chat", sessionId: "chat-2", title: null, excerpt: null },
     ]);
   });
 
