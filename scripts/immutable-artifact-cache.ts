@@ -37,6 +37,7 @@ export type ImmutableArtifactFamily =
   | "agent-runtime"
   | "browser-runtime"
   | "electron"
+  | "opencode-plugin-dependencies"
   | "rust-dev-runtime"
   | "sparkle"
   | "workspace-runtime";

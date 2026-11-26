@@ -222,6 +222,16 @@ distributions through the same immutable cache. Set `NODEX_BUILD_CACHE_DIR` to a
 absolute directory to isolate all Nodex runtime and native build cache families;
 an explicit materializer `--cache` still selects that family's directory directly.
 
+OpenCode 1.x installs its plugin SDK, about 55 MB in thousands of files, into
+each Profile's OpenCode settings the first time it starts. When the launcher
+creates a home and the host's `opencode` is 1.15.13 or a later 1.x, whose npm
+installer never writes through a link, it links that install to one shared copy
+per version in `cache.local/opencode-plugin-dependencies/`. The home keeps its
+own `package.json` and `package-lock.json`. OpenCode installs a local copy
+instead when they change, when the cache is deleted, or when preparation fails.
+Electron scenario Profiles disable the host's agents, so they never start the
+host's OpenCode.
+
 Materialization creates independent outputs under each worktree's `.generated/`.
 Files use copy-on-write clones where the filesystem supports them, with regular
 copies as a fallback. Editing, signing, or deleting a worktree's runtime cannot

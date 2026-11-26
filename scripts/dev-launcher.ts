@@ -49,6 +49,7 @@ import { CROSS_PROVIDER_SCENARIO_ID } from "./scenarios/scenarios/agent-cross-pr
 import { assertSeededSourceFolder } from "./scenarios/seed/source-folder";
 import { isolatedElectronArguments } from "./isolated-run/electron-arguments";
 import { electronApplicationEnvironment } from "./isolated-run/electron-environment";
+import { seedOpenCodePluginDependencies } from "./opencode-plugin-dependencies";
 import {
   rustDevCargoOutputDirectory,
   rustDevRuntimeExecutable,
@@ -971,6 +972,13 @@ export const runDevLauncher = (input: {
             home,
             seedRevision: recipe?.revision,
           });
+          if (home.wasCreated && !arguments_.fromProfile) {
+            await seedOpenCodePluginDependencies({
+              environment: plan.environment,
+              nodexHome: home.nodexHome,
+              projectRoot: home.repositoryRealpath,
+            });
+          }
         } catch (error) {
           environmentPreparationFailed = true;
           throw error;
