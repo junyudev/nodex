@@ -1,6 +1,6 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { ChangelogSectionKind } from "../../../shared/changelog";
-import type { ChangelogRelease } from "../../../shared/changelog-feed";
+import type { ChangelogEntryMedia, ChangelogRelease } from "../../../shared/changelog-feed";
 import { changelogInlineTokens } from "../../../shared/changelog-inline";
 import { OpenExternalIcon } from "@/components/shared/icons";
 import {
@@ -9,7 +9,11 @@ import {
   NodexDialogDescription,
   NodexDialogTitle,
 } from "@/components/ui/dialog";
+import { NodexTooltip } from "@/components/ui/tooltip";
+import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import { defineMessage, defineMessages, useIntl } from "@/lib/i18n";
+import { useTheme } from "@/lib/use-theme";
+import { cn } from "@/lib/utils";
 import type { ModalCloseProps } from "@/lib/modal-registry";
 import { openChangelogPage, releaseDay } from "./whats-new-actions";
 
@@ -29,6 +33,10 @@ const RELEASE_VERSION_LABEL = defineMessage<{ version: string }>({
 const RELEASE_DESCRIPTION = defineMessage<{ version: string }>({
   id: "whatsNew.releaseDescription",
   defaultMessage: "What changed in Nodex {version}",
+});
+const OPEN_CHANGE_PAGE = defineMessage({
+  id: "whatsNew.openChangePage",
+  defaultMessage: "View on the changelog",
 });
 const OPEN_ON_WEBSITE = defineMessage({
   id: "whatsNew.openOnWebsite",
@@ -101,6 +109,9 @@ export function ReleaseNotesDialog({
                         <ChangelogInlineText markdown={entry.detail} />
                       </>
                     ) : null}
+                    {entry.media?.[0] ? (
+                      <ChangelogPicture media={entry.media[0]} url={entry.url ?? release.url} />
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -117,6 +128,72 @@ export function ReleaseNotesDialog({
         </article>
       </NodexDialogContent>
     </NodexDialog>
+  );
+}
+
+/**
+ * An entry's first picture in the app's appearance, framed and capped in height so it illustrates
+ * the entry without taking over the notes. It opens full size in the image viewer, like every image
+ * in Nodex, which also leads to the change's page on the changelog.
+ */
+function ChangelogPicture({
+  media,
+  url,
+}: {
+  readonly media: ChangelogEntryMedia;
+  readonly url: string;
+}) {
+  const images = (
+    [
+      ["light", media.light],
+      ["dark", media.dark],
+    ] as const
+  ).flatMap(([theme, image]) => (image ? [{ theme, image }] : []));
+  const intl = useIntl();
+  const { resolved } = useTheme();
+  const [viewing, setViewing] = useState(false);
+  const shown = images.find(({ theme }) => theme === resolved) ?? images[0];
+  return (
+    <>
+      <NodexTooltip tooltipContent={media.caption}>
+        <button
+          type="button"
+          className="mt-2.5 flex w-full cursor-interaction items-center justify-center overflow-hidden rounded-lg bg-token-foreground/[0.035] p-3 ring-1 ring-token-border/60 transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
+          onClick={() => setViewing(true)}
+        >
+          {images.map(({ theme, image }) => (
+            <img
+              key={theme}
+              src={image.src}
+              // Pictures are captured at twice their on-screen size.
+              width={Math.round(image.width / 2)}
+              height={Math.round(image.height / 2)}
+              alt={media.caption}
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              className={cn(
+                "h-auto max-h-80 w-auto max-w-full rounded-md object-contain",
+                images.length > 1 && (theme === "light" ? "dark:hidden" : "hidden dark:block"),
+              )}
+            />
+          ))}
+        </button>
+      </NodexTooltip>
+      {viewing && shown ? (
+        <ImagePreviewDialog
+          open
+          onOpenChange={setViewing}
+          src={shown.image.src}
+          alt={media.caption}
+          title={media.caption}
+          openIn={{
+            label: intl.formatMessage(OPEN_CHANGE_PAGE),
+            open: () => void openChangelogPage(url),
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
