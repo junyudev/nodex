@@ -1,0 +1,198 @@
+---
+import type { ShownMedia, ShownMediaFile } from "../changelog";
+
+interface Props {
+  media: ShownMedia;
+  /** Where the picture leads; the changelog list links to the change's own page. */
+  href?: string;
+  /** How many more pictures the change's own page shows. */
+  more?: number;
+  /** The change's own page offers copying and opening each original. */
+  actions?: boolean;
+  eager?: boolean;
+  sizes?: string;
+}
+
+const {
+  media,
+  href,
+  more = 0,
+  actions = false,
+  eager = false,
+  sizes = "(min-width: 1024px) 720px, 100vw",
+} = Astro.props;
+
+// Each appearance shows with the site's matching theme; a single one shows in both.
+const files = (
+  [
+    ["light", media.light],
+    ["dark", media.dark],
+  ] as const
+).filter((entry): entry is readonly ["light" | "dark", ShownMediaFile] => entry[1] !== undefined);
+// Each appearance carries its own display, so the theme switch never fights another display class.
+const themed = (theme: "light" | "dark", display: "block" | "inline-flex") =>
+  files.length === 1
+    ? display
+    : theme === "light"
+      ? `${display} dark:hidden`
+      : `hidden ${display === "block" ? "dark:block" : "dark:inline-flex"}`;
+
+// Captures are 2x, so a picture never shows larger than it was on screen. A whole-window capture
+// fills the frame; a close-up sits on the frame's canvas, its shadow following its own outline so
+// an element captured with transparent corners keeps its shape.
+const cssSize = (file: ShownMediaFile) => ({
+  width: Math.round(file.width / 2),
+  height: Math.round(file.height / 2),
+});
+const fillsFrame = (file: ShownMediaFile) => Math.abs(file.width / file.height - 16 / 10) < 0.04;
+const srcset = (file: ShownMediaFile) =>
+  file.sources.map(({ url, width }) => `${url} ${width}w`).join(", ") || undefined;
+const display = (file: ShownMediaFile) => file.sources[0]?.url ?? file.src;
+---
+
+<figure data-change-media>
+  {
+    files.map(([theme, file]) => {
+      const size = cssSize(file);
+      const fills = fillsFrame(file);
+      const frame = (
+        <div
+          class:list={[
+            "flex items-center justify-center overflow-hidden rounded-[12px] bg-ink/[0.035] ring-1 ring-line",
+            fills ? "aspect-[16/10]" : "aspect-[4/3] px-[6%] py-[5%] sm:aspect-[16/10]",
+          ]}
+        >
+          {file.type === "video" ? (
+            <video
+              data-change-video
+              class:list={[
+                fills ? "size-full object-cover" : "max-h-full max-w-full rounded-[8px] ring-1 ring-line",
+              ]}
+              style={fills ? undefined : `max-width: min(100%, ${size.width}px)`}
+              width={size.width}
+              height={size.height}
+              poster={file.poster}
+              preload="metadata"
+              muted
+              loop
+              playsinline
+              aria-label={media.caption}
+            >
+              <source src={file.src} type="video/mp4" />
+            </video>
+          ) : (
+            <img
+              class:list={[
+                fills
+                  ? "size-full object-cover"
+                  : "max-h-full max-w-full rounded-[8px] object-contain drop-shadow-[0_1px_2px_rgb(0_0_0/0.10)] drop-shadow-[0_10px_28px_rgb(0_0_0/0.10)]",
+              ]}
+              style={fills ? undefined : `max-width: min(100%, ${size.width}px)`}
+              src={display(file)}
+              srcset={srcset(file)}
+              sizes={sizes}
+              width={size.width}
+              height={size.height}
+              alt={media.caption}
+              loading={eager ? "eager" : "lazy"}
+              decoding="async"
+            />
+          )}
+        </div>
+      );
+      return href && file.type === "image" ? (
+        <a
+          href={href}
+          class:list={[
+            "rounded-[12px] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2",
+            themed(theme, "block"),
+          ]}
+        >
+          {frame}
+        </a>
+      ) : (
+        <div class={themed(theme, "block")}>{frame}</div>
+      );
+    })
+  }
+  <figcaption class="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-ink-3">
+    <span class="text-pretty">{media.caption}</span>
+    {
+      more > 0 && href ? (
+        <a href={href} class="tabular-nums text-ink-2 transition-colors hover:text-ink">
+          {more} more
+        </a>
+      ) : null
+    }
+    {
+      actions ? (
+        <span class="ml-auto flex items-center gap-1">
+          {files.some(([, file]) => file.type === "image") ? (
+            <button
+              type="button"
+              data-copy-image
+              data-light={media.light?.type === "image" ? media.light.src : undefined}
+              data-dark={media.dark?.type === "image" ? media.dark.src : undefined}
+              class="h-7 rounded-full px-2.5 text-[12px] font-medium text-ink-2 ring-1 ring-line transition-colors hover:text-ink hover:ring-ink/20"
+            >
+              Copy image
+            </button>
+          ) : null}
+          {files.map(([theme, file]) => (
+            <a
+              href={file.src}
+              class:list={[
+                "h-7 items-center rounded-full px-2.5 text-[12px] font-medium text-ink-2 ring-1 ring-line transition-colors hover:text-ink hover:ring-ink/20",
+                themed(theme, "inline-flex"),
+              ]}
+            >
+              {file.type === "video" ? "Open video" : "Open original"}
+            </a>
+          ))}
+        </span>
+      ) : null
+    }
+  </figcaption>
+</figure>
+
+<script>
+  // Clips play while they are on screen and stay still for people who reduce motion.
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const videos = [...document.querySelectorAll<HTMLVideoElement>("video[data-change-video]")];
+  if (reduceMotion.matches) {
+    for (const video of videos) video.controls = true;
+  } else if (videos.length > 0) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const { target, isIntersecting } of entries) {
+          const video = target as HTMLVideoElement;
+          if (isIntersecting) void video.play().catch(() => {});
+          else video.pause();
+        }
+      },
+      { threshold: 0.5 },
+    );
+    for (const video of videos) observer.observe(video);
+  }
+
+  // Copies the original of the appearance on screen, ready to paste into a message.
+  for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-copy-image]")) {
+    const label = button.textContent;
+    button.addEventListener("click", async () => {
+      const dark = document.documentElement.dataset.theme === "dark";
+      const url = (dark ? button.dataset.dark : button.dataset.light) ?? button.dataset.light ?? button.dataset.dark;
+      if (!url) return;
+      try {
+        const blob = fetch(url, { mode: "cors" }).then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.blob();
+        });
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Couldn't copy";
+      }
+      window.setTimeout(() => (button.textContent = label), 1600);
+    });
+  }
+</script>

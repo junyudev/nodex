@@ -3,10 +3,13 @@ import {
   CHANGE_TONE,
   formatReleaseDate,
   inlineHtml,
+  permalinkPath,
   splitEntry,
   type ChangelogCategory,
+  type ChangelogItem,
   type ChangelogRelease,
 } from "../../changelog";
+import ChangeMedia from "../../components/ChangeMedia.astro";
 import SiteFooter from "../../components/SiteFooter.astro";
 import SiteNav from "../../components/SiteNav.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
@@ -30,11 +33,15 @@ function railDate(release: ChangelogRelease): string {
 
 // What is new reads in full: the release in development and the latest one show every addition
 // and change. Everything else shows its first few entries and opens the rest on request.
+// Entries with pictures lead their kind and always show.
 function visibleCount(release: ChangelogRelease, category: ChangelogCategory): number {
   const current = release.version === null || release === latest;
-  if (current) return category.title === "Added" || category.title === "Changed" ? Infinity : 5;
-  return 3;
+  const pictured = category.items.filter((item) => item.media).length;
+  if (current) return category.title === "Added" || category.title === "Changed" ? Infinity : Math.max(5, pictured);
+  return Math.max(3, pictured);
 }
+const ordered = (items: readonly ChangelogItem[]) =>
+  [...items].sort((left, right) => Number(Boolean(right.media)) - Number(Boolean(left.media)));
 
 const entryClass =
   "text-[15px] leading-[1.7] text-pretty text-ink-2 [&_code]:rounded-[5px] [&_code]:bg-ink/[0.07] [&_code]:px-[0.32em] [&_code]:py-[0.06em] [&_code]:font-mono [&_code]:text-[0.84em] [&_code]:text-ink";
@@ -143,13 +150,36 @@ const entryClass =
 
               {release.categories.map((category) => {
                 const shown = visibleCount(release, category);
-                const entries = category.items.map((item) => splitEntry(item.text));
+                const entries = ordered(category.items).map((item) => ({
+                  ...splitEntry(item.text),
+                  item,
+                  href:
+                    release.version !== null && item.slug
+                      ? permalinkPath(release.version, item.slug)
+                      : undefined,
+                }));
                 const list = (items: typeof entries) =>
-                  items.map(({ lead, rest }) => (
-                    <li class={entryClass}>
+                  items.map(({ lead, rest, item, href }) => (
+                    <li class:list={["group relative scroll-mt-24", entryClass]}>
+                      {href ? (
+                        <a
+                          href={href}
+                          aria-label="Open this change's page"
+                          class="absolute top-[0.2em] -left-6 hidden size-4 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100 hover:text-ink focus-visible:opacity-100 lg:block"
+                        >
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" class="size-4">
+                            <path d="M6.75 9.25a2.75 2.75 0 0 0 3.9 0l2-2a2.76 2.76 0 0 0-3.9-3.9l-.6.6M9.25 6.75a2.75 2.75 0 0 0-3.9 0l-2 2a2.76 2.76 0 0 0 3.9 3.9l.6-.6" />
+                          </svg>
+                        </a>
+                      ) : null}
                       <span class="text-ink" set:html={inlineHtml(lead)} />
                       {rest ? " " : null}
                       {rest ? <Fragment set:html={inlineHtml(rest)} /> : null}
+                      {item.media?.[0] ? (
+                        <div class="mt-4 mb-2">
+                          <ChangeMedia media={item.media[0]} href={href} more={item.media.length - 1} />
+                        </div>
+                      ) : null}
                     </li>
                   ));
                 const more = entries.slice(shown);

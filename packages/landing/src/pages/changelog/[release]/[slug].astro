@@ -1,0 +1,125 @@
+---
+import {
+  CHANGE_TONE,
+  formatReleaseDate,
+  inlineHtml,
+  permalinkEntries,
+  plainText,
+  splitEntry,
+  type ChangelogPermalinkEntry,
+} from "../../../changelog";
+import { CHANGELOG_SECTION_TITLES } from "../../../../../../src/shared/changelog";
+import ChangeMedia from "../../../components/ChangeMedia.astro";
+import SiteFooter from "../../../components/SiteFooter.astro";
+import SiteNav from "../../../components/SiteNav.astro";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { getChangelogReleases } from "../../../lib/changelog-data";
+
+export async function getStaticPaths() {
+  const releases = await getChangelogReleases();
+  return permalinkEntries(releases).map((entry) => ({
+    params: { release: `v${entry.version}`, slug: entry.slug },
+    props: {
+      entry,
+      headline: releases.find(({ version }) => version === entry.version)?.headline ?? null,
+    },
+  }));
+}
+
+interface Props {
+  entry: ChangelogPermalinkEntry;
+  headline: string | null;
+}
+
+const { entry, headline } = Astro.props;
+const { lead, rest } = splitEntry(entry.text);
+const title = plainText(lead).replace(/[.:]$/u, "");
+const kind = CHANGELOG_SECTION_TITLES[entry.kind];
+const release = `/changelog/#v${entry.version}`;
+
+// Link previews show the change's first picture in the light appearance when it has one.
+const cover = entry.media[0];
+const coverFile = cover?.light ?? cover?.dark;
+const image =
+  cover && coverFile?.type === "image"
+    ? { url: coverFile.src, width: coverFile.width, height: coverFile.height, alt: cover.caption }
+    : undefined;
+---
+
+<BaseLayout
+  title={`${title} | Nodex Changelog`}
+  ogTitle={title}
+  description={plainText(entry.text)}
+  socialCard="changelog"
+  image={image}
+>
+  <SiteNav />
+  <main class="mx-auto w-full max-w-[760px] px-6 pt-10 pb-24 sm:pt-14">
+    <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-[13px] text-ink-3">
+      <a href="/changelog/" class="transition-colors hover:text-ink">Changelog</a>
+      <span aria-hidden="true">/</span>
+      <a href={release} class="tabular-nums transition-colors hover:text-ink">v{entry.version}</a>
+    </nav>
+
+    <header class="mt-7">
+      <p class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-ink-3">
+        <span class="inline-flex items-center gap-1.5 font-medium text-ink-2">
+          <span class:list={["size-2 rounded-full", CHANGE_TONE[kind] ?? "bg-ink-3"]} />
+          {kind}
+        </span>
+        <time datetime={entry.date} class="tabular-nums">{formatReleaseDate(entry.date)}</time>
+        <button
+          type="button"
+          data-copy-link
+          class="ml-auto h-7 rounded-full px-2.5 text-[12px] font-medium text-ink-2 ring-1 ring-line transition-colors hover:text-ink hover:ring-ink/20"
+        >
+          Copy link
+        </button>
+      </p>
+      <h1
+        class="mt-3 text-[28px] leading-[1.2] font-semibold tracking-[-0.03em] text-balance sm:text-[32px] [&_code]:font-mono [&_code]:text-[0.86em]"
+        set:html={inlineHtml(lead.replace(/[.:]$/u, ""))}
+      />
+      {
+        rest ? (
+          <p
+            class="mt-4 text-[17px] leading-[1.65] text-pretty text-ink-2 [&_code]:rounded-[5px] [&_code]:bg-ink/[0.07] [&_code]:px-[0.32em] [&_code]:py-[0.06em] [&_code]:font-mono [&_code]:text-[0.84em] [&_code]:text-ink"
+            set:html={inlineHtml(rest)}
+          />
+        ) : null
+      }
+    </header>
+
+    {
+      entry.media.length > 0 ? (
+        <div class="mt-10 flex flex-col gap-10">
+          {entry.media.map((media, index) => (
+            <ChangeMedia media={media} actions eager={index === 0} sizes="(min-width: 808px) 712px, 100vw" />
+          ))}
+        </div>
+      ) : null
+    }
+
+    <footer class="mt-14 border-t border-line pt-6">
+      <a href={release} class="text-[14px] text-ink-2 transition-colors hover:text-ink">
+        ← Everything in v{entry.version}{headline ? <span class="text-ink-3"> · {headline}</span> : null}
+      </a>
+    </footer>
+  </main>
+  <SiteFooter />
+</BaseLayout>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-copy-link]")) {
+    const label = button.textContent;
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Couldn't copy";
+      }
+      window.setTimeout(() => (button.textContent = label), 1600);
+    });
+  }
+</script>

@@ -113,6 +113,17 @@ function findMatchingBacktickRun(value: string, start: number, delimiterLength: 
   return -1;
 }
 
+/** Entry text without its inline Markdown, for titles, descriptions and alt text. */
+export function plainText(value: string): string {
+  return changelogInlineTokens(value)
+    .map(({ text }) => text)
+    .join("");
+}
+
+/** The page of one published change. */
+export const permalinkPath = (version: string, slug: string): string =>
+  `/changelog/v${version}/${slug}/`;
+
 /** Each kind of change keeps the color its status has in the app. */
 export const CHANGE_TONE: Record<string, string> = {
   Added: "bg-status-done",
