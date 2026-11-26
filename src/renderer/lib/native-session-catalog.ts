@@ -1,3 +1,4 @@
+import type { FolderPlacement } from "../../shared/folder-placement";
 import { getIntl } from "@/lib/i18n";
 import type {
   NativeConversationImportInput,
@@ -11,6 +12,14 @@ const importNativeConversationCommand = defineRendererCommand({
   channel: "native-sessions:import",
   authority: "main",
   owner: "NativeSessionCatalog",
+  protocol: { kind: "returned_value" },
+});
+
+const ensureFolderProjectCommand = defineRendererCommand({
+  key: "native_session.ensure_folder_project",
+  channel: "projects:ensure-folder",
+  authority: "main",
+  owner: "FolderPlacement",
   protocol: { kind: "returned_value" },
 });
 
@@ -30,6 +39,22 @@ export const discoverNativeProjects = () =>
 
 export const previewNativeConversationImport = (input: NativeConversationImportPreviewInput) =>
   invokeRendererQuery("native-sessions:preview-import", input);
+
+export async function previewNativeFolderPlacements(folders: readonly string[]) {
+  const placements: FolderPlacement[] = [];
+  for (let start = 0; start < folders.length; start += 2000) {
+    placements.push(
+      ...(await invokeRendererQuery(
+        "native-sessions:preview-placement",
+        folders.slice(start, start + 2000),
+      )),
+    );
+  }
+  return placements;
+}
+
+export const ensureFolderProject = (folder: string) =>
+  invokePlainCommand(ensureFolderProjectCommand, folder);
 
 export const importNativeConversation = (input: NativeConversationImportInput) =>
   invokePlainCommand(importNativeConversationCommand, input);

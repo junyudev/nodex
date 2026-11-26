@@ -10,7 +10,12 @@ import {
   AgentRuntimeApplicationError,
   AgentRuntimeApplication,
 } from "../agent-runtime/AgentRuntimeApplication";
-import { turnSessionFolderIntoProject } from "./SessionFolderProjects";
+import { projectForFolder, resolveFolderPlacement } from "./FolderPlacement";
+import {
+  previewChatSort,
+  sortChatsIntoProjects,
+  turnSessionFolderIntoProject,
+} from "./SessionFolderProjects";
 import * as Layer from "effect/Layer";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { ProjectArchiveBlockers, live } from "./ProjectArchiveBlockers";
@@ -19,6 +24,98 @@ import {
   SIDEBAR_CHAT_STATUS_SCENARIO_ID,
   requireSidebarChatStatusFacts,
 } from "../../../scripts/scenarios/scenarios/sidebar-chat-status";
+
+const places = {
+  home: "/home/person",
+  nodexHome: "/home/person/.nodex",
+  temporary: ["/scratch", tmpdir()],
+};
+const mainRoot = "/code/widgets";
+const repository = {
+  root: mainRoot,
+  commonDirectory: `${mainRoot}/.git`,
+  remoteUrl: "git@github.com:team/widgets.git",
+};
+const folder = (path: string, identity: typeof repository | null = null) => ({
+  path,
+  repository: identity,
+});
+const projectSource = (source: ReturnType<typeof folder>, active = true) => ({
+  folder: source,
+  active,
+  projectId: "widgets-project",
+  name: "Widgets",
+});
+
+describe("folder placement", () => {
+  test("routes exact folders, contained folders, and linked worktrees to the active source", () => {
+    const main = projectSource(folder(mainRoot, repository));
+    const worktree = folder("/linked/widgets", { ...repository, root: "/linked/widgets" });
+    const linked = projectSource(worktree);
+    const expected = { kind: "project", projectId: main.projectId, name: main.name };
+    for (const [cwd, source] of [
+      [folder(mainRoot), main],
+      [folder(`${mainRoot}/src`), main],
+      [worktree, main],
+      [folder(mainRoot, repository), linked],
+    ] as const) {
+      expect(resolveFolderPlacement(cwd, [source], places)).toEqual(expected);
+    }
+    expect(resolveFolderPlacement(folder("/code/widgets-backup"), [main], places).kind).toBe(
+      "new-project",
+    );
+    const separateClone = {
+      ...repository,
+      root: "/code/clone",
+      commonDirectory: "/code/clone/.git",
+    };
+    expect(resolveFolderPlacement(folder("/code/clone", separateClone), [main], places).kind).toBe(
+      "new-project",
+    );
+  });
+
+  test("uses the main checkout and recognizable repository name for a new Project", () => {
+    const expected = {
+      kind: "new-project",
+      projectId: projectForFolder(mainRoot),
+      root: mainRoot,
+      name: "team/widgets",
+    };
+    expect(resolveFolderPlacement(folder("/linked/widgets/src", repository), [], places)).toEqual(
+      expected,
+    );
+    expect(resolveFolderPlacement(folder(mainRoot, repository), [], places)).toEqual(expected);
+    expect(resolveFolderPlacement(folder("/code/notes"), [], places)).toEqual({
+      kind: "new-project",
+      projectId: projectForFolder("/code/notes"),
+      root: "/code/notes",
+      name: "notes",
+    });
+  });
+
+  test("keeps excluded folders and archived owners in Chats", () => {
+    for (const cwd of [
+      "/scratch/draft",
+      "/home/person",
+      "/home/person/Downloads/example",
+      "/home/person/.codex/worktrees/example",
+      "/home/person/.claude/projects",
+      "/home/person/.gemini/antigravity",
+      "/home/person/.nodex/tasks/example",
+    ]) {
+      expect(resolveFolderPlacement(folder(cwd), [], places)).toEqual({ kind: "chats" });
+    }
+    const archived = projectSource(folder(mainRoot, repository), false);
+    expect(
+      resolveFolderPlacement(folder("/linked/worktree", repository), [archived], places),
+    ).toEqual({ kind: "chats" });
+    expect(
+      resolveFolderPlacement(folder("/scratch/draft"), [projectSource(folder("/scratch"))], places)
+        .kind,
+    ).toBe("project");
+    expect(resolveFolderPlacement(null, [], places)).toEqual({ kind: "missing" });
+  });
+});
 
 describe("SessionFolderProjects", () => {
   const tempDirectory = Effect.acquireRelease(
@@ -52,6 +149,7 @@ describe("SessionFolderProjects", () => {
     const moves: Parameters<AgentRuntimeApplication["Service"]["moveSession"]>[0][] = [];
     const input: Parameters<typeof turnSessionFolderIntoProject>[0] = {
       sessionId: session.id,
+      places,
       folders: {
         existing: (_id, optionsForExisting) =>
           options.legacy
@@ -130,7 +228,7 @@ describe("SessionFolderProjects", () => {
       }),
   );
 
-  it.effect("uses an existing execution cwd and rejects a source owned by another Project", () =>
+  it.effect("uses existing execution folders and places chats in an existing Project", () =>
     Effect.gen(function* () {
       const directory = yield* tempDirectory;
       const legacy = fixture(directory, { legacy: true });
@@ -141,10 +239,42 @@ describe("SessionFolderProjects", () => {
       });
 
       const occupied = fixture(directory, { owner: true });
-      const result = yield* turnSessionFolderIntoProject(occupied.input).pipe(Effect.flip);
-      assert.include(result.message, "already a source for Notes");
+      assert.deepEqual(yield* turnSessionFolderIntoProject(occupied.input), {
+        projectId: "existing",
+      });
       assert.deepEqual(occupied.creates, []);
-      assert.deepEqual(occupied.moves, []);
+      assert.equal(occupied.moves[0]?.projectId, "existing");
+    }),
+  );
+
+  it.effect("sorts only the chats in the confirmed plan and uses the ordinary move", () =>
+    Effect.gen(function* () {
+      const directory = yield* tempDirectory;
+      const f = fixture(directory, { owner: true });
+      const input = {
+        ...f.input,
+        projects: {
+          ...f.input.projects,
+          listProjectSessionSummaryWindow: () =>
+            Effect.sync(() => ({
+              items: f.session.projectId === null ? [f.session as ProjectSessionSummary] : [],
+              totalCount: f.session.projectId === null ? 1 : 0,
+              nextCursor: null,
+              hasMore: false,
+              projectionRevision: 0,
+            })),
+        },
+      };
+      const preview = yield* previewChatSort(input);
+      assert.deepEqual(preview.destinations, [
+        { placement: { kind: "project", projectId: "existing", name: "Notes" }, count: 1 },
+      ]);
+      const result = yield* sortChatsIntoProjects(input, preview.planId);
+      assert.deepEqual(result, { moved: 1, skipped: 0 });
+      assert.equal(f.session.projectId, "existing");
+      assert.deepEqual(f.creates, []);
+      assert.isTrue(yield* sortChatsIntoProjects(input, preview.planId).pipe(Effect.isFailure));
+      assert.equal(f.moves.length, 1);
     }),
   );
 });

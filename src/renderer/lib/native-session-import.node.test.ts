@@ -110,13 +110,13 @@ describe("native conversation import ledger", () => {
       },
       observedAt,
     );
-  const selection = (candidate: NativeConversationCandidate, projectId: string | null = null) =>
-    nativeConversationImportSelection(candidate, projectId, "/repo");
+  const selection = (candidate: NativeConversationCandidate, cwd = "/repo") =>
+    nativeConversationImportSelection(candidate, cwd);
   const imported = (input: NativeConversationImportInput): NativeConversationImportOutcome => ({
     kind: "imported",
     sessionId: input.requestId,
     threadId: `thread-${input.requestId}`,
-    projectId: input.projectId,
+    projectId: null,
   });
   const deferred = () => {
     let resolve!: (outcome: NativeConversationImportOutcome) => void;
@@ -136,7 +136,7 @@ describe("native conversation import ledger", () => {
       const candidate = source(ledger.now());
       const first = ledger.submit(candidate, selection(candidate), send);
       // A second page, mounted later with other controls, joins the same submission.
-      const second = ledger.submit(source(ledger.now()), selection(candidate, "project"), send);
+      const second = ledger.submit(source(ledger.now()), selection(candidate, "/changed"), send);
       expect(send).toHaveBeenCalledTimes(1);
       expect(ledger.snapshot().get(candidate.key)?.status).toBe("sending");
 
@@ -172,7 +172,7 @@ describe("native conversation import ledger", () => {
       expect(unsettled).toMatchObject({ status: "unsettled", candidate });
 
       const changed = { ...source(ledger.now()), title: "Renamed elsewhere" };
-      const settlement = await ledger.submit(changed, selection(changed, "project"), send);
+      const settlement = await ledger.submit(changed, selection(changed, "/changed"), send);
       const [first, retry] = send.mock.calls.map(([input]) => input);
       expect(retry).toBe(first);
       expect(settlement).toEqual({
@@ -194,10 +194,10 @@ describe("native conversation import ledger", () => {
         .mockImplementation(async (input) => imported(input));
       const candidate = source(ledger.now());
       await ledger.submit(candidate, selection(candidate), send);
-      await ledger.submit(candidate, selection(candidate, "project"), send);
+      await ledger.submit(candidate, selection(candidate, "/changed"), send);
       const [rejected, fresh] = send.mock.calls.map(([input]) => input);
       expect(fresh!.requestId).not.toBe(rejected!.requestId);
-      expect(fresh!.projectId).toBe("project");
+      expect(fresh!.cwd).toBe("/changed");
     });
 
     it("protects a copy from reads sent before it settled, but not from later reads", async () => {
@@ -543,7 +543,8 @@ describe("native conversation import model", () => {
         ["/gone", "/moved"],
         ["/repo", "/elsewhere"],
       ]);
-      expect(nativeConversationImportCwd(available, replacements)).toBe("/repo");
+      expect(nativeConversationImportCwd(available, new Map())).toBe("/repo");
+      expect(nativeConversationImportCwd(available, replacements)).toBe("/elsewhere");
       expect(nativeConversationImportCwd(missing, new Map())).toBeNull();
       expect(nativeConversationImportCwd(missing, replacements)).toBe("/moved");
     });
@@ -558,13 +559,12 @@ describe("native conversation import model", () => {
     );
 
     it("names the Claude profile and gives each accepted request its own identity", () => {
-      const selection = nativeConversationImportSelection(candidate, "project", "/repo");
+      const selection = nativeConversationImportSelection(candidate, "/repo");
       expect(selection).toEqual({
         backendKind: "claude",
         instanceConfigId: "work",
         nativeSessionId: "id",
         expectedHome: "/claude",
-        projectId: "project",
         cwd: "/repo",
       });
       const first = acceptNativeConversationImport(selection);

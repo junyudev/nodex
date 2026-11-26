@@ -227,18 +227,16 @@ export function nativeConversationFolderCounts(
 }
 
 export type NativeConversationImportSelection = NativeSessionSource &
-  Pick<NativeConversationImportInput, "nativeSessionId" | "expectedHome" | "projectId" | "cwd">;
+  Pick<NativeConversationImportInput, "nativeSessionId" | "expectedHome" | "cwd">;
 
 export function nativeConversationImportSelection(
   candidate: NativeConversationCandidate,
-  projectId: string | null,
   cwd: string,
 ): NativeConversationImportSelection {
   return {
     ...nativeSessionSource(candidate.source),
     nativeSessionId: candidate.nativeSessionId,
     expectedHome: candidate.nativeHome,
-    projectId,
     cwd,
   };
 }
@@ -258,5 +256,5 @@ export function nativeConversationImportCwd(
   candidate: NativeConversationCandidate,
   replacements: ReadonlyMap<string, string>,
 ): string | null {
-  return candidate.cwdAvailable ? candidate.cwd : (replacements.get(candidate.cwd) ?? null);
+  return replacements.get(candidate.cwd) ?? (candidate.cwdAvailable ? candidate.cwd : null);
 }

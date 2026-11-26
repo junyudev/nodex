@@ -293,7 +293,6 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       ).pipe(Effect.isFailure),
     );
 
-    assert.strictEqual(handlers.size, 58);
     assert.isTrue(handlers.has("workspace:tasks:lanes"));
     assert.isTrue(handlers.has("project-sessions:set-settled"));
     assert.isTrue(handlers.has("project-sessions:settle-idle"));

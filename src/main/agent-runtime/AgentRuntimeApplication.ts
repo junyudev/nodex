@@ -496,6 +496,7 @@ interface NativeAdoptionInput {
   readonly model?: string | null;
 }
 type NativeImportRequest = NativeConversationImportInput & {
+  readonly projectId: string | null;
   readonly adoption?: NativeAdoptionInput;
 };
 const nativeImportIdentity = (input: NativeImportRequest) =>
@@ -514,7 +515,6 @@ const nativeImportIdentity = (input: NativeImportRequest) =>
         requestId: input.requestId,
         nativeSessionId: input.nativeSessionId,
         expectedHome: input.expectedHome,
-        projectId: input.projectId,
         cwd: input.cwd,
       };
 const nativeImportBinding = (input: NativeImportRequest, runtimeId: string) => ({
@@ -2596,8 +2596,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* failure("import", "Import identity, title and working directory are required");
     const connection = yield* options.connect;
     const sessionId = input.adoption?.sessionId ?? input.requestId;
-    // The complete request is part of the binding, so a reused request cannot import another
-    // source or silently change the destination while recovering a partial operation.
+    // The request fingerprints the source and folder. Core records its destination in the binding.
     const importIdentity = nativeImportIdentity(input);
     const binding = nativeImportBinding(input, connection.identity.runtimeId);
     const threadId = binding.runtime_thread_id;
@@ -2772,17 +2771,22 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       },
       unknown
     >,
+    resolveProject: Effect.Effect<string | null, unknown>,
   ): Effect.fn.Return<NativeConversationImportOutcome, unknown> {
     yield* validateCaller();
     const previous = yield* lookupDestinationBinding(input.requestId);
-    const completed = yield* completedNativeImport(input);
+    const completed = previous
+      ? yield* completedNativeImport({ ...input, projectId: previous.project_id ?? null })
+      : null;
     if (completed) return { kind: "imported", ...completed };
     let bindingAttempted = false;
     return yield* Effect.gen(function* () {
       const source = yield* prepare;
+      const projectId = previous ? (previous.project_id ?? null) : yield* resolveProject;
       const result = yield* importNative(
         {
           ...input,
+          projectId,
           title: source.title,
           model: source.model,
           ...(source.cwd === undefined ? {} : { sourceCwd: source.cwd }),
@@ -4909,10 +4913,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     submitNativeImport: (
       input: NativeConversationImportInput,
       prepare: Parameters<typeof submitNativeImport>[1],
+      resolveProject: Parameters<typeof submitNativeImport>[2],
     ) =>
       withSessionLane(
         input.requestId,
-        ownedWrite("import", submitNativeImport(input, prepare).pipe(Effect.scoped)),
+        ownedWrite(
+          "import",
+          submitNativeImport(input, prepare, resolveProject).pipe(Effect.scoped),
+        ),
       ),
     adoptNativeSession: (input: NativeAdoptionInput) =>
       withSessionLane(
@@ -4943,6 +4951,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       readonly operationId: string;
       readonly sessionId: string;
       readonly projectId: string | null;
+      readonly onlyProjectless?: true;
       readonly placement?: import("../../shared/types").ProjectSessionPlacement;
     }) =>
       withSessionLifecycle(
@@ -4956,7 +4965,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           )
             return yield* failure("move-session", "Session and Project identities are required");
           yield* authorizeSession(input.sessionId);
-          yield* projectScope(input.projectId, false);
+          if (input.onlyProjectless) {
+            const session = yield* workspace.getProjectSession(input.sessionId);
+            if (!session || session.archived || session.projectId !== null)
+              return yield* failure("move-session", "Chat is no longer available in Chats");
+          }
+          yield* projectScope(input.projectId, input.onlyProjectless === true, false);
           yield* core.workspace.apply({
             operationId: input.operationId,
             intent: {

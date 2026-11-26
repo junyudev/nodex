@@ -1,5 +1,5 @@
 import { homedir, tmpdir } from "node:os";
-import { basename, join, sep } from "node:path";
+import { basename, isAbsolute, join, sep } from "node:path";
 import * as Effect from "effect/Effect";
 import type { NativeSessionSource } from "../../shared/native-session-catalog";
 import type {
@@ -40,14 +40,24 @@ export type ProjectDiscoveryConversation = ProjectCandidateChat & {
 /** `owner/name` for a hosted remote URL in any of its common spellings. */
 export function repositoryFromRemoteUrl(url: string | null): string | null {
   if (!url) return null;
-  const path = url
-    .trim()
-    .replace(/\.git\/?$/u, "")
+  const hosted = /^(?:(?:https?|ssh|git(?:\+ssh)?):\/\/[^/]+\/|[^/@]+@[^:]+:)(.+)$/iu.exec(
+    url.trim(),
+  )?.[1];
+  if (!hosted) return null;
+  const parts = hosted
     .replace(/\/+$/u, "")
-    .replace(/^[a-z+]+:\/\/[^/]+\//iu, "")
-    .replace(/^[^/@]+@[^:]+:/u, "");
-  const parts = path.split("/").filter(Boolean);
+    .replace(/\.git$/u, "")
+    .split("/")
+    .filter(Boolean);
   return parts.length >= 2 ? parts.slice(-2).join("/") : null;
+}
+
+export function projectDiscoveryPlaces(nodexHome: string, home = homedir()) {
+  return {
+    home,
+    nodexHome,
+    temporary: ["/tmp", "/private/tmp", "/var/folders", "/private/var/folders", tmpdir()],
+  };
 }
 
 const isInside = (folder: string, parent: string): boolean =>
@@ -68,6 +78,7 @@ export function isOfferedProjectFolder(
     join(places.home, "Downloads"),
     join(places.home, ".codex"),
     join(places.home, ".claude"),
+    join(places.home, ".gemini"),
     join(places.home, "Documents", "Codex"),
     ...places.temporary,
   ];
@@ -131,8 +142,7 @@ export function projectCandidatesFromConversations(
  */
 export const discoverProjects = <E>(input: {
   readonly sources: readonly ProjectDiscoverySource[];
-  readonly nodexHome: string;
-  readonly home?: string;
+  readonly places: ReturnType<typeof projectDiscoveryPlaces>;
   readonly now: number;
   readonly readPage: (
     source: ProjectDiscoverySource,
@@ -141,11 +151,7 @@ export const discoverProjects = <E>(input: {
   readonly probe: (cwd: string) => Effect.Effect<GitRepositoryIdentity | null>;
 }): Effect.Effect<ProjectDiscoveryResult> =>
   Effect.gen(function* () {
-    const places = {
-      home: input.home ?? homedir(),
-      nodexHome: input.nodexHome,
-      temporary: ["/tmp", "/private/tmp", "/var/folders", "/private/var/folders", tmpdir()],
-    };
+    const { places } = input;
     let truncated = false;
     const conversations = new Map<string, ProjectDiscoveryConversation>();
     for (const source of input.sources) {
@@ -158,7 +164,7 @@ export const discoverProjects = <E>(input: {
         if (!page) break;
         for (const entry of page.entries) {
           read += 1;
-          if (entry.cwdAvailable === false) continue;
+          if (entry.cwdAvailable === false || !isAbsolute(entry.cwd)) continue;
           if (!isOfferedProjectFolder(entry.cwd, places)) continue;
           conversations.set(`${source.backendKind}\n${page.nativeHome}\n${entry.nativeSessionId}`, {
             ...source,
@@ -184,9 +190,10 @@ export const discoverProjects = <E>(input: {
       (folder) => input.probe(folder).pipe(Effect.map((identity) => [folder, identity] as const)),
       { concurrency: PROBE_CONCURRENCY },
     );
+    const identities = new Map(probed);
     const candidates = projectCandidatesFromConversations(
-      all,
-      new Map(probed),
+      all.filter(({ cwd }) => isOfferedProjectFolder(identities.get(cwd)?.root ?? cwd, places)),
+      identities,
       input.now,
       places.home,
     );

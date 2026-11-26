@@ -14,6 +14,7 @@ import {
   discoverProjects,
   isOfferedProjectFolder,
   projectCandidatesFromConversations,
+  projectDiscoveryPlaces,
   repositoryFromRemoteUrl,
   type ProjectDiscoveryConversation,
   type ProjectDiscoveryPage,
@@ -221,8 +222,7 @@ describe("project-discovery", () => {
       Effect.gen(function* () {
         const result = yield* discoverProjects({
           sources: [{ backendKind: "codex" }],
-          nodexHome: "/home/.nodex",
-          home: "/home",
+          places: projectDiscoveryPlaces("/home/.nodex", "/home"),
           now: NOW,
           readPage: (_source, cursor) =>
             Effect.succeed(
@@ -243,17 +243,25 @@ describe("project-discovery", () => {
     it.effect("keeps what other histories found when one can't be read", () =>
       Effect.gen(function* () {
         const result = yield* discoverProjects({
-          sources: [{ backendKind: "codex" }, { backendKind: "claude", instanceConfigId: "c" }],
-          nodexHome: "/home/.nodex",
-          home: "/home",
+          sources: [
+            { backendKind: "codex" },
+            { backendKind: "claude", instanceConfigId: "c" },
+            { backendKind: "antigravity", instanceConfigId: "a" },
+          ],
+          places: projectDiscoveryPlaces("/home/.nodex", "/home"),
           now: NOW,
           readPage: (source) =>
             source.backendKind === "codex"
               ? Effect.fail("unreadable" as const)
-              : Effect.succeed(page([entry("a", "/code/a")])),
+              : source.backendKind === "claude"
+                ? Effect.succeed(page([entry("a", "/code/a")]))
+                : Effect.succeed(page([entry("b", "/code/b"), entry("no-folder", "")])),
           probe: () => Effect.succeed(null),
         });
-        expect(result.candidates.map((candidate) => candidate.path)).toEqual(["/code/a"]);
+        expect(result.candidates.map((candidate) => candidate.path)).toEqual([
+          "/code/a",
+          "/code/b",
+        ]);
       }),
     );
 
@@ -262,8 +270,7 @@ describe("project-discovery", () => {
         let reads = 0;
         const result = yield* discoverProjects({
           sources: [{ backendKind: "codex" }],
-          nodexHome: "/home/.nodex",
-          home: "/home",
+          places: projectDiscoveryPlaces("/home/.nodex", "/home"),
           now: NOW,
           readPage: () => {
             reads += 1;

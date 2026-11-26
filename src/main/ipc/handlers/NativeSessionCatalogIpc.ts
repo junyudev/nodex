@@ -1,3 +1,4 @@
+import { antigravityAgent } from "../../../shared/agents/antigravity";
 import { claudeAgent } from "../../../shared/agents/claude";
 import { PROFILE_NATIVE_HISTORIES } from "../../../shared/agents/definition";
 import { agentProfilesFor } from "../../../shared/agents/profiles";
@@ -20,6 +21,12 @@ import { probeGitRepository } from "../../platform/node/GitRepositoryProbe";
 import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
+import {
+  folderPlacementPlaces,
+  readFolderPlacements,
+  resolveAndEnsureFolderProject,
+} from "../../project-application/FolderPlacement";
+import { ProjectWorkspace } from "../../project-application/ProjectWorkspace";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
 /** The most identities one Runtime lookup accepts. */
@@ -46,9 +53,14 @@ const ImportFields = {
   requestId: z.uuid(),
   acceptedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   expectedHome: z.string().min(1).max(4096),
-  projectId: identity.nullable(),
-  cwd: z.string().trim().min(1).max(4096),
+  cwd: z
+    .string()
+    .min(1)
+    .max(4096)
+    .refine((path) => path.trim().length > 0),
 };
+const FolderPath = ImportFields.cwd;
+const FolderPaths = z.array(FolderPath).max(2000);
 const nativeSessionId = z.uuid().transform((id) => id.toLowerCase());
 const ImportInput = z.discriminatedUnion("backendKind", [
   z.strictObject({ ...ImportFields, ...CodexSource, nativeSessionId }),
@@ -68,6 +80,13 @@ export const live = Layer.effectDiscard(
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
     const settings = yield* ApplicationSettings;
+    const projects = yield* ProjectWorkspace;
+    const places = folderPlacementPlaces(config);
+    const parse = <T>(operation: string, schema: z.ZodType<T>, input: unknown) =>
+      Effect.try({
+        try: () => schema.parse(input),
+        catch: (cause) => new NativeSessionCatalogIpcError({ operation, cause }),
+      });
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -125,17 +144,28 @@ export const live = Layer.effectDiscard(
       Effect.gen(function* () {
         const { agentProfiles } = yield* settings.snapshot();
         const now = yield* Clock.currentTimeMillis;
+        const antigravity = agentProfilesFor(agentProfiles, antigravityAgent.driver).find(
+          (instance) => instance.enabled,
+        );
         return yield* discoverProjects({
           sources: [
             { backendKind: "codex" as const },
             ...agentProfilesFor(agentProfiles, claudeAgent.driver)
               .filter((instance) => instance.enabled)
               .map((instance) => ({
-                backendKind: "claude" as const,
+                backendKind: claudeAgent.capabilities.nativeHistory,
                 instanceConfigId: instance.id,
               })),
+            ...(antigravity
+              ? [
+                  {
+                    backendKind: antigravityAgent.capabilities.nativeHistory,
+                    instanceConfigId: antigravity.id,
+                  },
+                ]
+              : []),
           ],
-          nodexHome: config.nodexHome,
+          places,
           now,
           readPage: (source, cursor) =>
             readCatalogPage({ ...source, ...(cursor ? { cursor } : {}) }),
@@ -164,6 +194,18 @@ export const live = Layer.effectDiscard(
         return { matches };
       }),
     );
+    yield* handleQuery("native-sessions:preview-placement", (_, folders) =>
+      parse("placement.preview.input", FolderPaths, folders).pipe(
+        Effect.flatMap((paths) => readFolderPlacements(projects, places, paths)),
+      ),
+    );
+    yield* handlePlainCommand("projects:ensure-folder", (_, folder) =>
+      parse("placement.ensure.input", FolderPath, folder).pipe(
+        Effect.flatMap((path) =>
+          resolveAndEnsureFolderProject({ projects, places, folder: path, explicit: true }),
+        ),
+      ),
+    );
     yield* handlePlainCommand("native-sessions:import", (_, input) =>
       Effect.gen(function* () {
         const parsed = yield* Effect.try({
@@ -182,6 +224,19 @@ export const live = Layer.effectDiscard(
                   })
                 : cause,
             ),
+          ),
+          resolveAndEnsureFolderProject({ projects, places, folder: parsed.cwd }).pipe(
+            Effect.flatMap((placement) => {
+              if (placement.kind === "missing")
+                return Effect.fail(
+                  new AgentRuntimeApplicationError({
+                    operation: "import",
+                    message: "This folder is no longer available. Refresh and choose another one.",
+                    admissionRejected: true,
+                  }),
+                );
+              return Effect.succeed(placement.kind === "project" ? placement.projectId : null);
+            }),
           ),
         );
       }),

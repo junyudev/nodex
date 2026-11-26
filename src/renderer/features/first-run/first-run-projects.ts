@@ -8,13 +8,18 @@ import {
   nativeSessionSource,
   nativeConversationImportSelection,
 } from "@/lib/native-conversation-import-model";
-import { discoverNativeProjects, importNativeConversation } from "@/lib/native-session-catalog";
+import {
+  discoverNativeProjects,
+  ensureFolderProject,
+  importNativeConversation,
+} from "@/lib/native-session-catalog";
 import { localPathPresentationContextQueryOptions } from "@/lib/query-options";
 import { pickProjectSourceRoots } from "@/lib/workbench-shell-operations";
 import { abbreviateHomeDirectory } from "../../../shared/local-path-presentation";
 import type { ProjectCandidateChat } from "../../../shared/project-discovery";
 
 export const chooseProjectFolders = pickProjectSourceRoots;
+export const createFolderProject = ensureFolderProject;
 
 /** Shows a folder the person chose the way found folders read, as `~/…` inside their home. */
 export function useFolderLabel(): (path: string) => string {
@@ -29,7 +34,7 @@ export function useProjectCandidates(enabled: boolean) {
     queryFn: discoverNativeProjects,
     enabled,
     retry: false,
-    staleTime: 5 * 60_000,
+    refetchOnMount: "always",
   });
 }
 
@@ -47,11 +52,7 @@ const publish = (next: ChatImportProgress | null) => {
   for (const listener of listeners) listener();
 };
 
-async function importChat(item: {
-  readonly projectId: string;
-  readonly chat: ProjectCandidateChat;
-}): Promise<boolean> {
-  const { chat, projectId } = item;
+async function importChat(chat: ProjectCandidateChat): Promise<boolean> {
   const candidate = nativeConversationCandidate(
     nativeSessionSource(chat),
     chat.nativeHome,
@@ -66,7 +67,7 @@ async function importChat(item: {
   );
   const settlement = await nativeConversationImportLedger.submit(
     candidate,
-    nativeConversationImportSelection(candidate, projectId, chat.cwd),
+    nativeConversationImportSelection(candidate, chat.cwd),
     importNativeConversation,
   );
   return settlement.kind === "imported";
@@ -76,9 +77,7 @@ async function importChat(item: {
  * Copies chats behind whatever the person does next, through the same ledger Settings shows, so a
  * chat that fails can be retried there. Each copy appears in the sidebar as it finishes.
  */
-export function importRecentChats(
-  items: readonly { readonly projectId: string; readonly chat: ProjectCandidateChat }[],
-): void {
+export function importRecentChats(items: readonly ProjectCandidateChat[]): void {
   if (items.length === 0 || progress) return;
   const queue = [...items];
   let settled = 0;

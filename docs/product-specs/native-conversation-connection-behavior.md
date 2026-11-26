@@ -29,11 +29,17 @@ selected conversations are out of view, and shows them on request, so nothing is
 import that has not settled stays listed whatever is searched for. A completed copy is offered for opening
 by default; an explicit new copy has a new request identity.
 
-Choose a Project or Projectless destination and an existing working directory. A missing source
-working directory does not prevent discovery or preview; choose an available replacement for the
-copy. No import silently falls back to a home directory.
-The destination Project may have no configured workspace. The imported chat owns its selected
-execution directory; importing does not add or change a Project workspace source.
+Each conversation goes to the active Project that owns its working folder. A Project owns the
+folder when a directory source matches it, contains it, or belongs to the same Git repository,
+including linked worktrees. For an eligible folder with no Project, import creates a Project at
+the repository’s main checkout or at the working folder itself outside Git. A recognizable
+repository remote supplies the Project name as `owner/name`. Chats from excluded folders or
+folders owned only by archived Projects stay in Chats. Each row previews its placement, and the
+selection shows how many Projects it will create.
+
+A missing working folder requires an existing replacement before the copy can be imported.
+The replacement determines placement. The imported chat keeps its selected execution folder,
+including when that folder is inside a Project source or in a linked worktree.
 
 Import creates a separate Nodex Session and Agent Runtime root Thread. It copies the source's
 complete supported visible history into the Runtime's history store and opens an ordinary chat
@@ -63,8 +69,9 @@ and resumable when the source is archived or deleted; it holds no native history
 that source or its ancestors. A source that was forked from another conversation includes its
 visible inherited history in the copy. Import does not connect the source to a Nodex Project.
 
-An import request retains its selected source, destination, directory and request identity for
-retry. Retrying that request returns the same destination instead of creating another chat.
+An import request retains its selected source, directory and request identity for retry. When
+Nodex admits the copy, it records the resolved Project or Chats placement with the Session.
+Retrying an admitted request recovers that copy even if the folder would now resolve differently.
 An uncertain result retains that request when the user changes selection or leaves Settings. Only
 a confirmed rejection before destination admission releases it for corrected parameters; error
 wording never determines whether a new attempt is safe.

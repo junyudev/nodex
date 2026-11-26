@@ -7,7 +7,6 @@ import { NodexSegmentedControl } from "@/components/ui/segmented-control";
 import { NodexCheckbox } from "@/components/ui/settings";
 import { toastFailure } from "@/lib/failure-toast";
 import type { Project, ProjectCreateInput } from "@/lib/types";
-import type { ProjectCandidateChat } from "../../../shared/project-discovery";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import {
   candidateActivity,
@@ -28,6 +27,7 @@ import {
 } from "./first-run-frame";
 import {
   chooseProjectFolders,
+  createFolderProject,
   importRecentChats,
   useFolderLabel,
   useProjectCandidates,
@@ -132,14 +132,24 @@ async function createChosenProjects(
   choices: readonly FirstRunFolderChoice[],
   onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>,
 ) {
-  const created: { readonly choice: FirstRunFolderChoice; readonly project: Project }[] = [];
+  const created: { readonly choice: FirstRunFolderChoice; readonly projectId: string }[] = [];
   for (const choice of choices) {
     try {
-      const project = await onCreateProject({
-        name: choice.candidate?.name ?? choice.name,
-        sources: choice.path ? [choice.path] : [],
-      });
-      if (project) created.push({ choice, project });
+      if (choice.path === null) {
+        const project = await onCreateProject({ name: choice.name, sources: [] });
+        if (project) created.push({ choice, projectId: project.id });
+        continue;
+      }
+      const placement = await createFolderProject(choice.path);
+      if (placement.kind !== "project") {
+        throw new Error(
+          getIntl().formatMessage({
+            id: "firstRun.firstRunProjectsStep.folderUnavailable",
+            defaultMessage: "The folder is unavailable for a project.",
+          }),
+        );
+      }
+      created.push({ choice, projectId: placement.projectId });
     } catch (cause) {
       toastFailure(
         getIntl().formatMessage(
@@ -255,16 +265,9 @@ export function FirstRunProjectsStep({
     const first = created[0];
     if (!first) return;
     if (bringChats) {
-      importRecentChats(
-        created.flatMap(({ choice, project }) =>
-          (choice.candidate?.recentChats ?? []).map((chat: ProjectCandidateChat) => ({
-            projectId: project.id,
-            chat,
-          })),
-        ),
-      );
+      importRecentChats(created.flatMap(({ choice }) => choice.candidate?.recentChats ?? []));
     }
-    onContinue({ projectId: first.project.id, task: firstTaskForChoice(first.choice) });
+    onContinue({ projectId: first.projectId, task: firstTaskForChoice(first.choice) });
   };
 
   const count = selected.length;
@@ -280,8 +283,7 @@ export function FirstRunProjectsStep({
           candidates.length > 0
             ? intl.formatMessage({
                 id: "firstRun.firstRunProjectsStep.foundInYourCodexAnd",
-                defaultMessage:
-                  "Found in your Codex and Claude Code history. Choose any, or add a folder.",
+                defaultMessage: "Found in your agent history. Choose any, or add a folder.",
               })
             : intl.formatMessage({
                 id: "firstRun.firstRunProjectsStep.chooseAFolderYouAlready",

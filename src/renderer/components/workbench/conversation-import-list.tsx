@@ -11,7 +11,8 @@ import type {
   NativeConversationSource,
 } from "../../lib/native-conversation-import-model";
 import { cn } from "../../lib/utils";
-import { ActivitySpinnerIcon, AgentProviderIcon } from "../shared/icons";
+import type { FolderPlacement } from "../../../shared/folder-placement";
+import { ActivitySpinnerIcon, AgentProviderIcon, ChatIcon, FolderIcon } from "../shared/icons";
 import { NodexButton } from "../ui/button";
 import {
   NodexDropdownActionRow,
@@ -78,7 +79,6 @@ export type ConversationImportRowState =
 /** An unsettled attempt: importing again can only finish this exact request. */
 export interface ConversationImportPendingAttempt {
   readonly cwd: string;
-  readonly destination: string;
   readonly unsettled: string | null;
 }
 
@@ -88,6 +88,7 @@ export function ConversationImportRow({
   pathContext,
   selected,
   cwd,
+  placement,
   pending,
   state,
   locked,
@@ -103,6 +104,8 @@ export function ConversationImportRow({
   selected: boolean;
   /** The directory a new copy would use; null while a missing original has no replacement. */
   cwd: string | null;
+  /** Where a new copy lands, decided by its folder; null while unknown or already decided. */
+  placement: FolderPlacement | null;
   pending: ConversationImportPendingAttempt | null;
   state: ConversationImportRowState | undefined;
   locked: boolean;
@@ -116,7 +119,7 @@ export function ConversationImportRow({
   const checkboxId = useId();
   const title = conversationTitle(candidate.title, intl);
   const { imported } = candidate;
-  const missing = !candidate.cwdAvailable;
+  const missing = !candidate.cwdAvailable || cwd !== candidate.cwd;
   const folder = pending?.cwd ?? cwd;
   const selectable = !imported;
   const titleContent = <ConversationMatchedText text={title} query={query} />;
@@ -266,6 +269,7 @@ export function ConversationImportRow({
           ) : null}
         </div>
         {action}
+        {!imported && placement ? <ConversationImportPlacement placement={placement} /> : null}
         <NodexTooltip tooltipContent={folder ?? candidate.cwd}>
           {selectable ? (
             <label
@@ -300,14 +304,68 @@ export function ConversationImportRow({
           </span>
           <span className="text-token-description-foreground">
             <FormattedMessage
-              id="workbench.conversationImportList.resumeImport"
-              defaultMessage={"Import again to finish it in {destination}."}
-              values={{ destination: pending.destination }}
+              id="workbench.conversationImportList.retryUnfinishedImport"
+              defaultMessage="Import again to finish this copy."
             />
           </span>
         </p>
       ) : null}
     </div>
+  );
+}
+
+/** The Project, new or existing, or Chats that a copy lands in. */
+export function ConversationImportPlacement({
+  placement,
+}: {
+  readonly placement: FolderPlacement;
+}) {
+  const intl = useIntl();
+  if (placement.kind === "missing") return null;
+  const name =
+    placement.kind === "chats"
+      ? intl.formatMessage({
+          id: "settings.conversationImport.chatsPlacement",
+          defaultMessage: "Chats",
+        })
+      : placement.name;
+  const tooltip =
+    placement.kind === "new-project"
+      ? intl.formatMessage(
+          {
+            id: "settings.conversationImport.newProjectPlacement",
+            defaultMessage: "New project {name}",
+          },
+          { name: placement.name },
+        )
+      : placement.kind === "chats"
+        ? intl.formatMessage({
+            id: "settings.conversationImport.chatsPlacementHint",
+            defaultMessage: "Stays in Chats: Nodex makes no Project for this folder",
+          })
+        : intl.formatMessage(
+            {
+              id: "settings.conversationImport.projectPlacement",
+              defaultMessage: "Goes to {name}",
+            },
+            { name: placement.name },
+          );
+  const Icon = placement.kind === "chats" ? ChatIcon : FolderIcon;
+  return (
+    <NodexTooltip tooltipContent={tooltip}>
+      <span className="flex w-[22%] max-w-40 shrink-0 items-center gap-1 text-xs text-token-text-secondary">
+        <Icon className="icon-2xs shrink-0 text-token-description-foreground" />
+        <span className="min-w-0 truncate">{name}</span>
+        {placement.kind === "new-project" ? (
+          <span className="shrink-0 rounded-sm bg-token-foreground/[0.06] px-1 text-[10px] leading-4 text-token-description-foreground">
+            {intl.formatMessage({
+              id: "settings.conversationImport.newPlacementTag",
+              defaultMessage: "New",
+            })}
+          </span>
+        ) : null}
+      </span>
+    </NodexTooltip>
   );
 }
 

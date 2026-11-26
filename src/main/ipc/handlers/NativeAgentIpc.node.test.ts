@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { ProjectWorkspace } from "../../project-application/ProjectWorkspace";
 // @effect-diagnostics strictEffectProvide:off
 import { describe, expect, vi } from "vite-plus/test";
 import { EventEmitter } from "node:events";
@@ -425,6 +427,9 @@ describe("NativeSessionCatalogIpc", () => {
         Layer.provide(
           Layer.mergeAll(
             mainConfigLayer(),
+            Layer.succeed(ProjectWorkspace, {
+              listProjectWindow: () => Effect.succeed({ items: [], nextCursor: null }),
+            } as unknown as ProjectWorkspace["Service"]),
             Layer.succeed(NativeSessionCatalog, catalog),
             Layer.succeed(AgentRuntimeApplication, {
               findNativeImports: ({ nativeThreadIds }: { nativeThreadIds: readonly string[] }) =>
@@ -441,17 +446,19 @@ describe("NativeSessionCatalogIpc", () => {
               submitNativeImport: (
                 input: NativeConversationImportInput,
                 prepare: Effect.Effect<{ title: string; model: string | null }, unknown>,
+                resolveProject: Effect.Effect<string | null, unknown>,
               ) =>
                 Effect.gen(function* () {
                   if (!state.completed) {
                     const metadata = yield* prepare;
+                    yield* resolveProject;
                     imported.push({ ...input, title: metadata.title, model: metadata.model });
                   }
                   return {
                     kind: "imported" as const,
                     sessionId: input.requestId,
                     threadId: "runtime-thread",
-                    projectId: input.projectId,
+                    projectId: null,
                   };
                 }).pipe(
                   Effect.catch((cause) =>
@@ -526,8 +533,7 @@ describe("NativeSessionCatalogIpc", () => {
             acceptedAt: 1,
             nativeSessionId: "019abcde-1234-7000-8000-123456789abc",
             expectedHome: "/native-home",
-            projectId: null,
-            cwd: "/replacement",
+            cwd: tmpdir(),
           };
           for (const malformed of [
             { ...input, requestId: "wrong" },
@@ -536,6 +542,7 @@ describe("NativeSessionCatalogIpc", () => {
             { ...input, expectedHome: "" },
             { ...input, acceptedAt: -1 },
             { ...input, title: "Untrusted title" },
+            { ...input, projectId: "Untrusted destination" },
             { ...input, backendKind: "claude" },
             { ...input, instanceConfigId: "wrong" },
           ])
@@ -596,8 +603,7 @@ describe("NativeSessionCatalogIpc", () => {
           acceptedAt: 1,
           nativeSessionId: "019abcde-1234-7000-8000-123456789abc",
           expectedHome: "/native-home",
-          projectId: null,
-          cwd: "/replacement",
+          cwd: tmpdir(),
         };
         fixture.state.preparationFailure = "validation";
         assert.deepEqual(yield* fixture.importNative(trustedEvent(), input), {
@@ -626,8 +632,7 @@ describe("NativeSessionCatalogIpc", () => {
           requestId: "019d0000-0000-7000-8000-000000000002",
           acceptedAt: 1,
           expectedHome: "/native-home",
-          projectId: null,
-          cwd: "/replacement",
+          cwd: tmpdir(),
         };
         yield* fixture.importNative(trustedEvent(), request);
         assert.equal(fixture.prepared[0]?.nativeSessionId, id);

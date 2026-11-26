@@ -349,8 +349,7 @@
   "src/main/ipc/handlers/NativeSessionCatalogIpc.ts": {
     "reason": "Native app-server, history, or remote host transport integration.",
     "literals": {
-      "codex": 2,
-      "claude": 1
+      "codex": 2
     }
   },
   "src/main/nodex-account/managed-providers.ts": {

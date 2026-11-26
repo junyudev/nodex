@@ -23,6 +23,11 @@ const state = vi.hoisted(() => ({
   scanning: false,
   run: vi.fn(),
   imports: vi.fn(),
+  ensureFolder: vi.fn(async (folder: string) => ({
+    kind: "project" as const,
+    projectId: `created:${folder.split("/").at(-1)}`,
+    name: folder,
+  })),
   chooseFolders: vi.fn(async (): Promise<string[]> => []),
 }));
 
@@ -75,6 +80,7 @@ vi.mock("./first-run-agents", () => ({
 }));
 vi.mock("./first-run-projects", () => ({
   chooseProjectFolders: state.chooseFolders,
+  createFolderProject: state.ensureFolder,
   importRecentChats: state.imports,
   useChatImportProgress: () => null,
   useFolderLabel: () => (path: string) => path,
@@ -196,6 +202,7 @@ beforeEach(() => {
   state.scanning = false;
   state.run.mockClear();
   state.imports.mockClear();
+  state.ensureFolder.mockClear();
   state.chooseFolders.mockReset();
   state.chooseFolders.mockResolvedValue([]);
 });
@@ -292,16 +299,16 @@ describe("Where should agents work?", () => {
 
   it("selects active repositories and creates nothing before the person confirms", async () => {
     state.candidates = [candidate("/code/active"), candidate("/code/quiet", { suggested: false })];
-    const { onCreateProject, onStartNewChatWithPrompt } = setup();
+    const { onStartNewChatWithPrompt } = setup();
 
     expect(isChecked(screen.getByRole("checkbox", { name: "active" }))).toBe(true);
     expect(isChecked(screen.getByRole("checkbox", { name: "quiet" }))).toBe(false);
-    expect(onCreateProject).not.toHaveBeenCalled();
+    expect(state.ensureFolder).not.toHaveBeenCalled();
 
     await click(screen.getByRole("checkbox", { name: "quiet" }));
     await click(primary("Add 2 projects"));
-    await waitFor(() => expect(onCreateProject).toHaveBeenCalledTimes(2));
-    expect(onCreateProject).toHaveBeenCalledWith({ name: "active", sources: ["/code/active"] });
+    await waitFor(() => expect(state.ensureFolder).toHaveBeenCalledTimes(2));
+    expect(state.ensureFolder).toHaveBeenCalledWith("/code/active");
     await waitFor(() => expect(state.current?.done).toBe(true));
     expect(onStartNewChatWithPrompt).toHaveBeenCalledWith({
       projectId: "created:active",
@@ -324,9 +331,7 @@ describe("Where should agents work?", () => {
     expect(isChecked(bring)).toBe(false);
     await click(bring);
     await click(primary("Add project"));
-    await waitFor(() =>
-      expect(state.imports).toHaveBeenCalledWith([{ projectId: "created:a", chat }]),
-    );
+    await waitFor(() => expect(state.imports).toHaveBeenCalledWith([chat]));
   });
 
   it("prepares New Chat before setup closes", async () => {
