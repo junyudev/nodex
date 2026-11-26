@@ -1,7 +1,5 @@
-import {
-  ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE,
-  type OrchestrationV2ProviderFailure,
-} from "@nodex/runtime-contracts";
+// Type-only: the renderer reads this module at startup and must not load the contract schemas.
+import type { OrchestrationV2ProviderFailure } from "@nodex/runtime-contracts";
 
 /**
  * What a failed reply ran into, derived once from the failure's structured evidence.
@@ -37,6 +35,8 @@ export type ProviderFailureEvidence = Pick<
 
 /** Nodex-originated codes for failures it observes itself rather than hears from the Agent. */
 export const NODEX_FAILURE_CODES = {
+  /** The chat's working directory was missing, so its message could not be sent. */
+  workspaceMissing: "workspace_missing",
   /** The Agent process exited before the reply finished. */
   processExited: "provider_process_exited",
   /** The Agent never confirmed that the reply started. */
@@ -128,7 +128,7 @@ export function providerFailureHttpStatus(failure: ProviderFailureEvidence): num
  */
 export function providerFailureCause(failure: ProviderFailureEvidence): ProviderFailureCause {
   const code = failure.code;
-  if (code === ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE) return "workspace_missing";
+  if (code === NODEX_FAILURE_CODES.workspaceMissing) return "workspace_missing";
   if (code === NODEX_FAILURE_CODES.modelNotApplied) return "model_not_applied";
   if (failure.contextBudget !== undefined || (code !== null && CONTEXT_BUDGET_CODES.has(code)))
     return "context_budget";

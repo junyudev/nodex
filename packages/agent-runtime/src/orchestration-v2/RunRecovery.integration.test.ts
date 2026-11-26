@@ -1,3 +1,4 @@
+import { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
 import * as SessionPause from "../nodex/SessionPause.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as RuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
@@ -11,7 +12,6 @@ import {
   CommandId,
   EventId,
   MessageId,
-  ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -314,7 +314,7 @@ it.effect("sends the same Run and message once when its missing directory is res
         assert.isUndefined(run.recovery);
         assert.equal(message.delivery, "pending");
         assert.equal(item?.status, "failed");
-        assert.equal(item?.failure.code, ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE);
+        assert.equal(item?.failure.code, NODEX_FAILURE_CODES.workspaceMissing);
         assert.equal(item?.failure.message, "This chat’s working directory no longer exists");
         assert.include(item?.failure.diagnostic ?? "", cwd);
         assert.isTrue(item?.failure.retryable);

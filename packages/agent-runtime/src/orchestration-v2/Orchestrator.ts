@@ -1,3 +1,4 @@
+import { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
 import { questionNoticeId, pendingTaskQuestions } from "./DelegatedTaskQuestions.ts";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import { RetainedModelPolicyOrigin, RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
@@ -44,7 +45,6 @@ import {
 } from "@nodex/runtime-shared/threadPullRequests";
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
-  ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE,
   type ChatAttachment,
   hasImportedThreadHistory,
   CommandId,
@@ -9764,7 +9764,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         (item): item is Extract<OrchestrationV2TurnItem, { readonly type: "error" }> =>
           item.type === "error" &&
           item.nodeId === attempt.rootNodeId &&
-          item.failure.code === ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE,
+          item.failure.code === NODEX_FAILURE_CODES.workspaceMissing,
       );
       if (failureItem === undefined) return;
       const shell = yield* projectionStore

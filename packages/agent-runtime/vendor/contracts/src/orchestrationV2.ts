@@ -660,8 +660,6 @@ export type OrchestrationV2ThreadLaunchWorkspaceStrategy =
 
 /** Failure code on the error item a failed workspace preparation leaves. */
 export const ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE = "workspace_preparation_failed";
-/** Failure code when a Run could not send its message because the working directory was missing. */
-export const ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE = "workspace_missing";
 
 export const OrchestrationV2NativeInput = Schema.Struct({
   runtimeGeneration: TrimmedNonEmptyString,

@@ -1,3 +1,4 @@
+import { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
 import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
 import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import {
@@ -12,7 +13,6 @@ import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
 import {
   CommandId,
   ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE,
-  ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderThread,
@@ -708,7 +708,7 @@ export const layer: Layer.Layer<
                     ? "The Agent couldn't reopen this conversation"
                     : detail,
                 code: workspaceMissing
-                  ? ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE
+                  ? NODEX_FAILURE_CODES.workspaceMissing
                   : unrecoverableNativeSession
                     ? ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE
                     : undefined,
