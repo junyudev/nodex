@@ -63,6 +63,7 @@ const MAX_PAGE_TITLE_LENGTH: usize = 10_000;
 const MAX_EXACT_PAGE_FILE_INVALIDATION_IDS: usize = 4_096;
 const MAX_EXACT_PAGE_FILE_INVALIDATION_BYTES: usize = 128 * 1024;
 
+#[derive(Default)]
 pub(super) struct MutationEffects {
     pub(super) page_file_entries: Vec<nodex_core_contracts::library::LibraryPageFileEntryReceipt>,
     pub(super) file_revisions: BTreeMap<String, i64>,
@@ -3870,6 +3871,57 @@ pub(super) fn create_recovery_page(
     )?;
     restored_files.add_to(&mut effects);
     record_recovery_creation(scope, context, effects)
+}
+
+/// Publishes Project-owned name changes through the same Library projection as direct edits.
+pub(crate) fn record_project_resource_renames(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    project_id: &str,
+    database_id: Option<String>,
+    canvas: Option<crate::document::PrimaryCanvasIdentity>,
+) -> Result<(), StoreError> {
+    if database_id.is_none() && canvas.is_none() {
+        return Ok(());
+    }
+    let mut parent_keys = vec!["library".to_owned(), "catalog".to_owned()];
+    if let Some(database_id) = &database_id {
+        parent_keys.push(format!("database:{database_id}"));
+    }
+    // A Canvas rename has no Page or View coordinates to advance Library reads.
+    if canvas.is_some() {
+        local_commit::require_projection_read(
+            scope.connection(),
+            scope.evidence(),
+            nodex_core_contracts::LocalProjectionScope::Library {
+                library_id: context.library_id.0.clone(),
+            },
+        )?;
+    }
+    let (block_ids, document_ids) = canvas.map_or_else(
+        || (Vec::new(), Vec::new()),
+        |canvas| (vec![canvas.block_id], vec![canvas.document_id]),
+    );
+    build_mutation_result(
+        scope.connection(),
+        context,
+        scope.store_epoch(),
+        scope.evidence().operation_id(),
+        MutationEffects {
+            project_id: Some(project_id.to_owned()),
+            operation_kind: "rename_project_resources",
+            change_kind: "library.changed",
+            did_mutate: true,
+            affected_parent_keys: parent_keys,
+            affected_block_ids: block_ids,
+            affected_database_ids: database_id.into_iter().collect(),
+            affected_document_ids: document_ids,
+            committed_at: scope.committed_at().to_owned(),
+            ..Default::default()
+        },
+        scope.evidence(),
+    )?;
+    Ok(())
 }
 
 pub(super) fn record_recovery_creation(

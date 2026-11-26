@@ -39,8 +39,9 @@ environment workflows remain unavailable until a primary source exists.
 A Project has a stable identity, constrained appearance, ordered filesystem
 sources, lifecycle, primary Database binding, Chats, and execution settings.
 The first source is the default Git, Files, Review, local-Chat, and worktree
-root. Renaming a Project never renames its existing Database, Canvas, source
-folders, or Library content.
+root. Renaming a Project updates the names of its active primary Database and
+Canvas while they still use names derived from the Project. Each custom name
+stays in place. Source folder names and all other Library content stay as they are.
 
 Creating or editing a Project treats name, appearance, and ordered sources as
 one draft. If a new Project is submitted without a source, the Desktop Host

@@ -8075,6 +8075,7 @@ mod agent_search;
 mod block_transfer;
 pub use block_transfer::BlockTransferMetrics;
 mod canvas_mutation;
+pub(crate) use canvas_mutation::rename_primary_canvas_if_named;
 mod content;
 pub(crate) mod cursor;
 mod history;
@@ -8086,7 +8087,8 @@ pub(crate) use page_copy::{OccurrencePageCloneInput, clone_page_for_occurrence};
 mod mutation;
 pub(crate) use mutation::validate_uuid_v7;
 pub(crate) use mutation::{
-    LibraryRootPosition, insert_library_placement, require_project_in_library,
+    LibraryRootPosition, insert_library_placement, record_project_resource_renames,
+    require_project_in_library,
 };
 mod location;
 mod navigation;
@@ -8101,6 +8103,7 @@ pub(crate) use page_property_mutation::{
 };
 mod page_write_semantic;
 mod primary_database;
+pub(crate) use primary_database::rename_bound_primary_database_if_named;
 mod structural_edit;
 
 /// Creates only content whose resource closure was verified by the Document recovery owner.

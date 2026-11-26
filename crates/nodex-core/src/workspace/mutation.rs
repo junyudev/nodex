@@ -1886,7 +1886,8 @@ fn update_project(
     if expected_binding_revision < 1 {
         return Err(invalid("expected_binding_revision must be positive"));
     }
-    let (lifecycle, binding_revision) = require_project(connection, library_id, project_id)?;
+    let (lifecycle, binding_revision, previous_name) =
+        require_project(connection, library_id, project_id)?;
     if lifecycle != "active" {
         return Err(conflict(
             "Project must be active to update metadata or sources",
@@ -1901,7 +1902,8 @@ fn update_project(
     }
     let name = name
         .map(|value| normalize_project_name(value, &[]))
-        .transpose()?;
+        .transpose()?
+        .filter(|next| next != &previous_name);
     if let Some(value) = description {
         validate_description(value)?;
     }
@@ -1913,6 +1915,20 @@ fn update_project(
         .map(|sources| normalize_space_sources(connection, library_id, sources))
         .transpose()?;
     let now = sqlite_now(connection)?;
+    let metadata_changed = name.is_some() || description.is_some() || appearance.is_some();
+    if !metadata_changed && sources.is_none() {
+        return finish_no_op(
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "update_project",
+            Vec::new(),
+            Vec::new(),
+            &now,
+        );
+    }
     let project_catalog_change = if sources.is_some() {
         ProjectCatalogChangeKind::SourcesUpdated
     } else {
@@ -1925,8 +1941,21 @@ fn update_project(
         operation_id,
         request_hash,
         &now,
-        |_| {
-            let metadata_changed = name.is_some() || description.is_some() || appearance.is_some();
+        |scope| {
+            let renamed = name
+                .as_deref()
+                .map(|next| {
+                    rename_primary_resources(
+                        connection,
+                        library_id,
+                        project_id,
+                        &derive_project_resource_name(&previous_name, PROJECT_DATABASE_NAME_SUFFIX),
+                        &derive_project_resource_name(&previous_name, PROJECT_CANVAS_NAME_SUFFIX),
+                        next,
+                        &now,
+                    )
+                })
+                .transpose()?;
             if metadata_changed {
                 let appearance_storage = appearance.as_ref().map(project_appearance_storage);
                 let changed = connection.execute(
@@ -1970,6 +1999,15 @@ fn update_project(
                     }
                 }
             }
+            if let Some((database_id, canvas)) = renamed {
+                crate::library::record_project_resource_renames(
+                    scope,
+                    context,
+                    project_id,
+                    database_id,
+                    canvas,
+                )?;
+            }
             let effects = project_mutation_effects(
                 "update_project",
                 project_catalog_change,
@@ -1994,7 +2032,7 @@ fn set_project_lifecycle(
     lifecycle: ProjectLifecycle,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("project_id", project_id)?;
-    let (current_lifecycle, _) = require_project(connection, library_id, project_id)?;
+    let (current_lifecycle, _, _) = require_project(connection, library_id, project_id)?;
     let next_lifecycle = lifecycle_literal(lifecycle);
     let now = sqlite_now(connection)?;
     if current_lifecycle == "archived" && next_lifecycle != "archived" {
@@ -2159,7 +2197,7 @@ fn set_project_pinned(
     pinned: bool,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("project_id", project_id)?;
-    let (lifecycle, _) = require_project(connection, library_id, project_id)?;
+    let (lifecycle, _, _) = require_project(connection, library_id, project_id)?;
     if lifecycle != "active" {
         return Err(conflict("Project must be active to change pin state"));
     }
@@ -2343,13 +2381,13 @@ fn require_project(
     connection: &Connection,
     library_id: &str,
     project_id: &str,
-) -> Result<(String, i64), StoreError> {
+) -> Result<(String, i64, String), StoreError> {
     connection
         .query_row(
-            "SELECT lifecycle, binding_revision FROM projects \
+            "SELECT lifecycle, binding_revision, name FROM projects \
              WHERE id = ?1 AND library_id = ?2",
             params![project_id, library_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?
         .ok_or_else(|| not_found("Project is unavailable in this Library"))
@@ -2578,6 +2616,68 @@ fn normalize_project_name(name: &str, sources: &[ProjectSource]) -> Result<Strin
     Ok(value)
 }
 
+fn rename_primary_resources(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    current_database_name: &str,
+    current_canvas_name: &str,
+    next_project_name: &str,
+    now: &str,
+) -> Result<(Option<String>, Option<PrimaryCanvasIdentity>), StoreError> {
+    let database_id = crate::library::rename_bound_primary_database_if_named(
+        connection,
+        library_id,
+        project_id,
+        current_database_name,
+        &derive_project_resource_name(next_project_name, PROJECT_DATABASE_NAME_SUFFIX),
+        now,
+    )?;
+    let canvas = crate::library::rename_primary_canvas_if_named(
+        connection,
+        library_id,
+        project_id,
+        current_canvas_name,
+        &derive_project_resource_name(next_project_name, PROJECT_CANVAS_NAME_SUFFIX),
+        now,
+    )?;
+    Ok((database_id, canvas))
+}
+
+pub(crate) fn repair_legacy_project_resource_names(
+    connection: &Connection,
+    now: &str,
+) -> Result<(usize, usize), StoreError> {
+    // These were the literal names written at Project creation before names were derived.
+    let mut projects = connection.prepare(
+        "SELECT id, library_id, name FROM projects WHERE library_id IS NOT NULL ORDER BY id",
+    )?;
+    let projects = projects.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut database_count = 0;
+    let mut canvas_count = 0;
+    for project in projects {
+        let (project_id, library_id, project_name) = project?;
+        let (database, canvas) = rename_primary_resources(
+            connection,
+            &library_id,
+            &project_id,
+            "Cards",
+            "Canvas",
+            &project_name,
+            now,
+        )?;
+        database_count += usize::from(database.is_some());
+        canvas_count += usize::from(canvas.is_some());
+    }
+    Ok((database_count, canvas_count))
+}
+
 fn derive_project_resource_name(project_name: &str, suffix: &str) -> String {
     let suffix_chars = suffix.chars().count();
     let project_name_chars = project_name.chars().count();
@@ -2722,7 +2822,7 @@ fn not_found(message: &str) -> StoreError {
 mod tests {
 
     use nodex_core_contracts::library::{
-        LibraryIntent, LibraryRead, LibraryReadValue, LibraryRouteTarget,
+        LibraryIntent, LibraryRead, LibraryReadValue, LibraryRouteTarget, LibraryWriteParent,
     };
     use nodex_core_contracts::workspace::{
         CodexThreadActiveFlag, CodexThreadStatusType, ProjectAppearance, ProjectCatalogChangeKind,
@@ -3590,6 +3690,213 @@ mod tests {
     }
 
     #[test]
+    fn project_rename_updates_default_resources_in_the_same_commit() {
+        let (_directory, kernel, module) = seeded_module();
+        let project_id = "project-native";
+        module
+            .apply(
+                &context(),
+                create_request("resource-names:create", project_id),
+            )
+            .expect("create Project");
+        let rename = |operation_id, revision, name: String| {
+            module
+                .apply(
+                    &context(),
+                    request(
+                        operation_id,
+                        ProjectWorkspaceIntent::UpdateProject {
+                            project_id: project_id.to_owned(),
+                            expected_binding_revision: revision,
+                            name: Some(name),
+                            description: None,
+                            appearance: None,
+                            source_roots: None,
+                        },
+                    ),
+                )
+                .expect("update Project name")
+        };
+        let long_name = "研".repeat(256);
+        let updated = rename("resource-names:rename", 1, long_name.clone());
+        let commit_seq = updated.committed.commit_seq;
+        let event = kernel
+            .writer()
+            .call(move |connection| {
+                let sequence = connection.query_row(
+                    "SELECT effect.change_log_seq FROM local_commit_effects effect
+                     JOIN change_log change ON change.seq = effect.change_log_seq
+                     WHERE effect.commit_seq = ?1 AND effect.effect_kind = 'library.changed'
+                       AND EXISTS (SELECT 1 FROM json_each(change.document_ids_json)
+                         WHERE value = 'document:canvas:primary:project-native')",
+                    [commit_seq],
+                    |row| row.get::<_, i64>(0),
+                )?;
+                super::load_committed_event_by_sequence(connection, sequence)
+            })
+            .expect("same commit publishes a Library change");
+        let CoreModuleEventPayload::Library(event_payload) = event.payload else {
+            panic!("expected Library effect");
+        };
+        assert!(event_payload.parent_keys.iter().any(|key| key == "library"));
+        assert_eq!(event_payload.database_ids.len(), 1);
+        assert!(matches!(
+            event.projection_impact,
+            ProjectionImpact::Resources { database_ids, view_ids, .. }
+                if database_ids == event_payload.database_ids && view_ids.len() == 1
+        ));
+
+        let names = || {
+            kernel
+                .writer()
+                .call(|connection| Ok(read_project_resource_names(connection, "project-native")?))
+                .expect("read stored names")
+        };
+        assert_eq!(
+            names(),
+            (
+                format!("{}… DB", "研".repeat(252)),
+                "Native project DB".to_owned(),
+                format!("{}… Canvas", "研".repeat(248)),
+            )
+        );
+
+        let unchanged = rename("resource-names:unchanged", 2, format!(" {long_name} "));
+        assert!(unchanged.event.is_none());
+        assert_eq!(unchanged.committed.commit_seq, commit_seq);
+        let canvas_id = super::primary_canvas_block_id(project_id);
+        LibraryModule::new("profile-1", "library-1", &kernel)
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "resource-names:custom-canvas".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::RenameCanvas {
+                        canvas_id,
+                        display_name: "Planning wall".to_owned(),
+                        expected_metadata_revision: 2,
+                    },
+                },
+            )
+            .expect("rename the Canvas independently at its updated revision");
+
+        rename("resource-names:rename-again", 2, "Orbit".to_owned());
+        assert_eq!(
+            names(),
+            (
+                "Orbit DB".to_owned(),
+                "Native project DB".to_owned(),
+                "Planning wall".to_owned(),
+            )
+        );
+    }
+
+    #[test]
+    fn store_upgrade_repairs_only_legacy_primary_resource_names_once() {
+        use crate::infrastructure::migration::prepare_profile_store;
+        use crate::infrastructure::sqlite::open_writer;
+
+        let (directory, kernel, module) = seeded_module();
+        module
+            .apply(
+                &context(),
+                create_request("legacy:create", "project-native"),
+            )
+            .expect("create Project to exercise legacy defaults");
+        LibraryModule::new("profile-1", "library-1", &kernel)
+            .apply(
+                &bootstrap_context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "legacy:create-unbound".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::CreateDatabase {
+                        database_id: "018f0000-0000-7000-8000-000000000021".to_owned(),
+                        data_source_id: "018f0000-0000-7000-8000-000000000022".to_owned(),
+                        view_id: "018f0000-0000-7000-8000-000000000023".to_owned(),
+                        name: "Cards".to_owned(),
+                        parent: LibraryWriteParent::Library { before: None },
+                    },
+                },
+            )
+            .expect("create unbound Cards Database");
+
+        let path = kernel.database_path().to_owned();
+        drop(module);
+        drop(kernel);
+        let mut connection = open_writer(&path).expect("open predecessor Store");
+        // The data-only step leaves the v221 physical schema intact.
+        connection
+            .execute_batch(
+                "UPDATE database_containers SET name = 'Cards'
+                 WHERE block_id = (SELECT database_block_id FROM projects WHERE id = 'project-native');
+                 UPDATE database_containers SET name = 'Reading list'
+                 WHERE block_id = (SELECT database_block_id FROM projects WHERE id = 'project:default');
+                 UPDATE block_properties SET value_json = json_quote('Canvas')
+                 WHERE block_id = 'canvas:primary:project-native' AND property_key = 'document.display_name';
+                 PRAGMA user_version = 221;",
+            )
+            .expect("seed v221 resource names");
+        let read = |connection: &rusqlite::Connection| {
+            let databases = connection
+                .prepare(
+                    "SELECT container.name, container.metadata_revision, block.metadata_revision
+                     FROM database_containers container JOIN blocks block ON block.id = container.block_id
+                     ORDER BY container.name",
+                )
+                .unwrap()
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            let canvas = connection
+                .query_row(
+                    "SELECT json_extract(property.value_json, '$'), property.revision, block.metadata_revision
+                     FROM block_properties property JOIN blocks block ON block.id = property.block_id
+                     WHERE block.id = 'canvas:primary:project-native' AND property.property_key = 'document.display_name'",
+                    [],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)),
+                )
+                .unwrap();
+            (databases, canvas)
+        };
+        let before = read(&connection);
+        assert_eq!(
+            before
+                .0
+                .iter()
+                .filter(|(name, _, _)| name == "Cards")
+                .count(),
+            2
+        );
+        let prepared = prepare_profile_store(&mut connection, directory.path()).expect("upgrade");
+        assert_eq!(prepared.migrated_from_version, Some(221));
+        assert_eq!(prepared.schema_version, 222);
+        let after = read(&connection);
+        assert_eq!(
+            after,
+            (
+                vec![
+                    ("Cards".to_owned(), 1, 1),
+                    ("Native project DB".to_owned(), 2, 2),
+                    ("Reading list".to_owned(), 1, 1)
+                ],
+                ("Native project Canvas".to_owned(), 2, 2),
+            ),
+        );
+        drop(connection);
+        let mut reopened = open_writer(&path).expect("reopen Store");
+        assert_eq!(
+            prepare_profile_store(&mut reopened, directory.path())
+                .expect("open upgraded Store")
+                .migrated_from_version,
+            None
+        );
+        assert_eq!(read(&reopened), after);
+    }
+
+    #[test]
     fn updates_lifecycle_order_and_pinning_with_revision_guards_and_exact_replay() {
         let (_directory, kernel, module) = seeded_module();
         module
@@ -3663,9 +3970,9 @@ mod tests {
         assert_eq!(
             resource_names_after_rename,
             (
+                "Renamed Project DB".to_owned(),
                 "Native project DB".to_owned(),
-                "Native project DB".to_owned(),
-                "Native project Canvas".to_owned(),
+                "Renamed Project Canvas".to_owned(),
             )
         );
 
@@ -3705,7 +4012,7 @@ mod tests {
                 ),
             )
             .expect("update only Project sources");
-        let (_, binding_revision) = kernel
+        let (_, binding_revision, _) = kernel
             .writer()
             .call(|connection| super::require_project(connection, "library-1", "project-native"))
             .expect("read advanced Project binding revision");
