@@ -157,6 +157,18 @@ fn members_can_read_session_details_without_thread_or_agent_access() {
 }
 
 #[test]
+fn members_can_batch_chat_lanes() {
+    let context = remote(MemberRole::Member);
+    admitted::<Read>(
+        &context,
+        &[
+            decode(json!({"kind":"task_window","window":{}})),
+            decode(json!({"kind":"task_windows","lanes":[{"window":{}},{"window":{}}]})),
+        ],
+    );
+}
+
+#[test]
 fn chat_changes_reach_core_while_host_bookkeeping_stays_local() {
     let context = remote(MemberRole::Member);
     let session = |intent: Value| -> Intent {

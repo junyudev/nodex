@@ -46,6 +46,7 @@ impl RemoteAdmission for ProjectWorkspaceRead {
             | Self::AgentRuntimeSessionBindingWindow { .. }
             | Self::SessionWorkPage { .. }
             | Self::TaskWindow { .. }
+            | Self::TaskWindows { .. }
             | Self::SidebarOverview { .. }
             | Self::SidebarSectionWindow { .. }
             | Self::SidebarSectionItemWindow { .. }
@@ -78,7 +79,6 @@ impl RemoteAdmission for ProjectWorkspaceRead {
             | Self::NextSessionSnooze { .. }
             | Self::QueuedMessageState { .. }
             | Self::ThreadReadState { .. }
-            | Self::TaskWindows { .. }
             | Self::SidebarSectionHostLinkWindow { .. }
             | Self::SessionSideChats { .. }
             | Self::AgentRuntimeSessionBindingByThread { .. }
