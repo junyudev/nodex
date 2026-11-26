@@ -6,7 +6,7 @@ import { readCodexExecutable, updateCodexExecutable } from "@/lib/workbench-sett
 import { type CodexExecutableSettings } from "../../../shared/codex-executable-settings";
 import { CODEX_APP_SERVER_MINIMUM_VERSION } from "../../../shared/codex-app-server-version";
 import { Input } from "../ui/input";
-import { NodexSettingsRow } from "../ui/settings";
+import { NODEX_SETTINGS_FIELD_CLASS_NAME, NodexSettingsRow } from "../ui/settings";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 
 export interface CodexExecutableRuntime {
@@ -124,7 +124,7 @@ export function CodexExecutableSettingsControl({
     >
       <Input
         aria-label={intl.formatMessage(settingsMessages.codexExecutable)}
-        className="w-64 max-w-full"
+        className={NODEX_SETTINGS_FIELD_CLASS_NAME}
         value={draft}
         disabled={!editable}
         spellCheck={false}

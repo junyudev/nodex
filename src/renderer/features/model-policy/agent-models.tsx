@@ -14,7 +14,7 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import {
-  NodexSettingsExpandableRow,
+  NodexSettingsRevealRow,
   NodexSettingsRow,
   NodexSettingsSection,
   type NodexSettingsDisclosureState,
@@ -68,17 +68,24 @@ function ListAction({
   );
 }
 
+/** A list's whole-list moves, gathered into one hairline group so they read as one control. */
+function ListActions({ children }: { readonly children: ReactNode }) {
+  return (
+    <span className="flex items-center divide-x divide-token-border rounded-md ring-[0.5px] ring-token-border ring-inset">
+      {children}
+    </span>
+  );
+}
+
 /**
  * A long list stays one calm column of facts: its count on the left, and its whole-list moves
- * gathered into one hairline group on the right, so they read as one control and not as links.
+ * on the right.
  */
 function ListHeader({ count, children }: { readonly count: string; readonly children: ReactNode }) {
   return (
     <div className="flex min-h-10 items-center justify-between gap-3 px-4">
       <span className="text-xs text-token-text-secondary tabular-nums">{count}</span>
-      <span className="flex items-center divide-x divide-token-border rounded-md ring-[0.5px] ring-token-border ring-inset">
-        {children}
-      </span>
+      {children}
     </div>
   );
 }
@@ -312,12 +319,14 @@ function NodexCard({
                 )
           }
         >
-          <ListAction onClick={onOpenAccount}>
-            <FormattedMessage
-              id="modelPolicy.modelsSettingsPage.pricesAndTopUp"
-              defaultMessage="Prices and top up"
-            />
-          </ListAction>
+          <ListActions>
+            <ListAction onClick={onOpenAccount}>
+              <FormattedMessage
+                id="modelPolicy.modelsSettingsPage.pricesAndTopUp"
+                defaultMessage="Prices and top up"
+              />
+            </ListAction>
+          </ListActions>
         </ListHeader>
         <ModelGrid>
           {models
@@ -574,18 +583,8 @@ export function NodexModelsSection({
   );
 }
 
-/** One provider's models, each with its own switch, under whole-list moves. */
-function ModelList({
-  provider,
-  query = "",
-  counted = true,
-}: {
-  readonly provider: CatalogProvider;
-  readonly query?: string;
-  /** Off when the row that opens the list already says how many are on. */
-  readonly counted?: boolean;
-}) {
-  const intl = useIntl();
+/** An Agent's whole-list moves: All on, All off, and Free only where its models start off. */
+function ProviderModelActions({ provider }: { readonly provider: CatalogProvider }) {
   const { policy, apply } = useAgentModels();
   const setAll = (pick: (slug: string) => boolean) =>
     apply(
@@ -595,36 +594,47 @@ function ModelList({
       ),
     );
   return (
-    <div className="flex flex-col pb-2">
-      <ListHeader count={counted ? modelsOnSummary(policy, provider, intl) : ""}>
-        {offersFreeOnly(provider.driver) ? (
-          <ListAction onClick={() => setAll(isFreeModel)}>
-            <FormattedMessage
-              id="modelPolicy.modelsSettingsPage.freeOnly"
-              defaultMessage="Free only"
-            />
-          </ListAction>
-        ) : null}
-        <ListAction onClick={() => setAll(() => true)}>
-          <FormattedMessage id="modelPolicy.modelsSettingsPage.allOn" defaultMessage="All on" />
+    <ListActions>
+      {offersFreeOnly(provider.driver) ? (
+        <ListAction onClick={() => setAll(isFreeModel)}>
+          <FormattedMessage
+            id="modelPolicy.modelsSettingsPage.freeOnly"
+            defaultMessage="Free only"
+          />
         </ListAction>
-        <ListAction onClick={() => setAll(() => false)}>
-          <FormattedMessage id="modelPolicy.modelsSettingsPage.allOff" defaultMessage="All off" />
-        </ListAction>
-      </ListHeader>
-      <ModelGrid>
-        {provider.models
-          .filter((model) => matches(model.name, model.slug, query))
-          .map((model) => (
-            <ModelRow
-              key={model.slug}
-              label={model.name}
-              on={isModelSwitchOn(policy, provider, model.slug)}
-              onChange={(next) => apply(setModelOn(policy, provider, model.slug, next))}
-            />
-          ))}
-      </ModelGrid>
-    </div>
+      ) : null}
+      <ListAction onClick={() => setAll(() => true)}>
+        <FormattedMessage id="modelPolicy.modelsSettingsPage.allOn" defaultMessage="All on" />
+      </ListAction>
+      <ListAction onClick={() => setAll(() => false)}>
+        <FormattedMessage id="modelPolicy.modelsSettingsPage.allOff" defaultMessage="All off" />
+      </ListAction>
+    </ListActions>
+  );
+}
+
+/** One provider's models, each with its own switch. */
+function ProviderModelGrid({
+  provider,
+  query = "",
+}: {
+  readonly provider: CatalogProvider;
+  readonly query?: string;
+}) {
+  const { policy, apply } = useAgentModels();
+  return (
+    <ModelGrid>
+      {provider.models
+        .filter((model) => matches(model.name, model.slug, query))
+        .map((model) => (
+          <ModelRow
+            key={model.slug}
+            label={model.name}
+            on={isModelSwitchOn(policy, provider, model.slug)}
+            onChange={(next) => apply(setModelOn(policy, provider, model.slug, next))}
+          />
+        ))}
+    </ModelGrid>
   );
 }
 
@@ -665,10 +675,18 @@ function modelsOnPreview(
 }
 
 /**
- * An Agent instance's models inside its card: one row saying how many are on, opening to the
- * list. Absent until the Agent advertises models, such as before it signs in.
+ * An Agent instance's models inside its card: one row saying which are on, opening to the list
+ * with its whole-list moves beside the row's Hide. Absent until the Agent advertises models, such
+ * as before it signs in.
  */
-export function InstanceModels({ instanceId }: { readonly instanceId: string }) {
+export function InstanceModels({
+  instanceId,
+  variant = "default",
+}: {
+  readonly instanceId: string;
+  /** Nested inside an open profile or connection, among its lighter rows. */
+  readonly variant?: "default" | "nested";
+}) {
   const intl = useIntl();
   // A card shown outside Settings › Agents, such as in setup, has no model list of its own.
   const models = useContext(AgentModelsContext);
@@ -677,19 +695,23 @@ export function InstanceModels({ instanceId }: { readonly instanceId: string }) 
   if (!models || !provider) return null;
   const { policy } = models;
   return (
-    <NodexSettingsExpandableRow
+    <NodexSettingsRevealRow
+      variant={variant}
       label={intl.formatMessage({
         id: "modelPolicy.agentModels.models",
         defaultMessage: "Models",
       })}
-      detail={
+      description={
         expanded ? modelsOnSummary(policy, provider, intl) : modelsOnPreview(policy, provider, intl)
       }
-      expanded={expanded}
-      onExpandedChange={setExpanded}
+      open={expanded}
+      onOpenChange={setExpanded}
+      actions={expanded ? <ProviderModelActions provider={provider} /> : null}
     >
-      <ModelList provider={provider} counted={false} />
-    </NodexSettingsExpandableRow>
+      <div className="pb-2">
+        <ProviderModelGrid provider={provider} />
+      </div>
+    </NodexSettingsRevealRow>
   );
 }
 
@@ -737,7 +759,12 @@ export function ModelFilterResults({ query }: { readonly query: string }) {
           title={provider.displayName ?? provider.instanceId}
           titlePlacement="inside"
         >
-          <ModelList provider={provider} query={query} />
+          <div className="flex flex-col pb-2">
+            <ListHeader count={modelsOnSummary(models.policy, provider, intl)}>
+              <ProviderModelActions provider={provider} />
+            </ListHeader>
+            <ProviderModelGrid provider={provider} query={query} />
+          </div>
         </NodexSettingsSection>
       ))}
     </div>

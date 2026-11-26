@@ -11,8 +11,11 @@ import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
   NodexSettingsNumberInput,
   NodexSettingsPageSurface as SettingsPageSurface,
+  NodexSettingsRevealRow,
   NodexSettingsRow as SettingRow,
   NodexSettingsSection as SectionBlock,
+  NodexSettingsStackedRow,
+  NodexSettingsTextField,
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { readableIpcError } from "@/lib/ipc-error-message";
@@ -73,29 +76,26 @@ export function InboxSettingsPage() {
   const settings = settingsQuery.data ?? DEFAULT_INBOX_SETTINGS;
   const { useModelGuide: modelGuideEnabled } = settings;
   const update = useUpdateInboxSettings();
-  const [instructionsDraft, setInstructionsDraft] = useState<string | null>(null);
-  const instructions = instructionsDraft ?? settings.instructions;
   // The same Agents, and the same pickers, as the Inbox's own settings panel.
   const agents = useInboxAgents();
   const ready = agents.state === "ready";
 
+  const failed = (error: unknown) =>
+    toast.danger(
+      readableIpcError(
+        error,
+        intl.formatMessage({
+          id: "inbox.inboxSettingsPage.inboxSettingsWereNotSaved",
+          defaultMessage: "Inbox settings were not saved",
+        }),
+      ),
+    );
   const save = (input: Parameters<typeof update.mutate>[0], settled?: () => void) =>
-    update.mutate(input, {
-      onSuccess: () => {
-        if (input.instructions !== undefined)
-          setInstructionsDraft((current) => (current === input.instructions ? null : current));
-      },
-      onError: (error) =>
-        toast.danger(
-          readableIpcError(
-            error,
-            intl.formatMessage({
-              id: "inbox.inboxSettingsPage.inboxSettingsWereNotSaved",
-              defaultMessage: "Inbox settings were not saved",
-            }),
-          ),
-        ),
-      onSettled: settled,
+    update.mutate(input, { onError: failed, onSettled: settled });
+  const saveAsync = (input: Parameters<typeof update.mutate>[0]) =>
+    update.mutateAsync(input).catch((error: unknown) => {
+      failed(error);
+      throw error;
     });
 
   if (!settingsQuery.data)
@@ -227,38 +227,28 @@ export function InboxSettingsPage() {
             onChange={(suggestionConcurrency, settled) => save({ suggestionConcurrency }, settled)}
           />
         </SettingRow>
-      </SectionBlock>
-      <SectionBlock
-        title={intl.formatMessage({
-          id: "inbox.inboxSettingsPage.routingPreferences",
-          defaultMessage: "Routing preferences",
-        })}
-      >
-        <p className="m-0 px-3 pt-3 text-sm text-token-text-secondary">
-          <FormattedMessage
-            id="inbox.inboxSettingsPage.standingInstructionsNodexFollowsOver"
-            defaultMessage="Standing instructions Nodex follows over its own guidance, such as which Project research belongs in or which model leads UI work."
-          />
-        </p>
-        <div className="p-3 pt-2">
-          <textarea
+        <NodexSettingsStackedRow
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.routingPreferences",
+            defaultMessage: "Routing preferences",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.standingInstructionsNodexFollowsOver",
+            defaultMessage:
+              "Standing instructions Nodex follows over its own guidance, such as which Project research belongs in or which model leads UI work.",
+          })}
+        >
+          <NodexSettingsTextField
             aria-label={intl.formatMessage({
               id: "inbox.inboxSettingsPage.routingPreferences",
               defaultMessage: "Routing preferences",
             })}
             maxLength={MAX_INBOX_INSTRUCTIONS_CHARS}
-            rows={5}
-            value={instructions}
+            value={settings.instructions}
             placeholder={intl.formatMessage(INBOX_ROUTING_PREFERENCES_PLACEHOLDER)}
-            onChange={(event) => setInstructionsDraft(event.currentTarget.value)}
-            // Saves when the field loses focus, like every other instruction field in Settings.
-            onBlur={() => {
-              if (instructions !== settings.instructions && !update.isPending)
-                save({ instructions });
-            }}
-            className="mt-1.5 w-full resize-y rounded-md border border-token-input-border bg-token-input-background px-2.5 py-2 text-sm text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border"
+            onCommit={(instructions) => saveAsync({ instructions })}
           />
-        </div>
+        </NodexSettingsStackedRow>
       </SectionBlock>
       <SectionBlock
         title={intl.formatMessage({
@@ -316,28 +306,11 @@ export function InboxSettingsPage() {
             <InboxChatAgentPicker agents={agents} trigger="field" disabled={!ready} />
           </div>
         </SettingRow>
-        <SettingRow
-          label={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.useModelGuide",
-            defaultMessage: "Use Nodex's model guide",
-          })}
-          description={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.modelGuideDescription",
-            defaultMessage:
-              "What Nodex knows each model does well, read by suggestions when they choose. Your routing preferences take precedence.",
-          })}
-        >
-          <NodexSwitch
-            ariaLabel={intl.formatMessage({
-              id: "inbox.inboxSettingsPage.useModelGuide",
-              defaultMessage: "Use Nodex's model guide",
-            })}
-            checked={modelGuideEnabled}
-            disabled={!settings.suggestionsChooseModels}
-            onCheckedChange={(useModelGuide) => save({ useModelGuide })}
-          />
-        </SettingRow>
-        <InboxModelGuide />
+        <InboxModelGuideRow
+          enabled={modelGuideEnabled}
+          disabled={!settings.suggestionsChooseModels}
+          onEnabledChange={(useModelGuide) => save({ useModelGuide })}
+        />
         <SettingRow
           label={intl.formatMessage({
             id: "inbox.inboxSettingsPage.newChatsUseAWorktree",
@@ -383,27 +356,54 @@ export function InboxSettingsPage() {
   );
 }
 
-/** The guide in full, so what suggestions are told about each model is never hidden. */
-function InboxModelGuide() {
+/**
+ * The guide's switch, with the guide itself in full underneath, so what suggestions are told
+ * about each model is never hidden.
+ */
+function InboxModelGuideRow({
+  enabled,
+  disabled,
+  onEnabledChange,
+}: {
+  readonly enabled: boolean;
+  readonly disabled: boolean;
+  readonly onEnabledChange: (enabled: boolean) => void;
+}) {
   const intl = useIntl();
+  const [open, setOpen] = useState(false);
+  const label = intl.formatMessage({
+    id: "inbox.inboxSettingsPage.useModelGuide",
+    defaultMessage: "Use Nodex's model guide",
+  });
   return (
-    <details className="group px-4 pb-3 text-sm">
-      <summary className="cursor-interaction w-fit text-xs text-token-description-foreground hover:text-token-foreground">
-        <FormattedMessage
-          id="inbox.inboxSettingsPage.showTheModelGuide"
-          defaultMessage="Show the model guide"
+    <NodexSettingsRevealRow
+      label={label}
+      description={intl.formatMessage({
+        id: "inbox.inboxSettingsPage.modelGuideDescription",
+        defaultMessage:
+          "What Nodex knows each model does well, read by suggestions when they choose. Your routing preferences take precedence.",
+      })}
+      open={open}
+      onOpenChange={setOpen}
+      control={
+        <NodexSwitch
+          ariaLabel={label}
+          checked={enabled}
+          disabled={disabled}
+          onCheckedChange={onEnabledChange}
         />
-      </summary>
-      <dl className="mt-2 flex flex-col gap-2">
+      }
+    >
+      <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2.5 px-4 pt-0.5 pb-4 text-xs leading-4">
         {INBOX_MODEL_GUIDE.map((entry) => (
-          <div key={entry.family} className="flex flex-col gap-0.5">
-            <dt className="text-token-foreground">{entry.family}</dt>
-            <dd className="text-xs leading-5 text-token-description-foreground">
+          <div key={entry.family} className="contents">
+            <dt className="font-medium text-token-text-primary">{entry.family}</dt>
+            <dd className="m-0 text-token-text-secondary">
               {intl.formatMessage(entry.noteMessage)}
             </dd>
           </div>
         ))}
       </dl>
-    </details>
+    </NodexSettingsRevealRow>
   );
 }

@@ -348,6 +348,33 @@ describe("Inbox destination and Agent selection", () => {
     expect(limit.value).toBe("16");
   });
 
+  test("saves routing preferences when they are left and keeps them through a failed save", async () => {
+    renderQuery(<InboxSettingsPage />);
+    const field = await screen.findByRole<HTMLTextAreaElement>("textbox", {
+      name: "Routing preferences",
+    });
+    const leave = async () => {
+      await act(async () => {
+        fireEvent.blur(field);
+        await settleAsyncRender();
+      });
+    };
+    await act(async () => {
+      fireEvent.change(field, { target: { value: "UI work goes to Opus." } });
+      await settleAsyncRender();
+    });
+    expect(updateInboxSettings).not.toHaveBeenCalled();
+
+    vi.mocked(updateInboxSettings).mockRejectedValueOnce(new Error("offline"));
+    await leave();
+    expect(updateInboxSettings).toHaveBeenLastCalledWith({ instructions: "UI work goes to Opus." });
+    // Nothing written is lost, so leaving the field again retries the same text.
+    expect(field.value).toBe("UI work goes to Opus.");
+    await leave();
+    expect(updateInboxSettings).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(field.value).toBe("UI work goes to Opus."));
+  });
+
   test("keeps an unavailable suggestion choice explicit and offers only Agents that can suggest", async () => {
     vi.mocked(readInboxSettings).mockResolvedValue({
       ...DEFAULT_INBOX_SETTINGS,
@@ -418,6 +445,8 @@ describe("Inbox destination and Agent selection", () => {
     expect(screen.getByText("Otherwise, new chats run on")).toBeTruthy();
     await click("Use Nodex's model guide", "switch");
     expect(updateInboxSettings).toHaveBeenLastCalledWith({ useModelGuide: false });
+    expect(screen.queryByText("Claude Opus 5.5")).toBeNull();
+    await click("Show Use Nodex's model guide");
     expect(screen.getByText("Claude Opus 5.5")).toBeTruthy();
     await click("Suggestions choose models", "switch");
     expect(updateInboxSettings).toHaveBeenLastCalledWith({ suggestionsChooseModels: false });

@@ -162,17 +162,22 @@ export function CodexSetupImportControl({
           onClick={() => void review("claude-code")}
         >
           {pending === "claude-code" ? (
-            <ActivitySpinnerIcon className="icon-2xs" />
+            <ActivitySpinnerIcon className="size-3.5" />
           ) : (
             <ClaudeIcon className="size-3.5" />
           )}
           Claude Code
         </NodexButton>
-        <NodexButton size="sm" variant="ghost" disabled={busy} onClick={() => void review("codex")}>
+        <NodexButton
+          size="sm"
+          variant="secondary"
+          disabled={busy}
+          onClick={() => void review("codex")}
+        >
           {pending === "codex" ? (
-            <ActivitySpinnerIcon className="icon-2xs" />
+            <ActivitySpinnerIcon className="size-3.5" />
           ) : (
-            <FolderOpenIcon className="icon-2xs" />
+            <FolderOpenIcon className="size-3.5" />
           )}
           <FormattedMessage
             id="workbench.codexSetupImportControl.otherCodexHome"

@@ -449,7 +449,7 @@ function ConnectionRow({
         />
       }
     >
-      <InstanceModels instanceId={providerKeyRuntimeInstanceId(connection)} />
+      <InstanceModels instanceId={providerKeyRuntimeInstanceId(connection)} variant="nested" />
       <ConnectionDetail
         key={connection.id}
         connection={connection}

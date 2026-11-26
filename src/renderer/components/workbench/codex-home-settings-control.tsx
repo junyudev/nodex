@@ -15,6 +15,7 @@ import { OpenAIIcon } from "../shared/icons";
 import { NodexButton } from "../ui/button";
 import { Input } from "../ui/input";
 import {
+  NODEX_SETTINGS_FIELD_CLASS_NAME,
   NodexSettingsRow,
   NodexSettingsSection,
   type NodexSettingsDisclosureState,
@@ -199,7 +200,7 @@ export function CodexAgentSettingsSection({
       >
         <Input
           aria-label={intl.formatMessage(settingsMessages.codexCodexHome)}
-          className="w-64 max-w-full"
+          className={NODEX_SETTINGS_FIELD_CLASS_NAME}
           value={draft}
           placeholder={intl.formatMessage({
             id: "settings.codex.default",
@@ -228,7 +229,7 @@ export function CodexAgentSettingsSection({
             id: "settings.codex.codexAccountDirectory",
             defaultMessage: "Codex account directory",
           })}
-          className="w-64 max-w-full"
+          className={NODEX_SETTINGS_FIELD_CLASS_NAME}
           value={accountDraft}
           placeholder={intl.formatMessage({
             id: "settings.codex.sameAsCodexHome",

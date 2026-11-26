@@ -7,9 +7,8 @@ import {
   NodexSettingsDropdownTrigger,
 } from "../ui/dropdown";
 import { Input } from "../ui/input";
-import { NodexSettingsRow } from "../ui/settings";
-
-export const agentProfileInputClassName = "h-8 w-[min(28rem,45vw)] text-sm";
+import { cn } from "@/lib/utils";
+import { NODEX_SETTINGS_FIELD_CLASS_NAME, NodexSettingsRow } from "../ui/settings";
 
 export function AgentProfileFieldRow({
   field,
@@ -53,7 +52,10 @@ export function AgentProfileFieldRow({
           contentWidth="menuWide"
           align="end"
           triggerButton={
-            <NodexSettingsDropdownTrigger className="min-w-52" aria-label={label}>
+            <NodexSettingsDropdownTrigger
+              className={cn(NODEX_SETTINGS_FIELD_CLASS_NAME, "justify-between")}
+              aria-label={label}
+            >
               <span className="truncate">{selected && intl.formatMessage(selected.label)}</span>
             </NodexSettingsDropdownTrigger>
           }
@@ -90,7 +92,7 @@ export function AgentProfileFieldRow({
         <Input
           type={field.control === "secret" ? "password" : undefined}
           aria-label={label}
-          className={agentProfileInputClassName}
+          className={NODEX_SETTINGS_FIELD_CLASS_NAME}
           value={text}
           disabled={disabled}
           placeholder={

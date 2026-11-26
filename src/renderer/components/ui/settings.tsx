@@ -7,7 +7,10 @@ import {
   type Ref,
 } from "react";
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "@/components/shared/icons";
+import { useIntl } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { NodexButton } from "./button";
+import { Textarea } from "./input";
 import { ToolbarButton } from "./toolbar-button";
 import {
   NodexCollapsiblePanel,
@@ -18,6 +21,9 @@ import {
 export const CODEX_SETTINGS_SHELL_STYLE = {
   "--cursor-interaction": "pointer",
 } as CSSProperties;
+
+/** One size for a settings row's text input or picker, so the fields in a card line up. */
+export const NODEX_SETTINGS_FIELD_CLASS_NAME = "h-8 w-64 max-w-full text-sm";
 
 export type NodexSettingsNumberInputProps = Omit<ComponentProps<"input">, "type">;
 
@@ -118,6 +124,35 @@ export interface NodexSettingsRowProps {
   children: ReactNode;
 }
 
+/** A row's label and description, written the same way by every kind of settings row. */
+function NodexSettingsRowText({
+  label,
+  description,
+  variant,
+}: {
+  label: ReactNode;
+  description?: ReactNode;
+  variant: "default" | "nested";
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <div
+        className={cn(
+          "min-w-0 text-sm text-token-text-primary",
+          variant === "default" && "font-medium",
+        )}
+      >
+        {label}
+      </div>
+      {description ? (
+        <div className="min-w-0 break-words text-xs leading-4 text-balance text-token-text-secondary">
+          {description}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function NodexSettingsRow({
   id,
   label,
@@ -141,25 +176,153 @@ export function NodexSettingsRow({
       )}
     >
       <div className="flex min-w-32 flex-1 items-center gap-3">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <div
-            className={cn(
-              "min-w-0 text-sm text-token-text-primary",
-              variant === "default" && "font-medium",
-            )}
-          >
-            {label}
-          </div>
-          {description ? (
-            <div className="min-w-0 break-words text-xs leading-4 text-balance text-token-text-secondary">
-              {description}
-            </div>
-          ) : null}
-        </div>
+        <NodexSettingsRowText label={label} description={description} variant={variant} />
       </div>
       <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
         {children}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A setting whose control needs the row's whole width, such as a text field. Its label and
+ * description line up with the rows around it, and the control follows underneath.
+ */
+export function NodexSettingsStackedRow({
+  id,
+  label,
+  description,
+  children,
+}: {
+  id?: string;
+  label: ReactNode;
+  description?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div id={id} className="flex flex-col gap-2.5 px-4 py-3">
+      <NodexSettingsRowText label={label} description={description} variant="default" />
+      {children}
+    </div>
+  );
+}
+
+export type NodexSettingsTextFieldProps = Omit<
+  ComponentProps<"textarea">,
+  "value" | "defaultValue" | "onChange" | "onBlur"
+> & {
+  /** The saved text, shown whenever no edit is pending. */
+  readonly value: string;
+  /** Saves the edited text; the field keeps showing it until the save succeeds. */
+  readonly onCommit: (next: string) => Promise<unknown>;
+};
+
+/**
+ * A settings text field saved when it loses focus, like every instruction field in Settings.
+ * It grows with what is written, so short text stays short and long text needs no scrollbar
+ * until it is long.
+ */
+export function NodexSettingsTextField({
+  value,
+  onCommit,
+  className,
+  ...props
+}: NodexSettingsTextFieldProps) {
+  // Null means no edit is pending, so the field always shows what is saved.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  return (
+    <Textarea
+      {...props}
+      value={draft ?? value}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={() => {
+        if (draft === null || saving) return;
+        if (draft === value) return setDraft(null);
+        const committed = draft;
+        setSaving(true);
+        void onCommit(committed)
+          .then(
+            // A later edit made while this one saved stays pending.
+            () => setDraft((current) => (current === committed ? null : current)),
+            // The owner reports the failure; the text stays so nothing typed is lost.
+            () => undefined,
+          )
+          .finally(() => setSaving(false));
+      }}
+      className={cn(
+        "field-sizing-content max-h-96 min-h-22 resize-none px-3 py-2 text-sm leading-relaxed",
+        className,
+      )}
+    />
+  );
+}
+
+/**
+ * A setting with more to read or change underneath it, such as a guide or a list of models. The
+ * row keeps the alignment of the rows around it; its Show button opens the detail in place.
+ * `actions` sit before that button and `control`, such as a switch, after it, so the button never
+ * moves under the pointer and a switch keeps the card's right edge.
+ */
+export function NodexSettingsRevealRow({
+  id,
+  label,
+  description,
+  variant = "default",
+  open,
+  onOpenChange,
+  actions,
+  control,
+  children,
+}: {
+  id?: string;
+  /** Also names the Show button, as in “Show Models”. */
+  label: string;
+  description?: ReactNode;
+  variant?: "default" | "nested";
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  actions?: ReactNode;
+  control?: ReactNode;
+  /** The detail, mounted only while open. */
+  children: ReactNode;
+}) {
+  const intl = useIntl();
+  const detailId = useId();
+  return (
+    <div id={id} className="flex scroll-mt-4 flex-col">
+      <NodexSettingsRow label={label} description={description} variant={variant}>
+        {actions}
+        <NodexButton
+          size="xs"
+          variant="ghostSecondary"
+          aria-expanded={open}
+          aria-controls={open ? detailId : undefined}
+          aria-label={intl.formatMessage(
+            {
+              id: "settings.revealRow.toggle",
+              defaultMessage: "{open, select, true {Hide} other {Show}} {label}",
+            },
+            { open: String(open), label },
+          )}
+          className="gap-1"
+          onClick={() => onOpenChange(!open)}
+        >
+          {open
+            ? intl.formatMessage({ id: "settings.revealRow.hide", defaultMessage: "Hide" })
+            : intl.formatMessage({ id: "settings.revealRow.show", defaultMessage: "Show" })}
+          <ChevronDownIcon
+            className={cn("icon-2xs transition-transform duration-150", open && "rotate-180")}
+          />
+        </NodexButton>
+        {control}
+      </NodexSettingsRow>
+      {open ? (
+        <div id={detailId} className="flex flex-col">
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }

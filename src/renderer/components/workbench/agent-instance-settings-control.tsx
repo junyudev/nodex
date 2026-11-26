@@ -11,7 +11,7 @@ import type { AgentProfileDefinition } from "../../../shared/agents/profile-defi
 import type { ProfileAgentDefinition, ProfileAgentDriver } from "../../../shared/agents/registry";
 import { readAgentProfiles, updateAgentProfiles } from "../../lib/agent-profiles-runtime";
 import { AgentProviderIcon } from "../shared/icons";
-import { AgentProfileFieldRow, agentProfileInputClassName } from "./agent-profile-field";
+import { AgentProfileFieldRow } from "./agent-profile-field";
 import {
   agentProfileSettingsSlots,
   type EditableAgentProfile,
@@ -33,6 +33,7 @@ import { InstanceModels } from "@/features/model-policy/agent-models";
 import { Input } from "../ui/input";
 import { toast } from "../ui/toast";
 import {
+  NODEX_SETTINGS_FIELD_CLASS_NAME,
   NodexSettingsAddRow,
   NodexSettingsExpandableRow,
   NodexSettingsRow,
@@ -384,7 +385,7 @@ function AgentProfiles({
             { id: "settings.agentProfiles.executable2", defaultMessage: "{label} executable" },
             { label: label },
           )}
-          className={agentProfileInputClassName}
+          className={NODEX_SETTINGS_FIELD_CLASS_NAME}
           value={instance.binaryPath}
           disabled={disabled}
           placeholder={
@@ -408,7 +409,7 @@ function AgentProfiles({
               { id: "settings.agentProfiles.profileName", defaultMessage: "{label} profile name" },
               { label: label },
             )}
-            className={agentProfileInputClassName}
+            className={NODEX_SETTINGS_FIELD_CLASS_NAME}
             value={instance.displayName}
             disabled={disabled}
             onChange={(event) => change({ displayName: event.target.value })}
@@ -455,7 +456,7 @@ function AgentProfiles({
             onChange={(rows) => edit(profileId, { environment: rows })}
           />
         ) : null}
-        <InstanceModels instanceId={profileId} />
+        <InstanceModels instanceId={profileId} variant="nested" />
         <div className="flex flex-wrap items-center gap-2 px-4 py-3">
           {confirmRemove === profileId ? (
             <>
@@ -499,7 +500,8 @@ function AgentProfiles({
             <NodexButton
               size="sm"
               variant="ghost"
-              className="text-danger"
+              // Its label lines up with the field labels above, not its hover inset.
+              className="-ms-3 text-danger"
               disabled={disabled}
               onClick={() => setConfirmRemove(profileId)}
             >

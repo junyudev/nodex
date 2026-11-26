@@ -139,6 +139,13 @@ Settings panels, grouped form rows, and option lists use a **single flat card** 
 - Order groups from the most used to the least; paths, thresholds and diagnostics go last, or
   under a collapsed Advanced group.
 - Never give a single setting its own page or group; fold it into the nearest owner.
+- Every row in a card starts its label at the card's inner edge. A row with more to read or
+  change underneath it, such as a guide, a preview or a model list, keeps that alignment and
+  opens with a Show button at its end (`NodexSettingsRevealRow`); a field that needs the full
+  width goes under its label (`NodexSettingsStackedRow`). A leading chevron marks an item in a
+  list, such as an Agent profile, and nothing else.
+- Fields in one card share one size (`NODEX_SETTINGS_FIELD_CLASS_NAME`), so they read as a
+  column.
 - Show a status row only when it asks for action. A capability that works shows nothing; the
   controls that use it are the evidence.
 - Save a preference as the person changes it; a text field saves when it loses focus. Keep an

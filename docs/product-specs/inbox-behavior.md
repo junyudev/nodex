@@ -1084,18 +1084,19 @@ creates a second message, and does not count against the Agent budget again.
   the start and tools at the end, in the same places as on every other tab.
 
 - `Settings → Inbox` holds these Profile preferences:
-  - under `Nodex`: when suggestions run (automatically, when the user asks, or
-    never), `Let Nodex start chats for me` (off by default), and `Nodex runs on` (the Agent,
-    model, effort and speed selected in the model menu);
-  - `Suggestions at once`, the limit for concurrent routing decision runs, five by default;
-  - free-text routing preferences are the user's standing instructions to Nodex
-    and take priority over its defaults;
+  - under `Nodex`:
+    - when suggestions run (automatically, when the user asks, or never), `Let Nodex
+      start chats for me` (off by default), and `Nodex runs on` (the Agent, model,
+      effort and speed selected in the model menu);
+    - `Suggestions at once`, the limit for concurrent routing decision runs, five by default;
+    - free-text routing preferences, the user's standing instructions to Nodex, which
+      take priority over its defaults;
   - under `New chats`:
     - whether suggestions choose each new chat's models, which is on by default;
     - what chats the Inbox starts run on otherwise, chosen with the composer's
       model menu: the Agent, its model, and the model's effort and speed;
-    - whether suggestions read Nodex's model guide, which is on by default and can
-      be read in full there. It covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4
+    - whether suggestions read Nodex's model guide, which is on by default and
+      shows in full beside its switch. It covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4
       Neon. Each note speaks for one named model, judged on its own: sibling or
       older models, such as GPT-6.2 Astra or GPT-6.1 Sol, and groups of models,
       such as those a provider offers free, carry no note. The guide changes with Nodex; the user's own view of each

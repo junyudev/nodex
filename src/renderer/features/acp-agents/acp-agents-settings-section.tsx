@@ -199,7 +199,7 @@ function AgentRow({
         ) : null
       }
     >
-      <InstanceModels instanceId={instance.id} />
+      <InstanceModels instanceId={instance.id} variant="nested" />
       <AcpAgentDetail
         key={instance.id}
         instance={instance}
