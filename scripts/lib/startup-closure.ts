@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { isBuiltin } from "node:module";
 import path from "node:path";
 import {
   dynamicImportPreloads,
@@ -27,6 +28,17 @@ export interface ByteTotal {
   readonly bytes: number;
 }
 
+/** A package Main requires while loading, outside its emitted application chunks. */
+export interface MainPreWindowPackage {
+  readonly packageName: string;
+  /** The require path from the entry to the first chunk that loads the package. */
+  readonly chain: readonly string[];
+}
+
+export interface MainPreWindowClosure extends ByteTotal {
+  readonly packages: readonly MainPreWindowPackage[];
+}
+
 export interface OnDemandPackageViolation {
   readonly packageName: string;
   readonly file: string;
@@ -51,6 +63,12 @@ export interface WorkbenchClosureOptions {
   /** Rolldown names a dynamic root's chunk after its module, as `<name>-<hash>.js`. */
   readonly rootChunkName: string;
   readonly onDemandPackages: readonly string[];
+}
+
+/** The npm package a bare specifier names: `@scope/name/sub` is `@scope/name`. */
+function specifierPackage(specifier: string): string {
+  const [scope, name] = specifier.split("/");
+  return scope?.startsWith("@") && name ? `${scope}/${name}` : (scope ?? specifier);
 }
 
 /** The npm package that owns a bundled module path, or undefined for application source. */
@@ -197,24 +215,48 @@ export function measureWorkbenchClosure(options: WorkbenchClosureOptions): Workb
 /**
  * Measure the Main application code Electron evaluates before it can open the first window:
  * the bootstrap entry and every application chunk it requires while loading, recursively.
- * Requires inside functions run later, on demand, and stay outside the closure.
+ * Requires inside functions run later, on demand, and stay outside the closure. Packages the
+ * build leaves external, such as native addons, load from `node_modules` and are reported by
+ * name, since their cost is not in the emitted bytes.
  */
-export function measureMainPreWindowClosure(mainDirectory: string, entry: string): ByteTotal {
+export function measureMainPreWindowClosure(
+  mainDirectory: string,
+  entry: string,
+): MainPreWindowClosure {
   const directory = path.resolve(mainDirectory);
+  const relative = (file: string) => path.relative(directory, file).replaceAll("\\", "/");
   const sources = new Map<string, string>();
   const read = (file: string) => {
     const source = sources.get(file) ?? readFileSync(file, "utf8");
     sources.set(file, source);
     return source;
   };
+  const specifiers = new Map<string, readonly string[]>();
+  const requiresOf = (file: string) => {
+    const known = specifiers.get(file) ?? eagerRequireSpecifiers(file, read(file));
+    specifiers.set(file, known);
+    return known;
+  };
   const closure = staticClosure([path.join(directory, entry)], (file) =>
-    eagerRequireSpecifiers(file, read(file)).flatMap((specifier) => {
+    requiresOf(file).flatMap((specifier) => {
       const resolved = resolveEmittedSpecifier(file, specifier);
       return resolved ? [resolved] : [];
     }),
   );
+  const packages = new Map<string, MainPreWindowPackage>();
+  for (const file of closure.files) {
+    for (const specifier of requiresOf(file)) {
+      if (resolveEmittedSpecifier(file, specifier) || isBuiltin(specifier)) continue;
+      const packageName = specifierPackage(specifier);
+      if (packages.has(packageName)) continue;
+      packages.set(packageName, { packageName, chain: closure.chain(file).map(relative) });
+    }
+  }
   return {
     files: closure.files.length,
     bytes: closure.files.reduce((total, file) => total + codeBytes(read(file)), 0),
+    packages: [...packages.values()].sort((left, right) =>
+      left.packageName.localeCompare(right.packageName),
+    ),
   };
 }

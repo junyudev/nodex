@@ -7,6 +7,13 @@ const MAX_WORKBENCH_JAVASCRIPT_BYTES = Math.round(10.99 * 1024 * 1024);
 const MAX_WORKBENCH_CSS_BYTES = 712 * 1024;
 /** What Main evaluates before its startup window; the application graph loads behind the window. */
 const MAX_MAIN_PRE_WINDOW_BYTES = Math.round(1.28 * 1024 * 1024);
+// Packages the Main build leaves external, native addons among them, load from node_modules and
+// cost nothing in the byte budget. Only these may load before the startup window.
+const MAIN_PRE_WINDOW_PACKAGES: readonly string[] = [
+  "@formatjs/intl",
+  "@sentry/electron",
+  "electron",
+];
 
 // Packages whose surfaces load them on demand. None may enter the ordinary Workbench.
 const ON_DEMAND_PACKAGES = [
@@ -40,7 +47,12 @@ process.stdout.write(
         css: { ...workbench.css, budgetBytes: MAX_WORKBENCH_CSS_BYTES },
         onDemandPackages: Object.fromEntries(workbench.onDemandPackageFiles),
       },
-      mainPreWindow: { ...main, budgetBytes: MAX_MAIN_PRE_WINDOW_BYTES },
+      mainPreWindow: {
+        files: main.files,
+        bytes: main.bytes,
+        budgetBytes: MAX_MAIN_PRE_WINDOW_BYTES,
+        packages: main.packages.map(({ packageName }) => packageName),
+      },
     },
     null,
     2,
@@ -63,6 +75,15 @@ const failures = [
   ...(workbench.css.bytes > MAX_WORKBENCH_CSS_BYTES
     ? [`Workbench CSS is ${workbench.css.bytes} bytes (budget ${MAX_WORKBENCH_CSS_BYTES})`]
     : []),
+  ...main.packages
+    .filter(({ packageName }) => !MAIN_PRE_WINDOW_PACKAGES.includes(packageName))
+    .map(
+      ({ packageName, chain }) =>
+        `${packageName} loads before Main's first window: ${chain.join(" -> ")}`,
+    ),
+  ...MAIN_PRE_WINDOW_PACKAGES.filter(
+    (name) => !main.packages.some(({ packageName }) => packageName === name),
+  ).map((name) => `${name} no longer loads before Main's first window; update the allowed list`),
   ...(main.bytes > MAX_MAIN_PRE_WINDOW_BYTES
     ? [
         `Main code before the first window is ${main.bytes} bytes (budget ${MAX_MAIN_PRE_WINDOW_BYTES})`,
