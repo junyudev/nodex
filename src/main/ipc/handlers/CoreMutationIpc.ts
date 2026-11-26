@@ -92,19 +92,8 @@ const documentHistoryUnavailable = <A>(error: unknown): DocumentHistoryCommandRe
   ),
 });
 
-export const live: Layer.Layer<
-  never,
-  never,
-  | DatabaseModule
-  | DesktopDocumentSessionRuntime
-  | ElectronIpc
-  | EditorHistoryRuntime
-  | LibraryModule
-  | MainConfig
-  | RendererClientRuntime
-  | WindowRuntime
-> = Layer.effectDiscard(
-  Effect.gen(function* () {
+const make = (allowDocumentOwnerCommands: boolean) => {
+  const register = Effect.gen(function* () {
     const config = yield* MainConfig;
     const database = yield* DatabaseModule;
     const documents = yield* DesktopDocumentSessionRuntime;
@@ -589,6 +578,18 @@ export const live: Layer.Layer<
         }
         const bound = bindAdditionalDocumentCommandToProject(rawRequest, projectId, identity);
         if (!bound.ok) return Effect.succeed(bound);
+        if (!allowDocumentOwnerCommands)
+          return Effect.succeed({
+            ok: false as const,
+            error: additionalDocumentCommandFailure(
+              "capability_gap",
+              "This Document command is available on the Space host.",
+              {
+                operationId: bound.value.operationId,
+                operationKind: bound.value.operation.kind,
+              },
+            ),
+          });
         return documents
           .applyAdditionalDocumentCommand(bound.value)
           .pipe(
@@ -811,5 +812,9 @@ export const live: Layer.Layer<
           .pipe(Effect.catch(() => Effect.succeed(pageHistoryTransportFailure())));
       },
     );
-  }),
-);
+  });
+  return Layer.effectDiscard(register);
+};
+
+export const live = make(true);
+export const remote = make(false);
