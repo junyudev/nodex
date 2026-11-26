@@ -1,7 +1,8 @@
 import { act, render } from "@testing-library/react";
+import { userEvent } from "vite-plus/test/browser";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import "@/globals.css";
-import { installRendererThemeFixture } from "@/test/renderer-theme";
+import { installRendererThemeFixture, readRendererThemeColor } from "@/test/renderer-theme";
 import {
   applyTypographyPreferences,
   DEFAULT_TYPOGRAPHY_PREFERENCES,
@@ -13,6 +14,7 @@ import {
   NodexDialogFrame,
   NodexDialogTitle,
 } from "@/components/ui/dialog";
+import { NodexThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { NodexSettingsPageSurface, NodexSettingsRow } from "@/components/ui/settings";
 
 installRendererThemeFixture();
@@ -102,7 +104,7 @@ describe("workspace typography cascade", () => {
     );
     const heading = settings.getByRole("heading", { name: "Appearance" });
     const label = settings.getByText("UI font size");
-    expect(typography(heading)).toMatchObject({ size: 24, line: 28.8, weight: "500" });
+    expect(typography(heading)).toMatchObject({ size: 28, line: 33.6, weight: "500" });
     expect(typography(label)).toMatchObject({ size: 13, weight: "500" });
     expect(typography(label).family).toContain("Arial");
 
@@ -131,7 +133,7 @@ describe("workspace typography cascade", () => {
       );
       await Promise.resolve();
     });
-    expect(typography(heading)).toMatchObject({ size: 27, line: 32.4 });
+    expect(typography(heading)).toMatchObject({ size: 32, line: 38.4 });
     expect(typography(label).size).toBe(15);
     expect(typography(title)).toMatchObject({ size: 23, line: 28 });
     expect(typography(description)).toMatchObject({ size: 16, line: 24 });
@@ -141,4 +143,40 @@ describe("workspace typography cascade", () => {
       getComputedStyle(document.documentElement).getPropertyValue("--font-code-size").trim(),
     ).toBe("20px");
   });
+});
+
+test("Appearance mode previews preserve their size, selection and keyboard focus", async () => {
+  const view = render(<NodexThemeModeSelector value="system" onValueChange={() => undefined} />);
+  const group = view.getByRole("radiogroup", { name: "Mode" });
+  const system = view.getByRole("radio", { name: "System" });
+  const light = view.getByRole("radio", { name: "Light" });
+  const systemPreview = system.nextElementSibling;
+  const lightPreview = light.nextElementSibling;
+  const systemRing = systemPreview?.lastElementChild;
+  const lightRing = lightPreview?.lastElementChild;
+  if (!systemPreview || !lightPreview || !systemRing || !lightRing) {
+    throw new Error("Appearance mode previews are missing");
+  }
+  expect(group.getBoundingClientRect().width).toBe(272);
+  expect(getComputedStyle(group).columnGap).toBe("16px");
+  expect(systemPreview.getBoundingClientRect()).toMatchObject({ width: 80, height: 60 });
+  expect(getComputedStyle(systemPreview).borderRadius).toBe("10px");
+  expect(getComputedStyle(systemRing).borderTopWidth).toBe("2px");
+  expect(getComputedStyle(systemRing).borderTopColor).toBe(readRendererThemeColor("--color-ring"));
+  expect(getComputedStyle(lightRing).borderTopWidth).toBe("1px");
+  expect(getComputedStyle(lightRing).borderTopColor).toBe(readRendererThemeColor("--color-border"));
+
+  await act(async () => userEvent.keyboard("{Tab}"));
+  expect(document.activeElement).toBe(system);
+  expect(getComputedStyle(systemPreview).outlineWidth).toBe("2px");
+  expect(getComputedStyle(systemPreview).outlineOffset).toBe("2px");
+  expect(getComputedStyle(systemPreview).outlineColor).toBe(readRendererThemeColor("--color-ring"));
+  expect(await view.findByRole("tooltip", { name: "System" })).toBeVisible();
+
+  await act(async () => userEvent.keyboard("{Escape}"));
+  await act(async () => userEvent.hover(lightPreview));
+  expect(getComputedStyle(lightRing).borderTopColor).toBe(
+    readRendererThemeColor("--color-border-strong"),
+  );
+  expect(await view.findByRole("tooltip", { name: "Light" })).toBeVisible();
 });

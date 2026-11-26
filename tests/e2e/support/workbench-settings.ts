@@ -10,3 +10,11 @@ export async function openWorkbenchSettings(page: Page): Promise<void> {
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await expect(settings).toBeVisible();
 }
+
+/** Leave Settings with the Workbench shortcut, outside any focused editor or popup. */
+export async function closeWorkbenchSettings(page: Page): Promise<void> {
+  const settings = page.getByTestId("settings-route-shell");
+  await settings.locator(':scope > [tabindex="-1"]').focus();
+  await page.keyboard.press("Escape");
+  await expect(settings).toBeHidden();
+}

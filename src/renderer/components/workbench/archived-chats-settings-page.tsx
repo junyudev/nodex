@@ -1,10 +1,11 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { settingsMessages } from "./workbench-settings-search-catalog";
-import { getIntl, useIntl } from "@/lib/i18n";
+import { defineMessages, getIntl, useIntl } from "@/lib/i18n";
 import { projectAutomationPromptPreview } from "../../../shared/automation-heartbeat";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 import { Archive16Icon, DeleteIcon } from "@/components/shared/icons";
+import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { NodexButton } from "@/components/ui/button";
 import {
   NodexDialog,
@@ -30,8 +31,17 @@ import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
 import type { CodexSidebarSnapshot, CodexSidebarThreadItem } from "../../../shared/types";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 
-type ArchivedChatGrouping = "project" | "none";
-type ArchivedChatSort = "updated" | "created";
+const GROUPING_LABELS = defineMessages({
+  project: { id: "settings.archivedChats.project", defaultMessage: "Project" },
+  none: { id: "settings.archivedChats.none", defaultMessage: "None" },
+});
+const SORT_LABELS = defineMessages({
+  updated: { id: "settings.archivedChats.updated", defaultMessage: "Updated" },
+  created: { id: "settings.archivedChats.created", defaultMessage: "Created" },
+});
+
+type ArchivedChatGrouping = keyof typeof GROUPING_LABELS;
+type ArchivedChatSort = keyof typeof SORT_LABELS;
 
 type DeleteConfirmation =
   | { readonly kind: "all"; readonly chats: readonly CodexSidebarThreadItem[] }
@@ -420,7 +430,7 @@ export function ArchivedChatsSettingsPage({
         deletable && chats.length > 0 ? (
           <NodexButton
             variant="destructive"
-            size="sm"
+            size="toolbar"
             disabled={deleting}
             onClick={() => setConfirmation({ kind: "all", chats })}
           >
@@ -432,28 +442,28 @@ export function ArchivedChatsSettingsPage({
         ) : null
       }
     >
-      <NodexSettingsSection cardClassName="overflow-visible">
+      <NodexSettingsSection>
         {loading ? (
-          <p role="status" className="px-4 py-3 text-sm text-token-text-secondary">
+          <p role="status" className="py-2 text-sm text-token-text-secondary">
             {intl.formatMessage({
               id: "settings.archivedChats.loadingArchivedChats",
               defaultMessage: "Loading archived chats…",
             })}
           </p>
         ) : loadError ? (
-          <div className="flex items-center justify-between gap-4 px-4 py-3">
+          <div className="flex items-center justify-between gap-4 py-2">
             <p role="alert" className="text-sm text-token-error-foreground">
               {intl.formatMessage({
                 id: "settings.archivedChats.couldNotLoadArchivedChats",
                 defaultMessage: "Could not load archived chats.",
               })}
             </p>
-            <NodexButton size="xs" variant="secondary" onClick={() => void load(true)}>
+            <NodexButton size="toolbar" variant="secondary" onClick={() => void load(true)}>
               {intl.formatMessage({ id: "settings.archivedChats.retry", defaultMessage: "Retry" })}
             </NodexButton>
           </div>
         ) : chats.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-token-text-secondary">
+          <p className="py-2 text-sm text-token-text-secondary">
             {intl.formatMessage({
               id: "settings.archivedChats.noArchivedChats",
               defaultMessage: "No archived chats.",
@@ -461,62 +471,62 @@ export function ArchivedChatsSettingsPage({
           </p>
         ) : (
           <div className="flex flex-col">
-            <div className="flex flex-wrap items-center gap-2 border-b border-token-border p-3">
-              <label className="flex items-center gap-2 text-xs text-token-text-secondary">
+            <div className="flex flex-wrap items-center gap-2 border-b border-(--color-border) py-2">
+              <div className="flex items-center gap-2 text-sm text-token-text-secondary">
                 {intl.formatMessage({
                   id: "settings.archivedChats.group",
                   defaultMessage: "Group",
                 })}
-                <select
-                  aria-label={intl.formatMessage(settingsMessages.archivedChatsGroupArchivedChats)}
+                <NodexOptionPicker
+                  search="none"
                   value={grouping}
-                  onChange={(event) =>
-                    setGrouping(event.currentTarget.value as ArchivedChatGrouping)
+                  options={Object.entries(GROUPING_LABELS).map(([value, label]) => ({
+                    value,
+                    label: intl.formatMessage(label),
+                  }))}
+                  onValueChange={(value) => {
+                    if (value === "project" || value === "none") setGrouping(value);
+                  }}
+                  triggerButton={
+                    <NodexSettingsDropdownTrigger
+                      aria-label={intl.formatMessage(
+                        settingsMessages.archivedChatsGroupArchivedChats,
+                      )}
+                    >
+                      {intl.formatMessage(GROUPING_LABELS[grouping])}
+                    </NodexSettingsDropdownTrigger>
                   }
-                  className="h-8 rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
-                >
-                  <option value="project">
-                    {intl.formatMessage({
-                      id: "settings.archivedChats.project",
-                      defaultMessage: "Project",
-                    })}
-                  </option>
-                  <option value="none">
-                    {intl.formatMessage({
-                      id: "settings.archivedChats.none",
-                      defaultMessage: "None",
-                    })}
-                  </option>
-                </select>
-              </label>
-              <label className="flex items-center gap-2 text-xs text-token-text-secondary">
+                />
+              </div>
+              <div className="flex items-center gap-2 text-sm text-token-text-secondary">
                 {intl.formatMessage({ id: "settings.archivedChats.sort", defaultMessage: "Sort" })}
-                <select
-                  aria-label={intl.formatMessage(settingsMessages.archivedChatsSortArchivedChats)}
+                <NodexOptionPicker
+                  search="none"
                   value={sort}
-                  onChange={(event) => setSort(event.currentTarget.value as ArchivedChatSort)}
-                  className="h-8 rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
-                >
-                  <option value="updated">
-                    {intl.formatMessage({
-                      id: "settings.archivedChats.updated",
-                      defaultMessage: "Updated",
-                    })}
-                  </option>
-                  <option value="created">
-                    {intl.formatMessage({
-                      id: "settings.archivedChats.created",
-                      defaultMessage: "Created",
-                    })}
-                  </option>
-                </select>
-              </label>
+                  options={Object.entries(SORT_LABELS).map(([value, label]) => ({
+                    value,
+                    label: intl.formatMessage(label),
+                  }))}
+                  onValueChange={(value) => {
+                    if (value === "updated" || value === "created") setSort(value);
+                  }}
+                  triggerButton={
+                    <NodexSettingsDropdownTrigger
+                      aria-label={intl.formatMessage(
+                        settingsMessages.archivedChatsSortArchivedChats,
+                      )}
+                    >
+                      {intl.formatMessage(SORT_LABELS[sort])}
+                    </NodexSettingsDropdownTrigger>
+                  }
+                />
+              </div>
             </div>
             {groups.map((group) =>
               group.chats.length === 0 ? null : (
                 <div key={group.id} className="flex flex-col">
                   {grouping === "project" ? (
-                    <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-token-main-surface-primary px-4 py-2 text-xs text-token-text-secondary">
+                    <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-token-main-surface-primary py-2 text-sm text-token-text-secondary">
                       <span className="truncate font-medium">{group.label}</span>
                       <div className="flex items-center gap-2">
                         <span>
@@ -537,7 +547,7 @@ export function ArchivedChatsSettingsPage({
                               },
                               { label: group.label },
                             )}
-                            size="xs"
+                            size="toolbar"
                             variant="ghost"
                             disabled={deleting}
                             onClick={() =>
@@ -563,13 +573,13 @@ export function ArchivedChatsSettingsPage({
                     return (
                       <div
                         key={chat.threadId}
-                        className="group flex items-center justify-between gap-3 border-t border-token-border px-4 py-3 first:border-t-0 hover:bg-token-list-hover-background"
+                        className="group flex items-center justify-between gap-3 border-t border-(--color-border) py-2 first:border-t-0 hover:bg-token-list-hover-background"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium text-token-text-primary">
                             {chatTitle(chat, intl)}
                           </div>
-                          <div className="mt-0.5 truncate text-xs text-token-text-secondary">
+                          <div className="mt-0.5 truncate text-sm text-token-text-secondary">
                             {Number.isFinite(date.getTime())
                               ? date.toLocaleString(intl.locale, {
                                   dateStyle: "medium",
@@ -579,7 +589,7 @@ export function ArchivedChatsSettingsPage({
                             {grouping === "none" && projectName ? ` • ${projectName}` : ""}
                           </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-1 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                        <div className="flex shrink-0 items-center gap-1 opacity-70 group-focus-within:opacity-100 group-hover:opacity-100">
                           {deletable ? (
                             <NodexButton
                               aria-label={intl.formatMessage(
@@ -599,7 +609,7 @@ export function ArchivedChatsSettingsPage({
                             </NodexButton>
                           ) : null}
                           <NodexButton
-                            size="xs"
+                            size="toolbar"
                             variant="secondary"
                             disabled={deleting || busyThreadId !== null}
                             onClick={() => void unarchive(chat)}

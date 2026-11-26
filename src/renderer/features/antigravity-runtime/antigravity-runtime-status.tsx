@@ -65,7 +65,7 @@ export function AntigravityRuntimeRow({
       {removing ? (
         <>
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="destructive"
             onClick={() => {
               setConfirming(false);
@@ -74,20 +74,25 @@ export function AntigravityRuntimeRow({
           >
             {intl.formatMessage({ id: "antigravityRuntime.remove", defaultMessage: "Remove" })}
           </NodexButton>
-          <NodexButton size="sm" variant="ghost" autoFocus onClick={() => setConfirming(false)}>
+          <NodexButton
+            size="toolbar"
+            variant="ghost"
+            autoFocus
+            onClick={() => setConfirming(false)}
+          >
             {intl.formatMessage({ id: "antigravityRuntime.keep", defaultMessage: "Keep" })}
           </NodexButton>
         </>
       ) : (
         <>
           {view.canRemove && primary?.kind !== "remove" ? (
-            <NodexButton size="sm" variant="ghost" onClick={() => setConfirming(true)}>
+            <NodexButton size="toolbar" variant="ghost" onClick={() => setConfirming(true)}>
               {intl.formatMessage({ id: "antigravityRuntime.remove", defaultMessage: "Remove" })}
             </NodexButton>
           ) : null}
           {primary ? (
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant={primary.kind === "cancel" || primary.optional ? "ghost" : "secondary"}
               disabled={snapshot.pending !== null}
               focusableWhenDisabled

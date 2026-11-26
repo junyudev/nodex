@@ -8,7 +8,7 @@ rail, and return context intact. The Settings section rail owns section
 navigation and search only; every section page owns its data,
 loading/empty/error state, validation, and mutations.
 
-Settings navigation, search, and Back to app are available immediately on first
+Settings navigation, search, and Escape are available immediately on first
 entry. Only the selected section loads its page code. While that code loads,
 the content surface shows the section heading and a loading status; navigation
 stays interactive. Switching sections immediately selects the new destination,
@@ -36,8 +36,8 @@ Unknown paths present the default section without rewriting the URL or accepting
 legacy aliases. Settings links use in-app navigation and remain distinct from
 file references; file-opening behavior never intercepts a Settings route.
 
-`Back to app` restores the actual Workbench return route, including Inbox,
-Scheduled, and Space's tabs and selection. Changing Settings sections and
+Escape and the Back control in the compact Settings header restore the Workbench return
+route, including Inbox, Scheduled, and the Space’s tabs and selection. Changing Settings sections and
 reopening the window retain that same origin. The Home/Space rail keeps that return destination selected;
 its buttons leave Settings through normal Workbench navigation. Settings itself is
 outside app-window Back/Forward Scene checkpoints, so it does not create a
@@ -158,7 +158,7 @@ import preference defined by
 
 ## Search
 
-`Search settings…` is a renderer-local search over the canonical section
+The `Search` field searches locally over the canonical section
 catalog. Its normalized index may include titles, subtitles, group headings,
 row labels and descriptions, option labels, aliases, and hidden runtime terms
 such as Project names. Hidden terms improve matching but do not appear in the
@@ -183,8 +183,8 @@ the command-palette index.
 ## Page and control composition
 
 Section pages use the shared Settings primitives. A row presents a primary
-label, compact explanatory copy, and an end-aligned control; adjacent rows use
-the shared inset divider. Descriptions wrap instead of truncating explanatory
+label, compact explanatory copy, and an end-aligned control. Section headings
+and adjacent rows use full-width dividers on the page surface. Descriptions wrap instead of truncating explanatory
 content.
 
 Single-choice controls use the shared dropdown facade and boolean preferences
@@ -192,9 +192,10 @@ use the shared switch. Settings-specific artwork comes from the app-owned icon
 set. Exact spacing, icon geometry, motion, and surface tokens remain executable
 in those shared primitives and reviewed in the seeded Settings surface.
 
-The Settings section rail uses the normal sidebar's shared material and palette.
-Section pages render only the main content surface and do
-not add another sidebar-like card or nested full-page scroll container.
+The Settings sidebar uses the Workbench sidebar material and palette, with a
+Settings heading and a pill-shaped Search field above the section links. Detail
+pages use breadcrumbs to return to their parent. Disclosure headings expand
+inline and their chevrons indicate whether the content is open.
 
 General's Troubleshooting group holds an App server requests disclosure within one shared Settings
 surface. Expanding it starts request capture while General is active; collapsing
@@ -214,8 +215,10 @@ in one appearance, such as dark code and tool output in light mode, use that
 appearance's resolved palette and accent. Native sidebar material
 and typography preferences remain independent of the palette.
 
-Appearance groups Mode and Theme in Visual style. Theme groups `Accent color`
-with the UI `Font`. Usage meters follow, choosing which accounts' usage the rail shows.
+Appearance's Visual style holds Mode, `Accent color` and the UI `Font`. Mode's
+preview choices are named on hover or keyboard focus. With `Separate light/dark
+modes` on, `Accent color` and `Font` move into a Light theme and a Dark theme
+section instead. Usage meters follow, choosing which accounts' usage the rail shows.
 Advanced starts collapsed and owns UI, Content and Code font sizes,
 Reduce motion, Content and Code font families, and `Separate light/dark modes`.
 The latter reveals both appearance editors without switching Mode, copying

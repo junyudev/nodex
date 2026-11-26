@@ -8,6 +8,11 @@ import {
   EditIcon,
   PlusIcon,
 } from "@/components/shared/icons";
+import {
+  ToolbarBreadcrumb,
+  type ToolbarBreadcrumbAncestor,
+} from "@/components/ui/toolbar-breadcrumb";
+import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
 import { NodexButton } from "@/components/ui/button";
 import { localEnvironmentSnapshotQueryOptions } from "@/lib/query-options";
 import {
@@ -96,22 +101,9 @@ function WorkspaceProjectEnvironmentGroup({
   const configs = configsQuery.data ?? [];
 
   return (
-    <section className="overflow-hidden rounded-lg border-[0.5px] border-token-border">
-      <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <ProjectMarker
-            appearance={project.appearance}
-            className="icon-sm shrink-0 text-token-text-secondary"
-          />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-sm font-medium text-token-text-primary">
-              {project.name}
-            </span>
-            <span className="truncate text-xs text-token-text-secondary">
-              {getPrimaryWorkspaceRoot(project)}
-            </span>
-          </div>
-        </div>
+    <NodexSettingsSection
+      title={project.name}
+      action={
         <NodexButton
           size="icon-sm"
           variant="secondary"
@@ -126,10 +118,14 @@ function WorkspaceProjectEnvironmentGroup({
         >
           <PlusIcon className="icon-sm" />
         </NodexButton>
+      }
+    >
+      <div className="flex min-w-0 items-center gap-2 py-2 text-sm text-token-text-secondary">
+        <ProjectMarker appearance={project.appearance} className="icon-sm shrink-0" />
+        <span className="truncate">{getPrimaryWorkspaceRoot(project)}</span>
       </div>
-
       {configsQuery.isPending ? (
-        <div className="flex items-center gap-2 border-t-[0.5px] border-token-border px-4 py-3 text-sm text-token-text-secondary">
+        <div className="flex items-center gap-2 py-2 text-sm text-token-text-secondary">
           <ActivitySpinnerIcon className="icon-xs" />
           {intl.formatMessage({
             id: "settings.environments.loadingEnvironment",
@@ -137,19 +133,19 @@ function WorkspaceProjectEnvironmentGroup({
           })}
         </div>
       ) : configsQuery.isError ? (
-        <div className="border-t-[0.5px] border-token-border px-4 py-3 text-sm text-token-error-foreground">
+        <div className="py-2 text-sm text-token-error-foreground">
           {intl.formatMessage({
             id: "settings.environments.environmentNeedsAttention",
             defaultMessage: "Environment needs attention",
           })}
         </div>
       ) : configs.length > 0 ? (
-        <div className="divide-y-[0.5px] divide-token-border border-t-[0.5px] border-token-border">
+        <div className="divide-y divide-(--color-border)">
           {configs.map((config) => (
             <button
               key={config.configPath}
               type="button"
-              className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-token-focus-border"
+              className="flex min-h-12 w-full items-center gap-3 py-2 text-start hover:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-token-focus-border"
               onClick={() => onSelect(project.id, config.configPath)}
             >
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -162,7 +158,7 @@ function WorkspaceProjectEnvironmentGroup({
                 >
                   {environmentLabel(config, intl)}
                 </span>
-                <span className="truncate text-xs text-token-text-secondary">
+                <span className="truncate text-sm text-token-text-secondary">
                   {config.fileName}
                 </span>
               </div>
@@ -171,7 +167,7 @@ function WorkspaceProjectEnvironmentGroup({
           ))}
         </div>
       ) : null}
-    </section>
+    </NodexSettingsSection>
   );
 }
 
@@ -187,41 +183,33 @@ function EnvironmentBreadcrumb({
   onSummary: () => void;
 }) {
   const intl = useIntl();
+  const ancestors: ToolbarBreadcrumbAncestor[] = [
+    {
+      id: "environments",
+      label: intl.formatMessage(settingsMessages.environmentsTitle),
+      onSelect: onWorkspace,
+    },
+  ];
+  if (mode === "edit") {
+    ancestors.push({ id: "project", label: projectName, onSelect: onSummary });
+  }
   return (
-    <nav
-      className="flex min-w-0 items-center gap-1.5 text-sm text-token-text-secondary"
-      aria-label={intl.formatMessage({
+    <ToolbarBreadcrumb
+      variant="settings"
+      ariaLabel={intl.formatMessage({
         id: "settings.environments.environmentBreadcrumb",
         defaultMessage: "Environment breadcrumb",
       })}
-    >
-      <button
-        type="button"
-        className="rounded-md outline-hidden hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border"
-        onClick={onWorkspace}
-      >
-        {intl.formatMessage(settingsMessages.environmentsTitle)}
-      </button>
-      <ChevronRightIcon className="icon-2xs shrink-0" />
-      <button
-        type="button"
-        className="truncate rounded-md text-token-text-primary outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-token-focus-border"
-        onClick={mode === "edit" ? onSummary : undefined}
-      >
-        {projectName}
-      </button>
-      {mode === "edit" ? (
-        <>
-          <ChevronRightIcon className="icon-2xs shrink-0" />
-          <span>
-            {intl.formatMessage({
+      ancestors={ancestors}
+      current={
+        mode === "edit"
+          ? intl.formatMessage({
               id: "settings.environments.editBreadcrumb",
               defaultMessage: "edit",
-            })}
-          </span>
-        </>
-      ) : null}
-    </nav>
+            })
+          : projectName
+      }
+    />
   );
 }
 
@@ -233,17 +221,9 @@ function DefaultShell({
   children,
 }: LocalEnvironmentsSettingsShellProps) {
   return (
-    <div className="flex flex-col gap-8">
-      {backSlot}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold text-token-text-primary">{title}</h1>
-          {subtitle ? <div className="text-base text-token-text-secondary">{subtitle}</div> : null}
-        </div>
-        {action}
-      </div>
+    <NodexSettingsPageSurface title={title} subtitle={subtitle} backSlot={backSlot} action={action}>
       {children}
-    </div>
+    </NodexSettingsPageSurface>
   );
 }
 
@@ -371,7 +351,7 @@ export function LocalEnvironmentsSettingsPage({
   const action =
     mode === "summary" && canEdit ? (
       <NodexButton
-        size="composer"
+        size="toolbar"
         variant="secondary"
         aria-label={intl.formatMessage(settingsMessages.environmentsEditLocalEnvironment)}
         onClick={() => setMode("edit")}
@@ -390,7 +370,7 @@ export function LocalEnvironmentsSettingsPage({
             {intl.formatMessage(settingsMessages.environmentsSelectAProject)}
           </h2>
           <NodexButton
-            size="composer"
+            size="toolbar"
             variant="secondary"
             disabled={!onAddProject}
             onClick={onAddProject}
@@ -434,7 +414,7 @@ export function LocalEnvironmentsSettingsPage({
             defaultMessage: "Could not load local environment.",
           })}
         </p>
-        <NodexButton size="composer" onClick={() => void snapshotQuery.refetch()}>
+        <NodexButton size="toolbar" onClick={() => void snapshotQuery.refetch()}>
           {intl.formatMessage({ id: "settings.environments.retry", defaultMessage: "Retry" })}
         </NodexButton>
       </div>
@@ -470,7 +450,7 @@ export function LocalEnvironmentsSettingsPage({
     content = <LocalEnvironmentSummary environment={snapshot.environment} />;
   } else {
     content = (
-      <div className="flex flex-col gap-2 rounded-lg border-[0.5px] border-token-border px-3 py-3">
+      <div className="flex flex-col gap-2 py-2">
         <p className="text-sm font-medium text-token-text-primary">
           {intl.formatMessage({
             id: "settings.environments.environmentNeedsAttention",

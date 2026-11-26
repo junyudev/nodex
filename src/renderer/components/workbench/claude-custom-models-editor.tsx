@@ -34,7 +34,7 @@ export function ClaudeCustomModelsEditor({
         })}
       >
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={disabled || models.length >= 64}
           onClick={() => onChange([...models, { id: "", displayName: "", traits: {} }])}
@@ -49,6 +49,7 @@ export function ClaudeCustomModelsEditor({
         <div key={index} className="flex flex-col gap-2 px-4 pb-3">
           <div className="flex items-center gap-2">
             <Input
+              variant="settings"
               aria-label={intl.formatMessage(
                 {
                   id: "workbench.claudeCustomModelsEditor.indexedId",
@@ -65,6 +66,7 @@ export function ClaudeCustomModelsEditor({
               onChange={(event) => update(index, { id: event.target.value })}
             />
             <Input
+              variant="settings"
               aria-label={intl.formatMessage(
                 {
                   id: "workbench.claudeCustomModelsEditor.indexedName",
@@ -81,7 +83,7 @@ export function ClaudeCustomModelsEditor({
               onChange={(event) => update(index, { displayName: event.target.value })}
             />
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="ghost"
               disabled={disabled}
               aria-label={intl.formatMessage(
@@ -189,6 +191,7 @@ export function ClaudeCustomModelsEditor({
               />
             </label>
             <Input
+              variant="settings"
               aria-label={intl.formatMessage(
                 {
                   id: "workbench.claudeCustomModelsEditor.contextWindows",

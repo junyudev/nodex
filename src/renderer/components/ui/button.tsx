@@ -11,7 +11,7 @@ export const NODEX_BUTTON_COLOR_CLASS = {
   primary:
     "bg-primary-solid text-primary-solid not-disabled:not-aria-disabled:hover:bg-(--color-background-primary-solid-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-primary-solid-active)",
   secondary:
-    "bg-(--color-background-secondary-soft) text-(--color-text-secondary-soft) not-disabled:not-aria-disabled:hover:bg-(--color-background-secondary-soft-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-secondary-soft-active)",
+    "border border-transparent bg-text/5 text-token-text-primary not-disabled:not-aria-disabled:hover:bg-text/10 aria-expanded:bg-text/10 not-disabled:not-aria-disabled:active:bg-text/15",
   outline:
     "border-[0.5px] border-(--color-border-primary-outline) bg-transparent text-(--color-text-primary-outline) not-disabled:not-aria-disabled:hover:bg-(--color-background-primary-outline-hover) not-disabled:not-aria-disabled:hover:border-(--color-border-primary-outline-hover) not-disabled:not-aria-disabled:hover:text-(--color-text-primary-outline-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-primary-outline-active)",
   ghost:
@@ -43,6 +43,8 @@ const nodexButtonVariants = cva(
         sm: "h-8 rounded-lg px-3 text-sm",
         xs: "h-6 rounded-md px-2 text-xs [&_svg:not([class*='size-']):not([class*='icon-'])]:size-3",
         composer: "h-token-button-composer rounded-lg px-2 py-0 text-base leading-[18px]",
+        /** The row action of Settings and toolbars: 28px, with a 10px corner. */
+        toolbar: "h-7 gap-1 rounded-lg px-2 py-0 text-sm leading-[18px]",
         lg: "h-10 rounded-xl px-5 text-sm",
         icon: "size-9 rounded-xl",
         "icon-sm": "size-8 rounded-lg",
@@ -186,15 +188,15 @@ export function NodexSwitchTrack({
     <span
       aria-hidden
       className={cn(
-        "relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out",
+        "relative inline-flex shrink-0 items-center rounded-full transition-colors duration-150 ease-out",
         size === "compact" ? "h-3.5 w-[22px]" : "h-5 w-8",
-        checked ? "bg-chart-blue" : "bg-text/10",
+        checked ? "bg-(--switch-track-color-checked)" : "bg-(--switch-track-color)",
       )}
       data-state={checked ? "checked" : "unchecked"}
     >
       <span
         className={cn(
-          "rounded-full border border-current bg-current shadow-sm transition-transform duration-200 ease-out",
+          "rounded-full border border-current bg-current shadow-[0_1px_2px_-1px_#00000014] transition-transform duration-150 ease-out",
           checked
             ? "text-(color:--switch-thumb-color-checked)"
             : "text-(color:--switch-thumb-color)",

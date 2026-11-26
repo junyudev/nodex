@@ -146,7 +146,7 @@ export function NodexTooltip({
   const resolvedDelay = delayOpen ? 250 : delay;
   const richSurface = surface === "rich";
   const shortcut = shortcutLabel ? (
-    <ShortcutKeycaps keys={[shortcutLabel]} density="compact" />
+    <ShortcutKeycaps keys={[shortcutLabel]} density="compact" tone="current" />
   ) : null;
   const boundaryAliases = makeNodexFloatingSurfaceBoundaryStyle(
     "var(--available-width)",
@@ -195,7 +195,7 @@ export function NodexTooltip({
             className={cn(
               richSurface
                 ? nodexFloatingSurfaceClassName
-                : "no-drag w-fit select-none rounded-lg border-[0.5px] border-token-border bg-token-dropdown-background px-2 py-1 font-sans text-sm leading-4.5 text-token-foreground whitespace-normal break-words",
+                : "no-drag w-fit select-none rounded-2xl border border-(--color-border-tooltip) bg-(--color-background-tooltip) px-3 py-[5px] font-sans text-sm leading-[18px] text-(--color-text-tooltip) shadow-[0_8px_18px_rgba(15,23,42,0.2)] whitespace-normal break-words",
               !richSurface && APP_SHELL_TOOLTIP_LAYER_CLASS,
               tooltipClassName,
             )}

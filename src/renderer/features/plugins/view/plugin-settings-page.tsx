@@ -2,16 +2,17 @@ import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
-import { ChevronRightMdIcon } from "@/components/shared/icons/customize-action-icons";
-import { NodexSwitch } from "@/components/ui/button";
-import { DetailLogo } from "@/components/ui/detail-page";
+import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import { PageEmptyState } from "@/components/ui/section-header";
-import { CODEX_SETTINGS_SHELL_STYLE } from "@/components/ui/settings";
+import {
+  NodexSettingsPageSurface,
+  NodexSettingsRow,
+  NodexSettingsSection,
+} from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { ToolbarBreadcrumb } from "@/components/ui/toolbar-breadcrumb";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { openExternalUrl } from "@/lib/file-system-operations";
-import { cn } from "@/lib/utils";
 import { pluginMutationSucceeded } from "../model/mutation-result";
 import { pluginTagline, skillShortDescription } from "../model/plugin-detail-model";
 import { pluginDisplayName } from "../model/plugin-labels";
@@ -28,41 +29,13 @@ import {
   type PluginRouteTarget,
 } from "../plugin-management";
 import { buildPluginDetailPath } from "../plugins-routes";
-import { PluginLogoImage, pluginLogoSource } from "./plugin-logo";
 import type { PluginsSettingsNavigation } from "./plugins-settings-page";
+import { SettingsNavigationRow } from "./settings-navigation-row";
 import { DetailDialog } from "./detail-dialog";
 import { SkillInstructions } from "./skill-preview-modal";
 import { usePluginRowActions } from "./use-plugin-row-actions";
 
 type PluginSkill = PluginDetailView["skills"][number];
-
-const CARD_CLASS =
-  "flex flex-col overflow-hidden rounded-2xl ring-1 ring-(--color-border) ring-inset [&>*:not(:last-child)]:relative [&>*:not(:last-child)]:after:pointer-events-none [&>*:not(:last-child)]:after:absolute [&>*:not(:last-child)]:after:inset-x-4 [&>*:not(:last-child)]:after:bottom-0 [&>*:not(:last-child)]:after:h-px [&>*:not(:last-child)]:after:bg-(--color-border) [&>*:not(:last-child)]:after:content-['']";
-const CARD_STYLE = {
-  backgroundColor: "var(--color-background-panel, var(--color-background-primary-soft-alpha))",
-};
-
-/** A compact settings section: a 16px title over a card of rows. */
-function SettingsCardSection({
-  title,
-  children,
-}: {
-  readonly title: string;
-  readonly children: ReactNode;
-}) {
-  return (
-    <section className="flex flex-col">
-      <div className="flex items-center justify-between gap-4 pb-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.75">
-          <h2 className="text-lg leading-5 font-medium text-token-foreground">{title}</h2>
-        </div>
-      </div>
-      <div className={CARD_CLASS} style={CARD_STYLE}>
-        {children}
-      </div>
-    </section>
-  );
-}
 
 /** One of the plugin's skills: its name and description, its switch, and its contents. */
 function PluginSkillSettingsRow({
@@ -131,25 +104,11 @@ function PluginSkillSettingsRow({
 
   return (
     <>
-      <div className="group grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 focus-within:bg-token-list-hover-background hover:bg-token-list-hover-background">
-        <button
-          type="button"
-          className="col-span-full row-start-1 grid min-w-0 flex-1 cursor-interaction grid-cols-subgrid items-center gap-2 rounded-[inherit] px-4 py-3 text-start focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border"
-          onClick={() => setOpen(true)}
-        >
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <div className="min-w-0 text-sm leading-4.5 font-medium break-words text-token-foreground">
-              {name}
-            </div>
-            <div className="min-w-0 text-xs leading-4 text-wrap break-words text-(--color-text-secondary)">
-              {skill.description}
-            </div>
-          </div>
-          <div className="col-start-3 flex shrink-0 items-center gap-2">
-            <ChevronRightMdIcon className="text-tertiary" />
-          </div>
-        </button>
-        <div className="relative col-start-2 row-start-1 flex shrink-0 items-center gap-1">
+      <SettingsNavigationRow
+        label={name}
+        description={skill.description}
+        onOpen={() => setOpen(true)}
+        actions={
           <NodexSwitch
             ariaLabel={intl.formatMessage(
               { id: "plugins.pluginSettingsPage.useSkill", defaultMessage: "Use {name}" },
@@ -159,8 +118,8 @@ function PluginSkillSettingsRow({
             disabled={updating || !view.summary.installed}
             onCheckedChange={(next) => void setEnabled(next)}
           />
-        </div>
-      </div>
+        }
+      />
       <DetailDialog
         iconShape="rounded"
         open={open}
@@ -204,12 +163,9 @@ function PluginSkillSettingsRow({
 /** A label and its value, side by side once there is room. */
 function AboutRow({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
-    <div className="grid min-h-14 items-center gap-1 px-4 py-2 sm:grid-cols-[160px_minmax(0,1fr)] sm:gap-6">
-      <div className="min-w-0 text-sm text-(--color-text-secondary)">{label}</div>
-      <div className="min-w-0 text-sm break-words whitespace-normal text-token-foreground">
-        {children}
-      </div>
-    </div>
+    <NodexSettingsRow label={label}>
+      <span className="min-w-0 text-sm wrap-anywhere text-token-text-secondary">{children}</span>
+    </NodexSettingsRow>
   );
 }
 
@@ -233,11 +189,13 @@ function PluginSettingsContent({
   context,
   navigation,
   onBack,
+  backSlot,
 }: {
   readonly view: PluginDetailView;
   readonly context: PluginContext;
   readonly navigation: PluginsSettingsNavigation;
   readonly onBack: () => void;
+  readonly backSlot: ReactNode;
 }) {
   const intl = useIntl();
   const row = view.row;
@@ -249,22 +207,15 @@ function PluginSettingsContent({
   const name = pluginDisplayName(row);
 
   return (
-    <div className="flex flex-col gap-[22px]">
-      <header className="flex min-w-0 flex-wrap items-center justify-between gap-4">
-        <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
-          <DetailLogo>
-            <PluginLogoImage source={pluginLogoSource(row)} className="size-full rounded-2xs" />
-          </DetailLogo>
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <h1 className="heading-base break-words text-token-foreground">{name}</h1>
-            <div className="text-xs leading-4 text-(--color-text-secondary)">
-              <div className="line-clamp-3 w-full">{pluginTagline(view)}</div>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <ToolbarButton
-            color="outline"
+    <NodexSettingsPageSurface
+      title={name}
+      subtitle={pluginTagline(view)}
+      backSlot={backSlot}
+      action={
+        <div className="flex max-w-[42vw] flex-wrap justify-end gap-2">
+          <NodexButton
+            size="toolbar"
+            variant="secondary"
             onClick={() => {
               const target = selectorToRouteTarget(row);
               rememberPluginTitle(target.pluginId, name);
@@ -275,12 +226,12 @@ function PluginSettingsContent({
               id: "plugins.pluginSettingsPage.viewDetails",
               defaultMessage: "View details",
             })}
-          </ToolbarButton>
+          </NodexButton>
           {row.canUninstall ? (
-            <ToolbarButton
-              color="outline"
+            <NodexButton
+              size="toolbar"
+              variant="destructive"
               disabled={pending === "uninstalling"}
-              className="border-(--color-text-danger) bg-transparent text-(--color-text-danger)"
               onClick={() => {
                 void actions.uninstall(row).then(onBack);
               }}
@@ -294,12 +245,13 @@ function PluginSettingsContent({
                     id: "plugins.pluginSettingsPage.uninstall",
                     defaultMessage: "Uninstall",
                   })}
-            </ToolbarButton>
+            </NodexButton>
           ) : null}
         </div>
-      </header>
+      }
+    >
       {view.skills.length > 0 ? (
-        <SettingsCardSection
+        <NodexSettingsSection
           title={intl.formatMessage({
             id: "plugins.pluginSettingsPage.skills",
             defaultMessage: "Skills",
@@ -314,9 +266,9 @@ function PluginSettingsContent({
               navigation={navigation}
             />
           ))}
-        </SettingsCardSection>
+        </NodexSettingsSection>
       ) : null}
-      <SettingsCardSection
+      <NodexSettingsSection
         title={intl.formatMessage({
           id: "plugins.pluginSettingsPage.about",
           defaultMessage: "About",
@@ -396,8 +348,8 @@ function PluginSettingsContent({
             </AboutLink>
           </AboutRow>
         ) : null}
-      </SettingsCardSection>
-    </div>
+      </NodexSettingsSection>
+    </NodexSettingsPageSurface>
   );
 }
 
@@ -418,19 +370,37 @@ export function PluginSettingsPage({
 }) {
   const intl = useIntl();
   const detail = usePluginDetail(context, routeTargetToSelector(target));
-  const title = detail.data == null ? null : pluginDisplayName(detail.data.row);
+  const backSlot = (
+    <ToolbarBreadcrumb
+      variant="settings"
+      ancestors={[
+        {
+          id: "plugin-settings",
+          label: intl.formatMessage({
+            id: "plugins.pluginSettingsPage.settings",
+            defaultMessage: "Plugin settings",
+          }),
+          onSelect: onBack,
+        },
+      ]}
+      current={detail.data ? pluginDisplayName(detail.data.row) : undefined}
+    />
+  );
 
-  let content: ReactNode;
   if (detail.data != null) {
-    content = (
+    return (
       <PluginSettingsContent
         view={detail.data}
         context={context}
         navigation={navigation}
         onBack={onBack}
+        backSlot={backSlot}
       />
     );
-  } else if (detail.isError) {
+  }
+
+  let content: ReactNode;
+  if (detail.isError) {
     content = (
       <PageEmptyState
         title={intl.formatMessage({
@@ -456,32 +426,14 @@ export function PluginSettingsPage({
   }
 
   return (
-    <main className="flex h-full min-h-0 w-full flex-col" style={CODEX_SETTINGS_SHELL_STYLE}>
-      <div className="flex h-toolbar items-center px-panel">
-        <ToolbarBreadcrumb
-          ancestors={[
-            {
-              id: "plugin-settings",
-              label: intl.formatMessage({
-                id: "plugins.pluginSettingsPage.settings",
-                defaultMessage: "Plugin settings",
-              }),
-              onSelect: onBack,
-            },
-          ]}
-          current={title ?? undefined}
-        />
-      </div>
-      <div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-        <div
-          data-density="compact"
-          className={cn(
-            "group/settings mx-auto flex w-full max-w-3xl flex-col px-panel pt-panel pb-panel",
-          )}
-        >
-          {content}
-        </div>
-      </div>
-    </main>
+    <NodexSettingsPageSurface
+      title={intl.formatMessage({
+        id: "plugins.pluginSettingsPage.settings",
+        defaultMessage: "Plugin settings",
+      })}
+      backSlot={backSlot}
+    >
+      {content}
+    </NodexSettingsPageSurface>
   );
 }

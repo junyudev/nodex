@@ -219,7 +219,7 @@ export function AcpAgentDetail({
         >
           {updateVersion ? (
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="secondary"
               disabled={running || !instance.enabled}
               onClick={() => void update(updateVersion)}
@@ -241,6 +241,7 @@ export function AcpAgentDetail({
         label={intl.formatMessage({ id: "acpAgents.acpAgentDetail.name", defaultMessage: "Name" })}
       >
         <Input
+          variant="settings"
           {...problemOf("name")}
           aria-label={intl.formatMessage({
             id: "acpAgents.acpAgentDetail.agentName",
@@ -266,6 +267,7 @@ export function AcpAgentDetail({
             })}
           >
             <Input
+              variant="settings"
               {...problemOf("executable")}
               aria-label={intl.formatMessage({
                 id: "acpAgents.acpAgentDetail.executable",
@@ -343,6 +345,7 @@ export function AcpAgentDetail({
             })}
           >
             <Input
+              variant="settings"
               aria-label={intl.formatMessage({
                 id: "acpAgents.acpAgentDetail.executableOverride",
                 defaultMessage: "Executable override",
@@ -371,6 +374,7 @@ export function AcpAgentDetail({
         })}
       >
         <Textarea
+          variant="settings"
           aria-label={intl.formatMessage({
             id: "acpAgents.acpAgentDetail.customModels",
             defaultMessage: "Custom models",
@@ -480,7 +484,7 @@ export function AcpAgentDetail({
               </label>
             ) : null}
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="destructive"
               disabled={saving}
               onClick={() => void remove()}
@@ -488,7 +492,7 @@ export function AcpAgentDetail({
               <FormattedMessage id="acpAgents.acpAgentDetail.remove" defaultMessage="Remove" />
             </NodexButton>
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="ghost"
               autoFocus
               disabled={saving}
@@ -499,7 +503,7 @@ export function AcpAgentDetail({
           </>
         ) : (
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="ghost"
             className="text-danger"
             autoFocus={removal === "kept"}
@@ -537,7 +541,7 @@ export function AcpAgentDetail({
         </span>
         {changed ? (
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="ghost"
             disabled={saving}
             onClick={() => {
@@ -549,7 +553,7 @@ export function AcpAgentDetail({
           </NodexButton>
         ) : null}
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={saving || !changed || problem !== null}
           onClick={() => void save()}

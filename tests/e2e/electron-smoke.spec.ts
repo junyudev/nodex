@@ -1,5 +1,5 @@
 import { pageFilesTree } from "./support/page-files";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import type { BlockTransferDataSourcePlacement } from "../../src/shared/block-transfer";
 import { readTestClipboard, writeTestClipboardImage } from "./clipboard";
 import { selectEditorBlockRange } from "./support/select-editor-block-range";
@@ -3311,7 +3311,7 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(shorthandSwitch).toHaveAttribute("aria-checked", "false");
       await shorthandSwitch.click();
       await expect(shorthandSwitch).toHaveAttribute("aria-checked", "true");
-      await page.getByRole("button", { name: "Back to app" }).click();
+      await closeWorkbenchSettings(page);
       const database = await readConvergenceDatabase(page, project);
       const firstBoardFixture = await createConvergenceBoardPage(
         page,

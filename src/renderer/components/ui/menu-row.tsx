@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 /** Box and type of every menu row, shared by Dropdown and ContextMenu owners. */
 export const nodexMenuRowClassName =
-  "no-drag rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-sm text-token-foreground outline-hidden";
+  "no-drag rounded-xl px-2 py-[5px] text-sm text-token-foreground outline-hidden";
 
 /**
  * The inside of every menu row: an optional leading visual, the label, then trailing content.

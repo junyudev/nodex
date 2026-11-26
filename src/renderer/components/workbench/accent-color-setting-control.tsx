@@ -163,7 +163,7 @@ export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme
               },
               { variantLabel: variantLabel },
             )}
-            className="w-36 bg-(--color-surface)"
+            className="max-w-60 rounded-full"
             leadingVisual={<NodexDropdownColorDot color={selectedColor} />}
           >
             <span className="truncate">{label}</span>

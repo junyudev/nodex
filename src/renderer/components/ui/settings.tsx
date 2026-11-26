@@ -10,7 +10,7 @@ import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "@/components/shared
 import { useIntl } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { NodexButton } from "./button";
-import { Textarea } from "./input";
+import { NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME, Textarea } from "./input";
 import { ToolbarButton } from "./toolbar-button";
 import {
   NodexCollapsiblePanel,
@@ -22,7 +22,7 @@ export const CODEX_SETTINGS_SHELL_STYLE = {
   "--cursor-interaction": "pointer",
 } as CSSProperties;
 
-/** One size for a settings row's text input or picker, so the fields in a card line up. */
+/** One size for a settings row's text input or picker, so the fields in a section line up. */
 export const NODEX_SETTINGS_FIELD_CLASS_NAME = "h-8 w-64 max-w-full text-sm";
 
 export type NodexSettingsNumberInputProps = Omit<ComponentProps<"input">, "type">;
@@ -42,7 +42,8 @@ export function NodexSettingsNumberInput({
         onKeyDown?.(event);
       }}
       className={cn(
-        "h-7 min-w-0 rounded-md border border-(--color-border-primary-outline) bg-(--color-background-primary-soft) px-2 py-0 text-sm text-(--color-text) tabular-nums outline-none",
+        "h-7 min-w-0 px-2 py-0 text-sm text-(--color-text) tabular-nums outline-none",
+        NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME,
         "focus:border-ring aria-invalid:border-text-danger aria-invalid:ring-2 aria-invalid:ring-text-danger/20",
         "disabled:cursor-not-allowed disabled:text-(--color-text-secondary)",
         className,
@@ -135,7 +136,7 @@ function NodexSettingsRowText({
   variant: "default" | "nested";
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5">
+    <div className="flex min-w-0 flex-col gap-1 py-0.5">
       <div
         className={cn(
           "min-w-0 text-sm text-token-text-primary",
@@ -145,7 +146,7 @@ function NodexSettingsRowText({
         {label}
       </div>
       {description ? (
-        <div className="min-w-0 break-words text-xs leading-4 text-balance text-token-text-secondary">
+        <div className="min-w-0 break-words text-sm font-normal text-pretty text-token-text-secondary">
           {description}
         </div>
       ) : null}
@@ -166,19 +167,15 @@ export function NodexSettingsRow({
     <div
       id={id}
       className={cn(
-        "flex flex-wrap items-center justify-between gap-y-2 px-4",
-        variant === "nested"
-          ? "min-h-10 gap-x-3 py-2"
-          : size === "compact"
-            ? "gap-x-4 py-2"
-            : "gap-x-6 py-3",
+        "flex min-h-10 flex-wrap items-center justify-between gap-x-3 gap-y-2",
+        variant === "nested" || size === "compact" ? "py-1.5" : "py-2",
         className,
       )}
     >
       <div className="flex min-w-32 flex-1 items-center gap-3">
         <NodexSettingsRowText label={label} description={description} variant={variant} />
       </div>
-      <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+      <div className="ms-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
         {children}
       </div>
     </div>
@@ -201,7 +198,7 @@ export function NodexSettingsStackedRow({
   children: ReactNode;
 }) {
   return (
-    <div id={id} className="flex flex-col gap-2.5 px-4 py-3">
+    <div id={id} className="flex flex-col gap-2 py-2">
       <NodexSettingsRowText label={label} description={description} variant="default" />
       {children}
     </div>
@@ -234,6 +231,7 @@ export function NodexSettingsTextField({
   const [saving, setSaving] = useState(false);
   return (
     <Textarea
+      variant="settings"
       {...props}
       value={draft ?? value}
       onChange={(event) => setDraft(event.currentTarget.value)}
@@ -263,7 +261,7 @@ export function NodexSettingsTextField({
  * A setting with more to read or change underneath it, such as a guide or a list of models. The
  * row keeps the alignment of the rows around it; its Show button opens the detail in place.
  * `actions` sit before that button and `control`, such as a switch, after it, so the button never
- * moves under the pointer and a switch keeps the card's right edge.
+ * moves under the pointer and a switch keeps the section's right edge.
  */
 export function NodexSettingsRevealRow({
   id,
@@ -295,7 +293,7 @@ export function NodexSettingsRevealRow({
       <NodexSettingsRow label={label} description={description} variant={variant}>
         {actions}
         <NodexButton
-          size="xs"
+          size="toolbar"
           variant="ghostSecondary"
           aria-expanded={open}
           aria-controls={open ? detailId : undefined}
@@ -327,18 +325,22 @@ export function NodexSettingsRevealRow({
   );
 }
 
-const SETTINGS_CARD_CLASS_NAME =
-  "flex flex-col overflow-hidden rounded-2xl border border-token-border";
-const SETTINGS_CARD_STYLE = {
-  backgroundColor: "var(--color-background-panel, var(--color-token-bg-fog))",
-} satisfies CSSProperties;
-/** Inset hairlines between a card's direct children. */
-const SETTINGS_CARD_DIVIDERS = cn(
+/**
+ * A section's rows lie flat on the page, divided by full-width lines; only the last row runs
+ * open. A feature that needs a framed surface, such as a code preview, draws its own.
+ */
+const SETTINGS_GROUP_CLASS_NAME = cn(
+  "flex flex-col",
   "[&>*:not(:last-child)]:relative [&>*:not(:last-child)]:after:pointer-events-none",
-  "[&>*:not(:last-child)]:after:absolute [&>*:not(:last-child)]:after:inset-x-4",
+  "[&>*:not(:last-child)]:after:absolute [&>*:not(:last-child)]:after:inset-x-0",
   "[&>*:not(:last-child)]:after:bottom-0 [&>*:not(:last-child)]:after:h-px",
-  "[&>*:not(:last-child)]:after:bg-token-border [&>*:not(:last-child)]:after:content-['']",
+  "[&>*:not(:last-child)]:after:bg-(--color-border) [&>*:not(:last-child)]:after:content-['']",
 );
+
+/** A section's heading row: its title, and any section-wide action, over a full-width line. */
+const SETTINGS_SECTION_HEADER_CLASS_NAME =
+  "flex min-h-toolbar items-center justify-between gap-4 border-b border-(--color-border) pb-1.5";
+const SETTINGS_SECTION_TITLE_CLASS_NAME = "text-base font-medium text-token-text-primary";
 
 export interface NodexSettingsDisclosureState {
   readonly open: boolean;
@@ -371,7 +373,7 @@ export function useNodexSettingsDisclosures(revealed: string | null = null) {
 }
 
 /**
- * A collapsible settings card. Its header names the area in plain words and, while closed,
+ * A collapsible settings section. Its heading names the area in plain words and, while closed,
  * summarizes the current state so the page reads as an overview. Closed content stays mounted,
  * so drafts survive collapsing.
  */
@@ -383,8 +385,9 @@ function NodexSettingsDisclosureSection({
   summary,
   action,
   disclosure,
+  disclosureHeading,
   children,
-  cardClassName,
+  groupClassName,
 }: {
   id?: string;
   title: string;
@@ -393,10 +396,12 @@ function NodexSettingsDisclosureSection({
   summary?: ReactNode;
   action?: ReactNode;
   disclosure: NodexSettingsDisclosureState;
+  disclosureHeading?: "quiet";
   children: ReactNode;
-  cardClassName?: string;
+  groupClassName?: string;
 }) {
   const titleId = useId();
+  const panelId = useId();
   const descriptionId = useId();
   const summaryId = useId();
   const showSummary = !disclosure.open && summary !== undefined && summary !== null;
@@ -406,23 +411,19 @@ function NodexSettingsDisclosureSection({
 
   return (
     <section id={id} aria-labelledby={titleId} className="flex scroll-mt-4 flex-col">
-      <NodexCollapsibleRoot
-        open={disclosure.open}
-        onOpenChange={disclosure.onOpenChange}
-        className={cn(SETTINGS_CARD_CLASS_NAME, cardClassName)}
-        style={SETTINGS_CARD_STYLE}
-      >
-        <div className="flex items-center">
+      <NodexCollapsibleRoot open={disclosure.open} onOpenChange={disclosure.onOpenChange}>
+        <div className={cn(SETTINGS_SECTION_HEADER_CLASS_NAME, "py-1.5")}>
           <h2 className="flex min-w-0 flex-1">
             <NodexCollapsibleTrigger
+              aria-controls={panelId}
               render={
                 <button
                   type="button"
                   aria-labelledby={titleId}
                   aria-describedby={describedBy || undefined}
                   className={cn(
-                    "flex min-h-14 min-w-0 flex-1 cursor-interaction items-center gap-3 px-4 py-3 text-start outline-none",
-                    "hover:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset",
+                    "group/settings-disclosure flex min-w-0 cursor-interaction items-center gap-3 rounded-lg text-start outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border",
+                    disclosureHeading !== "quiet" && "flex-1",
                   )}
                 />
               }
@@ -430,19 +431,35 @@ function NodexSettingsDisclosureSection({
               {icon ? (
                 <span
                   aria-hidden="true"
-                  className="flex size-5 shrink-0 items-center justify-center text-token-text-primary [&>svg]:size-[18px]"
+                  className="flex size-5 shrink-0 items-center justify-center text-token-text-primary [&>svg]:size-4"
                 >
                   {icon}
                 </span>
               ) : null}
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span id={titleId} className="text-sm font-medium text-token-text-primary">
-                  {title}
+                <span className="flex min-w-0 items-center gap-1">
+                  <span
+                    id={titleId}
+                    className={cn(
+                      SETTINGS_SECTION_TITLE_CLASS_NAME,
+                      "truncate",
+                      disclosureHeading === "quiet" &&
+                        "text-tertiary group-hover/settings-disclosure:text-token-text-primary",
+                    )}
+                  >
+                    {title}
+                  </span>
+                  <ChevronRightIcon
+                    className={cn(
+                      "size-3.5 shrink-0 text-tertiary transition-transform duration-150 group-hover/settings-disclosure:text-token-text-primary",
+                      disclosure.open && "rotate-90",
+                    )}
+                  />
                 </span>
                 {description ? (
                   <span
                     id={descriptionId}
-                    className="text-xs leading-4 text-balance text-token-text-secondary"
+                    className="text-sm text-pretty text-token-text-secondary"
                   >
                     {description}
                   </span>
@@ -456,23 +473,14 @@ function NodexSettingsDisclosureSection({
                   {summary}
                 </span>
               ) : null}
-              <ChevronDownIcon
-                className={cn(
-                  "size-3.5 shrink-0 text-token-description-foreground transition-transform duration-150",
-                  !disclosure.open && "-rotate-90",
-                )}
-              />
             </NodexCollapsibleTrigger>
           </h2>
-          {action ? <div className="flex shrink-0 items-center pe-4">{action}</div> : null}
+          {action ? <div className="flex shrink-0 items-center">{action}</div> : null}
         </div>
         <NodexCollapsiblePanel
+          id={panelId}
           keepMounted
-          className={cn(
-            "relative flex flex-col data-[closed]:hidden",
-            "before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-token-border before:content-['']",
-            SETTINGS_CARD_DIVIDERS,
-          )}
+          className={cn(SETTINGS_GROUP_CLASS_NAME, "data-[closed]:hidden", groupClassName)}
         >
           {children}
         </NodexCollapsiblePanel>
@@ -484,33 +492,35 @@ function NodexSettingsDisclosureSection({
 export function NodexSettingsSection({
   id,
   title,
-  titlePlacement = "outside",
   description,
   icon,
   summary,
   action,
   disclosure,
+  disclosureHeading,
   footnote,
   children,
-  cardClassName,
+  groupClassName,
 }: {
   id?: string;
   title?: string;
-  titlePlacement?: "outside" | "inside";
   /** Collapsible sections only: a plain-language line under the title. */
   description?: ReactNode;
   /** Collapsible sections only: the area's mark, before the title. */
   icon?: ReactNode;
   /** Collapsible sections only: the current state, shown while closed. */
   summary?: ReactNode;
-  /** Collapsible sections only: a header control outside the toggle. */
+  /** A section-wide control at the end of the heading row. */
   action?: ReactNode;
-  /** Makes the section a collapsible card whose header holds its title. */
+  /** Makes the section collapsible from its heading. */
   disclosure?: NodexSettingsDisclosureState;
-  /** Plain sections only: one quiet line under the card that holds for every row in it. */
+  /** Uses a tertiary title and a button fitted to the heading copy. */
+  disclosureHeading?: "quiet";
+  /** Plain sections only: one quiet line under the rows that holds for every row in it. */
   footnote?: ReactNode;
   children: ReactNode;
-  cardClassName?: string;
+  /** Layout for the rows' group, such as a fixed height for a list that scrolls. */
+  groupClassName?: string;
 }) {
   const titleId = useId();
 
@@ -524,7 +534,8 @@ export function NodexSettingsSection({
         summary={summary}
         action={action}
         disclosure={disclosure}
-        cardClassName={cardClassName}
+        disclosureHeading={disclosureHeading}
+        groupClassName={groupClassName}
       >
         {children}
       </NodexSettingsDisclosureSection>
@@ -533,33 +544,18 @@ export function NodexSettingsSection({
 
   return (
     <section id={id} aria-labelledby={title ? titleId : undefined} className="flex flex-col">
-      {title && titlePlacement === "outside" ? (
-        <h2
-          id={titleId}
-          className="min-h-toolbar pb-1.5 text-base font-medium text-token-text-primary"
-        >
-          {title}
-        </h2>
-      ) : null}
-      <div className="flex flex-col gap-1.5">
-        <div
-          className={cn(SETTINGS_CARD_CLASS_NAME, SETTINGS_CARD_DIVIDERS, cardClassName)}
-          style={SETTINGS_CARD_STYLE}
-        >
-          {title && titlePlacement === "inside" ? (
-            <h2
-              id={titleId}
-              className="flex min-h-10 items-center px-4 py-2 text-sm font-medium text-token-text-primary"
-            >
-              {title}
-            </h2>
-          ) : null}
-          {children}
+      {title ? (
+        <div className={SETTINGS_SECTION_HEADER_CLASS_NAME}>
+          <h2 id={titleId} className={SETTINGS_SECTION_TITLE_CLASS_NAME}>
+            {title}
+          </h2>
+          {action ? <div className="flex shrink-0 items-center">{action}</div> : null}
         </div>
-        {footnote ? (
-          <p className="px-4 text-xs leading-4 text-token-text-secondary">{footnote}</p>
-        ) : null}
-      </div>
+      ) : null}
+      <div className={cn(SETTINGS_GROUP_CLASS_NAME, groupClassName)}>{children}</div>
+      {footnote ? (
+        <p className="pt-1.5 text-sm text-pretty text-token-text-secondary">{footnote}</p>
+      ) : null}
     </section>
   );
 }
@@ -600,7 +596,7 @@ export function NodexSettingsExpandableRow({
   const detailId = useId();
   return (
     <div id={id} className="flex scroll-mt-4 flex-col">
-      <div className="relative flex min-h-14 items-center gap-3 px-4 py-2.5">
+      <div className="relative flex min-h-12 items-center gap-3 py-2">
         <button
           ref={toggleRef}
           type="button"
@@ -618,7 +614,7 @@ export function NodexSettingsExpandableRow({
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="truncate text-sm font-medium text-token-text-primary">{label}</span>
             {detail ? (
-              <span className="block min-w-0 truncate text-xs text-token-description-foreground">
+              <span className="block min-w-0 truncate text-sm text-token-text-secondary">
                 {detail}
               </span>
             ) : null}
@@ -629,12 +625,8 @@ export function NodexSettingsExpandableRow({
       </div>
       {notice}
       {expanded ? (
-        // A detail opened inside another detail shares its surface: stacked tints read as grey.
-        <div
-          id={detailId}
-          data-settings-detail=""
-          className="flex flex-col bg-token-foreground/[0.015] in-data-settings-detail:bg-transparent"
-        >
+        // The detail hangs under the label, past the disclosure chevron, so it reads as the item's.
+        <div id={detailId} data-settings-detail="" className="flex flex-col ps-[22px] pb-2">
           {children}
         </div>
       ) : null}
@@ -661,11 +653,11 @@ export function NodexSettingsAddRow({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex min-h-11 w-full items-center gap-2.5 px-4 text-start text-sm text-token-text-secondary outline-none",
-        "focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset",
+        "flex min-h-10 w-full items-center gap-2 text-start text-sm text-token-text-secondary outline-none",
+        "rounded-lg focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset",
         disabled
           ? "cursor-not-allowed opacity-60"
-          : "cursor-interaction hover:bg-token-list-hover-background hover:text-token-text-primary",
+          : "cursor-interaction hover:text-token-text-primary",
       )}
     >
       <PlusIcon className="icon-2xs shrink-0" />
@@ -755,30 +747,29 @@ export function NodexSettingsPageSurface({
       className={cn("flex h-full min-h-0 w-full flex-col", className)}
       style={CODEX_SETTINGS_SHELL_STYLE}
     >
-      {backSlot ? <div className="flex items-center px-panel">{backSlot}</div> : null}
-      <div className="flex-1 overflow-y-auto p-panel">
+      {backSlot ? <div className="flex items-center px-panel pt-2">{backSlot}</div> : null}
+      <div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <div
           className={cn(
-            "mx-auto flex w-full min-w-0 flex-col",
+            "mx-auto flex w-full min-w-0 flex-col px-panel pt-4 pb-panel",
             fullWidth ? null : "max-w-3xl",
             contentClassName,
           )}
         >
-          <div className="flex items-center justify-between gap-3 pb-panel">
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              <h1
-                id={titleId}
-                className="heading-base break-words electron:text-[length:var(--text-heading-lg)] electron:leading-[1.2]"
-              >
+          <div className="flex items-center justify-between gap-3 py-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <h1 id={titleId} className="heading-xl break-words text-token-text-primary">
                 {title}
               </h1>
               {subtitle ? (
-                <p className="break-words text-base text-token-text-secondary">{subtitle}</p>
+                <p className="break-words text-base leading-6 text-balance text-token-text-secondary">
+                  {subtitle}
+                </p>
               ) : null}
             </div>
             {action ? <div className="shrink-0">{action}</div> : null}
           </div>
-          <div className="flex flex-col gap-10">{children}</div>
+          <div className="mt-5 flex flex-col gap-10">{children}</div>
         </div>
       </div>
     </main>

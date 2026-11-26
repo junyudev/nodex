@@ -63,7 +63,7 @@ export function GeneralSettingsPage({ onPathChange, open }: SettingsSectionPageP
             label={intl.formatMessage(settingsMessages.generalRunSetupAgain)}
             description={intl.formatMessage(settingsMessages.generalConnectAgentsAndAddProjects)}
           >
-            <NodexButton variant="secondary" size="xs" onClick={() => void runSetupAgain()}>
+            <NodexButton variant="secondary" size="toolbar" onClick={() => void runSetupAgain()}>
               <FormattedMessage id="settings.general.runSetup.action" defaultMessage="Run setup" />
             </NodexButton>
           </SettingRow>
@@ -92,7 +92,7 @@ export function GeneralSettingsPage({ onPathChange, open }: SettingsSectionPageP
         >
           <NodexButton
             variant="secondary"
-            size="xs"
+            size="toolbar"
             onClick={() => {
               startTransition(() => {
                 onPathChange(OPEN_SOURCE_LICENSES_SETTINGS_PATH);

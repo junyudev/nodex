@@ -297,8 +297,8 @@ function NativeNotificationPermissionControl({ open }: { open: boolean }) {
     >
       {failed ? (
         <NodexButton
-          variant="outline"
-          size="sm"
+          variant="secondary"
+          size="toolbar"
           onClick={() => {
             request.reset();
             settings.reset();
@@ -309,8 +309,8 @@ function NativeNotificationPermissionControl({ open }: { open: boolean }) {
         </NodexButton>
       ) : status === "not-determined" ? (
         <NodexButton
-          variant="outline"
-          size="sm"
+          variant="secondary"
+          size="toolbar"
           disabled={request.isPending}
           onClick={() => request.mutate()}
         >
@@ -321,8 +321,8 @@ function NativeNotificationPermissionControl({ open }: { open: boolean }) {
         </NodexButton>
       ) : status === "denied" ? (
         <NodexButton
-          variant="outline"
-          size="sm"
+          variant="secondary"
+          size="toolbar"
           disabled={settings.isPending}
           onClick={() => settings.mutate()}
         >
@@ -1022,6 +1022,7 @@ function PasteResourceNumberSettingControl({
   return (
     <div className="flex items-center gap-3">
       <Input
+        variant="settings"
         value={draft}
         onChange={(event) => {
           setDraft(event.target.value);
@@ -1313,7 +1314,7 @@ function FontFamilyInput({
         if (next) setDraft(family ?? "");
       }}
       triggerButton={
-        <NodexSettingsDropdownTrigger aria-label={label} className="w-36 max-w-full">
+        <NodexSettingsDropdownTrigger aria-label={label} className="max-w-60 rounded-full">
           <span className="truncate">{family ?? defaultLabel}</span>
         </NodexSettingsDropdownTrigger>
       }
@@ -1449,6 +1450,7 @@ export function WorktreeAutoBranchPrefixSettingControl({
 
   return (
     <Input
+      variant="settings"
       value={draft}
       onChange={(event) => {
         setDraft(event.target.value);

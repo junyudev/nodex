@@ -16,7 +16,7 @@ import {
   readNodexAccount,
 } from "./fixtures/nodex-account-ui";
 import { startNodexOAuthHttpFixture } from "./fixtures/nodex-oauth-http";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 
 const imageUrl = "https://images.nodex.invalid/account-review.svg";
 const menuTrigger = (page: Page) =>
@@ -26,7 +26,7 @@ const openMenu = async (page: Page) => {
   await expect(page.getByRole("menu")).toBeVisible();
 };
 const backToApp = async (page: Page) => {
-  await page.getByRole("button", { name: "Back to app", exact: true }).click();
+  await closeWorkbenchSettings(page);
   await expect(menuTrigger(page)).toBeVisible();
 };
 const setMode = async (page: Page, mode: "Light" | "Dark") => {

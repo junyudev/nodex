@@ -117,7 +117,11 @@ export function InboxSettingsPage() {
                 defaultMessage: "Loading…",
               })}
           {settingsQuery.error ? (
-            <NodexButton size="xs" variant="ghost" onClick={() => void settingsQuery.refetch()}>
+            <NodexButton
+              size="toolbar"
+              variant="ghost"
+              onClick={() => void settingsQuery.refetch()}
+            >
               <FormattedMessage id="inbox.inboxSettingsPage.retry" defaultMessage="Retry" />
             </NodexButton>
           ) : null}
@@ -142,7 +146,7 @@ export function InboxSettingsPage() {
             id="inbox.inboxSettingsPage.couldnTLoadAgents"
             defaultMessage="Couldn’t load Agents"
           />{" "}
-          <NodexButton size="xs" variant="ghost" onClick={agents.reload}>
+          <NodexButton size="toolbar" variant="ghost" onClick={agents.reload}>
             <FormattedMessage id="inbox.inboxSettingsPage.retry" defaultMessage="Retry" />
           </NodexButton>
         </div>
@@ -394,7 +398,7 @@ function InboxModelGuideRow({
         />
       }
     >
-      <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2.5 px-4 pt-0.5 pb-4 text-xs leading-4">
+      <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2.5 pt-0.5 pb-2 text-sm">
         {INBOX_MODEL_GUIDE.map((entry) => (
           <div key={entry.family} className="contents">
             <dt className="font-medium text-token-text-primary">{entry.family}</dt>

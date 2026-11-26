@@ -41,7 +41,7 @@ function AppsPlaceholder({
           })}
           description={error}
           actions={
-            <ToolbarButton color="outline" disabled={retrying} onClick={onRetry}>
+            <ToolbarButton color="secondary" disabled={retrying} onClick={onRetry}>
               {intl.formatMessage({
                 id: "plugins.pluginsSettingsApps.retry",
                 defaultMessage: "Retry",
@@ -89,10 +89,7 @@ export function AppsTab({
   return (
     <div className="flex flex-col gap-6">
       {error == null ? null : (
-        <div
-          role="alert"
-          className="flex flex-col gap-2 rounded-xl border border-(--color-border) p-3 text-sm"
-        >
+        <div role="alert" className="flex flex-col gap-2 py-2 text-sm">
           <div className="font-medium text-token-foreground">
             {intl.formatMessage({
               id: "plugins.pluginsSettingsApps.loadFailed",
@@ -101,7 +98,7 @@ export function AppsTab({
           </div>
           <div className="text-(--color-text-secondary)">{error}</div>
           <ToolbarButton
-            color="outline"
+            color="secondary"
             className="self-start"
             disabled={query.isFetching}
             onClick={retry}

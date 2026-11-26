@@ -48,6 +48,7 @@ import {
   useSidebarScrollChrome,
 } from "@/components/workbench/sidebar-new-chat-controls";
 import {
+  WORKBENCH_SIDEBAR_ROW_METRICS_CLASS,
   WorkbenchSidebarFrame,
   type WorkbenchSidebarFrameProps,
 } from "@/components/workbench/workbench-sidebar-frame";
@@ -664,7 +665,10 @@ export function AutomationsSidebar({
           id: "automations.automationsSidebar.automations",
           defaultMessage: "Automations",
         })}
-        className="sidebar-foreground-muted flex h-full min-h-0 flex-col overflow-hidden [--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]"
+        className={cn(
+          "sidebar-foreground-muted flex h-full min-h-0 flex-col overflow-hidden",
+          WORKBENCH_SIDEBAR_ROW_METRICS_CLASS,
+        )}
         style={scrollChromeStyle}
       >
         <WorkbenchSidebarHeader

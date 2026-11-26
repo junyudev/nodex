@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import {
   defineMessage,
   getIntl,
@@ -21,6 +22,8 @@ import {
   type ReactNode,
 } from "react";
 import { Puzzle } from "@/components/shared/icons/generic-icons";
+import { Input, NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME } from "@/components/ui/input";
+import { ToolbarBreadcrumb } from "@/components/ui/toolbar-breadcrumb";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
   NodexDropdownItem,
@@ -308,7 +311,7 @@ function BrowserSettingsOverview({
               })}
             >
               <NodexButton
-                size="sm"
+                size="toolbar"
                 variant="secondary"
                 disabled={!capabilities.profileImport.available}
                 onClick={() => setImportOpen(true)}
@@ -332,7 +335,7 @@ function BrowserSettingsOverview({
             defaultMessage: "Signs out sites across every built-in Browser window.",
           })}
         >
-          <NodexButton size="sm" variant="secondary" onClick={() => void clearData("cookies")}>
+          <NodexButton size="toolbar" variant="secondary" onClick={() => void clearData("cookies")}>
             {intl.formatMessage({
               id: "browser.browserSettingsPages.clear",
               defaultMessage: "Clear",
@@ -350,7 +353,11 @@ function BrowserSettingsOverview({
               "Clears local storage, IndexedDB, service workers, and site files from the shared Profile.",
           })}
         >
-          <NodexButton size="sm" variant="secondary" onClick={() => void clearData("site-data")}>
+          <NodexButton
+            size="toolbar"
+            variant="secondary"
+            onClick={() => void clearData("site-data")}
+          >
             {intl.formatMessage({
               id: "browser.browserSettingsPages.clear",
               defaultMessage: "Clear",
@@ -363,7 +370,7 @@ function BrowserSettingsOverview({
             defaultMessage: "Cache",
           })}
         >
-          <NodexButton size="sm" variant="secondary" onClick={() => void clearData("cache")}>
+          <NodexButton size="toolbar" variant="secondary" onClick={() => void clearData("cache")}>
             {intl.formatMessage({
               id: "browser.browserSettingsPages.clear",
               defaultMessage: "Clear",
@@ -391,7 +398,7 @@ function BrowserSettingsOverview({
           }
         >
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="secondary"
             aria-label={intl.formatMessage({
               id: "browser.browserSettingsPages.manageHistory",
@@ -405,7 +412,7 @@ function BrowserSettingsOverview({
               defaultMessage: "Manage",
             })}
           </NodexButton>
-          <NodexButton size="sm" variant="ghost" onClick={() => void clearData("history")}>
+          <NodexButton size="toolbar" variant="ghost" onClick={() => void clearData("history")}>
             {intl.formatMessage({
               id: "browser.browserSettingsPages.clear",
               defaultMessage: "Clear",
@@ -445,7 +452,7 @@ function BrowserSettingsOverview({
           })}
         >
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="secondary"
             aria-label={intl.formatMessage({
               id: "browser.browserSettingsPages.managePasswords",
@@ -471,7 +478,7 @@ function BrowserSettingsOverview({
           })}
         >
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="secondary"
             aria-label={intl.formatMessage({
               id: "browser.browserSettingsPages.manageContacts",
@@ -515,7 +522,7 @@ function BrowserSettingsOverview({
           })}
         >
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="secondary"
             aria-label={intl.formatMessage({
               id: "browser.browserSettingsPages.manageExtensions",
@@ -549,7 +556,7 @@ function BrowserSettingsOverview({
           })}
         >
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="secondary"
             aria-label={intl.formatMessage({
               id: "browser.browserSettingsPages.manageDownloads",
@@ -562,7 +569,7 @@ function BrowserSettingsOverview({
               defaultMessage: "Manage",
             })}
           </NodexButton>
-          <NodexButton size="sm" variant="ghost" onClick={() => void clearData("downloads")}>
+          <NodexButton size="toolbar" variant="ghost" onClick={() => void clearData("downloads")}>
             {intl.formatMessage({
               id: "browser.browserSettingsPages.clear",
               defaultMessage: "Clear",
@@ -733,7 +740,7 @@ function ChromeControlReadiness({
       )}
       {token ? (
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={pending}
           onClick={() => void update({ kind: "takeover", token })}
@@ -746,7 +753,7 @@ function ChromeControlReadiness({
       ) : null}
       {windows && state === "disabled" ? (
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={pending}
           onClick={() => void update({ kind: "enable" })}
@@ -759,7 +766,7 @@ function ChromeControlReadiness({
       ) : null}
       {windows && state === "faulted" ? (
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={pending}
           onClick={() => void update({ kind: "repair" })}
@@ -772,7 +779,7 @@ function ChromeControlReadiness({
       ) : null}
       {canTurnOff ? (
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={pending}
           onClick={() => void update({ kind: "disable" })}
@@ -850,9 +857,19 @@ function BrowserSettingsDetailPage({
 }) {
   const intl = useIntl();
   const backSlot = (
-    <BrowserSettingsBreadcrumb
-      label={intl.formatMessage(BROWSER_DETAIL_LABELS[detail])}
-      onBack={onBack}
+    <ToolbarBreadcrumb
+      variant="settings"
+      ancestors={[
+        {
+          id: "browser",
+          label: intl.formatMessage({
+            id: "browser.browserSettingsPages.browser",
+            defaultMessage: "Browser",
+          }),
+          onSelect: onBack,
+        },
+      ]}
+      current={intl.formatMessage(BROWSER_DETAIL_LABELS[detail])}
     />
   );
 
@@ -869,37 +886,6 @@ function BrowserSettingsDetailPage({
     return <BrowserExtensionsSettingsPage backSlot={backSlot} open={open} />;
   }
   return <BrowserDownloadsSettingsPage backSlot={backSlot} open={open} />;
-}
-
-function BrowserSettingsBreadcrumb({ label, onBack }: { label: string; onBack: () => void }) {
-  const intl = useIntl();
-  return (
-    <div className="flex min-w-0 items-center gap-1 text-sm">
-      <span className="text-token-text-tertiary">
-        {intl.formatMessage({
-          id: "browser.browserSettingsPages.settings",
-          defaultMessage: "Settings",
-        })}
-      </span>
-      <span aria-hidden className="text-token-text-tertiary">
-        ›
-      </span>
-      <button
-        type="button"
-        className="max-w-40 truncate rounded-md px-1 py-0.5 text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
-        onClick={onBack}
-      >
-        {intl.formatMessage({
-          id: "browser.browserSettingsPages.browser",
-          defaultMessage: "Browser",
-        })}
-      </button>
-      <span aria-hidden className="text-token-text-tertiary">
-        ›
-      </span>
-      <span className="max-w-48 truncate text-token-text-primary">{label}</span>
-    </div>
-  );
 }
 
 function BrowserDownloadsSettingsPage({ backSlot, open }: { backSlot: ReactNode; open: boolean }) {
@@ -949,7 +935,7 @@ function BrowserDownloadsSettingsPage({ backSlot, open }: { backSlot: ReactNode;
       backSlot={backSlot}
       action={
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={snapshot.downloads.length === 0}
           onClick={() => void clearHistory()}
@@ -1004,14 +990,18 @@ function BrowserDownloadSettingsRow({
     >
       {download.status === "completed" ? (
         <>
-          <NodexButton size="xs" variant="ghost" onClick={() => void onAction(download.id, "open")}>
+          <NodexButton
+            size="toolbar"
+            variant="ghost"
+            onClick={() => void onAction(download.id, "open")}
+          >
             {intl.formatMessage({
               id: "browser.browserSettingsPages.open",
               defaultMessage: "Open",
             })}
           </NodexButton>
           <NodexButton
-            size="xs"
+            size="toolbar"
             variant="ghost"
             onClick={() => void onAction(download.id, "show-in-folder")}
           >
@@ -1024,7 +1014,7 @@ function BrowserDownloadSettingsRow({
       ) : null}
       {active ? (
         <NodexButton
-          size="xs"
+          size="toolbar"
           variant="ghost"
           onClick={() =>
             void onAction(download.id, download.status === "paused" ? "resume" : "pause")
@@ -1042,14 +1032,22 @@ function BrowserDownloadSettingsRow({
         </NodexButton>
       ) : null}
       {active ? (
-        <NodexButton size="xs" variant="ghost" onClick={() => void onAction(download.id, "cancel")}>
+        <NodexButton
+          size="toolbar"
+          variant="ghost"
+          onClick={() => void onAction(download.id, "cancel")}
+        >
           {intl.formatMessage({
             id: "browser.browserSettingsPages.cancel",
             defaultMessage: "Cancel",
           })}
         </NodexButton>
       ) : null}
-      <NodexButton size="xs" variant="ghost" onClick={() => void onAction(download.id, "remove")}>
+      <NodexButton
+        size="toolbar"
+        variant="ghost"
+        onClick={() => void onAction(download.id, "remove")}
+      >
         {intl.formatMessage({
           id: "browser.browserSettingsPages.remove",
           defaultMessage: "Remove",
@@ -1250,8 +1248,9 @@ function BrowserUsePolicySettings({
         })}
       >
         <div className="flex flex-wrap items-center gap-2 p-3">
-          <input
-            className="h-8 min-w-48 flex-1 rounded-lg border border-token-border bg-token-main-surface-primary px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
+          <Input
+            variant="settings"
+            className="h-8 min-w-48 flex-1 px-2 text-sm"
             value={origin}
             placeholder="example.com"
             onChange={(event) => setOrigin(event.target.value)}
@@ -1277,7 +1276,7 @@ function BrowserUsePolicySettings({
             onChange={(value) => setKind(value as BrowserUseOriginRuleUpdate["kind"])}
           />
           <NodexButton
-            size="sm"
+            size="toolbar"
             disabled={!origin.trim()}
             onClick={() =>
               void updateRule({
@@ -1564,7 +1563,7 @@ export function BrowserPasswordsSettingsPage({
       backSlot={backSlot}
       action={
         <NodexButton
-          size="sm"
+          size="toolbar"
           variant="secondary"
           disabled={!capability.available}
           onClick={() => setImportOpen(true)}
@@ -1713,7 +1712,11 @@ export function BrowserContactInfoSettingsPage({
       backSlot={backSlot}
       action={
         capability.available ? (
-          <NodexButton size="sm" variant="secondary" onClick={() => setDraft(emptyContactDraft())}>
+          <NodexButton
+            size="toolbar"
+            variant="secondary"
+            onClick={() => setDraft(emptyContactDraft())}
+          >
             {intl.formatMessage({
               id: "browser.browserSettingsPages.addContact",
               defaultMessage: "Add contact",
@@ -1763,7 +1766,7 @@ export function BrowserContactInfoSettingsPage({
                     .join(" · ")}
                 >
                   <NodexButton
-                    size="sm"
+                    size="toolbar"
                     variant="ghost"
                     onClick={() => setDraft(contactToDraft(contact))}
                   >
@@ -1866,7 +1869,7 @@ export function BrowserHistorySettingsPage({
       })}
       backSlot={backSlot}
       action={
-        <NodexButton size="sm" variant="secondary" onClick={() => void clear()}>
+        <NodexButton size="toolbar" variant="secondary" onClick={() => void clear()}>
           <DeleteIcon />
           {intl.formatMessage({
             id: "browser.browserSettingsPages.clear",
@@ -1875,7 +1878,9 @@ export function BrowserHistorySettingsPage({
         </NodexButton>
       }
     >
-      <label className="flex h-9 items-center gap-2 rounded-lg border border-token-border bg-token-main-surface-primary px-3">
+      <label
+        className={cn("flex h-9 items-center gap-2 px-3", NODEX_SETTINGS_FIELD_CHROME_CLASS_NAME)}
+      >
         <SearchIcon className="size-4 text-token-text-tertiary" />
         <input
           className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-token-text-tertiary"
@@ -1999,7 +2004,7 @@ export function BrowserExtensionsSettingsPage({
       backSlot={backSlot}
       action={
         snapshot.capability.available ? (
-          <NodexButton size="sm" variant="secondary" onClick={() => void load()}>
+          <NodexButton size="toolbar" variant="secondary" onClick={() => void load()}>
             <Puzzle />
             {intl.formatMessage({
               id: "browser.browserSettingsPages.loadUnpacked",
@@ -2207,8 +2212,9 @@ function ContactInfoEditor({
     >
       {fields.map(({ field, label, placeholder }) => (
         <NodexSettingsRow key={field} label={label}>
-          <input
-            className="h-8 w-64 max-w-[45vw] rounded-lg border border-token-border bg-token-main-surface-primary px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
+          <Input
+            variant="settings"
+            className="h-8 w-64 max-w-[45vw] px-2 text-sm"
             value={draft[field]}
             placeholder={placeholder}
             onChange={(event) => setField(field, event.target.value)}
@@ -2216,13 +2222,13 @@ function ContactInfoEditor({
         </NodexSettingsRow>
       ))}
       <div className="flex justify-end gap-2 p-3">
-        <NodexButton size="sm" variant="ghost" onClick={onCancel}>
+        <NodexButton size="toolbar" variant="ghost" onClick={onCancel}>
           {intl.formatMessage({
             id: "browser.browserSettingsPages.cancel",
             defaultMessage: "Cancel",
           })}
         </NodexButton>
-        <NodexButton size="sm" disabled={!hasValue} onClick={onSave}>
+        <NodexButton size="toolbar" disabled={!hasValue} onClick={onSave}>
           {intl.formatMessage({ id: "browser.browserSettingsPages.save", defaultMessage: "Save" })}
         </NodexButton>
       </div>
@@ -2260,11 +2266,7 @@ function EmptySettingsRow({ message }: { message: string }) {
 }
 
 function SettingsStatus({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-token-border px-3 py-2 text-sm text-token-text-secondary">
-      {children}
-    </div>
-  );
+  return <div className="py-2 text-sm text-token-text-secondary">{children}</div>;
 }
 
 function formatVisitTime(value: number, intl: IntlShape = getIntl()): string {

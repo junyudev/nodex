@@ -6,7 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { BrowserBackIcon, CloseIcon, SettingsSearchIcon } from "@/components/shared/icons";
+import { CloseIcon, SettingsSearchIcon } from "@/components/shared/icons";
 import {
   settingsQueryRendersResultsMode,
   type SettingsSearchContext,
@@ -24,6 +24,8 @@ import {
 } from "./workbench-settings-sections";
 import { buildSettingsPath } from "./workbench-settings-routes";
 import { WorkbenchRailEdge } from "./workbench-app-rail";
+import { WORKBENCH_SIDEBAR_ROW_METRICS_CLASS } from "./workbench-sidebar-frame";
+import { WorkbenchSidebarTitleRow } from "./sidebar-new-chat-controls";
 
 interface SettingsSidebarProps {
   activeSectionId: SettingsSectionId;
@@ -31,7 +33,6 @@ interface SettingsSidebarProps {
   searchContext: SettingsSearchContext;
   initialSearchQuery?: string;
   initialHighlightedSearchIndex?: number;
-  onBack: () => void;
   onSelectSection: (sectionId: SettingsSectionId, searchQuery?: string) => void;
 }
 
@@ -58,25 +59,17 @@ function SettingsSidebarItem({
   sectionId: SettingsSectionId;
 }) {
   const className = cn(
-    "focus-visible:outline-token-border relative flex h-token-nav-row w-full shrink-0 cursor-interaction items-center gap-2 overflow-hidden rounded-lg px-row-x py-row-y text-left text-sm font-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-    active ? "bg-token-list-hover-background" : "hover:bg-token-list-hover-background",
+    "relative flex h-(--height-token-nav-row) w-full shrink-0 cursor-interaction items-center gap-2 overflow-hidden rounded-(--radius-token-row) px-row-x py-row-y text-left text-base text-token-text-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-token-focus-border",
+    active
+      ? "bg-(--color-background-secondary-ghost-hover)"
+      : "hover:bg-(--color-background-secondary-ghost-hover)",
     disabled ? "cursor-not-allowed opacity-50" : undefined,
   );
   const content = (
-    <div
-      className={cn(
-        "flex min-w-0 flex-1 items-center gap-2 text-base",
-        active ? "text-token-list-active-selection-foreground" : "text-token-foreground",
-      )}
-    >
-      <Icon
-        className={cn(
-          "icon-sm inline-block align-middle",
-          active ? "text-token-list-active-selection-icon-foreground" : undefined,
-        )}
-      />
+    <span className="flex min-w-0 flex-1 items-center gap-2">
+      <Icon className="icon-xs shrink-0" />
       <span className="truncate">{label}</span>
-    </div>
+    </span>
   );
 
   if (disabled) {
@@ -135,8 +128,8 @@ function SettingsSearchInput({
   }, []);
 
   return (
-    <div className="mb-4 flex h-token-button-composer w-full shrink-0 items-center rounded-lg border border-token-border-heavy bg-token-input-background/50 text-base leading-[18px] shadow-sm backdrop-blur-sm [.electron-dark_&]:border-token-border [.electron-dark_&]:bg-token-bg-fog [.electron-dark_&]:shadow-none [.electron-dark_&]:backdrop-blur-none">
-      <SettingsSearchIcon className="icon-xs ms-2 shrink-0 text-token-input-placeholder-foreground" />
+    <div className="flex h-8 w-full shrink-0 items-center gap-2 rounded-full border border-(--color-border-strong) bg-transparent ps-3 pe-1.5 text-sm leading-5">
+      <SettingsSearchIcon className="icon-xs shrink-0 text-token-text-secondary" />
       <input
         ref={inputRef}
         role="searchbox"
@@ -145,14 +138,14 @@ function SettingsSearchInput({
           defaultMessage: "Search settings",
         })}
         placeholder={intl.formatMessage({
-          id: "settings.navigation.searchSettings2",
-          defaultMessage: "Search settings…",
+          id: "settings.navigation.searchPlaceholder",
+          defaultMessage: "Search",
         })}
         type="text"
         value={query}
         onChange={(event) => onQueryChange(event.currentTarget.value)}
         onKeyDown={onKeyDown}
-        className="ms-1 w-full appearance-none border-none bg-transparent py-0 ps-px pe-1.5 text-token-foreground ring-0 outline-none placeholder:text-token-input-placeholder-foreground focus:border-none focus:ring-0 focus:outline-none"
+        className="min-w-0 flex-1 appearance-none border-none bg-transparent p-0 text-token-text-primary ring-0 outline-none select-text placeholder:text-tertiary focus:border-none focus:ring-0 focus:outline-none"
       />
       {query.length > 0 ? (
         <button
@@ -165,7 +158,7 @@ function SettingsSearchInput({
             onQueryChange("");
             inputRef.current?.focus();
           }}
-          className="flex size-7 shrink-0 cursor-interaction items-center justify-center rounded-md text-token-input-placeholder-foreground hover:text-token-foreground"
+          className="flex size-6 shrink-0 cursor-interaction items-center justify-center rounded-full text-token-text-secondary hover:text-token-text-primary"
         >
           <CloseIcon className="icon-2xs" />
         </button>
@@ -217,8 +210,8 @@ function SettingsSearchResults({
 
         return (
           <div key={`${result.sectionId}:${result.label}`} className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-2 px-row-x py-1 text-base text-token-text-secondary">
-              {Icon ? <Icon className="icon-sm shrink-0" /> : null}
+            <div className="flex items-center gap-2 px-row-x py-1 text-base text-tertiary">
+              {Icon ? <Icon className="icon-xs shrink-0" /> : null}
               <span className="truncate">{result.panelLabel}</span>
             </div>
             <button
@@ -230,8 +223,10 @@ function SettingsSearchResults({
               )}
               onClick={() => onSelectResult(result)}
               className={cn(
-                "focus-visible:ring-token-focus-border flex cursor-interaction items-center rounded-lg py-1.5 pe-2 ps-8.5 text-left text-base text-token-foreground hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:outline-none",
-                highlightedIndex === index ? "bg-token-list-hover-background" : undefined,
+                "flex h-(--height-token-nav-row) cursor-interaction items-center rounded-(--radius-token-row) pe-2 ps-8 text-left text-base text-token-text-primary outline-none hover:bg-(--color-background-secondary-ghost-hover) focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-token-focus-border",
+                highlightedIndex === index
+                  ? "bg-(--color-background-secondary-ghost-hover)"
+                  : undefined,
               )}
             >
               <span className="truncate">{result.label}</span>
@@ -247,7 +242,6 @@ export function SettingsSidebar({
   activeSectionId,
   initialHighlightedSearchIndex,
   initialSearchQuery = "",
-  onBack,
   onSelectSection,
   searchContext,
   sections,
@@ -269,72 +263,64 @@ export function SettingsSidebar({
     onSelect: (result) => onSelectSection(result.sectionId, query),
   });
   return (
-    <aside className="app-shell-left-panel relative mt-[var(--app-shell-content-top-inset,0px)] hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden md:flex">
+    <aside className="app-shell-left-panel relative mt-[var(--app-shell-content-top-inset,0px)] hidden min-h-0 w-(--app-shell-sidebar-width,var(--spacing-token-sidebar)) shrink-0 flex-col overflow-hidden md:flex">
       <WorkbenchRailEdge />
       <nav
-        className="flex min-h-0 flex-1 flex-col select-none px-row-x"
+        className={cn(
+          "flex min-h-0 flex-1 flex-col select-none",
+          WORKBENCH_SIDEBAR_ROW_METRICS_CLASS,
+        )}
         aria-label={intl.formatMessage({
           id: "settings.navigation.settings",
           defaultMessage: "Settings",
         })}
       >
-        <div className="flex min-h-0 flex-1 flex-col">
-          <button
-            type="button"
-            onClick={onBack}
-            className="group relative mb-2 flex w-full shrink-0 cursor-interaction items-center gap-2 rounded-lg px-row-x py-row-y text-left text-base text-(--color-text-secondary-ghost) outline-none hover:bg-(--color-background-secondary-ghost-hover) hover:text-(--color-text-secondary-ghost-hover) focus-visible:ring-1 focus-visible:ring-token-focus-border"
-          >
-            <BrowserBackIcon />
-            {intl.formatMessage({
-              id: "settings.navigation.backToApp",
-              defaultMessage: "Back to app",
+        <div className="flex shrink-0 flex-col px-row-x pb-2">
+          <WorkbenchSidebarTitleRow
+            title={intl.formatMessage({
+              id: "settings.navigation.settings",
+              defaultMessage: "Settings",
             })}
-          </button>
-
+          />
           <SettingsSearchInput
             query={query}
             onQueryChange={setQuery}
             onKeyDown={listNavigation.onKeyDown}
           />
-
-          <div className="min-h-0 flex-1 overflow-y-auto pb-2 flex flex-col gap-4">
-            {isSearchActive ? (
-              <SettingsSearchResults
-                highlightedIndex={listNavigation.highlightedIndex}
-                listRef={listNavigation.listRef}
-                results={searchResults}
-                sections={sections}
-                onSelectResult={(result) => onSelectSection(result.sectionId, query)}
-              />
-            ) : (
-              <>
-                {groupedSections.map((group) => (
-                  <div key={group.groupKey} className="flex flex-col gap-1">
-                    {group.label ? (
-                      <div className="flex items-center justify-between gap-2 pr-0.5 pl-2">
-                        <div className="min-w-0 flex-1 text-base font-medium text-tertiary">
-                          {group.label}
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="flex flex-col gap-px">
-                      {group.sections.map((section) => (
-                        <SettingsSidebarItem
-                          key={section.id}
-                          active={activeSectionId === section.id}
-                          disabled={section.disabled}
-                          icon={section.icon}
-                          label={intl.formatMessage(section.labelMessage)}
-                          sectionId={section.id}
-                          onClick={() => onSelectSection(section.id)}
-                        />
-                      ))}
-                    </div>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-row-x pt-1 pb-2">
+          {isSearchActive ? (
+            <SettingsSearchResults
+              highlightedIndex={listNavigation.highlightedIndex}
+              listRef={listNavigation.listRef}
+              results={searchResults}
+              sections={sections}
+              onSelectResult={(result) => onSelectSection(result.sectionId, query)}
+            />
+          ) : (
+            groupedSections.map((group) => (
+              <div key={group.groupKey} className="flex flex-col gap-1">
+                {group.label ? (
+                  <div className="flex min-h-(--height-token-nav-row) items-center px-row-x text-base font-medium text-tertiary">
+                    <span className="min-w-0 flex-1 truncate">{group.label}</span>
                   </div>
-                ))}
-              </>
-            )}
-          </div>
+                ) : null}
+                <div className="flex flex-col gap-px">
+                  {group.sections.map((section) => (
+                    <SettingsSidebarItem
+                      key={section.id}
+                      active={activeSectionId === section.id}
+                      disabled={section.disabled}
+                      icon={section.icon}
+                      label={intl.formatMessage(section.labelMessage)}
+                      sectionId={section.id}
+                      onClick={() => onSelectSection(section.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </nav>
     </aside>

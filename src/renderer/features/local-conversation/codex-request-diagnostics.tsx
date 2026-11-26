@@ -1,14 +1,8 @@
 import { useIntl, type IntlShape } from "@/lib/i18n";
 import { useCallback, useId, useState, useSyncExternalStore } from "react";
-import { ChevronDownIcon, ChevronRightIcon } from "@/components/shared/icons";
+import { ChevronRightIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
-import {
-  NodexCollapsiblePanel,
-  NodexCollapsibleRoot,
-  NodexCollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { NodexCheckbox } from "@/components/ui/settings";
-import { cn } from "@/lib/utils";
+import { NodexCheckbox, NodexSettingsSection } from "@/components/ui/settings";
 import {
   clearCodexRequestRecords,
   type CodexRecordedRequest,
@@ -97,7 +91,7 @@ function PayloadPreview({
         <span>{title}</span>
         <NodexButton
           variant="ghost"
-          size="xs"
+          size="toolbar"
           aria-label={intl.formatMessage(
             {
               id: "conversation.codexRequestDiagnostics.copyPayload",
@@ -288,7 +282,7 @@ function HostRequests({
           ) : null}
           <NodexButton
             variant="ghost"
-            size="xs"
+            size="toolbar"
             disabled={requests.length === 0}
             onClick={() => {
               clearCodexRequestRecords(hostId);
@@ -357,44 +351,32 @@ export function CodexRequestDiagnostics({ enabled }: { enabled: boolean }) {
   const grouped = groupRequestsByHost(requests);
 
   return (
-    <NodexCollapsibleRoot className="min-w-0" open={expanded} onOpenChange={setExpanded}>
-      <NodexCollapsibleTrigger
-        aria-label={intl.formatMessage({
-          id: "conversation.codexRequestDiagnostics.appServerRequests",
-          defaultMessage: "App server requests",
-        })}
-        className="flex w-full cursor-interaction items-center justify-between gap-3 px-4 py-3 text-left outline-none hover:bg-(--color-background-primary-soft) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-token-focus-border"
-      >
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-sm font-medium text-default">
-            {intl.formatMessage({
-              id: "conversation.codexRequestDiagnostics.appServerRequests",
-              defaultMessage: "App server requests",
-            })}
+    <NodexSettingsSection
+      title={intl.formatMessage({
+        id: "conversation.codexRequestDiagnostics.appServerRequests",
+        defaultMessage: "App server requests",
+      })}
+      description={intl.formatMessage({
+        id: "conversation.codexRequestDiagnostics.recordRequests",
+        defaultMessage: "Record requests while expanded.",
+      })}
+      disclosureHeading="quiet"
+      disclosure={{ open: expanded, onOpenChange: setExpanded }}
+      action={
+        expanded ? (
+          <span className="text-sm text-token-text-secondary tabular-nums">
+            {intl.formatMessage(
+              {
+                id: "conversation.codexRequestDiagnostics.requestCount",
+                defaultMessage: "{count} requests",
+              },
+              { count: requests.length },
+            )}
           </span>
-          <span className="text-xs leading-4 semantic-text-secondary">
-            {intl.formatMessage({
-              id: "conversation.codexRequestDiagnostics.recordRequests",
-              defaultMessage: "Record requests while expanded.",
-            })}
-          </span>
-        </span>
-        <span className="flex shrink-0 items-center gap-2 text-xs semantic-text-secondary">
-          {expanded ? (
-            <span className="tabular-nums">
-              {intl.formatMessage(
-                {
-                  id: "conversation.codexRequestDiagnostics.requestCount",
-                  defaultMessage: "{count} requests",
-                },
-                { count: requests.length },
-              )}
-            </span>
-          ) : null}
-          <ChevronDownIcon className={cn("icon-2xs shrink-0", !expanded && "-rotate-90")} />
-        </span>
-      </NodexCollapsibleTrigger>
-      <NodexCollapsiblePanel className="mx-4 min-w-0 border-t-[0.5px] border-default py-2 data-[closed]:hidden">
+        ) : null
+      }
+    >
+      <div className="min-w-0 py-2">
         {grouped.size === 0 ? (
           <div className="py-2 text-xs semantic-text-secondary">
             {intl.formatMessage({
@@ -409,7 +391,7 @@ export function CodexRequestDiagnostics({ enabled }: { enabled: boolean }) {
             ))}
           </div>
         )}
-      </NodexCollapsiblePanel>
-    </NodexCollapsibleRoot>
+      </div>
+    </NodexSettingsSection>
   );
 }

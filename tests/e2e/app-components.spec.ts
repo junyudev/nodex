@@ -16,7 +16,7 @@ import {
 import { setAgentExecutionProfile, waitForFinalMarker } from "./support/agent-smoke-harness";
 import { composerModelLabel, openComposerModelPicker } from "./support/composer-model-picker";
 import { nativeAppToolCall } from "./support/native-app-tools";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 
 const archive = browserRuntimeLock.assets["darwin-arm64"];
 const inProgress = /^(Downloading|Waiting to download|Installing)/u;
@@ -389,7 +389,7 @@ test("Claude Code gates API-key models until installed and links to Components w
           await openSettingsPage(page, "General");
           await expectOnDemand(page, "Claude Code");
           await expectOnDemand(page, "Document Tools");
-          await page.getByRole("button", { name: "Back to app", exact: true }).click();
+          await closeWorkbenchSettings(page);
           const newChat = page.getByRole("button", { name: "New chat", exact: true }).first();
           await newChat.click();
           const installing = page.getByRole("button", { name: /^Installing Claude Code…/u });
@@ -439,7 +439,7 @@ test("Claude Code gates API-key models until installed and links to Components w
           await expect(claude.getByRole("status")).toHaveText(installedSize);
           await componentSwitch(page, "Claude Code", true).click();
           await expect(componentSwitch(page, "Claude Code", false)).not.toBeChecked();
-          await page.getByRole("button", { name: "Back to app", exact: true }).click();
+          await closeWorkbenchSettings(page);
           const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
           await composer.fill("Draft while Claude Code is off");
           await expect(
@@ -463,7 +463,7 @@ test("Claude Code gates API-key models until installed and links to Components w
           await expect(claude.getByRole("status")).toHaveText(installedSize, {
             timeout: downloadTimeout,
           });
-          await page.getByRole("button", { name: "Back to app", exact: true }).click();
+          await closeWorkbenchSettings(page);
           await newChat.click();
           await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
           await composer.fill("INSTALL_DOCUMENT_TOOLS");

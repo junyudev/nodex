@@ -123,6 +123,40 @@ describe("Archived chats settings", () => {
     dangerToast.mockReset();
   });
 
+  test("groups and sorts archived chats with the Settings pickers", async () => {
+    invoke.mockResolvedValue(
+      snapshot([
+        chat("alpha", { title: "Alpha task", updatedAt: 250, createdAt: 100 }),
+        chat("beta", { title: "Beta task", updatedAt: 200, createdAt: 150 }),
+      ]),
+    );
+    const view = renderPage();
+    const alpha = await view.findByText("Alpha task");
+    const beta = view.getByText("Beta task");
+    expect(alpha.compareDocumentPosition(beta)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(view.getByRole("button", { name: "Delete archived chats in Nodex" })).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Group archived chats" }));
+    });
+    const noGrouping = await view.findByRole("menuitem", { name: "None" });
+    await act(async () => {
+      fireEvent.click(noGrouping);
+    });
+    expect(view.queryByRole("button", { name: "Delete archived chats in Nodex" })).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Sort archived chats" }));
+    });
+    const byCreated = await view.findByRole("menuitem", { name: "Created" });
+    await act(async () => {
+      fireEvent.click(byCreated);
+    });
+    expect(view.getByText("Beta task").compareDocumentPosition(view.getByText("Alpha task"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   test("restores and deletes a Runtime-bound chat through its Session", async () => {
     const runtime = chat("runtime-thread", {
       title: "Runtime task",

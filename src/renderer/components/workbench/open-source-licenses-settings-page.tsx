@@ -1,8 +1,7 @@
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
-import { BackIcon } from "@/components/shared/icons";
-import { NodexButton } from "@/components/ui/button";
+import { ToolbarBreadcrumb } from "@/components/ui/toolbar-breadcrumb";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
@@ -32,7 +31,7 @@ export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void 
     );
   } else {
     content = (
-      <SettingsSection cardClassName="overflow-hidden rounded-2xl">
+      <SettingsSection>
         {noticesText ? (
           <div
             role="document"
@@ -71,19 +70,21 @@ export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void 
       })}
       contentClassName="max-w-3xl"
       backSlot={
-        <NodexButton
-          aria-label={intl.formatMessage({
-            id: "settings.openSourceLicenses.backToGeneral",
-            defaultMessage: "Back to General",
-          })}
-          className="no-drag"
-          variant="ghost"
-          size="xs"
-          onClick={onBack}
-        >
-          <BackIcon className="icon-xs" />
-          {intl.formatMessage({ id: "settings.openSourceLicenses.back", defaultMessage: "Back" })}
-        </NodexButton>
+        <ToolbarBreadcrumb
+          variant="settings"
+          ancestors={[
+            {
+              id: "general",
+              ariaLabel: intl.formatMessage({
+                id: "settings.openSourceLicenses.backToGeneral",
+                defaultMessage: "Back to General",
+              }),
+              label: intl.formatMessage(settingsMessages.generalGeneral),
+              onSelect: onBack,
+            },
+          ]}
+          current={intl.formatMessage(settingsMessages.generalOpenSourceLicenses)}
+        />
       }
     >
       {content}

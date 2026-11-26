@@ -1,4 +1,4 @@
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test, type Page } from "@playwright/test";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { appendFile, mkdir, stat, writeFile } from "node:fs/promises";
@@ -42,8 +42,7 @@ const openAppearance = async (page: Page, advanced = true) => {
   await expect(page.getByRole("spinbutton", { name: "UI font size", exact: true })).toBeVisible();
 };
 const returnToApp = async (page: Page) => {
-  await page.getByRole("button", { name: "Back to app", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Back to app", exact: true })).toHaveCount(0);
+  await closeWorkbenchSettings(page);
 };
 const changeSize = async (page: Page, role: "UI" | "Code" | "Page", value: number) => {
   const input = page.getByRole("spinbutton", {
@@ -314,6 +313,23 @@ test("persists typography across real conversation, Page, settings and Electron 
         sizes: await page.getByRole("spinbutton").count(),
       },
     );
+    for (const name of ["Visual style", "Advanced"]) {
+      const group = page.getByRole("region", { name, exact: true });
+      const heading = group.getByRole("heading", { name, exact: true });
+      claim(
+        `${name} has a full-width section divider`,
+        { borderWidth: "1px", fullWidth: true },
+        await heading.evaluate((element) => {
+          const row = element.parentElement;
+          const section = element.closest("section");
+          if (!row || !section) throw new Error("Appearance section heading is missing");
+          return {
+            borderWidth: getComputedStyle(row).borderBottomWidth,
+            fullWidth: row.getBoundingClientRect().width === section.getBoundingClientRect().width,
+          };
+        }),
+      );
+    }
     await holdReviewFrame(page);
     const darkMode = page.getByRole("radio", { name: "Dark", exact: true });
     await darkMode.locator("..").click();

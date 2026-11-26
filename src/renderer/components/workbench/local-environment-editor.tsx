@@ -88,7 +88,7 @@ function SegmentedSelector<T extends string>({
       {options.map((option) => (
         <NodexButton
           key={option.value}
-          size="composer"
+          size="toolbar"
           variant={value === option.value ? "secondary" : "ghost"}
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
@@ -238,7 +238,7 @@ function ActionEditor({
   const commandId = `local-environment-action-${action.id}-command`;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-token-border bg-token-input-background p-3">
+    <div className="flex flex-col gap-3 border-t border-(--color-border) py-2">
       <div className="flex flex-col gap-2">
         <label
           htmlFor={nameId}
@@ -250,6 +250,7 @@ function ActionEditor({
           <ActionIconMenu action={action} onChange={onChange} />
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <Input
+              variant="settings"
               id={nameId}
               value={action.name}
               aria-invalid={Boolean(error?.name)}
@@ -575,6 +576,7 @@ export function LocalEnvironmentEditor({
             <FormattedMessage id="workbench.localEnvironmentEditor.name" defaultMessage={"Name"} />
           </label>
           <Input
+            variant="settings"
             id="local-environment-name"
             className="max-w-72"
             value={values.name}
@@ -622,7 +624,7 @@ export function LocalEnvironmentEditor({
               </p>
             </div>
             <NodexButton
-              size="composer"
+              size="toolbar"
               variant="secondary"
               onClick={() =>
                 form.setFieldValue("actions", [

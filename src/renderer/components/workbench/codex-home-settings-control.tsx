@@ -176,7 +176,7 @@ export function CodexAgentSettingsSection({
     >
       {setupAction && unavailable ? (
         <NodexSettingsRow label={unavailable}>
-          <NodexButton size="sm" variant="secondary" onClick={setupAction.run}>
+          <NodexButton size="toolbar" variant="secondary" onClick={setupAction.run}>
             {setupAction.label}
           </NodexButton>
         </NodexSettingsRow>
@@ -199,6 +199,7 @@ export function CodexAgentSettingsSection({
         }
       >
         <Input
+          variant="settings"
           aria-label={intl.formatMessage(settingsMessages.codexCodexHome)}
           className={NODEX_SETTINGS_FIELD_CLASS_NAME}
           value={draft}
@@ -225,6 +226,7 @@ export function CodexAgentSettingsSection({
         }
       >
         <Input
+          variant="settings"
           aria-label={intl.formatMessage({
             id: "settings.codex.codexAccountDirectory",
             defaultMessage: "Codex account directory",
@@ -250,7 +252,7 @@ export function CodexAgentSettingsSection({
             })}
             {loadError}
           </p>
-          <NodexButton size="xs" variant="secondary" onClick={retry}>
+          <NodexButton size="toolbar" variant="secondary" onClick={retry}>
             {intl.formatMessage({ id: "settings.codex.tryAgain", defaultMessage: "Try again" })}
           </NodexButton>
         </div>
@@ -281,7 +283,7 @@ export function CodexAgentSettingsSection({
             <>
               <NodexButton
                 variant="ghost"
-                size="sm"
+                size="toolbar"
                 disabled={!editable}
                 onClick={() => {
                   if (!settings) return;
@@ -294,7 +296,7 @@ export function CodexAgentSettingsSection({
               </NodexButton>
               <NodexButton
                 variant="secondary"
-                size="sm"
+                size="toolbar"
                 disabled={!editable}
                 onClick={() => void save()}
               >

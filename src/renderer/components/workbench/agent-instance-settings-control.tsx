@@ -381,6 +381,7 @@ function AgentProfiles({
         }
       >
         <Input
+          variant="settings"
           aria-label={intl.formatMessage(
             { id: "settings.agentProfiles.executable2", defaultMessage: "{label} executable" },
             { label: label },
@@ -405,6 +406,7 @@ function AgentProfiles({
           label={intl.formatMessage(settingsMessages.agentProfilesName)}
         >
           <Input
+            variant="settings"
             aria-label={intl.formatMessage(
               { id: "settings.agentProfiles.profileName", defaultMessage: "{label} profile name" },
               { label: label },
@@ -477,7 +479,7 @@ function AgentProfiles({
                 )}
               </span>
               <NodexButton
-                size="sm"
+                size="toolbar"
                 variant="destructive"
                 disabled={disabled}
                 onClick={() => void remove(profileId)}
@@ -488,7 +490,7 @@ function AgentProfiles({
                 })}
               </NodexButton>
               <NodexButton
-                size="sm"
+                size="toolbar"
                 variant="ghost"
                 disabled={disabled}
                 onClick={() => setConfirmRemove(null)}
@@ -498,7 +500,7 @@ function AgentProfiles({
             </>
           ) : (
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="ghost"
               // Its label lines up with the field labels above, not its hover inset.
               className="-ms-3 text-danger"
@@ -527,7 +529,7 @@ function AgentProfiles({
           </span>
           {isChanged ? (
             <NodexButton
-              size="sm"
+              size="toolbar"
               variant="ghost"
               disabled={disabled}
               onClick={() => {
@@ -543,7 +545,7 @@ function AgentProfiles({
             </NodexButton>
           ) : null}
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="secondary"
             disabled={
               disabled ||
@@ -592,7 +594,7 @@ function AgentProfiles({
               { agent: label, reason: loadError },
             )}
           </p>
-          <NodexButton size="xs" variant="secondary" onClick={retry}>
+          <NodexButton size="toolbar" variant="secondary" onClick={retry}>
             {intl.formatMessage({
               id: "settings.agentProfiles.tryAgain",
               defaultMessage: "Try again",
@@ -616,7 +618,7 @@ function AgentProfiles({
             )}
             description={intl.formatMessage(profileDefinition.setupDescription)}
           >
-            <NodexButton size="sm" variant="secondary" onClick={add}>
+            <NodexButton size="toolbar" variant="secondary" onClick={add}>
               {intl.formatMessage(settingsMessages.agentProfilesAddProfile)}
             </NodexButton>
           </NodexSettingsRow>

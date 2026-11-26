@@ -127,14 +127,13 @@ describe("App server request diagnostics in settings", () => {
       const view = render(<DiagnosticsSettings />);
       const trigger = view.getByRole("button", { name: "App server requests" });
       const section = view.getByRole("region", { name: "Diagnostics" });
-      const outlines = outlinedAncestors(trigger, section);
-      expect(outlines).toHaveLength(1);
-      const surface = outlines[0]!;
-      expect(getComputedStyle(surface).borderTopColor).toBe(
-        readRendererThemeColor("--color-token-border"),
-      );
+      expect(outlinedAncestors(trigger, section)).toEqual([]);
+      const headingRow = trigger.closest("h2")?.parentElement;
+      if (!headingRow) throw new Error("Diagnostics heading row is missing");
+      expectThemedDivider(headingRow);
+      expect(headingRow.getBoundingClientRect().width).toBe(section.getBoundingClientRect().width);
       expect(getComputedStyle(view.getByText("App server requests")).color).toBe(
-        readRendererThemeColor("--color-text"),
+        readRendererThemeColor("--color-text-tertiary"),
       );
 
       await act(async () => {
@@ -154,8 +153,8 @@ describe("App server request diagnostics in settings", () => {
       });
       const method = await view.findByText("thread/read");
       const host = view.getByText(hostId);
-      expect(outlinedAncestors(host, section)).toEqual([surface]);
-      expect(outlinedAncestors(method, section)).toEqual([surface]);
+      expect(outlinedAncestors(host, section)).toEqual([]);
+      expect(outlinedAncestors(method, section)).toEqual([]);
       expect(getComputedStyle(host).color).toBe(readRendererThemeColor("--color-text"));
       expect(getComputedStyle(method).color).toBe(readRendererThemeColor("--color-text"));
       const hostGroup = view.getByRole("region", { name: `Requests for ${hostId}` });
@@ -171,7 +170,7 @@ describe("App server request diagnostics in settings", () => {
       const panelId = trigger.getAttribute("aria-controls");
       const panel = panelId ? document.getElementById(panelId) : null;
       if (!panel) throw new Error("Diagnostics disclosure panel is missing");
-      expectThemedDivider(panel);
+      expect(getComputedStyle(panel).backgroundColor).toBe("rgba(0, 0, 0, 0)");
       expectThemedDivider(view.getByRole("region", { name: `Requests for ${second.hostId}` }));
       const requestDetails = method.closest("details");
       if (!requestDetails) throw new Error("Recorded request details are missing");

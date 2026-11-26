@@ -1851,8 +1851,8 @@ export const SETTINGS_SEARCH_PANELS = {
     title: settingsMessages.appearanceTitle,
     groups: [
       {
-        title: settingsMessages.appearanceMode,
-        messages: [settingsMessages.appearanceVisualStyle],
+        title: settingsMessages.appearanceVisualStyle,
+        messages: [settingsMessages.appearanceTheme2],
         entries: [
           entry(settingsMessages.appearanceMode, "", [
             settingsMessages.appearanceSystem,
@@ -1861,11 +1861,6 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.appearanceTheme2,
             "force fixed theme",
           ]),
-        ],
-      },
-      {
-        title: settingsMessages.appearanceTheme2,
-        entries: [
           entry(settingsMessages.appearanceAccentColor2, "", [
             "Default",
             "Blue",

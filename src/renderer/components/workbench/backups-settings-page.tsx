@@ -37,7 +37,7 @@ function UnsavedEditsRow({ libraryId }: { readonly libraryId: string }) {
             })
       }
     >
-      <NodexButton variant="outline" size="sm" onClick={() => recovery.review()}>
+      <NodexButton variant="secondary" size="toolbar" onClick={() => recovery.review()}>
         {intl.formatMessage({ id: "settings.backups.review2", defaultMessage: "Review" })}
       </NodexButton>
     </SettingRow>

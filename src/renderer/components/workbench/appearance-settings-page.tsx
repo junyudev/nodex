@@ -1,12 +1,6 @@
 import { useIntl } from "@/lib/i18n";
-import { useEffect, useId, useState } from "react";
-import { ChevronDownIcon, ResetIcon } from "@/components/shared/icons";
+import { useEffect, useState } from "react";
 import { NodexButton } from "@/components/ui/button";
-import {
-  NodexCollapsiblePanel,
-  NodexCollapsibleRoot,
-  NodexCollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   NodexSettingsPageSurface,
   NodexSettingsRow,
@@ -17,7 +11,6 @@ import { useTypographyPreferences } from "@/lib/use-typography-preferences";
 import { useReducedMotionPreference } from "@/lib/use-reduced-motion";
 import { FONT_SIZE_LIMITS } from "@/lib/typography-preferences";
 import type { ResolvedTheme } from "@/lib/theme-preferences";
-import { cn } from "@/lib/utils";
 import { AccentColorSettingControl } from "./accent-color-setting-control";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import {
@@ -36,27 +29,37 @@ import {
   shouldExpandAppearanceAdvanced,
 } from "./workbench-settings-search-catalog";
 
-function ThemeSettingsSection({ title, variant }: { title: string; variant: ResolvedTheme }) {
+/** Accent and interface font for one color mode. */
+function ThemeSettingsRows({ variant }: { variant: ResolvedTheme }) {
   const intl = useIntl();
   return (
-    <NodexSettingsSection title={title} titlePlacement="inside">
+    <>
       <NodexSettingsRow
         label={intl.formatMessage(settingsMessages.appearanceAccentColor2)}
-        size="compact"
+        description={intl.formatMessage({
+          id: "settings.appearance.accentColorDescription",
+          defaultMessage: "Set the color for highlights and selected controls",
+        })}
       >
         <AccentColorSettingControl variant={variant} />
       </NodexSettingsRow>
-      <NodexSettingsRow label={intl.formatMessage(settingsMessages.appearanceFont)} size="compact">
+      <NodexSettingsRow
+        label={intl.formatMessage(settingsMessages.appearanceFont)}
+        description={intl.formatMessage({
+          id: "settings.appearance.fontDescription",
+          defaultMessage: "Set the font for menus and controls",
+        })}
+      >
         <FontFamilySettingControl role="ui" variant={variant} />
       </NodexSettingsRow>
-    </NodexSettingsSection>
+    </>
   );
 }
 
 function ContentFontsSection({ title, variant }: { title?: string; variant: ResolvedTheme }) {
   const intl = useIntl();
   return (
-    <NodexSettingsSection title={title} titlePlacement="inside">
+    <NodexSettingsSection title={title}>
       <NodexSettingsRow
         label={intl.formatMessage(settingsMessages.appearanceContentFont)}
         size="compact"
@@ -84,7 +87,6 @@ export function AppearanceSettingsPage({
   const { resolved } = useTheme();
   const { preferences, setFontSize, setFontFamily, setFontSmoothing } = useTypographyPreferences();
   const { setPreference: setReducedMotion } = useReducedMotionPreference();
-  const visualStyleTitleId = useId();
   const [advancedOpen, setAdvancedOpen] = useState(
     () =>
       settingsAnchor === APPEARANCE_ADVANCED_ANCHOR ||
@@ -127,76 +129,58 @@ export function AppearanceSettingsPage({
       title={intl.formatMessage(settingsMessages.appearanceTitle)}
       subtitle={intl.formatMessage(settingsMessages.appearanceSubtitle)}
     >
-      <section aria-labelledby={visualStyleTitleId} className="flex flex-col gap-4">
-        <h2 id={visualStyleTitleId} className="text-base font-medium text-token-text-primary">
-          {intl.formatMessage(settingsMessages.appearanceVisualStyle)}
-        </h2>
-        <NodexSettingsSection>
-          <NodexSettingsRow
-            label={intl.formatMessage(settingsMessages.appearanceMode)}
-            variant="nested"
-          >
-            <ThemeSettingControl />
-          </NodexSettingsRow>
-        </NodexSettingsSection>
+      <NodexSettingsSection title={intl.formatMessage(settingsMessages.appearanceVisualStyle)}>
+        <NodexSettingsRow
+          label={intl.formatMessage(settingsMessages.appearanceMode)}
+          description={intl.formatMessage({
+            id: "settings.appearance.modeDescription",
+            defaultMessage: "Use light or dark colors, or follow your system setting",
+          })}
+        >
+          <ThemeSettingControl />
+        </NodexSettingsRow>
+        {separateModes ? null : <ThemeSettingsRows variant={resolved} />}
+      </NodexSettingsSection>
 
-        {variants.map((variant) => (
-          <ThemeSettingsSection
-            key={variant}
-            title={
-              separateModes
-                ? intl.formatMessage(
-                    { id: "settings.appearance.theme", defaultMessage: "{value} theme" },
-                    {
-                      value: intl.formatMessage(
-                        variant === "light"
-                          ? settingsMessages.appearanceLight
-                          : settingsMessages.appearanceDark,
-                      ),
-                    },
-                  )
-                : intl.formatMessage(settingsMessages.appearanceTheme2)
-            }
-            variant={variant}
-          />
-        ))}
-      </section>
+      {separateModes
+        ? (["light", "dark"] as const).map((variant) => (
+            <NodexSettingsSection
+              key={variant}
+              title={intl.formatMessage(
+                { id: "settings.appearance.theme", defaultMessage: "{value} theme" },
+                {
+                  value: intl.formatMessage(
+                    variant === "light"
+                      ? settingsMessages.appearanceLight
+                      : settingsMessages.appearanceDark,
+                  ),
+                },
+              )}
+            >
+              <ThemeSettingsRows variant={variant} />
+            </NodexSettingsSection>
+          ))
+        : null}
 
       <UsageMeterSettingRows />
 
-      <NodexCollapsibleRoot
+      <NodexSettingsSection
         id={APPEARANCE_ADVANCED_ANCHOR}
-        open={advancedOpen}
-        onOpenChange={setAdvancedOpen}
+        title={intl.formatMessage(settingsMessages.appearanceAdvanced)}
+        disclosure={{ open: advancedOpen, onOpenChange: setAdvancedOpen }}
+        disclosureHeading="quiet"
+        action={
+          <NodexButton
+            aria-label={intl.formatMessage(settingsMessages.appearanceResetAdvancedAppearance)}
+            onClick={resetAdvanced}
+            variant="ghostSecondary"
+            size="toolbar"
+          >
+            {intl.formatMessage(settingsMessages.appearanceReset)}
+          </NodexButton>
+        }
       >
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <h2>
-            <NodexCollapsibleTrigger
-              render={
-                <button
-                  type="button"
-                  className="inline-flex min-h-7 cursor-interaction items-center gap-1.5 rounded-md text-base font-medium text-tertiary hover:text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
-                />
-              }
-            >
-              <ChevronDownIcon className={cn("size-3.5", !advancedOpen && "-rotate-90")} />
-              {intl.formatMessage(settingsMessages.appearanceAdvanced)}
-            </NodexCollapsibleTrigger>
-          </h2>
-          {advancedOpen ? (
-            <NodexButton
-              aria-label={intl.formatMessage(settingsMessages.appearanceResetAdvancedAppearance)}
-              onClick={resetAdvanced}
-              variant="ghost"
-              size="xs"
-              className="gap-1 text-token-text-secondary"
-            >
-              <ResetIcon className="size-3.5" />
-              {intl.formatMessage(settingsMessages.appearanceReset)}
-            </NodexButton>
-          ) : null}
-        </div>
-        <NodexCollapsiblePanel className="mt-2 flex flex-col gap-4 data-[closed]:hidden">
+        <div className="flex flex-col gap-4">
           <NodexSettingsSection>
             <NodexSettingsRow label={intl.formatMessage(settingsMessages.appearanceUIFontSize)}>
               <SansFontSizeSettingControl />
@@ -256,8 +240,8 @@ export function AppearanceSettingsPage({
               variant={variant}
             />
           ))}
-        </NodexCollapsiblePanel>
-      </NodexCollapsibleRoot>
+        </div>
+      </NodexSettingsSection>
     </NodexSettingsPageSurface>
   );
 }

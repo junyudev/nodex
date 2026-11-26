@@ -1,3 +1,4 @@
+import { closeWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 
@@ -133,7 +134,7 @@ test("each window is named after what it shows, and follows its content live", a
       await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
       await expectNativeTitle(application, page, nativeTitle("Settings"));
       await capture(page, "settings");
-      await page.getByRole("button", { name: "Back to app", exact: true }).click();
+      await closeWorkbenchSettings(page);
       await expectNativeTitle(application, page, nativeTitle(renamedPage));
 
       // Every window keeps its own title.

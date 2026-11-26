@@ -47,7 +47,7 @@ export function NodexThemeModeSelector({
         const label = intl.formatMessage(modeMessages[mode]);
         return (
           <NodexTooltip key={mode} tooltipContent={label}>
-            <label className="group flex min-w-0 cursor-interaction flex-col items-center gap-1.5 text-center">
+            <label className="group block min-w-0 cursor-interaction">
               <input
                 type="radio"
                 name={name}
@@ -58,7 +58,7 @@ export function NodexThemeModeSelector({
               />
               <span
                 aria-hidden="true"
-                className="relative isolate block aspect-4/3 w-full overflow-hidden rounded-lg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring"
+                className="relative isolate block aspect-4/3 w-full overflow-hidden rounded-[10px] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring"
               >
                 {mode === "system" ? (
                   <span className="grid size-full grid-cols-2">
@@ -70,8 +70,10 @@ export function NodexThemeModeSelector({
                 )}
                 <span
                   className={cn(
-                    "absolute inset-0 rounded-lg border-2",
-                    value === mode ? "border-ring" : "border-default group-hover:border-strong",
+                    "pointer-events-none absolute inset-0 rounded-[inherit] border",
+                    value === mode
+                      ? "border-2 border-ring"
+                      : "border-default group-hover:border-(--color-border-strong)",
                   )}
                 />
               </span>

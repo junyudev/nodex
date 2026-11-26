@@ -8,6 +8,13 @@
  */
 
 @layer theme {
+  /* Switch tracks: the off track is a tint of the ink; the on track keeps the system blue. */
+  :root,
+  :host {
+    --switch-track-color: color-mix(in oklab, var(--color-text) 10%, transparent);
+    --switch-track-color-checked: var(--blue-400);
+  }
+
   /* Palette light-dark() values resolve with the same scopes as the dark: variant. */
   :where([data-theme="light"]) {
     color-scheme: light;

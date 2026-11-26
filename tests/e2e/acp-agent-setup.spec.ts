@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { chooseComposerModel } from "./support/composer-model-picker";
 import { waitForDraftScene } from "./support/new-chat-draft";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { createScriptedAcpRegistryFixture } from "../../scripts/scenarios/runtime/scripted-acp-registry-fixture";
 import {
@@ -247,7 +247,7 @@ test("installs an ACP Agent from the Registry and chats with the installed Agent
         distribution: "binary",
       });
 
-      await page.getByRole("button", { name: "Back to app" }).click();
+      await closeWorkbenchSettings(page);
       await page
         .getByRole("button", { name: `Start new chat in ${AGENT_CLI_PROJECT_NAME}`, exact: true })
         .click();

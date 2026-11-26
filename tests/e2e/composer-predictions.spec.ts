@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openWorkbenchSettings } from "./support/workbench-settings";
+import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -36,8 +36,7 @@ const openComposerSettings = async (page: Page) => {
 };
 
 const returnToChat = async (page: Page): Promise<void> => {
-  await page.getByRole("button", { name: "Back to app", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Back to app", exact: true })).toHaveCount(0);
+  await closeWorkbenchSettings(page);
 };
 
 test("prepares predictions away from the Composer, accepts without sending, and honors the saved switch", async ({}, testInfo) => {
