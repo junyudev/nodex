@@ -225,6 +225,20 @@ counts and indicators. Finishing quietly leaves the chat's unread state alone
 and sends no desktop or phone notification. A run whose Turn outcome is
 unknown when Nodex restarts can still appear for review.
 
+Clock Cron chats belong to their Automation. Scheduled runs, Run now and runs
+started from an Inbox decision stay out of Project chat lists, Projectless Chats
+and the chat-list unread count. Open them from run history, their Inbox Page,
+search or a direct link. Once a person or an Agent acting for them sends a message
+into a run chat, that chat joins the ordinary lists permanently. Automation
+messages leave the chat in run history. Heartbeats continue their existing chats,
+and event Automations surface their work through Pages.
+
+An imported Automation can start paused and retains its source Agent, home and
+Automation ID. Importing the same source again returns the existing Automation.
+Imported run history keeps the source times, title and folder and opens the
+existing chat in the Automation's Project. Those runs enter history as accepted
+and read, without starting work, creating a decision or sending a notification.
+
 ## Automations surface
 
 The rail, command palette and Page Automations property open `/automations`. The sidebar
@@ -266,7 +280,10 @@ run. Saved `/scheduled` routes and locations redirect to `/automations`. They do
 
 `nodex automations list|show|create|update|pause|resume|delete|run` uses Core directly.
 Create and update accept `--file <path|->` Automation JSON whose `trigger` is
-`{"kind":"clock","rrule":…,"timezone":…}` or `{"kind":"event","filter":{…}}`. Update requires
+`{"kind":"clock","rrule":…,"timezone":…}` or `{"kind":"event","filter":{…}}`. Create accepts
+`"initial_status":"paused"` or `"initial_status":"active"` and defaults to active.
+It also accepts an optional immutable `import_origin` with `agent` (`codex` or
+`claude`), `sourceHome` and `sourceAutomationId`. Update requires
 `--if-revision` and `--status active|paused`; pause, resume and delete require
 `--if-revision`. Writes accept `--idempotency-key`. Run records a manual dispatch.
 `automations_update` provides Agent list, view and direct edits under the same Owner and

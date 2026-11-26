@@ -1,4 +1,6 @@
-use super::task_window::{summary_columns, task_summary_from_row};
+use super::task_window::{
+    CHAT_LIST_AUTOMATION_SQL, ROOT_CHAT_SQL, summary_columns, task_summary_from_row,
+};
 use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
 use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
@@ -16,13 +18,9 @@ use rusqlite::{Connection, params_from_iter};
 
 /// Root work chats within one archive lane. Binds `?1` to the Library and `?2` to the
 /// lane, over `session`, its `thread` and its `project`.
-const CHAT_LIST_LANE: &str = "NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
-     WHERE side.session_id = session.id) \
-   AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
-   AND session.archived = ?2 \
+const SESSION_ARCHIVE_LANE: &str = "session.archived = ?2 \
    AND (session.project_id IS NULL OR (project.library_id = ?1 \
-     AND (?2 = 1 OR project.lifecycle <> 'archived'))) \
-   AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)";
+     AND (?2 = 1 OR project.lifecycle <> 'archived')))";
 
 /// The chats the chat list shows as unread to `member`, across every Project.
 pub(super) fn read_unread_chat_count(
@@ -36,7 +34,7 @@ pub(super) fn read_unread_chat_count(
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
              LEFT JOIN projects project ON project.id = session.project_id \
-             WHERE {CHAT_LIST_LANE} AND {}",
+             WHERE {ROOT_CHAT_SQL} AND {SESSION_ARCHIVE_LANE} AND {CHAT_LIST_AUTOMATION_SQL} AND {}",
             super::member_attention::unread_sql("session.id", "?3")
         ),
         rusqlite::params![library_id, 0_i64, member],
@@ -50,6 +48,7 @@ pub(super) struct SessionListingFilter<'a> {
     pub order: ProjectWorkspaceSessionOrder,
     pub projectless_only: bool,
     pub exclude_drafts: bool,
+    pub chat_list_only: bool,
     pub project_id: Option<&'a str>,
     pub query: Option<&'a str>,
     pub native_only: bool,
@@ -70,6 +69,7 @@ pub(super) fn read_session_window(
         order,
         projectless_only,
         exclude_drafts,
+        chat_list_only,
         project_id,
         query,
         native_only,
@@ -110,12 +110,13 @@ pub(super) fn read_session_window(
         .map_err(|_| invalid("Session execution references are invalid"))?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_session_listing_v8",
+        "workspace_session_listing_v9",
         member,
         order,
         archived,
         projectless_only,
         exclude_drafts,
+        chat_list_only,
         project_id,
         query,
         native_only,
@@ -182,11 +183,15 @@ pub(super) fn read_session_window(
     } else {
         ""
     };
-    // A default draft stops being one when its first message starts it.
     let draft_predicate = if exclude_drafts {
         "AND session.is_default_draft = 0"
     } else {
         ""
+    };
+    let chat_list_predicate = if chat_list_only {
+        format!("AND {CHAT_LIST_AUTOMATION_SQL}")
+    } else {
+        String::new()
     };
     let order_expression = match order {
         ProjectWorkspaceSessionOrder::Identity => "0",
@@ -216,14 +221,14 @@ pub(super) fn read_session_window(
          LEFT JOIN workspace_sidebar_sections project_section
            ON project_section.section_id = project_item.section_id
            AND project_section.library_id = ?1 AND project_section.lifecycle = 'active'
-         WHERE {CHAT_LIST_LANE}
+         WHERE {ROOT_CHAT_SQL} AND {SESSION_ARCHIVE_LANE}
            AND (?3 IS NULL OR session.project_id = ?3)
            AND (?4 IS NULL OR instr(lower(COALESCE(thread.thread_name, session.no_thread_fallback_title)), lower(?4)) > 0
              OR instr(lower(COALESCE(thread.thread_preview, '')), lower(?4)) > 0)
            AND (?5 = 0 OR NOT EXISTS (SELECT 1 FROM project_session_execution_bindings execution
              WHERE execution.session_id = session.id))
            AND (?7 IS NULL OR session.id IN (SELECT value FROM json_each(?7)))
-           {execution_predicate} {projectless_predicate} {draft_predicate}
+           {execution_predicate} {projectless_predicate} {draft_predicate} {chat_list_predicate}
          ), window_rows AS MATERIALIZED (
            SELECT * FROM task_rows {cursor_predicate}
            ORDER BY lane_order, session_id LIMIT ?{limit_parameter}
@@ -431,6 +436,7 @@ mod tests {
                     order: None,
                     projectless_only: None,
                     exclude_drafts: None,
+                    chat_list_only: None,
                     archived: false,
                     project_id: None,
                     query: None,
@@ -573,6 +579,7 @@ mod tests {
                     order: None,
                     projectless_only: None,
                     exclude_drafts,
+                    chat_list_only: None,
                     project_id: None,
                     query: None,
                     native_only: None,
@@ -679,6 +686,7 @@ mod tests {
                     order: None,
                     projectless_only: None,
                     exclude_drafts: None,
+                    chat_list_only: None,
                     archived,
                     project_id: None,
                     query: None,
@@ -733,6 +741,7 @@ mod tests {
                 order: None,
                 projectless_only: Some(true),
                 exclude_drafts: None,
+                chat_list_only: None,
                 archived: false,
                 project_id: None,
                 query: None,
@@ -767,6 +776,7 @@ mod tests {
                         order: ProjectWorkspaceSessionOrder::Conversation,
                         projectless_only: false,
                         exclude_drafts: false,
+                        chat_list_only: false,
                         archived: true,
                         project_id: None,
                         query: None,
@@ -837,6 +847,7 @@ mod tests {
                     order: None,
                     projectless_only: None,
                     exclude_drafts: None,
+                    chat_list_only: None,
                     archived: false,
                     project_id: Some("project:default".into()),
                     query,
@@ -886,6 +897,7 @@ mod tests {
                 order: None,
                 projectless_only: None,
                 exclude_drafts: None,
+                chat_list_only: None,
                 archived: false,
                 project_id: Some("project:default".into()),
                 query: None,
@@ -928,6 +940,7 @@ mod tests {
                     archived: false,
                     projectless_only: None,
                     exclude_drafts: None,
+                    chat_list_only: None,
                     project_id: None,
                     query: None,
                     native_only: None,

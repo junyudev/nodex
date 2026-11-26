@@ -1,8 +1,10 @@
 use std::collections::BTreeSet;
 
+use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::automation::{
-    AutomationInboxItem, AutomationIntent, AutomationRun, AutomationRunBulkResult,
-    AutomationRunStatus, AutomationRunUnreadCounts,
+    AutomationExecutionKind, AutomationHistoricalRunInput, AutomationInboxItem, AutomationIntent,
+    AutomationRun, AutomationRunBulkResult, AutomationRunStatus, AutomationRunUnreadCounts,
+    AutomationTrigger,
 };
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
@@ -256,6 +258,7 @@ pub(super) fn read_inbox_window(
 
 pub(super) fn apply(
     connection: &Connection,
+    context: &BoundModuleContext,
     intent: &AutomationIntent,
 ) -> Result<RunMutationEffects, StoreError> {
     match intent {
@@ -283,6 +286,9 @@ pub(super) fn apply(
                 agent_selection: agent_selection.as_ref(),
             },
         ),
+        AutomationIntent::RecordHistoricalRun { run } => {
+            record_historical_run(connection, context, run)
+        }
         AutomationIntent::BindRunSession {
             run_id,
             session_id,
@@ -361,6 +367,19 @@ pub(super) fn apply(
         AutomationIntent::SettleInterruptedRuns => settle_interrupted(connection),
         _ => Err(internal("Automation intent is not a run mutation")),
     }
+}
+
+pub(super) fn bound_sessions(
+    connection: &Connection,
+    automation_id: &str,
+) -> Result<Vec<String>, StoreError> {
+    Ok(connection
+        .prepare(
+            "SELECT DISTINCT session_id FROM automation_execution_runs
+         WHERE automation_id=?1 AND session_id IS NOT NULL ORDER BY session_id",
+        )?
+        .query_map([automation_id], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
 pub(super) fn delete_for_automation(
@@ -567,6 +586,98 @@ fn begin_run(
         )?;
     }
     single_run_effects(connection, "begin_run", run_id, committed_at)
+}
+
+fn record_historical_run(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    input: &AutomationHistoricalRunInput,
+) -> Result<RunMutationEffects, StoreError> {
+    let AutomationHistoricalRunInput {
+        run_id,
+        automation_id,
+        session_id,
+        session_title,
+        source_cwd,
+        created_at_ms,
+        updated_at_ms,
+    } = input;
+    validate_id("run_id", run_id)?;
+    validate_id("automation_id", automation_id)?;
+    validate_id("session_id", session_id)?;
+    let definition = super::read::read_definition(connection, automation_id)?
+        .ok_or_else(|| not_found("Automation is unavailable"))?;
+    if context
+        .project_id
+        .as_ref()
+        .is_some_and(|project| Some(&project.0) != definition.project_id.as_ref())
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Automation does not belong to the selected Project",
+            false,
+        ));
+    }
+    // Domain-separate imported identities from live admissions. Mutable presentation
+    // metadata is deliberately excluded so a retry returns the original record.
+    let identity = serde_json::to_vec(&("historical_run", run_id, automation_id, session_id))
+        .map_err(|_| internal("Historical run identity cannot be fingerprinted"))?;
+    let admission_hash = hex::encode(Sha256::digest(identity));
+    let existing: Option<String> = connection
+        .query_row(
+            "SELECT admission_hash FROM automation_execution_runs WHERE run_id=?1",
+            [run_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let (_, committed_at) = core_now(connection)?;
+    if let Some(existing) = existing {
+        if existing != admission_hash {
+            return Err(StoreError::new(
+                StoreErrorCode::IdempotencyKeyReused,
+                "Automation run identity is bound to another admission",
+                false,
+            ));
+        }
+        return single_run_effects(connection, "historical_run_unchanged", run_id, committed_at);
+    }
+    require_definition(connection, automation_id)?;
+    if definition.kind != AutomationExecutionKind::Cron
+        || !matches!(definition.trigger, AutomationTrigger::Clock { .. })
+    {
+        return Err(invalid("Historical runs belong to clock Cron Automations"));
+    }
+    require_session(connection, automation_id, None, session_id)?;
+    crate::workspace::require_root_chat_session(connection, session_id)?;
+    if *created_at_ms < 0 || updated_at_ms < created_at_ms {
+        return Err(invalid("Historical run timestamps are invalid"));
+    }
+    let title = normalize_text(
+        session_title.as_deref(),
+        MAX_TITLE_BYTES,
+        "run Session title",
+    )?;
+    let cwd = source_cwd
+        .as_deref()
+        .map(|value| super::mutation::normalize_absolute_path(value, "run source cwd"))
+        .transpose()?;
+    connection.execute(
+        "INSERT INTO automation_execution_runs(
+           run_id, automation_id, session_id, status, session_title, source_cwd,
+           created_at, updated_at, read_at, quiet, admission_hash
+         ) VALUES (?1, ?2, ?3, 'ACCEPTED', ?4, ?5, ?6, ?7, ?7, 1, ?8)",
+        params![
+            run_id,
+            automation_id,
+            session_id,
+            title,
+            cwd,
+            created_at_ms,
+            updated_at_ms,
+            admission_hash
+        ],
+    )?;
+    single_run_effects(connection, "record_historical_run", run_id, committed_at)
 }
 
 fn bind_run_session(

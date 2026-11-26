@@ -1389,6 +1389,7 @@ export interface components {
             readonly cwds: readonly string[];
             readonly execution_environment: components["schemas"]["AutomationExecutionEnvironment"];
             readonly held_decision?: components["schemas"]["AutomationHeldDecision"] | null;
+            readonly import_origin?: components["schemas"]["AutomationImportOrigin"] | null;
             readonly kind: components["schemas"]["AutomationExecutionKind"];
             /** Format: int64 */
             readonly last_run_at_ms?: number | null;
@@ -1592,6 +1593,25 @@ export interface components {
             /** @description The Inbox message that holds the decision. */
             readonly page_id: string;
         };
+        /** @description A finished clock Cron run with a Session already present in the Library. */
+        readonly AutomationHistoricalRunInput: {
+            readonly automation_id: string;
+            /** Format: int64 */
+            readonly created_at_ms: number;
+            readonly run_id: string;
+            readonly session_id: string;
+            readonly session_title?: string | null;
+            readonly source_cwd?: string | null;
+            /** Format: int64 */
+            readonly updated_at_ms: number;
+        };
+        /** @enum {string} */
+        readonly AutomationImportAgent: "codex" | "claude";
+        readonly AutomationImportOrigin: {
+            readonly agent: components["schemas"]["AutomationImportAgent"];
+            readonly sourceAutomationId: string;
+            readonly sourceHome: string;
+        };
         /** @description The decision behind an Automation's message, as it stands now. */
         readonly AutomationInboxDecision: {
             readonly automation_id: string;
@@ -1609,11 +1629,15 @@ export interface components {
             readonly missed_count: number;
             readonly status: components["schemas"]["AutomationDecisionStatus"];
         };
+        /** @enum {string} */
+        readonly AutomationInitialStatus: "active" | "paused";
         readonly AutomationInput: {
             readonly backend_binding?: components["schemas"]["AgentBackendBinding"];
             readonly condition_text?: string | null;
             readonly cwds?: readonly string[] | null;
             readonly execution_environment?: components["schemas"]["AutomationExecutionEnvironment"] | null;
+            readonly import_origin?: components["schemas"]["AutomationImportOrigin"] | null;
+            readonly initial_status?: components["schemas"]["AutomationInitialStatus"] | null;
             readonly kind: components["schemas"]["AutomationExecutionKind"];
             readonly local_environment_config_path?: string | null;
             readonly mode?: components["schemas"]["AutomationMode"] | null;
@@ -1711,6 +1735,10 @@ export interface components {
             readonly session_id?: string | null;
             readonly session_title?: string | null;
             readonly source_cwd?: string | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "record_historical_run";
+            readonly run: components["schemas"]["AutomationHistoricalRunInput"];
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
@@ -2152,6 +2180,7 @@ export interface components {
                 readonly cwds: readonly string[];
                 readonly execution_environment: components["schemas"]["AutomationExecutionEnvironment"];
                 readonly held_decision?: components["schemas"]["AutomationHeldDecision"] | null;
+                readonly import_origin?: components["schemas"]["AutomationImportOrigin"] | null;
                 readonly kind: components["schemas"]["AutomationExecutionKind"];
                 /** Format: int64 */
                 readonly last_run_at_ms?: number | null;
@@ -8026,6 +8055,10 @@ export interface components {
                 readonly session_title?: string | null;
                 readonly source_cwd?: string | null;
             } | {
+                /** @enum {string} */
+                readonly kind: "record_historical_run";
+                readonly run: components["schemas"]["AutomationHistoricalRunInput"];
+            } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
@@ -10334,10 +10367,9 @@ export interface components {
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 readonly archived: boolean;
-                /**
-                 * @description Leave out each Member's new chat until its first message starts it: a list of
-                 *     conversations has nothing to show for one.
-                 */
+                /** @description Apply ordinary chat-list visibility to Automation run chats. */
+                readonly chat_list_only?: boolean | null;
+                /** @description Leave out each Member's new chat until its first message starts it. */
                 readonly exclude_drafts?: boolean | null;
                 readonly execution_refs?: readonly components["schemas"]["ProjectWorkspaceSessionExecutionRef"][] | null;
                 /** @enum {string} */
@@ -11270,6 +11302,10 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "record_user_message";
+            readonly message_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "record_agent_message";
             readonly message_id: string;
         } | {
             readonly archived: boolean;

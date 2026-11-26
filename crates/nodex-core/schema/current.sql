@@ -6070,4 +6070,16 @@ CREATE TRIGGER page_search_documents_page_ad AFTER DELETE ON pages BEGIN
 END;
 CREATE INDEX idx_document_materializations_exact_head
   ON document_materializations(document_id, generation, projected_seq, schema_version);
-PRAGMA user_version=222;
+CREATE TABLE automation_import_origins (
+  automation_id TEXT PRIMARY KEY REFERENCES automations(automation_id) ON DELETE CASCADE,
+  agent TEXT NOT NULL CHECK (agent IN ('codex', 'claude')),
+  source_home TEXT NOT NULL CHECK (length(source_home) > 0),
+  source_automation_id TEXT NOT NULL CHECK (length(source_automation_id) > 0),
+  UNIQUE (agent, source_home, source_automation_id)
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE automation_run_session_adoptions (
+  session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+
+PRAGMA user_version=223;

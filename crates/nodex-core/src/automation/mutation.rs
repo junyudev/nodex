@@ -4,11 +4,11 @@ use std::path::{Component, Path, PathBuf};
 use nodex_core_contracts::agent::AgentBackendBinding;
 use nodex_core_contracts::automation::{
     Automation, AutomationCommitValue, AutomationDueWorkPlan, AutomationEvent, AutomationEventKind,
-    AutomationExecutionEnvironment, AutomationExecutionKind, AutomationInput, AutomationIntent,
-    AutomationLease, AutomationLeaseStatus, AutomationMode, AutomationNotificationPolicy,
-    AutomationNotificationPreference, AutomationReceipt, AutomationRun, AutomationRunBulkResult,
-    AutomationStatus, AutomationTrigger, AutomationTriggerInput, PageOccurrenceMutationResult,
-    ReminderLease, ReminderSnooze,
+    AutomationExecutionEnvironment, AutomationExecutionKind, AutomationInitialStatus,
+    AutomationInput, AutomationIntent, AutomationLease, AutomationLeaseStatus, AutomationMode,
+    AutomationNotificationPolicy, AutomationNotificationPreference, AutomationReceipt,
+    AutomationRun, AutomationRunBulkResult, AutomationStatus, AutomationTrigger,
+    AutomationTriggerInput, PageOccurrenceMutationResult, ReminderLease, ReminderSnooze,
 };
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreModuleEventPayload, ModuleApplyRequest,
@@ -75,6 +75,7 @@ struct MutationEffects {
     runs: Vec<AutomationRun>,
     deleted_run_ids: Vec<String>,
     run_ids: Vec<String>,
+    chat_list_sessions: Vec<String>,
     run_bulk: Option<AutomationRunBulkResult>,
     reminder_leases: Vec<ReminderLease>,
     reminder_snoozes: Vec<ReminderSnooze>,
@@ -304,6 +305,8 @@ pub(super) fn apply(
                     let current = read_definition(transaction, automation_id)?
                         .ok_or_else(|| not_found("Automation is unavailable"))?;
                     let input = AutomationInput {
+                        initial_status: None,
+                        import_origin: None,
                         trigger: match current.trigger {
                             AutomationTrigger::Clock { rrule, .. } => {
                                 AutomationTriggerInput::Clock {
@@ -473,6 +476,7 @@ pub(super) fn apply(
                             runs: Vec::new(),
                             deleted_run_ids: Vec::new(),
                             run_ids: Vec::new(),
+                            chat_list_sessions: Vec::new(),
                             run_bulk: None,
                             reminder_leases: effects.leases,
                             reminder_snoozes: effects.snoozes,
@@ -536,6 +540,7 @@ pub(super) fn apply(
                                     runs: Vec::new(),
                                     deleted_run_ids: Vec::new(),
                                     run_ids: Vec::new(),
+                                    chat_list_sessions: Vec::new(),
                                     run_bulk: None,
                                     reminder_leases: Vec::new(),
                                     reminder_snoozes: Vec::new(),
@@ -553,6 +558,7 @@ pub(super) fn apply(
                     automation_commit_result(transaction, result)
                 }
                 intent @ (AutomationIntent::BeginRun { .. }
+                | AutomationIntent::RecordHistoricalRun { .. }
                 | AutomationIntent::BindRunSession { .. }
                 | AutomationIntent::SetRunSessionTitle { .. }
                 | AutomationIntent::CompleteRunForReview { .. }
@@ -564,7 +570,23 @@ pub(super) fn apply(
                 | AutomationIntent::UnarchiveRun { .. }
                 | AutomationIntent::DeleteRun { .. }
                 | AutomationIntent::SettleInterruptedRuns) => {
-                    let effects = super::run::apply(transaction, intent)?;
+                    let mut chat_list_sessions = match intent {
+                        AutomationIntent::DeleteRun { run_id, .. } => {
+                            super::run::read_run(transaction, run_id)?
+                                .and_then(|run| run.session_id)
+                                .into_iter()
+                                .collect()
+                        }
+                        _ => Vec::new(),
+                    };
+                    let effects = super::run::apply(transaction, &context, intent)?;
+                    if matches!(
+                        effects.operation_kind,
+                        "begin_run" | "bind_run_session" | "record_historical_run"
+                    ) {
+                        chat_list_sessions
+                            .extend(effects.runs.iter().filter_map(|run| run.session_id.clone()));
+                    }
                     finish_mutation(
                         transaction,
                         &library_id,
@@ -581,6 +603,7 @@ pub(super) fn apply(
                             runs: effects.runs,
                             deleted_run_ids: effects.deleted_run_ids,
                             run_ids: effects.run_ids,
+                            chat_list_sessions,
                             run_bulk: effects.bulk,
                             reminder_leases: Vec::new(),
                             reminder_snoozes: Vec::new(),
@@ -677,6 +700,7 @@ fn reschedule_definition(
             runs: Vec::new(),
             deleted_run_ids: Vec::new(),
             run_ids: Vec::new(),
+            chat_list_sessions: Vec::new(),
             run_bulk: None,
             reminder_leases: Vec::new(),
             reminder_snoozes: Vec::new(),
@@ -750,6 +774,7 @@ fn dispatch_now(
             runs: Vec::new(),
             deleted_run_ids: Vec::new(),
             run_ids: Vec::new(),
+            chat_list_sessions: Vec::new(),
             run_bulk: None,
             reminder_leases: Vec::new(),
             reminder_snoozes: Vec::new(),
@@ -776,10 +801,102 @@ fn create_definition(
     input: &AutomationInput,
 ) -> Result<AutomationApplyOutcome, StoreError> {
     validate_id("automation_id", automation_id)?;
+    let origin = input
+        .import_origin
+        .as_ref()
+        .map(|origin| {
+            validate_id("source_automation_id", &origin.source_automation_id)?;
+            Ok::<_, StoreError>((
+                super::read::import_agent_literal(origin.agent),
+                normalize_absolute_path(&origin.source_home, "import source home")?,
+                origin.source_automation_id.as_str(),
+            ))
+        })
+        .transpose()?;
+    let existing = match &origin {
+        Some((agent, home, source_id)) => connection
+            .query_row(
+                "SELECT automation_id FROM automation_import_origins
+             WHERE agent=?1 AND source_home=?2 AND source_automation_id=?3",
+                params![agent, home, source_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?,
+        None => None,
+    };
+    let (now_ms, committed_at) = core_now(connection)?;
+    let (stored_id, operation_kind) = if let Some(existing) = existing {
+        (existing, "import_definition_unchanged")
+    } else {
+        insert_definition(
+            connection,
+            library_id,
+            context,
+            automation_id,
+            input,
+            now_ms,
+        )?;
+        if let Some((agent, home, source_id)) = origin {
+            connection.execute(
+                "INSERT INTO automation_import_origins(automation_id, agent, source_home, source_automation_id)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![automation_id, agent, home, source_id],
+            )?;
+        }
+        (automation_id.to_owned(), "create_definition")
+    };
+    let stored = read_definition(connection, &stored_id)?
+        .ok_or_else(|| corrupt("Created Automation is unavailable"))?;
+    finish_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        MutationEffects {
+            operation_kind,
+            automation_ids: vec![stored_id],
+            definitions: vec![stored],
+            claimed_leases: Vec::new(),
+            lease_ids: Vec::new(),
+            runs: Vec::new(),
+            deleted_run_ids: Vec::new(),
+            run_ids: Vec::new(),
+            chat_list_sessions: Vec::new(),
+            run_bulk: None,
+            reminder_leases: Vec::new(),
+            reminder_snoozes: Vec::new(),
+            reminder_lease_ids: Vec::new(),
+            snooze_ids: Vec::new(),
+            page_occurrence_mutation: None,
+            page_ids: Vec::new(),
+            document_ids: Vec::new(),
+            database_ids: Vec::new(),
+            committed_at,
+        },
+    )
+}
+
+fn insert_definition(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    automation_id: &str,
+    input: &AutomationInput,
+    now_ms: i64,
+) -> Result<(), StoreError> {
     if read_definition(connection, automation_id)?.is_some() {
         return Err(conflict("Automation id already exists"));
     }
     require_active_definition_capacity(connection)?;
+    let status = match input
+        .initial_status
+        .unwrap_or(AutomationInitialStatus::Active)
+    {
+        AutomationInitialStatus::Active => AutomationStatus::Active,
+        AutomationInitialStatus::Paused => AutomationStatus::Paused,
+    };
     let definition = normalize_definition(connection, library_id, input, None)?;
     let mode = input
         .mode
@@ -787,21 +904,8 @@ fn create_definition(
             context.actor,
             nodex_core_contracts::Actor::Agent { .. }
         )));
-    require_unique_active_heartbeat(
-        connection,
-        automation_id,
-        AutomationStatus::Active,
-        &definition,
-    )?;
-    let (now_ms, committed_at) = core_now(connection)?;
-    let trigger = prepare_trigger(
-        connection,
-        automation_id,
-        input,
-        None,
-        AutomationStatus::Active,
-        now_ms,
-    )?;
+    require_unique_active_heartbeat(connection, automation_id, status, &definition)?;
+    let trigger = prepare_trigger(connection, automation_id, input, None, status, now_ms)?;
     let owner = super::agent_command::input_owner(
         connection,
         library_id,
@@ -821,7 +925,7 @@ fn create_definition(
            agent_backend_instance_id, \
            execution_environment, local_environment_config_path, next_run_at, last_run_at, \
            created_at, updated_at, automation_revision, notification_policy, project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id, trigger_kind, event_filter_json\
-         ) VALUES (?1, ?2, 'ACTIVE', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
+         ) VALUES (?1, ?2, ?28, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
            ?13, ?14, ?15, NULL, ?16, ?16, 1, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
         params![
             automation_id,
@@ -851,38 +955,10 @@ fn create_definition(
             scope_project,
             trigger.kind,
             trigger.event_filter_json,
+            status_string(status),
         ],
     )?;
-    let stored = read_definition(connection, automation_id)?
-        .ok_or_else(|| corrupt("Created Automation is unavailable"))?;
-    finish_mutation(
-        connection,
-        library_id,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        MutationEffects {
-            operation_kind: "create_definition",
-            automation_ids: vec![automation_id.to_owned()],
-            definitions: vec![stored],
-            claimed_leases: Vec::new(),
-            lease_ids: Vec::new(),
-            runs: Vec::new(),
-            deleted_run_ids: Vec::new(),
-            run_ids: Vec::new(),
-            run_bulk: None,
-            reminder_leases: Vec::new(),
-            reminder_snoozes: Vec::new(),
-            reminder_lease_ids: Vec::new(),
-            snooze_ids: Vec::new(),
-            page_occurrence_mutation: None,
-            page_ids: Vec::new(),
-            document_ids: Vec::new(),
-            database_ids: Vec::new(),
-            committed_at,
-        },
-    )
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -899,6 +975,11 @@ fn update_definition(
     input: &AutomationInput,
 ) -> Result<AutomationApplyOutcome, StoreError> {
     validate_id("automation_id", automation_id)?;
+    if input.initial_status.is_some() || input.import_origin.is_some() {
+        return Err(invalid(
+            "Initial status and import origin can only be supplied at create",
+        ));
+    }
     if expected_revision < 1 {
         return Err(invalid("expected_revision must be positive"));
     }
@@ -998,6 +1079,15 @@ fn update_definition(
     };
     let stored = read_definition(connection, automation_id)?
         .ok_or_else(|| corrupt("Updated Automation is unavailable"))?;
+    let is_clock_cron = |automation: &Automation| {
+        automation.kind == AutomationExecutionKind::Cron
+            && matches!(automation.trigger, AutomationTrigger::Clock { .. })
+    };
+    let chat_list_sessions = if is_clock_cron(&current) != is_clock_cron(&stored) {
+        super::run::bound_sessions(connection, automation_id)?
+    } else {
+        Vec::new()
+    };
     finish_mutation(
         connection,
         library_id,
@@ -1014,6 +1104,7 @@ fn update_definition(
             runs: Vec::new(),
             deleted_run_ids: Vec::new(),
             run_ids: Vec::new(),
+            chat_list_sessions,
             run_bulk: None,
             reminder_leases: Vec::new(),
             reminder_snoozes: Vec::new(),
@@ -1061,6 +1152,7 @@ fn delete_definition(
     )?;
     super::firing::withdraw_definition(connection, automation_id, now_ms)?;
     let lease_ids = cancel_claimed_leases(connection, automation_id, now_ms, "definition_deleted")?;
+    let chat_list_sessions = super::run::bound_sessions(connection, automation_id)?;
     let deleted_run_ids = super::run::delete_for_automation(connection, automation_id)?;
     let stored = read_definition(connection, automation_id)?
         .ok_or_else(|| corrupt("Deleted Automation is unavailable"))?;
@@ -1079,6 +1171,7 @@ fn delete_definition(
             lease_ids,
             runs: Vec::new(),
             run_ids: deleted_run_ids.clone(),
+            chat_list_sessions,
             deleted_run_ids,
             run_bulk: None,
             reminder_leases: Vec::new(),
@@ -1300,6 +1393,7 @@ fn claim_due(
             runs: Vec::new(),
             deleted_run_ids: Vec::new(),
             run_ids: Vec::new(),
+            chat_list_sessions: Vec::new(),
             run_bulk: None,
             reminder_leases: Vec::new(),
             reminder_snoozes: Vec::new(),
@@ -1436,6 +1530,7 @@ fn settle_lease(
             runs: Vec::new(),
             deleted_run_ids: Vec::new(),
             run_ids: Vec::new(),
+            chat_list_sessions: Vec::new(),
             run_bulk: None,
             reminder_leases: Vec::new(),
             reminder_snoozes: Vec::new(),
@@ -1527,7 +1622,10 @@ fn seal_mutation(
     if effects.is_empty_scheduler_claim()
         || matches!(
             effects.operation_kind,
-            "run_admission_unchanged" | "run_binding_unchanged"
+            "run_admission_unchanged"
+                | "run_binding_unchanged"
+                | "import_definition_unchanged"
+                | "historical_run_unchanged"
         )
     {
         return seal_unchanged_mutation(scope, operation_id, effects);
@@ -1571,6 +1669,7 @@ fn seal_mutation(
         operation_id,
         &effects.automation_ids,
         &effects.run_ids,
+        &effects.chat_list_sessions,
     )?;
     for page in linked_pages {
         if !effects.page_ids.contains(&page) {
@@ -1688,7 +1787,7 @@ fn seal_unchanged_mutation(
     let committed = crate::ModuleWriterResult {
         value: AutomationCommitValue {
             affected_automation_ids: effects.automation_ids.clone(),
-            automations: Vec::new(),
+            automations: effects.definitions,
             claimed_leases: Vec::new(),
             runs: effects.runs,
             deleted_run_ids: Vec::new(),
@@ -2374,6 +2473,7 @@ fn require_trusted_host(
             | AutomationIntent::CompleteLease { .. }
             | AutomationIntent::FailLease { .. }
             | AutomationIntent::BeginRun { .. }
+            | AutomationIntent::RecordHistoricalRun { .. }
             | AutomationIntent::BindRunSession { .. }
             | AutomationIntent::SetRunSessionTitle { .. }
             | AutomationIntent::CompleteRunForReview { .. }
@@ -2619,6 +2719,8 @@ mod tests {
 
     fn definition() -> AutomationInput {
         AutomationInput {
+            initial_status: None,
+            import_origin: None,
             trigger: AutomationTriggerInput::Clock {
                 rrule: "FREQ=MINUTELY;INTERVAL=5".to_owned(),
                 timezone: None,
@@ -2947,6 +3049,408 @@ mod tests {
                 },
             )
             .expect("Create Automation Session");
+    }
+
+    #[test]
+    fn paused_import_is_unscheduled_and_origin_reuse_returns_the_existing_automation() {
+        use nodex_core_contracts::automation::{
+            AutomationImportAgent, AutomationImportOrigin, AutomationInitialStatus,
+        };
+
+        let harness = harness();
+        let origin = AutomationImportOrigin {
+            agent: AutomationImportAgent::Codex,
+            source_home: nodex_platform::fixture_path!("/workspace/agent-home").into(),
+            source_automation_id: "daily-report".into(),
+        };
+        let automation = AutomationInput {
+            initial_status: Some(AutomationInitialStatus::Paused),
+            import_origin: Some(origin.clone()),
+            ..definition()
+        };
+        let make_create = |id: &str| AutomationIntent::CreateAutomation {
+            automation_id: id.into(),
+            automation: automation.clone(),
+        };
+        let created = apply(&harness, "import-1", make_create("first")).unwrap();
+        let first = &created.committed.value.automations[0];
+        assert_eq!(first.status, AutomationStatus::Paused);
+        assert_eq!(first.import_origin, Some(origin.clone()));
+        assert_eq!(next_run(first), None);
+        let plan = harness
+            .kernel
+            .readers()
+            .read_default(|connection| super::plan_definition_due_work(connection))
+            .unwrap();
+        assert!(!plan.due_now && plan.work_token.is_none() && plan.next_wake_at_ms.is_none());
+        assert!(
+            !harness
+                .module
+                .has_due_background_work(2_000_000_000_000)
+                .unwrap()
+        );
+        let retried = apply(&harness, "import-2", make_create("unused")).unwrap();
+        assert_eq!(
+            retried.committed.value.automations.as_slice(),
+            std::slice::from_ref(first)
+        );
+        assert!(retried.event.is_none());
+        let invalid_update = apply(
+            &harness,
+            "change-origin",
+            AutomationIntent::UpdateAutomation {
+                automation_id: "first".into(),
+                expected_revision: 1,
+                status: AutomationStatus::Paused,
+                automation,
+            },
+        );
+        assert!(invalid_update.is_err());
+        let resumed = apply(
+            &harness,
+            "resume-import",
+            AutomationIntent::SetAutomationStatus {
+                automation_id: "first".into(),
+                expected_revision: 1,
+                status: AutomationStatus::Active,
+            },
+        )
+        .unwrap();
+        let resumed = &resumed.committed.value.automations[0];
+        assert!(next_run(resumed).is_some());
+        assert_eq!(resumed.import_origin, Some(origin));
+    }
+
+    #[test]
+    fn historical_runs_keep_source_history_and_retry_only_the_same_binding() {
+        use nodex_core_contracts::automation::AutomationHistoricalRunInput;
+        use nodex_core_contracts::collection::CollectionWindowRequest;
+
+        let harness = harness();
+        create(&harness);
+        seed_session(&harness, "session:historical");
+        seed_session(&harness, "session:other");
+        let input = AutomationHistoricalRunInput {
+            run_id: "run:historical".into(),
+            automation_id: "daily-report".into(),
+            session_id: "session:historical".into(),
+            session_title: Some("Published report".into()),
+            source_cwd: Some(nodex_platform::fixture_path!("/workspace/report").into()),
+            created_at_ms: 10,
+            updated_at_ms: 20,
+        };
+        let record = |operation, run| {
+            apply(
+                &harness,
+                operation,
+                AutomationIntent::RecordHistoricalRun { run },
+            )
+        };
+        let imported = record("history-1", input.clone()).unwrap();
+        assert!(imported.event.is_some());
+        assert_eq!(
+            imported.committed.receipt.affected_run_ids,
+            ["run:historical"]
+        );
+        let run = &imported.committed.value.runs[0];
+        assert_eq!(run.status, AutomationRunStatus::Accepted);
+        assert!(run.quiet);
+        assert_eq!(run.read_at_ms, Some(20));
+        assert_eq!(run.created_at_ms, 10);
+        assert_eq!(run.updated_at_ms, 20);
+        assert_eq!(run.session_title, input.session_title);
+        assert_eq!(run.source_cwd, input.source_cwd);
+        assert!(run.dispatch_id.is_none());
+        let retried = record(
+            "history-2",
+            AutomationHistoricalRunInput {
+                session_title: Some("New imported title".into()),
+                ..input.clone()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            retried.committed.value.runs.as_slice(),
+            std::slice::from_ref(run)
+        );
+        assert!(retried.event.is_none());
+        assert!(
+            record(
+                "history-conflict",
+                AutomationHistoricalRunInput {
+                    session_id: "session:other".into(),
+                    ..input
+                }
+            )
+            .is_err()
+        );
+        let listed = harness
+            .module
+            .read(
+                &harness.context,
+                ModuleReadRequest {
+                    contract_version: AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::Runs {
+                        automation_id: Some("daily-report".into()),
+                        include_archived: None,
+                        window: CollectionWindowRequest {
+                            first: Some(10),
+                            after: None,
+                        },
+                    },
+                },
+            )
+            .unwrap();
+        let AutomationReadValue::Runs { window } = listed.value else {
+            panic!("expected Automation runs");
+        };
+        assert_eq!(window.items.as_slice(), std::slice::from_ref(run));
+        let inbox = harness
+            .module
+            .read(
+                &harness.context,
+                ModuleReadRequest {
+                    contract_version: AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::Inbox {
+                        window: CollectionWindowRequest::default(),
+                    },
+                },
+            )
+            .unwrap();
+        let AutomationReadValue::Inbox {
+            window,
+            unread_counts,
+        } = inbox.value
+        else {
+            panic!("expected Automation Inbox");
+        };
+        assert_eq!(window.items[0].read_at_ms, Some(20));
+        assert_eq!(unread_counts.total, 0);
+    }
+
+    #[test]
+    fn clock_cron_runs_leave_chat_lists_until_a_person_or_agent_continues_them() {
+        use nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION;
+        use nodex_core_contracts::collection::CollectionWindowRequest;
+        use nodex_core_contracts::workspace::{
+            ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead,
+            ProjectWorkspaceReadValue,
+        };
+
+        let harness = harness();
+        let workspace =
+            ProjectWorkspaceModule::new("profile-1", "library-1", &harness.kernel).unwrap();
+        let command = |operation: &str, intent| {
+            workspace
+                .apply(
+                    &harness.context,
+                    ModuleApplyRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        operation_id: operation.into(),
+                        store_epoch: harness.store_epoch.clone(),
+                        intent,
+                    },
+                )
+                .unwrap()
+        };
+        let read = |read| {
+            workspace
+                .read(
+                    &harness.context,
+                    ModuleReadRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read,
+                    },
+                )
+                .unwrap()
+                .value
+        };
+
+        create(&harness);
+        let projectless = AutomationInput {
+            project_id: None,
+            cwds: None,
+            ..definition()
+        };
+        let heartbeat = AutomationInput {
+            kind: AutomationExecutionKind::Heartbeat,
+            project_id: None,
+            target_session_id: Some("heartbeat-chat".into()),
+            cwds: None,
+            ..definition()
+        };
+        let event = AutomationInput {
+            condition_text: Some("When a check fails".into()),
+            trigger: serde_json::from_value(
+                json!({"kind":"event", "filter":{"events":["check_failed"]}}),
+            )
+            .unwrap(),
+            ..definition()
+        };
+        for (session, project) in [
+            ("cron-chat", Some("project:default")),
+            ("event-chat", Some("project:default")),
+            ("projectless-cron-chat", None),
+            ("heartbeat-chat", None),
+        ] {
+            command(
+                &format!("create:{session}"),
+                ProjectWorkspaceIntent::CreateSession {
+                    session_id: session.into(),
+                    project_id: project.map(str::to_owned),
+                    title: session.into(),
+                    initial_page_ids: vec![],
+                },
+            );
+        }
+        for (id, automation) in [
+            ("projectless-cron", projectless),
+            ("heartbeat", heartbeat),
+            ("event", event),
+        ] {
+            apply(
+                &harness,
+                &format!("create:{id}"),
+                AutomationIntent::CreateAutomation {
+                    automation_id: id.into(),
+                    automation,
+                },
+            )
+            .unwrap();
+        }
+        let mutate = |session: &str, operation: &str, intent| {
+            command(
+                operation,
+                ProjectWorkspaceIntent::MutateSession {
+                    session_id: session.into(),
+                    intent,
+                },
+            )
+        };
+        for (automation_id, session) in [
+            ("daily-report", "cron-chat"),
+            ("projectless-cron", "projectless-cron-chat"),
+            ("heartbeat", "heartbeat-chat"),
+            ("event", "event-chat"),
+        ] {
+            apply(
+                &harness,
+                &format!("begin:{session}"),
+                AutomationIntent::BeginRun {
+                    automation_id: automation_id.into(),
+                    run_id: format!("run:{session}"),
+                    message_id: Some(format!("dispatch:{session}")),
+                    session_id: Some(session.into()),
+                    session_title: None,
+                    source_cwd: None,
+                    dispatch_id: None,
+                    agent_selection: None,
+                    notification_policy: None,
+                },
+            )
+            .unwrap();
+            mutate(
+                session,
+                &format!("unread:{session}"),
+                ProjectSessionIntent::SetUnread { unread: true },
+            );
+        }
+
+        let chats = |project: Option<&str>| {
+            let ProjectWorkspaceReadValue::TaskWindow { tasks } =
+                read(ProjectWorkspaceRead::TaskWindow {
+                    project_id: project.map(str::to_owned),
+                    whole_library: false,
+                    include_archived: None,
+                    placement_scope: Default::default(),
+                    lifecycle: Default::default(),
+                    order: Default::default(),
+                    query: None,
+                    window: CollectionWindowRequest::default(),
+                })
+            else {
+                panic!("expected chat list")
+            };
+            let mut ids = tasks
+                .items
+                .into_iter()
+                .map(|item| item.session.id)
+                .collect::<Vec<_>>();
+            ids.sort();
+            ids
+        };
+        let unread = || {
+            let ProjectWorkspaceReadValue::UnreadChatCount { count } =
+                read(ProjectWorkspaceRead::UnreadChatCount)
+            else {
+                panic!("expected unread chat count")
+            };
+            count
+        };
+        assert_eq!(chats(Some("project:default")), ["event-chat"]);
+        assert_eq!(chats(None), ["heartbeat-chat"]);
+        assert_eq!(unread(), 2);
+
+        let discover = |chat_list_only| {
+            let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } =
+                read(ProjectWorkspaceRead::SessionWindow {
+                    provenance: None,
+                    archived: false,
+                    order: None,
+                    projectless_only: None,
+                    exclude_drafts: Some(true),
+                    chat_list_only,
+                    project_id: None,
+                    query: None,
+                    native_only: None,
+                    execution_refs: None,
+                    session_ids: Some(vec!["cron-chat".into()]),
+                    window: CollectionWindowRequest::default(),
+                })
+            else {
+                panic!("expected Session discovery")
+            };
+            sessions.items.len()
+        };
+        assert_eq!(discover(None), 1);
+        assert_eq!(discover(Some(true)), 0);
+
+        mutate(
+            "cron-chat",
+            "direct-dispatch-ack",
+            ProjectSessionIntent::RecordUserMessage {
+                message_id: "dispatch:cron-chat".into(),
+            },
+        );
+        mutate(
+            "projectless-cron-chat",
+            "agent-dispatch-ack",
+            ProjectSessionIntent::RecordAgentMessage {
+                message_id: "dispatch:projectless-cron-chat".into(),
+            },
+        );
+        assert_eq!(chats(Some("project:default")), ["event-chat"]);
+        assert_eq!(chats(None), ["heartbeat-chat"]);
+        assert_eq!(unread(), 2);
+
+        mutate(
+            "cron-chat",
+            "person-followup",
+            ProjectSessionIntent::RecordUserMessage {
+                message_id: "person:followup".into(),
+            },
+        );
+        mutate(
+            "projectless-cron-chat",
+            "agent-followup",
+            ProjectSessionIntent::RecordAgentMessage {
+                message_id: "agent:followup".into(),
+            },
+        );
+        assert_eq!(chats(Some("project:default")), ["cron-chat", "event-chat"]);
+        assert_eq!(chats(None), ["heartbeat-chat", "projectless-cron-chat"]);
+        assert_eq!(unread(), 4);
+        assert_eq!(discover(Some(true)), 1);
     }
 
     #[test]

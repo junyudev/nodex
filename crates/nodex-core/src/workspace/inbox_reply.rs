@@ -40,7 +40,16 @@ pub(super) fn turn_reply(
     ) {
         return Err(conflict("Open the active chat for this Turn"));
     }
-    let session:String=connection.query_row("SELECT active.session_id FROM page_active_chats active JOIN project_sessions session ON session.id=active.session_id AND session.archived=0 WHERE active.page_id=?1",[page],|r|r.get(0)).optional()?.ok_or_else(||conflict("No active chat can receive this reply; open the Page"))?;
+    let (session, project_id): (String, Option<String>) = connection
+        .query_row(
+            "SELECT active.session_id, session.project_id FROM page_active_chats active
+         JOIN project_sessions session ON session.id=active.session_id AND session.archived=0
+         WHERE active.page_id=?1",
+            [page],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| conflict("No active chat can receive this reply; open the Page"))?;
     if !super::super::execution_holds::for_session(connection, &session)?.is_empty() {
         return Err(conflict("Resume work before replying"));
     }
@@ -105,7 +114,7 @@ pub(super) fn turn_reply(
     connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,target_execution_ref_json,question_response_json) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![proposal,epoch,body,reliable::handoff_identity(&proposal,"launch",epoch),reliable::handoff_identity(&proposal,"message",epoch),target.map(|v|serde_json::to_string(&v)).transpose().map_err(|_|internal("Reply target cannot be encoded"))?,response.map(serde_json::to_string).transpose().map_err(|_|internal("Answer cannot be encoded"))?])?;
     // The accepted handoff is the continuation's input, even after its original
     // native Turn and the Member's Host invocation have ended.
-    super::super::session_mutation::accept_person_message(
+    let changed = super::super::session_mutation::accept_person_message(
         connection,
         &session,
         &reliable::handoff_identity(&proposal, "message", epoch),
@@ -114,6 +123,13 @@ pub(super) fn turn_reply(
     )?;
     let mut effects = simple_effects("inbox_turn_reply", now);
     effects.page_ids.push(page.into());
+    if changed {
+        effects
+            .session_summary_scopes
+            .push(super::super::mutation::project_session_scope(
+                project_id.as_deref(),
+            ));
+    }
     effects.session_ids.push(session);
     Ok(effects)
 }

@@ -391,6 +391,7 @@ pub(crate) fn record_automation_changes(
     operation: &str,
     automations: &[String],
     runs: &[String],
+    chat_list_sessions: &[String],
 ) -> Result<Vec<String>, StoreError> {
     use crate::infrastructure::{
         event_log::{NewChangeLogEntry, append_change_log},
@@ -404,7 +405,7 @@ pub(crate) fn record_automation_changes(
         serde_json::to_string(runs).map_err(|_| internal("Cannot encode Run identities"))?;
     let pages=connection.prepare("SELECT page_id FROM automation_decisions WHERE page_id IS NOT NULL AND automation_id IN (SELECT value FROM json_each(?1)) UNION SELECT link.page_id FROM project_session_pages link JOIN automation_execution_runs run ON run.session_id=link.session_id WHERE run.run_id IN (SELECT value FROM json_each(?2)) ORDER BY page_id")?.query_map(params![ids,run_ids],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let sessions=connection.prepare("SELECT DISTINCT session_id FROM automation_execution_runs WHERE run_id IN (SELECT value FROM json_each(?1)) AND session_id IS NOT NULL ORDER BY session_id")?.query_map([run_ids],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    if pages.is_empty() && sessions.is_empty() {
+    if pages.is_empty() && sessions.is_empty() && chat_list_sessions.is_empty() {
         return Ok(pages);
     }
     let impact = expand_database_coordinates(
@@ -423,7 +424,30 @@ pub(crate) fn record_automation_changes(
         &context.library_id.0,
         &impact,
     )?;
-    let payload = serde_json::json!({"module":"project_workspace","operationKind":"inbox_scheduled_firing","kind":"workspace_changed","projectCatalogChange":null,"projectIds":[],"sessionIds":sessions,"threadIds":[],"sessionSummaryScopes":[],"sessionDetailIds":sessions,"inboxChanged":true});
+    let chat_list_json = serde_json::to_string(chat_list_sessions)
+        .map_err(|_| internal("Cannot encode run chat identities"))?;
+    let summary_scopes = connection
+        .prepare(
+            "SELECT DISTINCT project_id FROM project_sessions
+         WHERE id IN (SELECT value FROM json_each(?1)) ORDER BY project_id",
+        )?
+        .query_map([chat_list_json], |row| row.get::<_, Option<String>>(0))?
+        .map(|project| {
+            project.map(|id| super::super::mutation::project_session_scope(id.as_deref()))
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let payload = serde_json::json!({
+        "module": "project_workspace",
+        "operationKind": "inbox_scheduled_firing",
+        "kind": "workspace_changed",
+        "projectCatalogChange": null,
+        "projectIds": [],
+        "sessionIds": sessions,
+        "threadIds": [],
+        "sessionSummaryScopes": summary_scopes,
+        "sessionDetailIds": sessions,
+        "inboxChanged": true
+    });
     append_change_log(
         connection,
         NewChangeLogEntry {

@@ -5705,6 +5705,16 @@
               }
             ]
           },
+          "import_origin": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AutomationImportOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "$ref": "#/components/schemas/AutomationExecutionKind"
           },
@@ -6513,6 +6523,76 @@
           }
         }
       },
+      "AutomationHistoricalRunInput": {
+        "type": "object",
+        "description": "A finished clock Cron run with a Session already present in the Library.",
+        "required": [
+          "run_id",
+          "automation_id",
+          "session_id",
+          "created_at_ms",
+          "updated_at_ms"
+        ],
+        "properties": {
+          "automation_id": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "session_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_cwd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AutomationImportAgent": {
+        "type": "string",
+        "enum": [
+          "codex",
+          "claude"
+        ]
+      },
+      "AutomationImportOrigin": {
+        "type": "object",
+        "required": [
+          "agent",
+          "sourceHome",
+          "sourceAutomationId"
+        ],
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/AutomationImportAgent"
+          },
+          "sourceAutomationId": {
+            "type": "string"
+          },
+          "sourceHome": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "AutomationInboxDecision": {
         "type": "object",
         "description": "The decision behind an Automation's message, as it stands now.",
@@ -6557,6 +6637,13 @@
           }
         }
       },
+      "AutomationInitialStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "paused"
+        ]
+      },
       "AutomationInput": {
         "type": "object",
         "required": [
@@ -6587,6 +6674,28 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/AutomationExecutionEnvironment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "import_origin": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AutomationImportOrigin",
+                "description": "Create only. A repeated origin identifies the previously imported Automation."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "initial_status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AutomationInitialStatus",
+                "description": "Create only. Omitted starts the Automation active."
               },
               {
                 "type": "null"
@@ -7015,6 +7124,24 @@
                   "string",
                   "null"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "run",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_historical_run"
+                ]
+              },
+              "run": {
+                "$ref": "#/components/schemas/AutomationHistoricalRunInput"
               }
             }
           },
@@ -8758,6 +8885,16 @@
                     {
                       "$ref": "#/components/schemas/AutomationHeldDecision",
                       "description": "The decision of an `AskFirst` Automation waiting in the Inbox, if any. At most one waits per Automation."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "import_origin": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AutomationImportOrigin"
                     },
                     {
                       "type": "null"
@@ -32977,6 +33114,24 @@
               {
                 "type": "object",
                 "required": [
+                  "run",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "record_historical_run"
+                    ]
+                  },
+                  "run": {
+                    "$ref": "#/components/schemas/AutomationHistoricalRunInput"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "run_id",
                   "session_id",
                   "expected_revision",
@@ -43181,12 +43336,19 @@
                   "archived": {
                     "type": "boolean"
                   },
+                  "chat_list_only": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Apply ordinary chat-list visibility to Automation run chats."
+                  },
                   "exclude_drafts": {
                     "type": [
                       "boolean",
                       "null"
                     ],
-                    "description": "Leave out each Member's new chat until its first message starts it: a list of\nconversations has nothing to show for one."
+                    "description": "Leave out each Member's new chat until its first message starts it."
                   },
                   "execution_refs": {
                     "type": [
@@ -46772,6 +46934,25 @@
                 "type": "string",
                 "enum": [
                   "record_user_message"
+                ]
+              },
+              "message_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "An accepted Agent send can adopt a run chat without changing a Member's attention.",
+            "required": [
+              "message_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_agent_message"
                 ]
               },
               "message_id": {

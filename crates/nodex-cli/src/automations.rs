@@ -45,7 +45,7 @@ pub enum AutomationsCommand {
         /// Stable Automation ID returned by list.
         id: String,
     },
-    /// Create an Automation from a clock or event trigger definition.
+    /// Create an Automation from a clock or event trigger definition. The JSON can start it paused.
     Create(AutomationCreateArgs),
     /// Replace an Automation's definition using its observed revision.
     Update(AutomationUpdateArgs),

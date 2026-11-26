@@ -1,4 +1,4 @@
-use super::task_window::summary_columns;
+use super::task_window::{CHAT_LIST_AUTOMATION_SQL, summary_columns};
 use std::collections::{BTreeSet, HashMap};
 
 use nodex_core_contracts::BoundModuleContext;
@@ -255,7 +255,7 @@ pub(super) fn read_section_item_window(
     require_custom_section(connection, library_id, section_id, true)?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_sidebar_section_items_v3",
+        "workspace_sidebar_section_items_v4",
         member,
         section_id,
         include_archived,
@@ -320,7 +320,8 @@ pub(super) fn read_section_item_window(
          LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
          WHERE item.section_id = ?1 AND item.library_id = ?2 AND section.lifecycle = 'active' AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = item.session_id) \
            AND ((project.id IS NOT NULL AND (?3 = 1 OR project.lifecycle <> 'archived')) \
-             OR (session.id IS NOT NULL AND (?3 = 1 OR session.archived = 0) AND {settled_at} IS NULL)) \
+             OR (session.id IS NOT NULL AND (?3 = 1 OR session.archived = 0)
+               AND {settled_at} IS NULL AND {CHAT_LIST_AUTOMATION_SQL})) \
            AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
            {cursor_predicate} \
          ORDER BY item.rank_key, item.placement_id LIMIT ?{limit_parameter})
@@ -1066,10 +1067,11 @@ fn section_metrics(
     let (direct, session_ids) = match kind {
         ProjectWorkspaceSidebarSectionKind::Custom => {
             let direct = connection.query_row(
-                "SELECT count(*) FROM workspace_sidebar_section_items item
-                 WHERE library_id=?1 AND section_id=?2
+                &format!("SELECT count(*) FROM workspace_sidebar_section_items item
+                 LEFT JOIN project_sessions session ON session.id=item.session_id
+                 WHERE item.library_id=?1 AND item.section_id=?2 AND {CHAT_LIST_AUTOMATION_SQL}
                    AND NOT EXISTS(SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id=item.session_id)
-                   AND NOT EXISTS(SELECT 1 FROM member_session_settled s WHERE s.session_id=item.session_id AND s.member_id=?3)",
+                   AND NOT EXISTS(SELECT 1 FROM member_session_settled s WHERE s.session_id=item.session_id AND s.member_id=?3)"),
                 params![library_id, section_id, member],
                 |row| row.get::<_, i64>(0),
             )?;
@@ -1080,22 +1082,23 @@ fn section_metrics(
         }
         ProjectWorkspaceSidebarSectionKind::Pinned => {
             let direct = connection.query_row(
-                "SELECT (SELECT count(*) FROM pinned_project_order pinned \
+                &format!("SELECT (SELECT count(*) FROM pinned_project_order pinned \
                     JOIN projects project ON project.id = pinned.project_id \
                     WHERE project.library_id = ?1 AND project.lifecycle <> 'archived') \
                   + (SELECT count(*) FROM project_sessions session \
                     JOIN member_session_pins pin ON pin.session_id = session.id AND pin.member_id = ?2 \
                     LEFT JOIN projects project ON project.id = session.project_id \
                     WHERE session.archived = 0 AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
-                      AND (session.project_id IS NULL OR project.library_id = ?1))",
+                      AND {CHAT_LIST_AUTOMATION_SQL}
+                      AND (session.project_id IS NULL OR project.library_id = ?1))"),
                 params![library_id, member],
                 |row| row.get::<_, i64>(0),
             )?;
             let ids = connection
-                .prepare(
+                .prepare(&format!(
                     "SELECT session.id FROM project_sessions session \
                      LEFT JOIN projects project ON project.id = session.project_id \
-                     WHERE session.archived = 0 AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) AND (EXISTS ( \
+                     WHERE session.archived = 0 AND {CHAT_LIST_AUTOMATION_SQL} AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) AND (EXISTS ( \
                        SELECT 1 FROM member_session_pins pin WHERE pin.session_id = session.id AND pin.member_id = ?2) OR EXISTS ( \
                        SELECT 1 FROM pinned_project_order pinned \
                        WHERE pinned.project_id = session.project_id)) \
@@ -1106,7 +1109,7 @@ fn section_metrics(
                          WHERE item.session_id = session.id AND item.library_id = ?1 \
                            AND section.lifecycle = 'active') \
                        AND (session.project_id IS NULL OR project.library_id = ?1)",
-                )?
+                ))?
                 .query_map(params![library_id, member], |row| row.get::<_, String>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             (direct, ids)
@@ -1129,9 +1132,9 @@ fn section_metrics(
         }
         ProjectWorkspaceSidebarSectionKind::Chats => {
             let ids = connection
-                .prepare(
+                .prepare(&format!(
                     "SELECT session.id FROM project_sessions session \
-                     WHERE session.project_id IS NULL AND session.archived = 0 \
+                     WHERE session.project_id IS NULL AND session.archived = 0 AND {CHAT_LIST_AUTOMATION_SQL} \
                        AND NOT EXISTS (SELECT 1 FROM member_session_pins pin WHERE pin.session_id = session.id AND pin.member_id = ?2) \
                        AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
                        AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
@@ -1140,7 +1143,7 @@ fn section_metrics(
                           AND section.section_id = item.section_id \
                          WHERE item.session_id = session.id AND item.library_id = ?1 \
                            AND section.lifecycle = 'active')",
-                )?
+                ))?
                 .query_map(params![library_id, member], |row| row.get::<_, String>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             (i64::try_from(ids.len()).unwrap_or(i64::MAX), ids)
@@ -1166,9 +1169,9 @@ fn effective_session_ids(
     member: &str,
 ) -> Result<Vec<String>, StoreError> {
     connection
-        .prepare(
+        .prepare(&format!(
             "SELECT session.id FROM project_sessions session \
-             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) AND session.archived=0 AND NOT EXISTS(
+             WHERE {CHAT_LIST_AUTOMATION_SQL} AND NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) AND session.archived=0 AND NOT EXISTS(
                SELECT 1 FROM member_session_settled s WHERE s.session_id=session.id AND s.member_id=?3) AND ( \
                EXISTS (SELECT 1 FROM workspace_sidebar_section_items direct \
                  WHERE direct.library_id = ?1 AND direct.section_id = ?2 \
@@ -1183,7 +1186,7 @@ fn effective_session_ids(
                    WHERE override_item.library_id = ?1 AND override_item.session_id = session.id \
                      AND override_section.lifecycle = 'active')) \
              ) ORDER BY session.id",
-        )?
+        ))?
         .query_map(
             params![library_id, section_id, member],
             |row| row.get::<_, String>(0),

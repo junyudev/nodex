@@ -134,7 +134,8 @@ pub(super) fn admit<'a>(
             intent: nodex_core_contracts::workspace::ProjectSessionIntent::ConsumeSnooze { .. }
                 | nodex_core_contracts::workspace::ProjectSessionIntent::DeferSnoozeDelivery { .. }
                 | nodex_core_contracts::workspace::ProjectSessionIntent::CompleteSnoozeDelivery { .. }
-                | nodex_core_contracts::workspace::ProjectSessionIntent::RecordUserMessage { .. },
+                | nodex_core_contracts::workspace::ProjectSessionIntent::RecordUserMessage { .. }
+                | nodex_core_contracts::workspace::ProjectSessionIntent::RecordAgentMessage { .. },
             ..
         }
     ) {

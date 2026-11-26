@@ -563,6 +563,11 @@ const setup = (
           acceptedUserMessages.push(input.intent.intent.message_id);
         return {};
       }
+      if (
+        input.intent.kind === "mutate_session" &&
+        input.intent.intent.kind === "record_agent_message"
+      )
+        return {};
       applied.push(input);
       receipt.set(input.operationId, encoded);
       const intent = input.intent;
@@ -577,8 +582,6 @@ const setup = (
         if (binding) bindings.set(intent.session_id, { ...binding, project_id: intent.project_id });
         return {};
       }
-      if (intent.kind === "mutate_session" && intent.intent.kind === "record_user_message")
-        return {};
       if (intent.kind === "mutate_session" && intent.intent.kind === "set_fallback_title") {
         const current = titles.get(intent.session_id) ?? "Task";
         if (intent.intent.replaces == null || current === intent.intent.replaces)

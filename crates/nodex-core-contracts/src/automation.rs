@@ -6,7 +6,7 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const AUTOMATION_CONTRACT_VERSION: u32 = 15;
+pub const AUTOMATION_CONTRACT_VERSION: u32 = 16;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -83,6 +83,12 @@ pub enum AutomationScope {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AutomationInput {
+    /// Create only. Omitted starts the Automation active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_status: Option<AutomationInitialStatus>,
+    /// Create only. A repeated origin identifies the previously imported Automation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_origin: Option<AutomationImportOrigin>,
     /// What starts the Automation: a clock schedule or matching Source events.
     pub trigger: AutomationTriggerInput,
     #[serde(default)]
@@ -118,6 +124,8 @@ pub struct AutomationInput {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct Automation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_origin: Option<AutomationImportOrigin>,
     pub scope: AutomationScope,
     pub owner_member_id: String,
     pub condition_text: String,
@@ -146,6 +154,41 @@ pub struct Automation {
     pub execution_environment: AutomationExecutionEnvironment,
     pub local_environment_config_path: Option<String>,
     pub last_run_at_ms: Option<i64>,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationInitialStatus {
+    Active,
+    Paused,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationImportAgent {
+    Codex,
+    Claude,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutomationImportOrigin {
+    pub agent: AutomationImportAgent,
+    pub source_home: String,
+    pub source_automation_id: String,
+}
+
+/// A finished clock Cron run with a Session already present in the Library.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AutomationHistoricalRunInput {
+    pub run_id: String,
+    pub automation_id: String,
+    pub session_id: String,
+    pub session_title: Option<String>,
+    pub source_cwd: Option<String>,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
 }
@@ -752,6 +795,9 @@ pub enum AutomationIntent {
         session_id: Option<String>,
         session_title: Option<String>,
         source_cwd: Option<String>,
+    },
+    RecordHistoricalRun {
+        run: AutomationHistoricalRunInput,
     },
     BindRunSession {
         run_id: String,

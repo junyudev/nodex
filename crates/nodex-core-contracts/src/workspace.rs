@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 86;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 87;
 
 /// Retry-key admission shared by the application tools and native CLI.
 pub const RETRY_KEY_MAX_SCALARS: usize = 128;
@@ -227,10 +227,12 @@ pub enum ProjectWorkspaceRead {
         order: Option<ProjectWorkspaceSessionOrder>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         projectless_only: Option<bool>,
-        /// Leave out each Member's new chat until its first message starts it: a list of
-        /// conversations has nothing to show for one.
+        /// Leave out each Member's new chat until its first message starts it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         exclude_drafts: Option<bool>,
+        /// Apply ordinary chat-list visibility to Automation run chats.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        chat_list_only: Option<bool>,
         project_id: Option<String>,
         query: Option<String>,
         native_only: Option<bool>,
@@ -2919,6 +2921,10 @@ pub enum ProjectSessionIntent {
     },
     /// Accepted user sends are deduplicated by their exact message identity.
     RecordUserMessage {
+        message_id: String,
+    },
+    /// An accepted Agent send can adopt a run chat without changing a Member's attention.
+    RecordAgentMessage {
         message_id: String,
     },
     SetArchived {

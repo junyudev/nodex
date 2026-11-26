@@ -151,6 +151,7 @@ fn decision_run_is_absent_from_discovery_routing_and_page_chats() {
                 order: None,
                 projectless_only: None,
                 exclude_drafts: None,
+                chat_list_only: None,
                 project_id: None,
                 query,
                 native_only: None,

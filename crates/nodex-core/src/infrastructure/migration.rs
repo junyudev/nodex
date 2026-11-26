@@ -528,6 +528,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 222,
         apply: migrate_v221_to_v222,
     },
+    MigrationStep {
+        from_revision: 222,
+        to_revision: 223,
+        apply: migrate_v222_to_v223,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2922,6 +2927,21 @@ fn migrate_v219_to_v220(
     Ok(())
 }
 
+fn migrate_v222_to_v223(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v222_to_v223.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"automation_run_session_adoptions":true,"automation_import_origins":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v220_to_v221(
     connection: &Connection,
     context: &MigrationContext,
@@ -4527,6 +4547,7 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 
 #[cfg(test)]
 fn rewind_decision_runs_to_v219(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../tests/fixtures/rewind-v223-to-v222.sql"))?;
     let present: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='nodex_decision_runs')",
         [],
@@ -9535,6 +9556,60 @@ mod tests {
     }
 
     #[test]
+    fn automation_run_migration_preserves_existing_followups_and_ignores_dispatches() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        install_current_schema(&mut connection).unwrap();
+        connection
+            .execute_batch(include_str!("../../tests/fixtures/rewind-v223-to-v222.sql"))
+            .unwrap();
+        connection.pragma_update(None, "user_version", 222).unwrap();
+        validate_schema_identity(&connection, 222).unwrap();
+        connection.execute_batch(
+            "INSERT INTO profiles VALUES ('profile','today','today');
+             INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library','profile','today','today');
+             INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at)
+             VALUES ('continued','Continued chat','today','today',0),
+                    ('dispatch-only','Dispatch only','today','today',0);
+             INSERT INTO automations(automation_id, owner_member_id, condition_text, trigger_kind,
+                     timezone, jitter_salt, kind, status, name, rrule, created_at, updated_at)
+             VALUES ('cron',(SELECT member_id FROM local_profile_members),'Clock','clock','UTC',
+                     'salt','cron','PAUSED','Schedule','FREQ=DAILY',1,1);
+             INSERT INTO automation_execution_runs(run_id,automation_id,session_id,message_id,
+                     status,created_at,updated_at,admission_hash)
+             VALUES ('run:continued','cron','continued','dispatch:one','ACCEPTED',1,1,printf('%064d',1)),
+                    ('run:dispatch','cron','dispatch-only','dispatch:two','ACCEPTED',1,1,printf('%064d',2));
+             INSERT INTO project_session_user_message_receipts(session_id,message_id)
+             VALUES ('continued','dispatch:one'),('continued','followup'),('dispatch-only','dispatch:two');"
+        ).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v222_to_v223(
+                transaction,
+                &MigrationContext {
+                    source_revision: 222,
+                    target_revision: 223,
+                    backup_name: "v222.db".into(),
+                    source_schema_fingerprint: published_format(222)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(223)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )?;
+            validate_schema_identity(transaction, 223)
+        })
+        .unwrap();
+        let adopted = connection
+            .prepare("SELECT session_id FROM automation_run_session_adoptions")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(adopted, ["continued"]);
+    }
+
+    #[test]
     fn inbox_snooze_migration_preserves_deadlines_and_return_notifications() {
         let directory = tempdir().expect("Profile");
         let path = directory.path().join("nodex.db");
@@ -9871,8 +9946,18 @@ mod tests {
             "kind":"clock","rrule":"FREQ=DAILY","timezone":"Asia/Singapore","next_run_at_ms":1234
         });
         for id in ["cron", "heartbeat"] {
-            let item = crate::automation::firing::definition(&connection, id).unwrap();
-            assert_eq!(serde_json::to_value(item.trigger).unwrap(), clock_trigger);
+            let trigger = connection
+                .query_row(
+                    "SELECT json_object('kind',trigger_kind,'rrule',rrule,'timezone',timezone,
+                    'next_run_at_ms',next_run_at) FROM automations WHERE automation_id=?1",
+                    [id],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap();
+            assert_eq!(
+                serde_json::from_str::<Value>(&trigger).unwrap(),
+                clock_trigger
+            );
         }
         let assert_event = |value: &Value| {
             let item: Automation = serde_json::from_value(value.clone()).unwrap();
@@ -9888,8 +9973,6 @@ mod tests {
                 assert!(!value.to_string().contains(&format!("\"{field}\"")));
             }
         };
-        let item = crate::automation::firing::definition(&connection, "event").unwrap();
-        assert_event(&serde_json::to_value(item).unwrap());
         let json_column = |sql: &str| -> (Value, usize) {
             let raw: String = connection.query_row(sql, [], |r| r.get(0)).unwrap();
             (serde_json::from_str(&raw).unwrap(), raw.len())

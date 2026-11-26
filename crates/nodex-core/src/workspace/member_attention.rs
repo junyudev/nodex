@@ -207,7 +207,7 @@ pub(super) fn reopen(c: &Connection, member: &str, session: &str) -> Result<bool
 /// and execution observation rows. An execution binding alone can still be an unstarted draft.
 pub(super) fn automatic_settlement_sql(library: &str, member: &str) -> String {
     format!(
-        "session.archived=0 AND {listed} AND {in_library}
+        "session.archived=0 AND {root} AND {automation_list} AND {in_library}
          AND (thread.thread_id IS NOT NULL
               OR EXISTS(SELECT 1 FROM project_session_user_message_receipts r WHERE r.session_id=session.id)
               OR json_extract(observation.observed_json,'$.runStartedAt') IS NOT NULL)
@@ -216,7 +216,8 @@ pub(super) fn automatic_settlement_sql(library: &str, member: &str) -> String {
          AND {settled} IS NULL AND NOT {pinned} AND NOT {unread} AND {snoozed} IS NULL
          AND NOT EXISTS(SELECT 1 FROM member_session_snooze_deliveries delivery
              WHERE delivery.session_id=session.id AND delivery.member_id={member})",
-        listed = super::task_window::LISTED_CHAT_SQL,
+        root = super::task_window::ROOT_CHAT_SQL,
+        automation_list = super::task_window::CHAT_LIST_AUTOMATION_SQL,
         in_library = super::task_window::listed_in_library_sql(library),
         settled = settled_at_sql("session.id", member),
         pinned = pinned_sql("session.id", member),

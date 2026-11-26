@@ -37,6 +37,12 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
     let mut definition = serde_json::json!({
         "kind": "cron",
         "name": "Review releases",
+        "initial_status": "paused",
+        "import_origin": {
+            "agent": "codex",
+            "sourceHome": nodex_platform::fixture_path!("/workspace/agent-home"),
+            "sourceAutomationId": "review-releases"
+        },
         "condition_text": "Every day",
         "prompt": "Review the latest releases",
         "trigger": {
@@ -73,6 +79,12 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
     let created = success(&home, &create);
     let id = created["item"]["automation_id"].as_str().unwrap();
     assert_eq!(created["item"]["mode"], "dry_run");
+    assert_eq!(created["item"]["status"], "PAUSED");
+    assert!(created["item"]["trigger"]["next_run_at_ms"].is_null());
+    assert_eq!(
+        created["item"]["import_origin"],
+        definition["import_origin"]
+    );
     assert_eq!(
         created["item"]["backend_binding"],
         definition["backend_binding"]
@@ -95,6 +107,9 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
         .as_i64()
         .unwrap()
         .to_string();
+    let replacement = definition.as_object_mut().unwrap();
+    replacement.remove("initial_status");
+    replacement.remove("import_origin");
     definition["prompt"] = serde_json::json!("Review releases and record breaking changes");
     definition["trigger"]
         .as_object_mut()
@@ -117,6 +132,10 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
     );
     assert_eq!(updated["item"]["trigger"]["timezone"], "Asia/Singapore");
     assert_eq!(updated["item"]["prompt"], definition["prompt"]);
+    assert_eq!(
+        updated["item"]["import_origin"],
+        created["item"]["import_origin"]
+    );
     assert_eq!(
         run(
             &home,
