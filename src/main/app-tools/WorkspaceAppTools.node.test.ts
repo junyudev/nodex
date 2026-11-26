@@ -408,8 +408,9 @@ it.effect("discovers exact built-in Project and Session lanes through canonical 
     const execute = yield* setup({
       listSidebarSections: builtinSections,
       listBuiltinSidebarOrder: (lane, window) =>
-        Effect.sync(() => {
-          reads.push({ lane, window });
+        Effect.gen(function* () {
+          // The order and its revision belong to the Member the calling Turn represents.
+          reads.push({ lane, window, turn: (yield* CoreApplicationAgent)?.authority.turn_id });
           return {
             items: [{ kind: "session", sessionId: "draft:a", title: "Draft" }],
             orderRevision: "order:a",
@@ -422,7 +423,9 @@ it.effect("discovers exact built-in Project and Session lanes through canonical 
     const result = yield* execute(
       input("list_sidebar_order", { sectionId: "canonical:pinned", itemKind: "session", first: 1 }),
     );
-    assert.deepStrictEqual(reads, [{ lane: "pinned_sessions", window: { first: 1 } }]);
+    assert.deepStrictEqual(reads, [
+      { lane: "pinned_sessions", window: { first: 1 }, turn: "turn:a" },
+    ]);
     assert.deepStrictEqual(result.structuredContent?.items, [
       { kind: "session", sessionId: "draft:a", title: "Draft", url: "nodex://sessions/draft%3Aa" },
     ]);

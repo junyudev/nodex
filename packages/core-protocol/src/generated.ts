@@ -10382,17 +10382,20 @@ export interface components {
                 readonly include_deleted?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "sidebar_section_window";
+                readonly provenance?: components["schemas"]["AgentTurnProvenance"] | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "sidebar_section_item_window";
+                readonly provenance?: components["schemas"]["AgentTurnProvenance"] | null;
                 readonly section_id: string;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
                 readonly kind: "builtin_sidebar_order";
                 readonly lane: components["schemas"]["ProjectWorkspaceBuiltinSidebarLane"];
+                readonly provenance?: components["schemas"]["AgentTurnProvenance"] | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 readonly item: components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];

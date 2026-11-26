@@ -878,6 +878,11 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       );
     });
 
+    // A calling Agent reads the Sidebar of the Member its current Turn represents.
+    const sidebarReader = Effect.map(CoreApplicationAgent, (provenance) =>
+      provenance ? { provenance } : {},
+    );
+
     const listBuiltinSidebarOrder = Effect.fn("ProjectWorkspace.listBuiltinSidebarOrder")(
       function* (
         lane: BuiltinSidebarLane,
@@ -885,6 +890,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       ) {
         const snapshot = yield* read("sidebar.builtin-order.window", {
           kind: "builtin_sidebar_order",
+          ...(yield* sidebarReader),
           lane,
           window: { after: input.after ?? null, first: input.first ?? 100 },
         });
@@ -934,6 +940,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     ) {
       const snapshot = yield* read("sidebar-section.window", {
         kind: "sidebar_section_window",
+        ...(yield* sidebarReader),
         include_deleted: input.includeDeleted ?? false,
         window: { after: input.after ?? null, first: input.first ?? 100 },
       });
@@ -952,6 +959,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       function* (sectionId: string, input: SidebarSectionItemWindowInput = {}) {
         const snapshot = yield* read("sidebar-section.items.window", {
           kind: "sidebar_section_item_window",
+          ...(yield* sidebarReader),
           section_id: sectionId,
           include_archived: input.includeArchived ?? false,
           window: { after: input.after ?? null, first: input.first ?? 200 },
@@ -1608,7 +1616,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           session_id: sessionId,
           intent: { kind: "set_pinned", pinned },
         });
-        return { value: yield* requireSession(sessionId), apply: applied };
+        return { value: yield* requireSession(sessionId, true), apply: applied };
       },
     );
 

@@ -987,6 +987,7 @@ fn builtin_windows_leave_placed_chats_to_their_sections_and_scope_the_settled_sh
     let ProjectWorkspaceReadValue::SidebarSectionItemWindow { items } = read(
         &w.module,
         ProjectWorkspaceRead::SidebarSectionItemWindow {
+            provenance: None,
             section_id: "filed".into(),
             include_archived: Some(false),
             window: CollectionWindowRequest {

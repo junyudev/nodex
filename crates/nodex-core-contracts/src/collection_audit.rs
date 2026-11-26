@@ -311,6 +311,7 @@ fn every_read_variant_has_an_explicit_budget_policy() {
     );
     assert_eq!(
         workspace_policy(&ProjectWorkspaceRead::SidebarSectionItemWindow {
+            provenance: None,
             section_id: "section:audit".to_owned(),
             include_archived: Some(false),
             window: Default::default(),

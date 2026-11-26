@@ -176,14 +176,9 @@ describe("HostApplicationTools", () => {
           tool.name,
         );
         if (
-          ![
-            "load_workspace_dependencies",
-            "get_app_capabilities",
-            "list_projects",
-            "list_sidebar_sections",
-            "list_sidebar_section_items",
-            "list_sidebar_order",
-          ].includes(tool.name)
+          !["load_workspace_dependencies", "get_app_capabilities", "list_projects"].includes(
+            tool.name,
+          )
         ) {
           assert.isAtLeast(captures, 2, `${tool.name} must reach its authority-owning handler`);
           assert.isTrue(result.isError, `${tool.name} must honor authority revocation`);

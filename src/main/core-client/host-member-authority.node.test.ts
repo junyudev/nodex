@@ -398,6 +398,53 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
         },
       },
     });
+    // Bob's Agent reads and reorders Bob's Pinned order, not the host connection Member's.
+    const setBobPin = (pinned: boolean) =>
+      host.workspaceApply({
+        operationId: operation(),
+        intent: {
+          kind: "agent_command",
+          provenance,
+          intent: {
+            kind: "mutate_session",
+            session_id: sessionId,
+            intent: { kind: "set_pinned", pinned },
+          },
+        },
+      });
+    const pinnedOrder = async (agent?: typeof provenance) => {
+      const { value } = await host.workspaceRead({
+        kind: "builtin_sidebar_order",
+        ...(agent ? { provenance: agent } : {}),
+        lane: "pinned_sessions",
+        window: { first: 100 },
+      });
+      if (value.kind !== "builtin_sidebar_order") throw new Error("Missing Sidebar order");
+      return {
+        revision: value.order_revision,
+        sessionIds: value.items.items.flatMap(({ item }) =>
+          item.kind === "session" ? [item.session_id] : [],
+        ),
+      };
+    };
+    await setBobPin(true);
+    const bobOrder = await pinnedOrder(provenance);
+    expect(bobOrder.sessionIds).toEqual([sessionId]);
+    expect((await pinnedOrder()).sessionIds).not.toContain(sessionId);
+    await host.workspaceApply({
+      operationId: operation(),
+      intent: {
+        kind: "agent_command",
+        provenance,
+        intent: {
+          kind: "reorder_builtin_sidebar_items",
+          lane: "pinned_sessions",
+          expected_order_revision: bobOrder.revision,
+          item_ids: bobOrder.sessionIds,
+        },
+      },
+    });
+    await setBobPin(false);
     const attention = (client: CoreClient) =>
       relay(client, { operation: "session_read", input: { sessionId } }, async (options) => ({
         session: (await host.workspaceRead({ kind: "session", session_id: sessionId }, options))

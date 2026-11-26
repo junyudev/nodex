@@ -1888,6 +1888,7 @@ mod tests {
         let ProjectWorkspaceReadValue::SidebarSectionWindow { sections } = read(
             module,
             ProjectWorkspaceRead::SidebarSectionWindow {
+                provenance: None,
                 include_deleted: Some(include_deleted),
                 window: window(),
             },
@@ -1990,6 +1991,7 @@ mod tests {
             let ProjectWorkspaceReadValue::SidebarSectionItemWindow { items } = read(
                 module,
                 ProjectWorkspaceRead::SidebarSectionItemWindow {
+                    provenance: None,
                     section_id: "section:mixed".into(),
                     include_archived: Some(true),
                     window: window(),
@@ -2375,6 +2377,7 @@ mod tests {
         let ProjectWorkspaceReadValue::SidebarSectionItemWindow { items } = read(
             &workspace.module,
             ProjectWorkspaceRead::SidebarSectionItemWindow {
+                provenance: None,
                 section_id: "section:pin".to_owned(),
                 include_archived: None,
                 window: window(),
@@ -2502,6 +2505,7 @@ mod tests {
         let ProjectWorkspaceReadValue::SidebarSectionItemWindow { items } = read(
             &workspace.module,
             ProjectWorkspaceRead::SidebarSectionItemWindow {
+                provenance: None,
                 section_id: "section:archive".to_owned(),
                 include_archived: None,
                 window: window(),

@@ -341,16 +341,19 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
 
     return Effect.fn("WorkspaceAppTools.execute")(function* (input: AppToolInvocation) {
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
+      const authority = yield* capture(input.caller);
+      if (!authority) return toolFailure("authority_unavailable");
+      // Pins, their order and Section attention belong to the Member the calling Turn represents.
+      const agent = toCoreAgentTurnProvenance(identity.identity.profileId, authority);
       if (
         input.name === "list_sidebar_sections" ||
         input.name === "list_sidebar_section_items" ||
         input.name === "list_sidebar_order"
       )
         return yield* dispatch(input, "").pipe(
+          Effect.provideService(CoreApplicationAgent, agent),
           Effect.catch(() => Effect.succeed(toolFailure("sidebar_unavailable"))),
         );
-      const authority = yield* capture(input.caller);
-      if (!authority) return toolFailure("authority_unavailable");
 
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const schema = { ...sidebarSchemas, ...sessionSchemas }[
@@ -368,10 +371,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       if (!operation.success) return operation.result;
       const { operationId } = operation;
       return yield* dispatch(input, operationId).pipe(
-        Effect.provideService(
-          CoreApplicationAgent,
-          toCoreAgentTurnProvenance(identity.identity.profileId, authority),
-        ),
+        Effect.provideService(CoreApplicationAgent, agent),
         Effect.catch((error) => {
           if (error instanceof ProjectSessionCommandsError && error.committedOperationId) {
             return Effect.succeed(

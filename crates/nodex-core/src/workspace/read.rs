@@ -68,7 +68,10 @@ pub(super) fn read(
     commit_head: i64,
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
-    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let member = match calling_agent(&request) {
+        Some(provenance) => agent_member(connection, library_id, context, provenance)?,
+        None => crate::infrastructure::actors::requesting_member(connection, context)?,
+    };
     match request {
         ProjectWorkspaceRead::InboxRoutingConsent => {
             let member = crate::infrastructure::actors::requesting_member(connection, context)?;
@@ -395,7 +398,7 @@ pub(super) fn read(
                 &window,
             )?,
         }),
-        ProjectWorkspaceRead::BuiltinSidebarOrder { lane, window } => {
+        ProjectWorkspaceRead::BuiltinSidebarOrder { lane, window, .. } => {
             let (order_revision, items) = super::sidebar_builtin::read_order(
                 connection,
                 library_id,
@@ -515,10 +518,6 @@ pub(super) fn read(
             session_ids,
             window,
         } => {
-            let member = match provenance.as_deref() {
-                Some(provenance) => agent_member(connection, library_id, context, provenance)?,
-                None => member,
-            };
             let mut sessions = super::session_listing::read_session_window(
                 connection,
                 library_id,
@@ -616,6 +615,7 @@ pub(super) fn read(
         ProjectWorkspaceRead::SidebarSectionWindow {
             include_deleted,
             window,
+            ..
         } => Ok(ProjectWorkspaceReadValue::SidebarSectionWindow {
             sections: super::sidebar_section::read_section_window(
                 connection,
@@ -630,6 +630,7 @@ pub(super) fn read(
             section_id,
             include_archived,
             window,
+            ..
         } => Ok(ProjectWorkspaceReadValue::SidebarSectionItemWindow {
             items: super::sidebar_section::read_section_item_window(
                 connection,
@@ -790,11 +791,7 @@ pub(super) fn read(
                 )?,
             })
         }
-        ProjectWorkspaceRead::AgentSession {
-            provenance,
-            session_id,
-        } => {
-            let member = agent_member(connection, library_id, context, &provenance)?;
+        ProjectWorkspaceRead::AgentSession { session_id, .. } => {
             validate_id("session_id", &session_id)?;
             let row = read_session(connection, library_id, &session_id, &member)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
@@ -1102,6 +1099,21 @@ fn read_linked_thread(
         .transpose()?
         .flatten()
         .map(Box::new))
+}
+
+/// A read carrying a calling Agent's provenance reads the per-Member state (attention, pins and
+/// their order) of the Member its current Turn represents, not of the connection's Member.
+fn calling_agent(
+    request: &ProjectWorkspaceRead,
+) -> Option<&nodex_core_contracts::agent::AgentTurnProvenance> {
+    match request {
+        ProjectWorkspaceRead::AgentSession { provenance, .. } => Some(provenance),
+        ProjectWorkspaceRead::SessionWindow { provenance, .. }
+        | ProjectWorkspaceRead::SidebarSectionWindow { provenance, .. }
+        | ProjectWorkspaceRead::SidebarSectionItemWindow { provenance, .. }
+        | ProjectWorkspaceRead::BuiltinSidebarOrder { provenance, .. } => provenance.as_deref(),
+        _ => None,
+    }
 }
 
 fn agent_member(
