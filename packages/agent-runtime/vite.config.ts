@@ -7,7 +7,7 @@ import { vitestTimeouts } from "../../config/test-timeouts.ts";
 import { filesForSuite } from "../../config/test-suites.ts";
 import { resolveVitestTestTier } from "../../config/vitest-test-tier.ts";
 
-const tier = resolveVitestTestTier();
+const tier = resolveVitestTestTier(process.env.NODEX_TEST_TIER);
 const testFiles = filesForSuite("agent-runtime", tier);
 const localGlob = (glob: string) => glob.replace(/^packages\/agent-runtime\//u, "");
 

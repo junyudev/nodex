@@ -68,7 +68,7 @@ export default class MachineBudgetReporter implements Reporter {
           files,
           maxWorkers: config.maxWorkers,
           runtime: runtime === "dom" && usesVmPool ? "domVm" : runtime,
-          stress: resolveVitestTestTier() === "stress",
+          stress: resolveVitestTestTier(process.env.NODEX_TEST_TIER) === "stress",
           cores: capacity.cores,
         }),
       },

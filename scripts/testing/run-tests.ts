@@ -34,10 +34,7 @@ const tierSelections = {
   live: LIVE_TEST_SUITES,
 } as const;
 
-export function parseTestSelection(
-  args: readonly string[],
-  tier = resolveVitestTestTier(),
-): TestSelection {
+export function parseTestSelection(args: readonly string[], tier: VitestTestScope): TestSelection {
   const [name, ...rest] = args;
   const related = rest[0] === "--related";
   const forwarded = related ? rest.slice(1) : rest;
@@ -192,7 +189,11 @@ export async function runIsolatedTests(
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
   void withCommandSignal(async (signal) => {
     try {
-      return await runTests(parseTestSelection(process.argv.slice(2)), {
+      const selection = parseTestSelection(
+        process.argv.slice(2),
+        resolveVitestTestTier(process.env.NODEX_TEST_TIER),
+      );
+      return await runTests(selection, {
         repositoryRoot: path.resolve(import.meta.dirname, "../.."),
         env: process.env,
         signal,

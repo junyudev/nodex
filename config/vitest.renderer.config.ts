@@ -14,7 +14,7 @@ import {
 import { filesForSuite, rendererNativePortTests } from "./test-suites";
 import { rendererWorkerCount } from "./renderer-worker-count";
 
-const tier = resolveVitestTestTier();
+const tier = resolveVitestTestTier(process.env.NODEX_TEST_TIER);
 const testFiles = filesForSuite("renderer", tier);
 const memoryBytes = totalmem();
 // A full VM run needs room for the transform server and retiring worker processes.

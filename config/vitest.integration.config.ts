@@ -9,7 +9,7 @@ import { filesForSuite } from "./test-suites";
 
 assertElectronTestRuntime("integration");
 
-const tier = resolveVitestTestTier();
+const tier = resolveVitestTestTier(process.env.NODEX_TEST_TIER);
 const testFiles = filesForSuite("integration", tier);
 
 export default defineConfig({

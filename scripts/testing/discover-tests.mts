@@ -39,7 +39,7 @@ async function discoverTests(
   try {
     const focusNightly =
       mode === "default-with-related-nightly" ||
-      (mode === "related" && resolveVitestTestTier() === "nightly");
+      (mode === "related" && resolveVitestTestTier(process.env.NODEX_TEST_TIER) === "nightly");
     const focused = focusNightly
       ? new Set(
           findCheckoutFocusedTests(process.cwd(), (related ?? []).map(relativeFile), true)[suite],

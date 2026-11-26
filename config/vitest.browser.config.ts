@@ -13,7 +13,7 @@ import {
 import { filesForSuite } from "./test-suites";
 import { createTypographyBootstrapHtmlPlugin } from "./typography-bootstrap";
 
-const tier = resolveVitestTestTier();
+const tier = resolveVitestTestTier(process.env.NODEX_TEST_TIER);
 const testFiles = filesForSuite("browser", tier);
 
 export default defineConfig(async () => ({

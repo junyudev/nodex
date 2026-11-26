@@ -7,7 +7,7 @@ import { defineConfig } from "vite-plus";
 import { rendererViteResolve } from "./renderer-vite-shared";
 import { filesForSuite } from "./test-suites";
 
-const tier = resolveVitestTestTier();
+const tier = resolveVitestTestTier(process.env.NODEX_TEST_TIER);
 const testFiles = filesForSuite("core-client", tier);
 
 export default defineConfig({

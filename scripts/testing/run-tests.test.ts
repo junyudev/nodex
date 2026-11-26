@@ -19,7 +19,7 @@ const root = path.resolve(".");
 describe("test execution", () => {
   test("isolates test processes from the launcher's Agent shell", async () => {
     const commands: Command[] = [];
-    await runTests(parseTestSelection(["main", CODEX_SCALE_TEST]), {
+    await runTests(parseTestSelection(["main", CODEX_SCALE_TEST], "default"), {
       repositoryRoot: root,
       env: {
         NODEX_AGENT_SHELL: "1",
@@ -51,7 +51,7 @@ describe("test execution", () => {
 
   test("prepares Electron before focused discovery resolves its runtime", async () => {
     const events: string[] = [];
-    await runTests(parseTestSelection(["main", CODEX_SCALE_TEST]), {
+    await runTests(parseTestSelection(["main", CODEX_SCALE_TEST], "default"), {
       repositoryRoot: root,
       env: {},
       signal: new AbortController().signal,
@@ -100,14 +100,16 @@ describe("test execution", () => {
       related: false,
       args: [],
     });
-    expect(() => parseTestSelection(["main", "--", "file.ts"])).toThrow("without a standalone");
-    expect(() => parseTestSelection(["main", "--config=config/vitest.node.config.ts"])).toThrow(
-      "owns its config",
+    expect(() => parseTestSelection(["main", "--", "file.ts"], "default")).toThrow(
+      "without a standalone",
     );
+    expect(() =>
+      parseTestSelection(["main", "--config=config/vitest.node.config.ts"], "default"),
+    ).toThrow("owns its config");
   });
   test("prepares the aggregate's native union once before any suite executes", async () => {
     const events: string[] = [];
-    const exit = await runTests(parseTestSelection(["standard"]), {
+    const exit = await runTests(parseTestSelection(["standard"], "default"), {
       repositoryRoot: root,
       prepareElectron: async () => "/tmp/electron",
       env: {},
@@ -142,7 +144,7 @@ describe("test execution", () => {
     ]);
   });
   test("prepares only bridge for an actually discovered bridge selection", async () => {
-    await runTests(parseTestSelection(["core-client", YJS_YRS_TEST]), {
+    await runTests(parseTestSelection(["core-client", YJS_YRS_TEST], "default"), {
       repositoryRoot: root,
       prepareElectron: async () => "/tmp/electron",
       env: {},
@@ -160,7 +162,10 @@ describe("test execution", () => {
     async (related) => {
       const events: string[] = [];
       await runTests(
-        parseTestSelection(["unit", ...(related ? ["--related"] : []), NATIVE_PIP_PROBE_TEST]),
+        parseTestSelection(
+          ["unit", ...(related ? ["--related"] : []), NATIVE_PIP_PROBE_TEST],
+          "default",
+        ),
         {
           repositoryRoot: root,
           env: {},
@@ -202,7 +207,7 @@ describe("test execution", () => {
   test("stops after a suite fails and preserves its exit code", async () => {
     let calls = 0;
     expect(
-      await runTests(parseTestSelection(["standard"]), {
+      await runTests(parseTestSelection(["standard"], "default"), {
         repositoryRoot: root,
         prepareElectron: async () => "/tmp/electron",
         env: {},
@@ -218,7 +223,7 @@ describe("test execution", () => {
   });
   test("never starts tests when native preparation fails", async () => {
     await expect(
-      runTests(parseTestSelection(["integration"]), {
+      runTests(parseTestSelection(["integration"], "default"), {
         repositoryRoot: root,
         prepareElectron: async () => "/tmp/electron",
         env: {},
@@ -236,7 +241,7 @@ describe("test execution", () => {
     const controller = new AbortController();
     let calls = 0;
     expect(
-      await runTests(parseTestSelection(["standard"]), {
+      await runTests(parseTestSelection(["standard"], "default"), {
         repositoryRoot: root,
         prepareElectron: async () => "/tmp/electron",
         env: {},
@@ -443,7 +448,7 @@ describe("Browser process environment", () => {
         VITEST_CHROMIUM_GC_FORCE: "0",
       };
       let command: Command | undefined;
-      await runTests(parseTestSelection([suite]), {
+      await runTests(parseTestSelection([suite], "default"), {
         repositoryRoot: root,
         env: environment,
         signal: new AbortController().signal,
