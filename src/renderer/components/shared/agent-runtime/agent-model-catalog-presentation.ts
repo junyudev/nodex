@@ -8,6 +8,7 @@ import type {
   AgentSessionModeState,
 } from "../../../../shared/agent-conversation";
 import type { AgentModelOption } from "../../../../shared/types";
+import type { ReactNode } from "react";
 
 export interface AgentModelPickerEntry {
   readonly spendsCredit?: boolean;
@@ -81,6 +82,8 @@ export interface AgentModelCatalogPresentation {
   /** Settings that belong to the choice itself, switched in place without closing the menu. */
   readonly toggles?: readonly {
     readonly label: string;
+    /** A glyph the choice is known by elsewhere, such as on the trigger that shows it. */
+    readonly icon?: ReactNode;
     readonly checked: boolean;
     readonly change: (checked: boolean) => void;
   }[];

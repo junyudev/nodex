@@ -92,7 +92,7 @@ const replicaCopy = byLocale((locale) => {
     search: t("Search", "搜索"),
     list: t("List", "列表"),
     board: t("Board", "看板"),
-    allInboxChats: t("Use for all Inbox chats", "用于所有收件箱聊天"),
+    setAsInboxDefault: t("Set as Inbox default", "设为收件箱默认"),
     subagents: t("Subagents", "子智能体"),
     running: t("Running", "正在运行"),
     fastOff: t("Fast · Off", "快速 · 关闭"),

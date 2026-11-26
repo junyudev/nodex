@@ -76,7 +76,17 @@ import {
   type InboxDispatchAutomationDecision,
 } from "./inbox-dispatch-editor";
 import type { InboxActions } from "./use-inbox-actions";
-import { InboxAgentLabel, InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
+import {
+  InboxAgentLabel,
+  InboxAgentPicker,
+  type InboxAgents,
+  type InboxChatWorktreeChoice,
+} from "./inbox-agent-picker";
+import {
+  InboxChatLocationLabel,
+  useInboxChatLocationText,
+  useInboxChatWorktree,
+} from "./inbox-chat-location";
 import {
   describeInboxAgent,
   sameInboxAgentChoice,
@@ -286,10 +296,14 @@ function Decision({
 function SuggestionWhy({
   proposal,
   runsOn,
+  worktree,
 }: {
   readonly proposal: InboxProposal;
   readonly runsOn: InboxAgentPresentation | null;
+  /** Where a new chat in a Project works; null when the place does not apply. */
+  readonly worktree: boolean | null;
 }) {
+  const location = useInboxChatLocationText();
   return (
     <>
       {isChatAction(proposal.action) ? <span>{proposal.summary}</span> : null}
@@ -302,6 +316,14 @@ function SuggestionWhy({
             <FormattedMessage id="inbox.inboxTriage.runsOn" defaultMessage="Runs on" />
           </span>
           <InboxAgentLabel presentation={runsOn} full className="items-start [&>svg]:mt-0.5" />
+        </span>
+      ) : null}
+      {worktree !== null ? (
+        <span className="flex min-w-0 items-start gap-1">
+          <span className="shrink-0">
+            <FormattedMessage id="inbox.inboxTriage.worksIn" defaultMessage="Works in" />
+          </span>
+          <span className="min-w-0">{location.description(worktree)}</span>
         </span>
       ) : null}
       {proposal.producedBy ? (
@@ -323,13 +345,15 @@ function SuggestionWhy({
 }
 
 /**
- * A new chat's menu half: opens the model menu for this message alone. A choice that differs
- * from the Inbox's own stays visible on the button, so the decision never hides it.
+ * A new chat's menu half: opens the model menu for this message alone, which also says where a
+ * chat in a Project works. A choice that differs from the Inbox's own stays visible on the
+ * button, so the decision never hides it.
  */
 function ChatAgentMenu({
   agents,
   value,
   changed,
+  worktree,
   label,
   variant,
   onChange,
@@ -337,18 +361,22 @@ function ChatAgentMenu({
   readonly agents: InboxAgents;
   readonly value: InboxAgentChoice;
   readonly changed: boolean;
+  readonly worktree?: InboxChatWorktreeChoice;
   readonly label?: string;
   /** Matches the decision it completes. */
   readonly variant: DecisionVariant;
   readonly onChange: (next: InboxAgentChoice) => void;
 }) {
   const intl = useIntl();
+  const worktreeChanged =
+    worktree !== undefined && worktree.value !== agents.settings.newChatsUseWorktrees;
   return (
     <InboxAgentPicker
       agents={agents}
       purpose="chat"
       scope="message"
       value={value}
+      worktree={worktree}
       onChange={onChange}
       trigger={
         <NodexButton
@@ -357,11 +385,12 @@ function ChatAgentMenu({
           aria-label={
             label ??
             intl.formatMessage({
-              id: "inbox.inboxTriage.chooseTheModelForThis",
-              defaultMessage: "Choose the model for this chat",
+              id: "inbox.inboxTriage.chooseHowThisChatStarts",
+              defaultMessage: "Choose how this chat starts",
             })
           }
-          // The model gives way before the decision's target does.
+          // What it runs on gives way before the decision's target does; where it works is one
+          // short word and stays whole.
           className="min-w-0 shrink-[3] gap-1 rounded-s-none px-1.5"
         >
           {changed ? (
@@ -369,6 +398,9 @@ function ChatAgentMenu({
               presentation={describeInboxAgent(agents, value, undefined, intl)}
               className="max-w-44 gap-1"
             />
+          ) : null}
+          {worktreeChanged ? (
+            <InboxChatLocationLabel worktree={worktree.value} className={cn(changed && "ms-1")} />
           ) : null}
           <CompactChevronDownIcon className="icon-2xs shrink-0" />
         </NodexButton>
@@ -567,6 +599,13 @@ export function InboxTriage({
   const proposalRevision = item.proposal?.revision;
   // The suggestion as the row has it, once a model is chosen or an addition dropped here.
   const rowAction = item.proposal ? inboxRowAction(item.proposal.action, edit) : null;
+  // Where a new chat in a Project works is chosen beside what it runs on.
+  const rowChat = rowAction ?? item.proposal?.action;
+  const chatWorktree = useInboxChatWorktree(
+    rowChat?.type === "new_chat" ? rowChat : null,
+    projects,
+    agents,
+  );
   // A new chat starts from the Inbox's own model; an Automation admission from its Automation's.
   const baseAgent = suggested?.type === "execute_decision" ? taskAgent : agents.settings.chatAgent;
   const chatAgent =
@@ -579,6 +618,18 @@ export function InboxTriage({
       proposalId,
       revision: proposalRevision,
       agent: baseAgent && sameInboxAgentChoice(agent, baseAgent) ? null : agent,
+      dropped:
+        current?.proposalId === proposalId && current.revision === proposalRevision
+          ? current.dropped
+          : [],
+    }));
+  const chooseWorktree = (proposalId: string, worktree: boolean) =>
+    setRowEdit((current) => ({
+      ...edit,
+      proposalId,
+      revision: proposalRevision,
+      // Choosing what the Inbox would choose anyway leaves the chat following the Inbox.
+      worktree: worktree === agents.settings.newChatsUseWorktrees ? null : worktree,
       dropped:
         current?.proposalId === proposalId && current.revision === proposalRevision
           ? current.dropped
@@ -873,6 +924,13 @@ export function InboxTriage({
         // A Heartbeat's run continues its chat on that chat's own Agent.
         const choosesModel =
           newChat || (executesDecision && taskAgent !== null && !automationDecision?.heartbeat);
+        const worktreeChoice =
+          chatWorktree === null
+            ? undefined
+            : {
+                value: chatWorktree,
+                onChange: (worktree: boolean) => chooseWorktree(proposal.proposalId, worktree),
+              };
         const outdated = proposal.outdated;
         const askAgain = () => void actions.requestSuggestion(proposal.pageIds, proposal.basis);
         // An outdated suggestion can still be confirmed as it reads, but asking again is the
@@ -989,6 +1047,7 @@ export function InboxTriage({
                     runsOn={
                       choosesModel ? describeInboxAgent(agents, chatAgent, undefined, intl) : null
                     }
+                    worktree={chatWorktree}
                   />
                 }
                 icon={INBOX_ACTION_ICONS[proposal.action.type]}
@@ -1008,6 +1067,7 @@ export function InboxTriage({
                             })
                           : undefined
                       }
+                      worktree={worktreeChoice}
                       variant={variant}
                       onChange={(next) => chooseAgent(proposal.proposalId, next)}
                     />

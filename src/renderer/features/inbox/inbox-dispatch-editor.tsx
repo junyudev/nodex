@@ -15,8 +15,7 @@ import type { Project } from "../../../shared/types";
 import { messageTextOf } from "../../../shared/message-content";
 import { NodexButton } from "@/components/ui/button";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
-import { NodexTooltip } from "@/components/ui/tooltip";
-import { CompactChevronDownIcon, WorktreeStatusIcon } from "@/components/shared/icons";
+import { CompactChevronDownIcon } from "@/components/shared/icons";
 import {
   LIBRARY_INBOX,
   inboxActionSkills,
@@ -28,6 +27,7 @@ import { useInboxChatTargets } from "./use-inbox";
 import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
 import { InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
+import { useInboxChatWorktree } from "./inbox-chat-location";
 import { sameInboxAgentChoice } from "./inbox-agent-model";
 
 type ActionType = InboxDispatchAction["type"];
@@ -283,55 +283,6 @@ function PickerTrigger({
 }
 
 /**
- * Two places a chat can run need no menu: the chip is lit when the chat gets its Page's
- * worktree and quiet when it runs in the Project's checkout.
- */
-function WorktreeToggle({
-  on,
-  onChange,
-}: {
-  readonly on: boolean;
-  readonly onChange: (on: boolean) => void;
-}) {
-  const intl = useIntl();
-  return (
-    <NodexTooltip
-      tooltipContent={
-        on
-          ? intl.formatMessage({
-              id: "inbox.inboxDispatchEditor.runsInItsPageS",
-              defaultMessage: "Runs in its Page’s worktree, apart from your checkout",
-            })
-          : intl.formatMessage({
-              id: "inbox.inboxDispatchEditor.runsInTheProjectS",
-              defaultMessage: "Runs in the Project’s checkout",
-            })
-      }
-      side="top"
-    >
-      <button
-        type="button"
-        aria-label={intl.formatMessage({
-          id: "inbox.inboxDispatchEditor.worktree",
-          defaultMessage: "Worktree",
-        })}
-        aria-pressed={on}
-        onClick={() => onChange(!on)}
-        className={cn(
-          "inline-flex h-6 shrink-0 cursor-interaction items-center gap-1 rounded-md ps-1.5 pe-2 text-xs outline-hidden transition-[background-color,color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-token-focus-border active:scale-[0.97] motion-reduce:transition-none",
-          on
-            ? "bg-token-foreground/8 text-token-foreground hover:bg-token-foreground/12"
-            : "text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground",
-        )}
-      >
-        <WorktreeStatusIcon className={cn("icon-2xs shrink-0", !on && "opacity-60")} />
-        <FormattedMessage id="inbox.inboxDispatchEditor.worktree" defaultMessage="Worktree" />
-      </button>
-    </NodexTooltip>
-  );
-}
-
-/**
  * Edits the exact action a user authorizes. The same form serves suggested and hand-written
  * dispatches, so there is one way to say where a message goes. In a Project's Inbox, chats
  * start or continue in that Project, and moving files the message into another Project.
@@ -402,7 +353,11 @@ export function InboxDispatchEditor({
               : current.projectId,
     }));
   const action = actionFromDraft(draft);
-  const worktreeOn = draft.worktree ?? agents.settings.newChatsUseWorktrees;
+  const chatWorktree = useInboxChatWorktree(
+    draft.type === "new_chat" ? draft : null,
+    activeProjects,
+    agents,
+  );
   const skillAvailability = useInboxSkillAvailability(draft.proposal, action);
   const droppedSkillNames = [
     ...new Set([...(draft.droppedSkillNames ?? []), ...skillAvailability.unavailable]),
@@ -698,27 +653,29 @@ export function InboxDispatchEditor({
             }
           />
         ) : null}
-        {draft.type === "new_chat" && (draft.worktree != null || agents.settingsReady) ? (
-          // Whether the chat joins its Page's worktree sits beside the Agent it runs on.
-          <WorktreeToggle
-            on={worktreeOn}
-            onChange={(worktree) =>
-              setDraft((current) => ({
-                ...current,
-                worktree: worktree === agents.settings.newChatsUseWorktrees ? null : worktree,
-              }))
-            }
-          />
-        ) : null}
         {draft.type === "new_chat" && (draft.agent || agents.settingsReady) ? (
           // What the chat starts on sits beside the button that starts it, as in the composer.
           // Until the Inbox's settings arrive its default is unknown, so it is left out rather
-          // than guessed; the chat still starts on that default.
+          // than guessed; the chat still starts on that default. Where a chat in a Project works
+          // is chosen in the same menu, and shows on its trigger.
           <InboxAgentPicker
             agents={agents}
             purpose="chat"
             scope="message"
             value={draft.agent ?? agents.settings.chatAgent}
+            worktree={
+              chatWorktree !== null
+                ? {
+                    value: chatWorktree,
+                    onChange: (worktree) =>
+                      setDraft((current) => ({
+                        ...current,
+                        worktree:
+                          worktree === agents.settings.newChatsUseWorktrees ? null : worktree,
+                      })),
+                  }
+                : undefined
+            }
             trigger="inline"
             onChange={(next) =>
               setDraft((current) => ({

@@ -314,7 +314,8 @@ message's Page: choosing it opens the Page, as `Open page` on the message text
 does. It is named by the time it reads. Hidden, it cannot be chosen. A message never
 simply vanishes: once decided, its card first says where it went, in its own
 place: `Starting a chat in <Project>` or `Sending to “<chat>”` with
-`Open chat`, `Moved to <Project>`, `Added to Todo`, `Saved to Notes`, or `Done`. It folds out of
+`Open chat`, `Moved to <Project>`, `Added to Todo`, `Saved to Notes`, or `Done`. A chat started
+with a place to choose adds `Worktree` or `Local`, as its confirmation fixed it. It folds out of
 the stream after a moment, or soon after the pointer resting on it leaves. Add to Todo, Save to Notes,
 Done and filing also offer `Undo` in a toast. Save to Notes's toast also offers `Open`, which opens
 where the note landed, its section or the Notes Page, with the note first. A message handled elsewhere simply
@@ -667,10 +668,12 @@ one exact action:
   suggestions choose models, a new chat may also name what it runs on: an
   Agent, model and effort. When another model clearly suits part of the work,
   an addition says so to the chat's Agent, which decides whether and how to
-  delegate it; a suggestion never plans subtasks or steps. A new chat runs in
-  its message's Page worktree unless the Inbox's **New chats use a worktree**
-  setting is off or the decision picks **Local** beside its Agent; either way it
-  stays linked to that Page.
+  delegate it; a suggestion never plans subtasks or steps. A new chat in a
+  Project works in its message's Page worktree, apart from the user's checkout,
+  unless the Inbox's **New chats use a worktree** setting is off or its decision
+  turns off `Use a worktree`; then it works in the Project's checkout. Either way
+  it stays linked to that Page. A chat without a Project, or in a Project whose
+  folder is not a Git repository, has no such choice and works in its folder.
 - **Send to chat:** send a prompt, with its additions, to an existing chat.
 - **Move to Project:** file the message Page in another Project's Database.
 
@@ -750,14 +753,18 @@ and its row show one of these:
   - a primary action with its exact destination visible without hovering.
     Hovering it adds a chat suggestion's summary and the rationale. For a new
     chat it then says `Runs on` with the Agent's mark, name, model, effort and
-    speed the chat will start with. Last, apart from that, `Suggested by` names
-    the Agent and model that wrote the suggestion;
-  - for a new chat, a split decision. Its menu half opens the composer's model
-    menu for that message alone: every available Agent's models, then the chosen
-    model's effort and speed. What the chat runs on, chosen by the suggestion or
-    on the decision, shows its model on the menu half whenever it differs from
-    the Inbox's own, so the decision never hides it, and the menu then offers
-    `Use for all Inbox chats`;
+    speed the chat will start with, and, in a Project, `Works in` with its Page's
+    worktree or the Project's checkout. Last, apart from that, `Suggested by`
+    names the Agent and model that wrote the suggestion;
+  - for a new chat, a split decision. Its menu half, `Choose how this chat
+    starts`, opens the composer's model menu for that message alone: every
+    available Agent's models, then the chosen model's effort and speed, then, for
+    a chat with a place to choose, a `Use a worktree` switch that changes where
+    it works without closing the menu. What the chat runs on and where it works,
+    chosen by the suggestion or on the decision, show on the menu half whenever
+    they differ from the Inbox's own: the model by its mark and name, the place
+    by its glyph and `Worktree` or `Local`. The decision never hides them, and the
+    menu then offers `Set as Inbox default`, which makes both the Inbox's own;
   - the member count for a group, with access to its complete scope;
   - `Add to Todo` or `Save to Notes`, whichever the message's kind leads with, unless it is
     the decision itself.
@@ -808,7 +815,8 @@ plain text holding the additions still checked, each as its own paragraph.
 Manual target selection
 searches eligible chats beyond the recent list. For a new chat, the dispatch
 editor shows what it runs on beside `Start chat`, as the composer shows its
-model beside Send, and opens the same model menu.
+model beside Send, followed by `Worktree` or `Local` for a chat with a place to
+choose, and opens the same model menu with the same `Use a worktree` switch.
 
 ## How the Inbox plans
 

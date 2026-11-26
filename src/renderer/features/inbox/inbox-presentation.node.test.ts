@@ -899,6 +899,22 @@ describe("inbox presentation", () => {
         additions: [],
       });
     });
+
+    it("gives a place to work only to a new chat, and null leaves it following the Inbox", () => {
+      expect(inboxRowAction(chat, { proposalId: "p", worktree: false, dropped: [] })).toEqual({
+        ...chat,
+        worktree: false,
+      });
+      expect(
+        inboxRowAction(
+          { ...chat, worktree: false },
+          { proposalId: "p", worktree: null, dropped: [] },
+        ),
+      ).toEqual({ ...chat, worktree: null });
+      // Where an Automation's run works belongs to its Automation.
+      const run = { type: "execute_decision" as const, decisionId: "dispatch:1", agent: null };
+      expect(inboxRowAction(run, { proposalId: "p", worktree: false, dropped: [] })).toBeNull();
+    });
   });
 
   it("admits only Page rows to the chat projection", () => {

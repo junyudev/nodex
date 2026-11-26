@@ -12,7 +12,11 @@ import {
   AgentModelPicker,
   type AgentModelCatalogPresentation,
 } from "@/components/shared/agent-runtime/agent-model-picker";
-import { AgentInstanceIcon, CompactChevronDownIcon } from "@/components/shared/icons";
+import {
+  AgentInstanceIcon,
+  CompactChevronDownIcon,
+  WorktreeStatusIcon,
+} from "@/components/shared/icons";
 import { NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
@@ -25,6 +29,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useAgentInstances } from "../local-conversation/use-agent-instances";
 import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
+import {
+  InboxChatLocationLabel,
+  USE_A_WORKTREE,
+  useInboxChatLocationText,
+} from "./inbox-chat-location";
 import {
   chooseInboxChatOptions,
   chooseInboxModel,
@@ -124,19 +133,31 @@ export function InboxAgentLabel({
   );
 }
 
-/** A quiet inline trigger, as the composer's model selector sits beside its send button. */
+/**
+ * A quiet inline trigger, as the composer's model selector sits beside its send button. A new
+ * chat with a Project also says where it works, which the same menu changes.
+ */
 export const InboxAgentInlineTrigger = forwardRef<
   HTMLButtonElement,
-  ComponentPropsWithoutRef<"button"> & { readonly presentation: InboxAgentPresentation }
->(function InboxAgentInlineTrigger({ presentation, className, ...props }, ref) {
+  ComponentPropsWithoutRef<"button"> & {
+    readonly presentation: InboxAgentPresentation;
+    readonly worktree?: boolean;
+  }
+>(function InboxAgentInlineTrigger({ presentation, worktree, className, ...props }, ref) {
   const intl = useIntl();
+  const location = useInboxChatLocationText();
   return (
     <button
       ref={ref}
       type="button"
       aria-label={intl.formatMessage(
         { id: "inbox.inboxAgentPicker.runsOnValue", defaultMessage: "Runs on {value1}" },
-        { value1: inboxAgentLine(presentation) },
+        {
+          value1:
+            worktree === undefined
+              ? inboxAgentLine(presentation)
+              : `${inboxAgentLine(presentation)} · ${location.name(worktree)}`,
+        },
       )}
       {...props}
       className={cn(
@@ -146,10 +167,22 @@ export const InboxAgentInlineTrigger = forwardRef<
       )}
     >
       <InboxAgentLabel presentation={presentation} />
+      {worktree === undefined ? null : (
+        <InboxChatLocationLabel worktree={worktree} className="ms-0.5" />
+      )}
       <CompactChevronDownIcon className="icon-2xs shrink-0" />
     </button>
   );
 });
+
+/**
+ * Where one message's new chat works, chosen in the same menu as what it runs on. Left out when
+ * the chat has no Project, since only a Project has a checkout to keep it apart from.
+ */
+export interface InboxChatWorktreeChoice {
+  readonly value: boolean;
+  readonly onChange: (worktree: boolean) => void;
+}
 
 const PURPOSE_LABELS: Readonly<Record<InboxAgentPurpose, MessageDescriptor>> = {
   chat: defineMessage({
@@ -172,6 +205,7 @@ export function InboxAgentPicker({
   onChange,
   trigger,
   toggles,
+  worktree,
   disabled = false,
   openOnMount = false,
 }: {
@@ -193,6 +227,8 @@ export function InboxAgentPicker({
   readonly trigger: "field" | "inline" | ReactElement;
   /** Settings of the chosen Agent itself, such as a Page's Start automatically. */
   readonly toggles?: AgentModelCatalogPresentation["toggles"];
+  /** For one message's new chat: where it works, switched beside what it runs on. */
+  readonly worktree?: InboxChatWorktreeChoice;
   readonly disabled?: boolean;
   readonly openOnMount?: boolean;
 }) {
@@ -210,10 +246,14 @@ export function InboxAgentPicker({
   // An effort or speed set on Nodex's default keeps the model it ran on, so it stops following.
   const chooseOptions = (change: Parameters<typeof chooseInboxChatOptions>[1]) =>
     onChange(chooseInboxChatOptions(pinInboxAgentChoice(agents, value, purpose), change));
+  // How one message's chat starts can differ from the Inbox's in what it runs on, where it works,
+  // or both; either can become the Inbox's own.
+  const worktreeDiffers =
+    worktree !== undefined && worktree.value !== agents.settings.newChatsUseWorktrees;
   const differs =
     scope === "message" &&
     purpose === "chat" &&
-    !sameInboxAgentChoice(value, agents.settings.chatAgent);
+    (!sameInboxAgentChoice(value, agents.settings.chatAgent) || worktreeDiffers);
   // The Inbox's own choices say when Nodex picks them, and can go back to that.
   const isDefault = scope === "inbox" && sameInboxAgentChoice(value, DEFAULT_INBOX_AGENT_CHOICE);
   const defaultPresentation =
@@ -237,7 +277,7 @@ export function InboxAgentPicker({
         ) : null}
       </NodexSettingsDropdownTrigger>
     ) : trigger === "inline" ? (
-      <InboxAgentInlineTrigger presentation={presentation} />
+      <InboxAgentInlineTrigger presentation={presentation} worktree={worktree?.value} />
     ) : (
       trigger
     );
@@ -309,16 +349,32 @@ export function InboxAgentPicker({
           const target = agentSettingsTarget(model.selected.binding);
           openAgentSettings?.(target.kind, target.instanceId);
         },
-        toggles,
+        toggles: [
+          ...(worktree
+            ? [
+                {
+                  label: intl.formatMessage(USE_A_WORKTREE),
+                  icon: <WorktreeStatusIcon />,
+                  checked: worktree.value,
+                  change: worktree.onChange,
+                },
+              ]
+            : []),
+          ...(toggles ?? []),
+        ],
         // A choice for one decision can become the Inbox's own, so the two never drift apart unseen.
         actions: differs
           ? [
               {
                 label: intl.formatMessage({
-                  id: "inbox.inboxAgentPicker.useForAllInboxChats",
-                  defaultMessage: "Use for all Inbox chats",
+                  id: "inbox.inboxAgentPicker.setAsInboxDefault",
+                  defaultMessage: "Set as Inbox default",
                 }),
-                run: () => void agents.save({ chatAgent: value }),
+                run: () =>
+                  void agents.save({
+                    chatAgent: value,
+                    ...(worktree ? { newChatsUseWorktrees: worktree.value } : {}),
+                  }),
               },
             ]
           : defaultPresentation

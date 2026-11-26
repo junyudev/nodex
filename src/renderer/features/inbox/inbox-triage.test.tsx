@@ -350,6 +350,60 @@ describe("InboxTriage", () => {
     );
   });
 
+  test("a new chat's place to work is switched beside its model, shown on the decision, and sent", async () => {
+    const agents = inboxAgentsFixture();
+    const commands = renderTriage({ agents });
+    const menuHalf = () => screen.getByRole("button", { name: "Choose how this chat starts" });
+    // Following the Inbox's own choice, the decision says nothing about where the chat works.
+    expect(menuHalf().textContent).toBe("");
+    await click("Choose how this chat starts");
+    const worktree = await screen.findByRole("switch", { name: "Use a worktree" });
+    expect(worktree.getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      fireEvent.click(worktree);
+      await Promise.resolve();
+    });
+    // The menu stays open, and the choice that now differs from the Inbox's shows on the decision.
+    expect(
+      screen.getByRole("switch", { name: "Use a worktree" }).getAttribute("aria-checked"),
+    ).toBe("false");
+    expect(menuHalf().textContent).toBe("Local");
+    await click("Set as Inbox default");
+    await waitFor(() =>
+      expect(agents.save).toHaveBeenCalledWith({
+        chatAgent: agents.settings.chatAgent,
+        newChatsUseWorktrees: false,
+      }),
+    );
+    await click("New chat in Nodex");
+    await waitFor(() =>
+      expect(commands.confirm).toHaveBeenCalledWith(proposal(), {
+        ...proposal().action,
+        worktree: false,
+      }),
+    );
+  });
+
+  test("a projectless chat has no place to choose", async () => {
+    renderTriage({
+      item: item({
+        proposal: proposal({
+          action: {
+            type: "new_chat",
+            additions: [],
+            projectId: null,
+            prompt: "Plan it.",
+            agent: null,
+          },
+          targetProjectName: null,
+        }),
+      }),
+    });
+    await click("Choose how this chat starts");
+    await screen.findByRole("slider", { name: "Effort" });
+    expect(screen.queryByRole("switch", { name: "Use a worktree" })).toBeNull();
+  });
+
   test("Edit rewrites the message itself and asks nothing to run", async () => {
     const commands = renderTriage();
     await click("Edit");

@@ -31,7 +31,7 @@ export function ModelMenu({
   readonly query: MotionValue<string>;
   readonly queryPlaceholderOpacity: MotionValue<number>;
   readonly listHeight?: number;
-  /** Rows after Show all models, such as the Inbox's Use for all Inbox chats. */
+  /** Rows after Show all models, such as the Inbox's Set as Inbox default. */
   readonly actions?: ReactNode;
 }) {
   const copy = useReplicaCopy();

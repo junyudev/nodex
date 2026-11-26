@@ -274,7 +274,7 @@ function HeroPlayback({ controls }: { readonly controls: boolean }) {
             query={modelQuery}
             queryPlaceholderOpacity={modelQueryPlaceholder}
             listHeight={168}
-            actions={<div className="px-2 py-[5px]">{copy.allInboxChats}</div>}
+            actions={<div className="px-2 py-[5px]">{copy.setAsInboxDefault}</div>}
           />
         ) : null}
       </AnimatePresence>

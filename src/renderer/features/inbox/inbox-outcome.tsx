@@ -10,6 +10,7 @@ import {
 } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import type { InboxChatTone, InboxOutcome, InboxOutcomeIcon } from "./inbox-presentation";
+import { InboxChatLocationLabel } from "./inbox-chat-location";
 
 const TONE_DOT: Readonly<Record<InboxChatTone, string>> = {
   working: "bg-token-charts-blue animate-pulse",
@@ -73,6 +74,12 @@ export function InboxOutcomeLine({
     >
       {glyph ? <InboxOutcomeGlyph icon={outcome.icon} /> : null}
       <span className="min-w-0 truncate">{outcome.label}</span>
+      {outcome.worktree != null ? (
+        <span className="flex shrink-0 items-center gap-1">
+          <span aria-hidden="true">·</span>
+          <InboxChatLocationLabel worktree={outcome.worktree} />
+        </span>
+      ) : null}
       {outcome.status ? (
         <span className="flex shrink-0 items-center gap-1">
           <span aria-hidden="true">·</span>

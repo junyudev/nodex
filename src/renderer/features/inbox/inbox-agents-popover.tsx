@@ -16,6 +16,7 @@ import {
   type InboxAgents,
 } from "./inbox-agent-picker";
 import { InboxSuggestionModePicker } from "./inbox-suggestion-mode-picker";
+import { USE_A_WORKTREE } from "./inbox-chat-location";
 
 const SUGGESTION_HINTS = {
   automatic: defineMessage({
@@ -207,10 +208,7 @@ export function InboxAgentsPopover({
                 so they stay on while suggestions are off. */}
             <div className="flex flex-col gap-2 pt-1">
               <SwitchRow
-                label={intl.formatMessage({
-                  id: "inbox.inboxAgentsPopover.useAWorktree",
-                  defaultMessage: "Use a worktree",
-                })}
+                label={intl.formatMessage(USE_A_WORKTREE)}
                 checked={agents.settings.newChatsUseWorktrees}
                 disabled={!agents.settingsReady}
                 onCheckedChange={(newChatsUseWorktrees) =>

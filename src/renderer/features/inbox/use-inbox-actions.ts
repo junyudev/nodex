@@ -7,6 +7,7 @@ import type {
   InboxConfirmationDraft,
   InboxDispatchAction,
   InboxEntryKind,
+  InboxExecutionSelection,
   InboxPageBasis,
   InboxProposal,
   InboxPreparedConfirmation,
@@ -41,6 +42,7 @@ import { CoreApiError } from "@/lib/core-api-error";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { RendererCommandRejectedError } from "@/lib/renderer-command";
 import { inboxReceiptNeedsReview, type InboxDecision } from "./inbox-presentation";
+import { projectKnownOutsideGit } from "./inbox-chat-location";
 import { describeInboxSnoozeConfirmation } from "./inbox-snooze";
 import { invalidateInbox } from "./use-inbox";
 import { useInboxCaptureState } from "./use-inbox-capture";
@@ -267,6 +269,7 @@ export function useInboxActions(
     action: InboxDispatchAction,
     sessionId: string,
     chat: InboxChat | null,
+    selection: InboxExecutionSelection | null | undefined,
   ): InboxDecision => {
     switch (action.type) {
       case "plan":
@@ -279,14 +282,22 @@ export function useInboxActions(
         return { kind: "save_to_notes" };
       case "move_to_project":
         return { kind: "move", projectName: projectName(action.projectId) };
-      case "new_chat":
+      case "new_chat": {
+        // Where the chat works is what its confirmation fixed, unless its Project has no Git
+        // repository to make a worktree from.
+        const project = projects.find((candidate) => candidate.id === action.projectId);
         return {
           kind: "chat",
           type: "new_chat",
           sessionId,
           chatTitle: null,
-          projectName: projectName(action.projectId),
+          projectName: project?.name ?? null,
+          worktree:
+            project && selection && !projectKnownOutsideGit(queryClient, project)
+              ? selection.worktree
+              : null,
         };
+      }
       case "send_to_chat":
         return {
           kind: "chat",
@@ -330,7 +341,7 @@ export function useInboxActions(
         if (action) {
           onDecided(
             draft.basis.map((basis) => basis.pageId),
-            decisionOf(action, prepared.sessionId, chat),
+            decisionOf(action, prepared.sessionId, chat, prepared.executionSelection),
           );
         }
         if (

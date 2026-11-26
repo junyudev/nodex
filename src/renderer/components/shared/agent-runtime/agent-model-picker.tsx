@@ -563,6 +563,7 @@ export function AgentModelPickerView({
               onClick={() => toggle.change(!toggle.checked)}
             >
               <NodexMenuRowContent
+                leading={toggle.icon}
                 trailing={<NodexSwitchTrack checked={toggle.checked} size="compact" />}
               >
                 {toggle.label}

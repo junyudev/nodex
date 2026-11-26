@@ -94,7 +94,7 @@ test("Inbox advice answers a send, survives edits, and steps back while usage ru
           "Each row ends with the step it recommends, any labeled alternative outlined beside it",
           {
             unrequested: "Handle manually",
-            current: "Choose the model for this chat",
+            current: "Choose how this chat starts",
             outdated: "Suggest again",
             failed: "Retry",
           },

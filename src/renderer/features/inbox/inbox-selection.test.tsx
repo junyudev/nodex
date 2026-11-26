@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { ReactNode } from "react";
 import { render, settleAsyncRender } from "@/test/dom";
 import { DEFAULT_INBOX_SETTINGS, type InboxChat } from "../../../shared/inbox";
+import type { Project } from "../../../shared/types";
 import { readInboxChatTargets, readInboxSettings, updateInboxSettings } from "@/lib/inbox-runtime";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { agentRuntimeProvidersQueryOptions } from "@/lib/use-agent-runtime-providers";
@@ -245,15 +246,21 @@ describe("Inbox destination and Agent selection", () => {
     );
   });
 
-  test("a hand-written new chat says whether it runs in a worktree, and sends its own choice", async () => {
+  test("a hand-written new chat in a Project says where it works, and changes it in the same menu", async () => {
     const onSubmit = vi.fn(async () => true);
     renderQuery(
       <InboxDispatchEditor
         initial={draftFromAction(
-          { type: "new_chat", additions: [], projectId: null, prompt: "Compare both", agent: null },
+          {
+            type: "new_chat",
+            additions: [],
+            projectId: "project:A",
+            prompt: "Compare both",
+            agent: null,
+          },
           "Compare both",
         )}
-        projects={[]}
+        projects={[{ id: "project:A", name: "Alpha", lifecycle: "active" } as Project]}
         agents={inboxAgentsFixture({
           settings: { ...DEFAULT_INBOX_SETTINGS, newChatsUseWorktrees: false },
         })}
@@ -261,15 +268,20 @@ describe("Inbox destination and Agent selection", () => {
         onCancel={vi.fn()}
       />,
     );
-    // The Inbox's setting is what the chat runs in until this message chooses otherwise.
-    expect(screen.getByRole("button", { name: "Worktree" }).ariaPressed).toBe("false");
-    await click("Worktree");
-    expect(screen.getByRole("button", { name: "Worktree" }).ariaPressed).toBe("true");
+    // The Inbox's setting is where the chat works until this message chooses otherwise.
+    await click("Runs on Codex · GPT-6 Astra · Medium · Local");
+    await click("Use a worktree", "switch");
+    expect(
+      screen.getByRole("switch", { name: "Use a worktree" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Runs on Codex · GPT-6 Astra · Medium · Worktree" }),
+    ).toBeTruthy();
     await click("Start chat");
     expect(onSubmit).toHaveBeenCalledWith(
       {
         type: "new_chat",
-        projectId: null,
+        projectId: "project:A",
         prompt: "Compare both",
         agent: null,
         worktree: true,

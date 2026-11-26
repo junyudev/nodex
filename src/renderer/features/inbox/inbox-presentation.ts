@@ -61,14 +61,16 @@ export const isChatAction = (
   action.type === "new_chat" || action.type === "send_to_chat";
 
 /**
- * What a row changed on one suggestion before deciding: a model chosen on its decision in place of
- * the suggestion's (null runs it on the Inbox's own), and the additions it unchecked.
+ * What a row changed on one suggestion before deciding: a model or a place to work chosen on its
+ * decision in place of the suggestion's (null follows the Inbox's own), and the additions it
+ * unchecked.
  */
 export interface InboxRowEdit {
   readonly proposalId: string;
   readonly revision?: number;
   readonly droppedSkillNames?: readonly string[];
   readonly agent?: InboxAgentChoice | null;
+  readonly worktree?: boolean | null;
   readonly dropped: readonly number[];
 }
 
@@ -80,25 +82,33 @@ export function inboxRowAction(
   if (!edit) return null;
   const choosesAgent =
     edit.agent !== undefined && (action.type === "new_chat" || action.type === "execute_decision");
+  const choosesWorktree = edit.worktree !== undefined && action.type === "new_chat";
   const dropsAdditions = edit.dropped.length > 0 && isChatAction(action);
-  if (!choosesAgent && !dropsAdditions && !edit.droppedSkillNames?.length) return null;
-  const withAgent =
-    choosesAgent && (action.type === "new_chat" || action.type === "execute_decision")
-      ? { ...action, agent: edit.agent ?? null }
-      : action;
-  return isChatAction(withAgent)
+  if (!choosesAgent && !choosesWorktree && !dropsAdditions && !edit.droppedSkillNames?.length)
+    return null;
+  const withChoices =
+    action.type === "new_chat"
+      ? {
+          ...action,
+          ...(choosesAgent ? { agent: edit.agent ?? null } : {}),
+          ...(choosesWorktree ? { worktree: edit.worktree ?? null } : {}),
+        }
+      : choosesAgent && action.type === "execute_decision"
+        ? { ...action, agent: edit.agent ?? null }
+        : action;
+  return isChatAction(withChoices)
     ? {
-        ...withAgent,
-        additions: withAgent.additions.filter((_, index) => !edit.dropped.includes(index)),
+        ...withChoices,
+        additions: withChoices.additions.filter((_, index) => !edit.dropped.includes(index)),
         ...(edit.droppedSkillNames?.length
           ? {
-              skills: (withAgent.skills ?? []).filter(
+              skills: (withChoices.skills ?? []).filter(
                 ({ name }) => !edit.droppedSkillNames?.includes(name),
               ),
             }
           : {}),
       }
-    : withAgent;
+    : withChoices;
 }
 
 /** Hands the work on: to a chat, or to a run of the automation the message came from. */
@@ -368,6 +378,11 @@ export interface InboxOutcome {
    * Activity marks the line about it with the chat's live state.
    */
   readonly inProgress: boolean;
+  /**
+   * Where a new chat in a Project was just started to work, as its decision fixed it: its Page's
+   * worktree or the Project's checkout. Absent where the place was not a choice or is not known.
+   */
+  readonly worktree?: boolean | null;
 }
 
 /** Held without an Agent: both can go back to the Inbox. */
@@ -704,6 +719,8 @@ export type InboxDecision =
       /** The receiving chat's title, when it already has one. */
       readonly chatTitle: string | null;
       readonly projectName: string | null;
+      /** Where a new chat in a Project works, as its confirmation fixed it. */
+      readonly worktree?: boolean | null;
     };
 
 /** What a message shows in its place in the Inbox between the decision and folding away. */
@@ -800,6 +817,7 @@ export function describeInboxDecision(
         canReturn: false,
         done: false,
         inProgress: true,
+        worktree: decision.worktree ?? null,
       };
   }
 }
