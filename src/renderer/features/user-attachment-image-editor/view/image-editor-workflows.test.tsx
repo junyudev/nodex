@@ -218,6 +218,12 @@ describe("image preview dialog", () => {
         await Promise.resolve();
       });
       expect(download).not.toHaveBeenCalled();
+      // The dialog stays usable for the image it shows next.
+      await waitFor(() =>
+        expect(view.getByRole("button", { name: "Download image" }).hasAttribute("disabled")).toBe(
+          false,
+        ),
+      );
     });
 
     test("offers the optional edit action and closes after accepting it", async () => {

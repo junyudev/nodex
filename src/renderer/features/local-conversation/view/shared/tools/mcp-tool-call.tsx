@@ -38,6 +38,7 @@ import { ToolCallCodePanel } from "./tool-call-inspection";
 import { inspectMcpToolCall, ToolCallInspector } from "./tool-call-inspector";
 import { WebMcpToolActivity } from "./webmcp-tool-activity";
 import { ToolOutputImage } from "./tool-output-image";
+import { ContentImageViewer } from "../content-image-viewer";
 import {
   buildMcpAppSidePanelInput,
   isMcpAppHtmlTooLarge,
@@ -560,13 +561,15 @@ function McpResultBody({
       {hasMcpAppBranch ? appBody : null}
       {!hasMcpAppBranch && displayContent.length > 0 ? (
         <div className="[&_*]:text-token-foreground/50 flex flex-col gap-0.5">
-          {budgetedDisplayContent.blocks.map((entry, index) => (
-            <McpContentBlock
-              key={index}
-              actions={index === textActionsIndex ? inspectionActions : null}
-              {...entry}
-            />
-          ))}
+          <ContentImageViewer>
+            {budgetedDisplayContent.blocks.map((entry, index) => (
+              <McpContentBlock
+                key={index}
+                actions={index === textActionsIndex ? inspectionActions : null}
+                {...entry}
+              />
+            ))}
+          </ContentImageViewer>
           {budgetedDisplayContent.omittedCharacters > 0 ? (
             <div className="px-2 py-1 text-xs text-token-description-foreground">
               {intl.formatMessage(

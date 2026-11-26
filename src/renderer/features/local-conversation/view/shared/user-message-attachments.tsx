@@ -5,9 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type Ref,
 } from "react";
@@ -16,17 +14,11 @@ import { ActivitySpinnerIcon, FileIcon, ImageIcon } from "@/components/shared/ic
 import { InlineReferenceVisual } from "@/components/board/inline-reference-visual";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
-  createConversationImageActions,
-  conversationMediaFilename,
-  downloadImageDataUrl,
-  fetchImageSourceAsDataUrl,
   openUserAttachmentImagePreview,
   useContentImageScope,
   useContentImage,
 } from "@/lib/content-image";
-import { showConversationImageMenu } from "@/components/conversation-media/conversation-image-menu";
 
-import { classifyImageSource } from "../../../../../shared/image-source";
 import {
   imagePlaceholderCount,
   type ImagePlaceholderReference,
@@ -44,6 +36,7 @@ import { ComposerAttachmentStrip } from "@/components/composer/composer-attachme
 import { ComposerImageAttachmentThumbnail } from "../composer/image-attachments/composer-image-attachment-thumbnail";
 import { resolveComposerImageAttachmentSize } from "../composer/image-attachments/composer-image-attachment-model";
 import { NO_UNAVAILABLE_IMAGES, UnavailableImageChip } from "./unavailable-image";
+import { useContentImageMenu } from "./content-image-viewer";
 
 export function ImageLoadingTile({ label }: { label: string }) {
   return (
@@ -171,6 +164,7 @@ export function ConversationImageThumbnail({
   isError,
   alt,
   onOpenPreview,
+  onImageError,
   previewLabel,
   buttonRef,
 }: {
@@ -179,6 +173,7 @@ export function ConversationImageThumbnail({
   isError: boolean;
   alt: string;
   onOpenPreview: (trigger: HTMLButtonElement) => void;
+  onImageError?: () => void;
   previewLabel?: string;
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
@@ -221,6 +216,7 @@ export function ConversationImageThumbnail({
       fit="cover"
       bordered
       onOpenPreview={onOpenPreview}
+      onImageError={onImageError}
       size={80}
       previewLabel={previewLabel}
       buttonRef={buttonRef}
@@ -248,48 +244,15 @@ interface UserMessageImages {
 
 const UserMessageImagesContext = createContext<UserMessageImages | null>(null);
 
-/** An image's actions, as an Agent's images have them, at the pointer. */
 function useUserImageMenu(attachment: CodexUserImageAttachment, url: string | null) {
-  const { composerTarget, conversationId, hostId } = useContentImageScope();
-  const lifetime = useRef<AbortController | null>(null);
-  useEffect(() => () => lifetime.current?.abort(), []);
-  return (event: ReactMouseEvent<HTMLElement>) => {
-    if (!url) return;
-    lifetime.current?.abort();
-    const controller = new AbortController();
-    lifetime.current = controller;
-    const image = event.currentTarget.querySelector("img") ?? undefined;
-    const source = classifyImageSource(attachment.source);
-    const isCurrent = () => !controller.signal.aborted && (image?.isConnected ?? true);
-    const filename = conversationMediaFilename(attachment.source);
-    const actions = createConversationImageActions({
-      url,
-      image,
-      raw: attachment.source,
-      alt: getIntl().formatMessage({
-        id: "conversation.userMessageAttachments.userAttachment",
-        defaultMessage: "User attachment",
-      }),
-      hostId,
-      threadId: conversationId ?? undefined,
-      path: source.kind === "path" ? source.path : null,
-      composerTarget: composerTarget ?? undefined,
-      isCurrent,
-      signal: controller.signal,
-      download: async () => {
-        const data = await fetchImageSourceAsDataUrl(url, undefined, {
-          signal: controller.signal,
-          isCurrent,
-          image,
-        });
-        if (isCurrent()) await downloadImageDataUrl(data, filename);
-      },
-    });
-    if (showConversationImageMenu(actions, { x: event.clientX, y: event.clientY }, isCurrent)) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  };
+  return useContentImageMenu(
+    attachment.source,
+    url,
+    getIntl().formatMessage({
+      id: "conversation.userMessageAttachments.userAttachment",
+      defaultMessage: "User attachment",
+    }),
+  );
 }
 
 /** One of the message's images: read, and in the message's viewer once it has been. */

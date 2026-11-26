@@ -100,7 +100,8 @@ async function downloadPreviewImage(
         }),
       );
   } finally {
-    if (isCurrent?.() !== false) publishPending(false);
+    // Pending belongs to the dialog, which may already show another image of its sequence.
+    publishPending(false);
   }
 }
 

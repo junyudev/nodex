@@ -1,4 +1,4 @@
-import { act, waitFor } from "@testing-library/react";
+import { act, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, test, describe } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 import "@/globals.css";
@@ -115,6 +115,76 @@ describe("mcp tool call", () => {
       }
     },
   );
+
+  test("returned images open full size in one viewer that moves between those that decode", async () => {
+    await page.viewport(900, 700);
+    const second = btoa(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="160" height="90" fill="#2876d8"/></svg>',
+    );
+    const content = [
+      { type: "image" as const, mimeType: "image/svg+xml", data: preview },
+      { type: "text" as const, text: "Two previews captured." },
+      // Bytes no picture decodes from take no place in the sequence.
+      { type: "image" as const, mimeType: "image/png", data: btoa("not a picture") },
+      { type: "image" as const, mimeType: "image/svg+xml", data: second },
+    ];
+    const view = renderWithMaitai(
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <McpToolCall
+            item={{
+              ...item,
+              mcpToolCall: {
+                ...item.mcpToolCall!,
+                result: {
+                  type: "success",
+                  content,
+                  structuredContent: null,
+                  raw: { content, structuredContent: null, _meta: null },
+                },
+              },
+            }}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
+    );
+    const shown = (dialog: HTMLElement) =>
+      within(dialog).getByRole("img", { name: "Tool output" }).getAttribute("src");
+    try {
+      const disclosure = await view.findByRole("button", { name: title });
+      await act(async () => {
+        await userEvent.click(disclosure);
+      });
+      const [first, last] = await waitFor(() => {
+        const images = view.getAllByRole("button", { name: "Tool output" });
+        expect(images).toHaveLength(2);
+        return images;
+      });
+      expect(view.getByText("Image unavailable")).toHaveAttribute("role", "status");
+      await act(async () => {
+        await userEvent.click(first!);
+      });
+      const dialog = await view.findByRole("dialog", { name: "Image preview" });
+      expect(shown(dialog)).toBe(`data:image/svg+xml;base64,${preview}`);
+      expect(within(dialog).queryByRole("button", { name: "Previous image" })).toBeNull();
+
+      await act(async () => {
+        await userEvent.keyboard("{ArrowRight}");
+      });
+      await waitFor(() => expect(shown(dialog)).toBe(`data:image/svg+xml;base64,${second}`));
+      expect(within(dialog).queryByRole("button", { name: "Next image" })).toBeNull();
+      expect(within(dialog).getByRole("button", { name: "Previous image" })).toBeVisible();
+
+      await act(async () => {
+        await userEvent.keyboard("{Escape}");
+      });
+      await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+      // Closing returns to the image the viewer last showed.
+      await waitFor(() => expect(last).toHaveFocus());
+    } finally {
+      view.unmount();
+    }
+  });
 });
 
 describe("tool call inspection", () => {

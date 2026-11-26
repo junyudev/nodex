@@ -6,6 +6,7 @@ import {
 } from "../../../projection/tool-metadata/dynamic-tool-fallback-details";
 import { buildTextPreview, INLINE_TEXT_PREVIEW_MAX_CHARS } from "../../../../../lib/text-preview";
 import type { ToolComponentProps } from "./get-tool-component";
+import { ContentImageViewer } from "../content-image-viewer";
 import { ToolCallCodePanel } from "./tool-call-inspection";
 import { ToolOutputImage } from "./tool-output-image";
 import { useToolCallOutputDetail } from "./use-tool-call-output-detail";
@@ -74,7 +75,7 @@ export function DynamicToolDetails({ item }: { item: ToolComponentProps["item"] 
       {buildDynamicToolAuthoredPanels(call).map((panel, index) => (
         <DetailCodePanel key={index} text={panel.text} title={panel.title} />
       ))}
-      {output}
+      <ContentImageViewer>{output}</ContentImageViewer>
     </div>
   );
 }
