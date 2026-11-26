@@ -256,9 +256,9 @@ export const antigravityAgent = {
     deferredReadingMs: 32_000,
   },
   setup: {
-    signIn: { via: "settings" },
+    signIn: { via: "account" },
     models: "choose",
-    installation: { kind: "managed", id: "antigravity", action: "settings" },
+    installation: { kind: "managed", id: "antigravity" },
     firstRun: { order: 4, showWhenOff: true, requireKnownAccount: true },
   },
   capabilities: {

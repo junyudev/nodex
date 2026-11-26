@@ -7,7 +7,9 @@ import { isRemoteSpace } from "@/lib/renderer-space";
 import {
   INITIAL_FIRST_RUN_STATE,
   decideFirstRun,
+  nextFirstRunAside,
   normalizeFirstRunState,
+  type FirstRunAside,
   type FirstRunEntry,
   type FirstRunState,
   type FirstRunStep,
@@ -62,7 +64,12 @@ export function useFirstRunEntry() {
   };
 }
 
-export function useFirstRunPresentation() {
+/**
+ * Setup holds the window until it finishes or is skipped. Sending the person to Settings for
+ * something setup can't do in place only steps it aside: leaving Settings brings it back at the same
+ * step, and quitting meanwhile resumes it there on the next launch.
+ */
+export function useFirstRunPresentation({ settingsOpen }: { readonly settingsOpen: boolean }) {
   const { state, finish } = useFirstRunState();
   const bootstrap = useQuery({
     queryKey: queryKeys.projects.bootstrap(),
@@ -76,7 +83,10 @@ export function useFirstRunPresentation() {
     isRemoteSpace() || bootstrap.isError ? "unknown" : (bootstrap.data?.status ?? null);
   const decision = decideFirstRun({ state, workspace });
   const [closing, setClosing] = useState(false);
-  const showing = decision === "show";
+  const [aside, setAside] = useState<FirstRunAside>(null);
+  const nextAside = nextFirstRunAside(aside, { setupShows: decision === "show", settingsOpen });
+  if (nextAside !== aside) setAside(nextAside);
+  const showing = decision === "show" && nextAside === null;
   if (closing && !showing) setClosing(false);
   // Existing work settles the question for good, even if that work is later removed.
   const recordExistingWork = decision === "hide" && state?.done === false && workspace === "ready";
@@ -89,5 +99,6 @@ export function useFirstRunPresentation() {
     /** The Workbench is out of reach while setup holds the window. */
     workbenchInert: showing && !closing,
     beginClosing: useCallback(() => setClosing(true), []),
+    stepAsideForSettings: useCallback(() => setAside("leaving"), []),
   };
 }

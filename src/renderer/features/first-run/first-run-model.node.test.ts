@@ -13,6 +13,7 @@ import {
   candidateActivity,
   decideFirstRun,
   firstRunAgentRows,
+  nextFirstRunAside,
   firstTaskForChoice,
   firstTaskPrompt,
   nextFirstRunStep,
@@ -157,6 +158,22 @@ describe("first-run state decoding", () => {
       entry: "replay",
     };
     expect(normalizeFirstRunState({ version: 1, ...saved })).toEqual(saved);
+  });
+});
+
+describe("setup stepping aside for Settings", () => {
+  const shown = { setupShows: true, settingsOpen: false };
+
+  it("returns once Settings has opened and closed again, not before it opens", () => {
+    expect(nextFirstRunAside("leaving", shown)).toBe("leaving");
+    expect(nextFirstRunAside("leaving", { ...shown, settingsOpen: true })).toBe("in-settings");
+    expect(nextFirstRunAside("in-settings", { ...shown, settingsOpen: true })).toBe("in-settings");
+    expect(nextFirstRunAside("in-settings", shown)).toBeNull();
+  });
+
+  it("lets go once setup no longer shows, so nothing hides a later setup", () => {
+    expect(nextFirstRunAside("in-settings", { setupShows: false, settingsOpen: true })).toBeNull();
+    expect(nextFirstRunAside(null, { ...shown, settingsOpen: true })).toBeNull();
   });
 });
 
@@ -466,12 +483,18 @@ describe("first-run Agents", () => {
       status: status(overrides),
     });
 
-    it("offers Antigravity setup as its own built-in Agent", () => {
+    it("installs Antigravity in place, and sends to Settings only where it can't install", () => {
       expect(row(firstRunAgentRows(inputs()), "antigravity")).toMatchObject({
         mark: { kind: "agent", driver: "antigravity" },
         detail: "Antigravity isn’t installed",
-        action: { kind: "agent-settings", label: "Set up" },
+        action: { kind: "installer", label: "Install", sourceId: "antigravity" },
       });
+      const unsupported = antigravityInspection({
+        platform: { os: "linux", arch: "riscv64", supported: false },
+      });
+      expect(
+        row(firstRunAgentRows(inputs({ antigravityInspection: unsupported })), "antigravity"),
+      ).toMatchObject({ action: { kind: "agent-settings", label: "Set up" } });
     });
 
     it("groups a PATH or downloaded runtime above Agents that need installing", () => {
@@ -528,9 +551,10 @@ describe("first-run Agents", () => {
         action: null,
       });
       expect(project([{ ...account, checkPending: true }])).toMatchObject({ state: "checking" });
+      // Its own account controls open beneath the row instead of sending the person to Settings.
       expect(project([{ ...account, auth: { status: "unauthenticated" } }])).toMatchObject({
         state: "action",
-        action: { kind: "agent-settings", label: "Sign in" },
+        action: { kind: "account-sign-in", label: "Sign in", target: "antigravity_work" },
       });
       expect(project([{ ...account, status: "error", issue: "unresponsive" }])).toMatchObject({
         detail: "Antigravity didn’t respond in time",

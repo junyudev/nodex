@@ -1,5 +1,10 @@
-import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
+import { agentSettingsTarget } from "@/lib/agent-settings-navigation";
 import { useIntl } from "@/lib/i18n";
+import {
+  buildAgentSettingsPath,
+  buildSettingsAnchorPath,
+} from "@/components/workbench/workbench-settings-routes";
+import { APP_COMPONENTS_SETTINGS_ANCHOR } from "@/features/app-components/app-components-settings-section";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
@@ -9,7 +14,7 @@ import { APP_SHELL_FIRST_RUN_LAYER_CLASS } from "@/lib/app-shell-layers";
 import type { Project, ProjectCreateInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useFirstRunTeam } from "./first-run-agents";
-import { FirstRunAgentsStep } from "./first-run-agents-step";
+import { FirstRunAgentsStep, type FirstRunSettingsDestination } from "./first-run-agents-step";
 import {
   firstRunSteps,
   firstTaskPrompt,
@@ -32,6 +37,8 @@ export interface FirstRunOverlayProps {
     readonly prompt: string;
   }) => Promise<void>;
   readonly onStartNewChat: (projectId: string | null) => Promise<void>;
+  /** Opens a Settings path in the Workbench; setup steps aside until it closes. */
+  readonly onOpenSettings: (path: string) => void;
 }
 
 function FirstRunFlow({
@@ -41,9 +48,9 @@ function FirstRunFlow({
   onCreateProject,
   onStartNewChatWithPrompt,
   onStartNewChat,
+  onOpenSettings,
 }: FirstRunOverlayProps) {
   const intl = useIntl();
-  const openAgentSettings = useAgentSettingsNavigation();
   const { state, goTo, finish } = useFirstRunState();
   const reducedMotion = useReducedMotion();
   const progress = useChatImportProgress();
@@ -79,6 +86,17 @@ function FirstRunFlow({
       }
     });
   const skip = () => land(null);
+  /** Settings is a detour, never the end: setup comes back at this step once Settings closes. */
+  const openSettings = (destination: FirstRunSettingsDestination) => {
+    const target = destination.kind === "agent" && destination.binding;
+    const agent = target ? agentSettingsTarget(target) : null;
+    presentation.stepAsideForSettings();
+    onOpenSettings(
+      destination.kind === "agent"
+        ? buildAgentSettingsPath(agent?.kind, agent?.instanceId)
+        : buildSettingsAnchorPath("general-settings", APP_COMPONENTS_SETTINGS_ANCHOR),
+    );
+  };
   const advance = () => {
     const next = nextFirstRunStep(entry, step);
     if (next) void goTo(next);
@@ -183,12 +201,7 @@ function FirstRunFlow({
               <FirstRunAgentsStep
                 entry={entry}
                 onContinue={advance}
-                onOpenAgentSettings={(binding) => {
-                  void close(async () => {
-                    const target = binding && agentSettingsTarget(binding);
-                    openAgentSettings?.(target?.kind, target?.instanceId);
-                  });
-                }}
+                onOpenSettings={openSettings}
               />
             ) : (
               <FirstRunProjectsStep

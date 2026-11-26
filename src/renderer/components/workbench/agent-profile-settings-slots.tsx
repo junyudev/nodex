@@ -20,7 +20,8 @@ export type EditableAgentProfile = AgentProfileInput & { readonly savedSecrets: 
 
 interface ProfileSettingsSlots {
   readonly sharedRuntime?: (input: { open: boolean; profileCount: number }) => ReactNode;
-  readonly account?: (input: { saved: AgentProfile | null }) => ReactNode;
+  /** Settings shows it in the profile editor; setup shows it beneath an Agent's row to sign in. */
+  readonly account?: (input: { saved: AgentProfile | null; signInOnOpen?: boolean }) => ReactNode;
   readonly bespokeEditors?: (input: {
     draft: EditableAgentProfile;
     disabled: boolean;
@@ -34,13 +35,20 @@ interface ProfileSettingsSlots {
   }) => ReactNode;
 }
 
-function AntigravityProfileAccount({ saved }: { saved: AgentProfile | null }) {
+function AntigravityProfileAccount({
+  saved,
+  signInOnOpen,
+}: {
+  readonly saved: AgentProfile | null;
+  readonly signInOnOpen?: boolean;
+}) {
   const intl = useIntl();
   if (saved?.driver === antigravityAgent.driver && saved.enabled) {
     return (
       <AntigravityAccountRow
         backend={{ driver: saved.driver, instanceId: saved.id }}
         authMethod={saved.settings.authMethod}
+        {...(signInOnOpen ? { signInOnOpen } : {})}
       />
     );
   }
@@ -92,7 +100,9 @@ export const agentProfileSettingsSlots: Partial<Record<ProfileAgentDriver, Profi
       sharedRuntime: ({ open, profileCount }) => (
         <AntigravityRuntimeRow open={open} profileCount={profileCount} />
       ),
-      account: ({ saved }) => <AntigravityProfileAccount saved={saved} />,
+      account: ({ saved, signInOnOpen }) => (
+        <AntigravityProfileAccount saved={saved} {...(signInOnOpen ? { signInOnOpen } : {})} />
+      ),
       executableStatus: ({ saved, draft, open }) =>
         saved ? (
           <AntigravityProfileExecutable

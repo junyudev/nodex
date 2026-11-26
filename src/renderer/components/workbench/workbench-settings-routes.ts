@@ -1,3 +1,4 @@
+import { agentSettingsAnchor, type AgentSettingsKind } from "@/lib/agent-settings-navigation";
 import {
   resolveDefaultSettingsSectionId,
   resolveVisibleSettingsSections,
@@ -104,6 +105,12 @@ export function buildBrowserSettingsPath(
 
 export function buildSettingsAnchorPath(sectionId: SettingsSectionId, anchor: string): string {
   return `${buildSettingsPath(sectionId)}#${encodeURIComponent(anchor)}`;
+}
+
+/** Settings > Agents, at one section or one item in it. */
+export function buildAgentSettingsPath(kind?: AgentSettingsKind, instanceId?: string): string {
+  const anchor = kind && agentSettingsAnchor(kind, instanceId);
+  return anchor ? buildSettingsAnchorPath("agent", anchor) : buildSettingsPath("agent");
 }
 
 export function resolveBrowserSettingsDestination(destination: BrowserSettingsDestination): string {

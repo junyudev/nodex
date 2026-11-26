@@ -1,6 +1,7 @@
 import { type AgentSetupTarget } from "@/lib/agent-settings-navigation";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ActivitySpinnerIcon,
   AgentInstanceIcon,
@@ -11,6 +12,9 @@ import {
   SuccessCircleIcon,
 } from "@/components/shared/icons";
 import { TerminalPanel } from "@/components/workbench/workbench-terminal-panel";
+import { agentProfileSettingsSlots } from "@/components/workbench/agent-profile-settings-slots";
+import { readAgentProfiles } from "@/lib/agent-profiles-runtime";
+import { spaceQueryKey } from "@/lib/renderer-space";
 import { NodexHomeMark } from "@/components/ui/nodex-home-mark";
 import { NodexButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +25,7 @@ import { AcpAgentAccount } from "../acp-agents/acp-agent-account";
 import { acpInstanceStatus } from "../acp-agents/acp-agent-model";
 import { acpAgentsOwner } from "../acp-agents/use-acp-agents";
 import { ProviderKeyForm } from "../provider-keys/provider-key-form";
+import { profileAgentDefinition } from "../../../shared/agents/registry";
 import { useFirstRunAgents, useFirstRunTeam } from "./first-run-agents";
 import type { FirstRunAgentMark, FirstRunAgentRow, FirstRunEntry } from "./first-run-model";
 import { FirstRunCard, FirstRunPrimary, FirstRunRow, FirstRunTitle } from "./first-run-frame";
@@ -84,6 +89,23 @@ function AcpSignIn({
       />
     </div>
   );
+}
+
+/**
+ * An Agent's own account controls, in place under its row, as its Settings profile shows them. The
+ * row was pressed to sign in, so signing in starts as they open; closing them cancels it.
+ */
+function AccountSignIn({ binding }: { readonly binding: AgentSetupTarget }) {
+  const driver = profileAgentDefinition(binding.driver)?.driver;
+  const profiles = useQuery({
+    queryKey: spaceQueryKey(["first-run", "agent-profiles", driver ?? null] as const),
+    queryFn: () => (driver ? readAgentProfiles(driver) : null),
+    enabled: driver !== undefined,
+  });
+  const account = driver && agentProfileSettingsSlots[driver]?.account;
+  const saved = profiles.data?.instances.find(({ id }) => id === binding.instanceId);
+  if (!account || !saved) return null;
+  return <div className="ps-[62px] pe-3.5 pb-3.5">{account({ saved, signInOnOpen: true })}</div>;
 }
 
 /** One setup command running where the person can answer it. */
@@ -186,14 +208,19 @@ function NodexCredits({
   );
 }
 
+/** Where setup sends the person for what it can't do in place. */
+export type FirstRunSettingsDestination =
+  | { readonly kind: "agent"; readonly binding?: AgentSetupTarget }
+  | { readonly kind: "components" };
+
 export function FirstRunAgentsStep({
   entry,
   onContinue,
-  onOpenAgentSettings,
+  onOpenSettings,
 }: {
   readonly entry: FirstRunEntry;
   readonly onContinue: () => void;
-  readonly onOpenAgentSettings: (target?: AgentSetupTarget) => void;
+  readonly onOpenSettings: (destination: FirstRunSettingsDestination) => void;
 }) {
   const intl = useIntl();
   const agents = useFirstRunAgents();
@@ -208,10 +235,13 @@ export function FirstRunAgentsStep({
   const act = (row: FirstRunAgentRow) => {
     const kind = row.action?.kind;
     if (kind === "agent-settings") {
-      onOpenAgentSettings(row.action?.binding);
+      const binding = row.action?.binding;
+      onOpenSettings({ kind: "agent", ...(binding ? { binding } : {}) });
+    } else if (kind === "component-settings") {
+      onOpenSettings({ kind: "components" });
     } else if (kind === "api-key-add") {
       setAddingKey((current) => !current);
-    } else if (kind === "inline-sign-in") {
+    } else if (kind === "inline-sign-in" || kind === "account-sign-in") {
       setSigningIn((current) =>
         current === row.action?.target ? null : (row.action?.target ?? null),
       );
@@ -254,7 +284,8 @@ export function FirstRunAgentsStep({
   /** A row whose form or sign-in is open beneath it; its button closes it again. */
   const opened = (row: FirstRunAgentRow) =>
     (row.action?.kind === "api-key-add" && addingKey) ||
-    (row.action?.kind === "inline-sign-in" && signingIn === row.action.target);
+    ((row.action?.kind === "inline-sign-in" || row.action?.kind === "account-sign-in") &&
+      signingIn === row.action.target);
   const finishTerminalSetup = () => {
     setTerminalSetup(null);
     void agents.checkAgain();
@@ -350,6 +381,11 @@ export function FirstRunAgentsStep({
             ) : null}
             {row.action?.kind === "inline-sign-in" && signingIn === row.action.target ? (
               <AcpSignIn instanceId={signingIn} acp={agents.acp} />
+            ) : null}
+            {row.action?.kind === "account-sign-in" &&
+            row.action.binding &&
+            signingIn === row.action.target ? (
+              <AccountSignIn binding={row.action.binding} />
             ) : null}
             {row.id === apiKeyRow && row.state === "action" ? (
               <BrowserApiKeyForm onSubmit={agents.useBrowserApiKey} />

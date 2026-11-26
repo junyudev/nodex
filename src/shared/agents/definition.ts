@@ -24,8 +24,12 @@ export interface AgentCapabilities {
 
 export type AgentAnalyticsFamily = "codex" | "claude" | "opencode" | "antigravity" | "acp";
 
+/**
+ * Where a person signs in. `account` is the Agent's own account controls, which any surface can
+ * show in place, such as beneath a setup row, instead of sending the person to Settings.
+ */
 export type AgentSignIn =
-  | { readonly via: "settings" | "dialog" }
+  | { readonly via: "settings" | "dialog" | "account" }
   | { readonly via: "browser" | "terminal"; readonly owner: string };
 
 /** How a person finishes setup for an Agent instance. */
@@ -35,7 +39,6 @@ export interface AgentSetup {
   readonly installation?: {
     readonly kind: "component" | "managed";
     readonly id: string;
-    readonly action?: "settings";
   };
   readonly firstRun?: {
     readonly order: number;

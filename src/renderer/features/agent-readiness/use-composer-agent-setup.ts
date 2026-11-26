@@ -167,11 +167,13 @@ export function useComposerAgentSetup({
       case "settings":
         break;
     }
-    if (
-      (action.kind === "install" || action.kind === "retry-installation") &&
-      action.sourceId === openCodeAgent.setup.installation.id
-    )
-      return hostInstallation.open(showModels);
+    if (action.kind === "install" || action.kind === "retry-installation") {
+      if (action.sourceId === openCodeAgent.setup.installation.id)
+        return hostInstallation.open(showModels);
+      // The download shows its progress where it was asked for, and the Agent is ready when it ends.
+      if (action.sourceId === antigravityAgent.setup.installation.id)
+        return antigravityRuntimeOwner.run("install");
+    }
     openSettings(binding);
   };
 

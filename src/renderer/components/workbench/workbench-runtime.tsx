@@ -102,6 +102,7 @@ import {
   type ContentSearchOpenRequest,
 } from "@/features/content-search/content-search-context";
 import {
+  buildAgentSettingsPath,
   buildSettingsAnchorPath,
   buildSettingsPath,
   ENVIRONMENTS_SETTINGS_PATH,
@@ -109,7 +110,6 @@ import {
 } from "./workbench-settings-routes";
 import {
   AgentSettingsNavigationProvider,
-  agentSettingsAnchor,
   type AgentSettingsKind,
 } from "@/lib/agent-settings-navigation";
 import type { BrowserSettingsDestination } from "./workbench-settings-routes";
@@ -1242,7 +1242,9 @@ export function WorkbenchRuntime({
   const [commandContentSearchOpenRequest, setCommandContentSearchOpenRequest] =
     useState<ContentSearchOpenRequest | null>(null);
   const workbenchRootRef = useRef<HTMLDivElement | null>(null);
-  const firstRun = useFirstRunPresentation();
+  const firstRun = useFirstRunPresentation({
+    settingsOpen: workbenchWindow.location.kind === "settings",
+  });
   useApplicationPending(firstRun.undecided);
   const pinningPreviewTabIdsRef = useRef<Set<string>>(new Set());
   const focusedPanelGroupRef = workbenchWindow.owner.focusedPanelGroupRef;
@@ -2066,8 +2068,8 @@ export function WorkbenchRuntime({
 
   const openAgentSettings = useCallback(
     (kind?: AgentSettingsKind, instanceId?: string) =>
-      openSettingsAt("agent", kind && agentSettingsAnchor(kind, instanceId)),
-    [openSettingsAt],
+      openSettingsPath(buildAgentSettingsPath(kind, instanceId)),
+    [openSettingsPath],
   );
 
   const openKeyboardShortcutsSettings = useCallback(() => {
@@ -6811,6 +6813,7 @@ export function WorkbenchRuntime({
                   onCreateProject={onCreateProject}
                   onStartNewChatWithPrompt={startNewChatWithPrompt}
                   onStartNewChat={startNewChatInProject}
+                  onOpenSettings={openSettingsPath}
                 />
               </>
             </FileReferenceRouterProvider>

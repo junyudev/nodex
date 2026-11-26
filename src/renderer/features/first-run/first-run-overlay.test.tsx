@@ -119,18 +119,27 @@ const candidate = (path: string, overrides: Partial<ProjectCandidate> = {}): Pro
 
 function setup(overrides: Partial<FirstRunOverlayProps> = {}) {
   const beginClosing = vi.fn();
+  const stepAsideForSettings = vi.fn();
+  const onOpenSettings = vi.fn();
   const onStartNewChatWithPrompt = vi.fn(async () => undefined);
   const onStartNewChat = vi.fn(async () => undefined);
   const onCreateProject = vi.fn(async (input: ProjectCreateInput) =>
     project(`created:${input.name}`, input.sources?.[0] ?? ""),
   );
   let props: FirstRunOverlayProps = {
-    presentation: { undecided: false, showing: true, workbenchInert: true, beginClosing },
+    presentation: {
+      undecided: false,
+      showing: true,
+      workbenchInert: true,
+      beginClosing,
+      stepAsideForSettings,
+    },
     projects: [],
     insets: { left: 92, right: 12 },
     onCreateProject,
     onStartNewChatWithPrompt,
     onStartNewChat,
+    onOpenSettings,
     ...overrides,
   };
   const view = render(<FirstRunOverlay {...props} />);
@@ -148,6 +157,8 @@ function setup(overrides: Partial<FirstRunOverlayProps> = {}) {
     onCreateProject,
     ...overrides,
     beginClosing,
+    stepAsideForSettings,
+    onOpenSettings,
   };
 }
 
@@ -221,6 +232,35 @@ describe("Connect your agents", () => {
     state.agents = [readyAgent];
     act(() => rerender());
     expect(document.activeElement).toBe(primary("Continue"));
+  });
+
+  it("steps aside for Settings without finishing, so the projects step still follows", async () => {
+    state.agents = [
+      readyAgent,
+      {
+        id: "antigravity",
+        slot: "antigravity",
+        mark: { kind: "agent", driver: "antigravity" },
+        label: "Antigravity",
+        detail: "Antigravity needs 1.5.0 or newer",
+        state: "action",
+        found: true,
+        action: {
+          kind: "agent-settings",
+          label: "Settings",
+          binding: { driver: "antigravity", instanceId: "antigravity_work" },
+        },
+      },
+    ];
+    const { beginClosing, stepAsideForSettings, onOpenSettings } = setup();
+    await click(primary("Settings"));
+
+    expect(stepAsideForSettings).toHaveBeenCalledTimes(1);
+    expect(onOpenSettings).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/settings\/agent#.*antigravity_work/u),
+    );
+    expect(beginClosing).not.toHaveBeenCalled();
+    expect(state.current).toMatchObject({ done: false, step: "agents" });
   });
 
   it("previews Claude Code's installer and runs it only when asked", async () => {

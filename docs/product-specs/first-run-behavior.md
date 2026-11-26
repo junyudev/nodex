@@ -23,8 +23,10 @@ Profile opens on setup. A Profile that already holds work never does, however th
 including a restored backup or a Profile prepared through the CLI. If either read fails, the
 Workbench opens, so a broken read can never trap anyone in setup.
 
-Quitting part-way resumes at the same step on the next launch, even though an earlier step may have
-created Projects. Setup state is per Profile and synchronizes across windows: finishing in one
+Setup ends only when the person finishes it or chooses `Skip`. Anything it sends them to Settings
+for steps setup aside instead: the Settings page opens in the Workbench, and leaving Settings brings
+setup back at the same step. Quitting part-way, including from that Settings page, resumes at the
+same step on the next launch, even though an earlier step may have created Projects. Setup state is per Profile and synchronizes across windows: finishing in one
 window closes it in the others.
 
 `Run setup again` in Settings → General and in the command palette replays the same flow. Agents
@@ -59,7 +61,7 @@ existing rows.
 | -------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- |
 | Codex                      | Its account is signed in                            | `Sign in` with ChatGPT in the browser, or `Use API key`                |
 | Claude Code                | A profile is installed and signed in                | `Sign in` in a Terminal under the row when found, or `Install`         |
-| Antigravity                | A profile is installed, signed in and offers models | `Set up` or `Sign in` opens Settings → Agents → Antigravity            |
+| Antigravity                | A profile is installed, signed in and offers models | `Install`, then `Sign in` under the row                                |
 | An Agent added in Settings | Connected, with its models known                    | `Connect`, or its own `Sign in` under the row                          |
 | API key                    | One row per connected key                           | `Add key`, with the form under the row                                 |
 | OpenCode                   | A model is on                                       | `Install`, then `Use free models`. Absent where it can't run           |
@@ -72,8 +74,11 @@ sign-in waits. If Codex is turned off, the row links to **Settings → General �
 Antigravity's built-in row recognizes a downloaded runtime or an `agy` on this computer,
 including installations on the login-shell PATH. An older command stays visible with the version
 needed to connect. Its default profile uses agy's sign-in on this computer, so an `agy` already
-signed in is ready without a step, and a sign-in finished in a Terminal shows up by itself. Set up
-and Sign in open Settings → Agents → Antigravity, where other profiles connect their own accounts.
+signed in is ready without a step, and a sign-in finished in a Terminal shows up by itself. Without
+one, `Install` downloads the runtime in place, with its progress in the row, and `Sign in` opens the
+profile's own account controls under the row, already signing in, as Settings shows them; `Cancel`
+closes them and stops the sign-in. Settings → Agents → Antigravity is where other profiles connect
+their own accounts, and where a computer that can't download the runtime points at an executable.
 
 First-run uses the [same readiness facts](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer)
 as the composer and picker. An installed Agent can name an unreachable account, a check that

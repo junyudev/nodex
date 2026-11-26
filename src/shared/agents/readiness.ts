@@ -6,7 +6,11 @@ export type AgentReadinessProvider = AgentRuntimeOperations["providers.read"]["o
 export type AgentReadinessProblem =
   | { readonly kind: "checking" | "connecting" | "signed-out" | "no-connection" | "not-responding" }
   | { readonly kind: "turned-off"; readonly supplier?: true }
-  | { readonly kind: "not-installed"; readonly onDemand?: true }
+  /**
+   * `onDemand` installs itself on first use; `manual` can't be installed here, so the person points
+   * Settings at an executable instead.
+   */
+  | { readonly kind: "not-installed"; readonly onDemand?: true; readonly manual?: true }
   | { readonly kind: "installing"; readonly progress?: number }
   | { readonly kind: "installation-failed"; readonly retry: "automatic" | "manual" | "settings" }
   | { readonly kind: "needs-update"; readonly version: string }
@@ -102,9 +106,7 @@ function nextStep(
       if (definition.setup?.models === "discover") return { kind: "connect" };
       if (source?.kind === "component") return { kind: "components" };
       if (source?.kind === "managed")
-        return definition.setup?.installation?.action === "settings"
-          ? { kind: "settings" }
-          : { kind: "install", sourceId: source.id };
+        return problem.manual ? { kind: "settings" } : { kind: "install", sourceId: source.id };
       return { kind: "settings" };
     case "turned-off":
       return { kind: problem.supplier ? "components" : "settings" };

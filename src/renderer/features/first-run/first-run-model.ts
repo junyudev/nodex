@@ -95,6 +95,21 @@ export function decideFirstRun(input: {
   return input.workspace === "empty" ? "show" : "hide";
 }
 
+/**
+ * Setup steps aside while it has sent the person to Settings. It is `leaving` until Settings has
+ * opened, since that can take a render, and returns once Settings closes or setup no longer shows.
+ */
+export type FirstRunAside = "leaving" | "in-settings" | null;
+
+export function nextFirstRunAside(
+  aside: FirstRunAside,
+  input: { readonly setupShows: boolean; readonly settingsOpen: boolean },
+): FirstRunAside {
+  if (!aside || !input.setupShows) return null;
+  if (input.settingsOpen) return "in-settings";
+  return aside === "leaving" ? "leaving" : null;
+}
+
 export const firstRunSteps = (entry: FirstRunEntry): readonly FirstRunStep[] =>
   entry === "connect" ? ["agents"] : FIRST_RUN_STEPS;
 
@@ -182,6 +197,7 @@ export type FirstRunAgentAction =
   | "agent-settings"
   | "connect"
   | "inline-sign-in"
+  | "account-sign-in"
   | "api-key-add"
   | "component-settings"
   | "component-retry"
@@ -277,6 +293,8 @@ function rowAction(
         return { ...base, kind: "terminal-sign-in", sourceId: action.owner };
       if (action.via === "dialog" && binding.instanceId)
         return { ...base, kind: "inline-sign-in", target: binding.instanceId };
+      if (action.via === "account" && binding.instanceId)
+        return { ...base, kind: "account-sign-in", target: binding.instanceId };
       return { ...base, kind: "agent-settings" };
     case "connect":
       return binding.instanceId ? { ...base, kind: "connect", target: binding.instanceId } : null;

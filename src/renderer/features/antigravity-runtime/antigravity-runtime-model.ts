@@ -392,12 +392,18 @@ export function antigravityInstallationReadiness(
       : operation?.kind === "install" && operation.phase === "failed"
         ? operation.error?.message
         : null;
+  // Without automatic installation here, the person points Settings at an executable instead.
+  const installable = inspection?.platform.supported !== false;
   if (failure)
     return {
-      problem: { kind: "installation-failed", retry: "settings" },
+      problem: { kind: "installation-failed", retry: installable ? "manual" : "settings" },
       detail: failure,
       found,
     } as const;
-  if (inspection && !executable) return { problem: { kind: "not-installed" }, found } as const;
+  if (inspection && !executable)
+    return {
+      problem: { kind: "not-installed", ...(installable ? {} : { manual: true as const }) },
+      found,
+    } as const;
   return undefined;
 }
