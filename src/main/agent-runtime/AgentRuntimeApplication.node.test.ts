@@ -4097,93 +4097,83 @@ it.effect("Stop targets the selected Run and never substitutes a newer foregroun
   }),
 );
 
-for (const kind of ["user_input", "mcp-elicitation"] as const) {
-  it.effect(`${kind} replies require an exact pending request owned by the selected Run`, () =>
-    Effect.gen(function* () {
-      const fixture = setup();
-      const owner = yield* fixture.owner;
-      const result = yield* owner.launch(launch);
-      const current = fixture.snapshots.get(result.threadId)!;
-      fixture.snapshots.set(result.threadId, {
-        ...current,
-        projection: {
-          ...current.projection,
-          runs: [{ id: "run", threadId: result.threadId, status: "waiting" }] as never,
-          nodes: [{ id: "node", threadId: result.threadId, runId: "run" }] as never,
-          runtimeRequests: [
-            {
-              id: "request",
-              kind,
-              nodeId: "node",
-              status: "pending",
-              responseCapability: { type: "live", providerSessionId: "native-session" },
-            },
-          ] as never,
-        },
-      });
-      assert.equal(
-        (yield* owner
-          .respond({
-            sessionId: launch.sessionId,
-            runId: "other",
-            requestId: "request",
-            answers: { question: ["Yes"] },
-          })
-          .pipe(Effect.result))._tag,
-        "Failure",
-      );
-      yield* owner.respond({
+it.effect("user input replies require an exact pending request owned by the selected Run", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const result = yield* owner.launch(launch);
+    const current = fixture.snapshots.get(result.threadId)!;
+    fixture.snapshots.set(result.threadId, {
+      ...current,
+      projection: {
+        ...current.projection,
+        runs: [{ id: "run", threadId: result.threadId, status: "waiting" }] as never,
+        nodes: [{ id: "node", threadId: result.threadId, runId: "run" }] as never,
+        runtimeRequests: [
+          {
+            id: "request",
+            kind: "user_input",
+            nodeId: "node",
+            status: "pending",
+            responseCapability: { type: "live", providerSessionId: "native-session" },
+          },
+        ] as never,
+      },
+    });
+    assert.equal(
+      (yield* owner
+        .respond({
+          sessionId: launch.sessionId,
+          runId: "other",
+          requestId: "request",
+          answers: { question: ["Yes"] },
+        })
+        .pipe(Effect.result))._tag,
+      "Failure",
+    );
+    yield* owner.respond({
+      sessionId: launch.sessionId,
+      runId: "run",
+      requestId: "request",
+      answers: { question: ["Yes"] },
+      respondedBy: {
+        kind: "agent" as const,
+        senderThreadId: "source-chat",
+        senderSessionId: "source-session",
+      },
+      requirePending: true,
+      responseFingerprint: "exact-response",
+      modeLimit: { runtimeMode: "full-access" as const, interactionMode: "plan" as const },
+    });
+    const command = [...fixture.commands.values()].at(-1)!;
+    assert.equal(command.type, "runtime-request.respond");
+    if (command.type !== "runtime-request.respond") throw new Error("Expected response");
+    assert.deepEqual(command.answers, { question: ["Yes"] });
+    assert.equal(command.requestId, "request");
+    assert.equal(command.decision, undefined);
+    assert.deepEqual(command.respondedBy, {
+      kind: "agent",
+      senderThreadId: "source-chat",
+      senderSessionId: "source-session",
+    });
+    assert.isTrue(command.requirePending);
+    assert.equal(command.responseFingerprint, "exact-response");
+    const dispatched = fixture.calls.filter((call) => call.method === "command.dispatch").at(-1);
+    assert.deepInclude(dispatched?.input, {
+      modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
+    });
+    fixture.state.questionResponseReason = "not_pending";
+    const rejected = yield* owner
+      .respond({
         sessionId: launch.sessionId,
         runId: "run",
         requestId: "request",
-        answers: { question: ["Yes"] },
-        ...(kind === "mcp-elicitation"
-          ? { decision: "accept" as const }
-          : {
-              respondedBy: {
-                kind: "agent" as const,
-                senderThreadId: "source-chat",
-                senderSessionId: "source-session",
-              },
-              requirePending: true,
-              responseFingerprint: "exact-response",
-              modeLimit: { runtimeMode: "full-access" as const, interactionMode: "plan" as const },
-            }),
-      });
-      const command = [...fixture.commands.values()].at(-1)!;
-      assert.equal(command.type, "runtime-request.respond");
-      if (command.type !== "runtime-request.respond") throw new Error("Expected response");
-      assert.deepEqual(command.answers, { question: ["Yes"] });
-      assert.equal(command.requestId, "request");
-      assert.equal(command.decision, kind === "mcp-elicitation" ? "accept" : undefined);
-      if (kind === "user_input") {
-        assert.deepEqual(command.respondedBy, {
-          kind: "agent",
-          senderThreadId: "source-chat",
-          senderSessionId: "source-session",
-        });
-        assert.isTrue(command.requirePending);
-        assert.equal(command.responseFingerprint, "exact-response");
-        const dispatched = fixture.calls
-          .filter((call) => call.method === "command.dispatch")
-          .at(-1);
-        assert.deepInclude(dispatched?.input, {
-          modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
-        });
-        fixture.state.questionResponseReason = "not_pending";
-        const rejected = yield* owner
-          .respond({
-            sessionId: launch.sessionId,
-            runId: "run",
-            requestId: "request",
-            answers: { question: "Yes" },
-          })
-          .pipe(Effect.flip);
-        assert.equal(rejected.questionReason, "not_pending");
-      }
-    }),
-  );
-}
+        answers: { question: "Yes" },
+      })
+      .pipe(Effect.flip);
+    assert.equal(rejected.questionReason, "not_pending");
+  }),
+);
 
 it.effect(
   "gives each optional-answer batch a stable distinct receipt even after request completion",

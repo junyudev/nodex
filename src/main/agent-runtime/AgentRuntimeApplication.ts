@@ -3844,9 +3844,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const approvalItem = snapshot.projection.turnItems.find(
       (item) => item.type === "approval_request" && item.requestId === request.id,
     );
-    const approval =
-      request.kind !== "user_input" &&
-      (request.kind !== "mcp-elicitation" || approvalItem !== undefined);
+    // One rule with Core's attention kinds: every request but user input is a decision. An MCP
+    // server's form arrives as user input; its consent request is an approval.
+    const approval = request.kind !== "user_input";
     const capability = request.responseCapability;
     if (approval) {
       if ((yield* CoreApplicationAgent) !== null || input.respondedBy !== undefined)
