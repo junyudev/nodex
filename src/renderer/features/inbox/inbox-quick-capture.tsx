@@ -29,6 +29,7 @@ export interface InboxQuickCaptureRequest {
   readonly destination: InboxCaptureDestination;
   /** Text selected where the capture began, added to the message. */
   readonly seed: string | null;
+  readonly origin?: HTMLElement | null;
 }
 
 const NO_VISIBLE_PAGES: readonly string[] = [];
@@ -113,7 +114,7 @@ export function InboxQuickCapture({
         showCloseButton={false}
         overlayClassName="bg-black/[0.1333]"
         initialFocus={false}
-        finalFocus={false}
+        finalFocus={() => (request.origin?.isConnected ? request.origin : false)}
         className="top-[max(16px,18vh)] w-[min(640px,92vw)] translate-y-0 bg-transparent p-0"
       >
         <NodexDialogTitle className="sr-only">
@@ -158,7 +159,7 @@ export function InboxQuickCapture({
           images={images}
           disabled={!capture.ready || capture.savingDraft}
           readOnly={!capture.canEdit || capture.savingDraft}
-          focusToken={0}
+          focusToken={1}
           titleOpen={titleOpen}
           onTitleOpenChange={setTitleOpen}
           placeholder={

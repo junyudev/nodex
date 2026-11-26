@@ -87,6 +87,12 @@ import {
 } from "./workbench-header-actions";
 import { HistoryPanel } from "./workbench-history-panel";
 import { useTerminalSessionStoreVersion } from "@/lib/terminal-session-store";
+import {
+  beginWorkbenchFocus,
+  inboxEntryFocusTarget,
+  inboxFocusTarget,
+  type WorkbenchFocusAttempt,
+} from "@/lib/workbench-focus-landing";
 import { requestTerminalFocus, returnFocusFromPanel } from "@/lib/terminal-focus";
 import { createSecureRuntimeId } from "../../../shared/secure-runtime-id";
 import { BrowserSidebarHiddenWebviewHosts } from "@/features/browser-sidebar/browser-sidebar-hidden-webview-hosts";
@@ -1476,12 +1482,24 @@ export function WorkbenchRuntime({
     updateComposerOverlay({ kind: "project", projectId: selectedProjectSceneId }, patch);
   };
   const selectProjectAgentDockTarget = (row: ProjectAgentDockTargetRow) => {
-    if (!selectedProjectSceneId) return;
+    if (!selectedProjectSceneId || row.selected) return;
+    const draftId = activeProjectScene?.agentDock?.newDraftId;
+    const chat = row.sessionId
+      ? { kind: "session" as const, sessionId: row.sessionId }
+      : draftId
+        ? { kind: "project-draft" as const, projectId: selectedProjectSceneId, draftId }
+        : null;
+    const focus = beginWorkbenchFocus();
     updateProjectAgentDock(selectedProjectSceneId, (dock) => ({
       ...dock,
       binding:
         row.kind === "new" ? { kind: "new" } : { kind: "session", sessionId: row.sessionId! },
     }));
+    if (chat)
+      workbenchWindow.focusLanding.request(
+        { kind: "dock", projectId: selectedProjectSceneId, chat },
+        focus,
+      );
   };
   const materializeProjectAgentDockDraft = async (input: {
     readonly projectId: string;
@@ -2249,23 +2267,25 @@ export function WorkbenchRuntime({
     setSettingsPath,
   ]);
 
-  const [inboxFocusToken, setInboxFocusToken] = useState(0);
-  // Every way into the Library Inbox lands on the Inbox itself; tabs opened beside it stay open.
-  const openInbox = useCallback(() => {
-    closePendingWorktreeRoute();
-    setInboxFocusToken((current) => current + 1);
-    const home =
-      workbenchWindow.scenesByOwnerKey[makeWorkbenchSceneKey(INBOX_SCENE_OWNER)]?.primary;
-    if (!home) {
-      workbenchWindow.selectInbox();
-      return;
-    }
-    void executeSceneCommand(
-      INBOX_SCENE_OWNER,
-      { kind: "activate_tab", tabId: home.id },
-      { location: { kind: "inbox" } },
-    );
-  }, [closePendingWorktreeRoute, executeSceneCommand, workbenchWindow]);
+  // Explicit Inbox opens select Home even when another tab was active in that Scene.
+  const openInbox = useCallback(
+    async (focusComposer = true) => {
+      const focus = beginWorkbenchFocus();
+      closePendingWorktreeRoute();
+      const home =
+        workbenchWindow.scenesByOwnerKey[makeWorkbenchSceneKey(INBOX_SCENE_OWNER)]?.primary;
+      if (!home) workbenchWindow.selectInbox();
+      else
+        await executeSceneCommand(
+          INBOX_SCENE_OWNER,
+          { kind: "activate_tab", tabId: home.id },
+          { location: { kind: "inbox" } },
+        );
+      if (focusComposer && workbenchWindow.owner.read().windowState.location.kind === "inbox")
+        workbenchWindow.focusLanding.request(inboxFocusTarget(LIBRARY_INBOX), focus);
+    },
+    [closePendingWorktreeRoute, executeSceneCommand, workbenchWindow],
+  );
   /** The Inbox a capture from here lands in, named as the capture shows it. */
   const resolveInboxCaptureDestination = useCallback((): InboxCaptureDestination => {
     const scope = resolveInboxCaptureScope(workbenchWindow.location);
@@ -2288,35 +2308,36 @@ export function WorkbenchRuntime({
         }
       : { scope: LIBRARY_INBOX, project: null };
   }, [projects, workbenchWindow.location]);
-  /** Shows a Project's Inbox Home and focuses its composer. */
+  /** Shows a Project's Inbox Home, even when another tab was active in that Scene. */
   const openProjectInbox = useCallback(
-    (projectId: string) => {
+    async (projectId: string, focusComposer = true) => {
+      const focus = beginWorkbenchFocus();
       closePendingWorktreeRoute();
-      setInboxFocusToken((current) => current + 1);
       const owner = { kind: "project", projectId } as const;
       const home = workbenchWindow.scenesByOwnerKey[makeWorkbenchSceneKey(owner)]?.primary;
-      if (home?.kind !== "inbox") {
-        workbenchWindow.selectProject(projectId);
-        return;
-      }
-      void executeSceneCommand(
-        owner,
-        { kind: "activate_tab", tabId: home.id },
-        { location: { kind: "project", projectId } },
-      );
+      if (home?.kind !== "inbox") workbenchWindow.selectProject(projectId);
+      else
+        await executeSceneCommand(
+          owner,
+          { kind: "activate_tab", tabId: home.id },
+          { location: owner },
+        );
+      const location = workbenchWindow.owner.read().windowState.location;
+      if (focusComposer && location.kind === "project" && location.projectId === projectId)
+        workbenchWindow.focusLanding.request(inboxFocusTarget(owner), focus);
     },
     [closePendingWorktreeRoute, executeSceneCommand, workbenchWindow],
   );
   const openInboxScope = useCallback(
-    (scope: InboxScope) => {
-      if (scope.kind === "project") openProjectInbox(scope.projectId);
-      else openInbox();
-    },
+    (scope: InboxScope, focusComposer = true) =>
+      scope.kind === "project"
+        ? openProjectInbox(scope.projectId, focusComposer)
+        : openInbox(focusComposer),
     [openInbox, openProjectInbox],
   );
   // Capture where you are: in a Project or one of its chats, that Project's own Inbox.
   const captureInbox = useCallback(() => {
-    openInboxScope(resolveInboxCaptureDestination().scope);
+    void openInboxScope(resolveInboxCaptureDestination().scope);
   }, [openInboxScope, resolveInboxCaptureDestination]);
   const [inboxQuickCapture, setInboxQuickCapture] = useState<InboxQuickCaptureRequest | null>(null);
   /**
@@ -2347,10 +2368,10 @@ export function WorkbenchRuntime({
         (group) => group.visible && group.selectedTabId === home.id,
       ) === true;
     if (homeShowing && seed === null) {
-      setInboxFocusToken((current) => current + 1);
+      workbenchWindow.focusLanding.request(inboxFocusTarget(destination.scope));
       return true;
     }
-    setInboxQuickCapture({ destination, seed });
+    setInboxQuickCapture({ destination, seed, origin: beginWorkbenchFocus().origin });
     return true;
   };
   const inboxCounts = useInboxCounts();
@@ -2716,6 +2737,7 @@ export function WorkbenchRuntime({
     resolveForkLocalEnvironmentConfigPath,
     selectProject,
     selectSession,
+    selectSessionAndFocus,
     selectSidebarThread,
     setSessionSnooze,
     openNextChatNeedingReader,
@@ -3513,7 +3535,7 @@ export function WorkbenchRuntime({
     },
     onOpenInbox: (projectId) => {
       setAutomationsPath(null);
-      if (projectId === null) openInbox();
+      if (projectId === null) void openInbox();
       else selectProject(projectId);
     },
     onCreateTask: () => navigateAutomations(buildAutomationsPath({ automationMode: "create" })),
@@ -3672,6 +3694,7 @@ export function WorkbenchRuntime({
     },
     navigateBack: workbenchWindow.navigateBack,
     navigateForward: workbenchWindow.navigateForward,
+    landOnScene: workbenchWindow.landOnScene,
     workbenchRootRef,
     shellMainContentWidth,
     shellBodyHeight: shellBodySize.height,
@@ -3990,6 +4013,7 @@ export function WorkbenchRuntime({
       await openExistingSideChat(
         { kind: "runtime", sessionId: sideChatSessionId, parentThreadId },
         activeSession,
+        beginWorkbenchFocus(),
       );
     },
   }))();
@@ -4082,7 +4106,7 @@ export function WorkbenchRuntime({
   const toggleActiveBottomPanel = () => {
     if (!activePanelOwnerKey) return;
     if (bottomPanelOpen) {
-      returnFocusFromPanel("bottom");
+      returnFocusFromPanel("bottom", (focus) => workbenchWindow.landOnScene("composer", focus));
       void hideActiveBottomPanel();
       return;
     }
@@ -4215,6 +4239,7 @@ export function WorkbenchRuntime({
    */
   const presentNoticeConversation = async (
     notice: DesktopNotificationTargetSource,
+    focus: WorkbenchFocusAttempt,
   ): Promise<DesktopNotificationTarget | null> => {
     const target = resolveDesktopNotificationTarget(notice);
     if (!target) return null;
@@ -4224,6 +4249,7 @@ export function WorkbenchRuntime({
       target.kind === "runtime" ? { runtimeSessionId: target.sessionId } : undefined,
     );
     if (!opened) return null;
+    const openedLocation = workbenchWindow.owner.read().windowState.location;
     // Side chats open in the Session navigation presented, not the one this action started in.
     const presented = await waitForThreadSession(target.threadId);
     if (!presented) return null;
@@ -4241,12 +4267,18 @@ export function WorkbenchRuntime({
             parentThreadId: target.threadId,
             parentNavigationPath: notice.navigationPath ?? `thread:${target.threadId}`,
           };
-    if (sideChat && !(await openExistingSideChat(sideChat, presented))) return null;
+    if (workbenchWindow.owner.read().windowState.location !== openedLocation) return null;
+    if (sideChat) {
+      if (!(await openExistingSideChat(sideChat, presented, focus))) return null;
+    } else {
+      workbenchWindow.landOnScene("composer", focus);
+    }
     return target;
   };
 
   const handleDesktopNotificationAction = async (
     invocation: DesktopNotificationActionInvocation,
+    focus: WorkbenchFocusAttempt,
   ): Promise<void> => {
     if (invocation.inboxEntry) {
       const entry = await readInboxEntry(invocation.inboxEntry.pageId);
@@ -4265,10 +4297,11 @@ export function WorkbenchRuntime({
         scope: inboxScope,
         view: entry.rowKind === "turn" || entry.waiting ? "inbox" : "activity",
       });
-      openInboxScope(inboxScope);
+      await openInboxScope(inboxScope, false);
+      workbenchWindow.focusLanding.request(inboxEntryFocusTarget(inboxScope, entry.pageId), focus);
       return;
     }
-    const target = await presentNoticeConversation(invocation);
+    const target = await presentNoticeConversation(invocation, focus);
     if (!target) return;
 
     if (target.kind === "runtime") {
@@ -4298,11 +4331,14 @@ export function WorkbenchRuntime({
     return action;
   };
 
-  const openDesktopNotification = (invocation: DesktopNotificationActionInvocation) =>
-    runNoticeAction(() => handleDesktopNotificationAction(invocation));
+  const openDesktopNotification = (invocation: DesktopNotificationActionInvocation) => {
+    const focus = beginWorkbenchFocus();
+    return runNoticeAction(() => handleDesktopNotificationAction(invocation, focus));
+  };
 
   const openReadback = (readback: Readback) => {
-    void runNoticeAction(() => presentNoticeConversation(readback.navigation));
+    const focus = beginWorkbenchFocus();
+    void runNoticeAction(() => presentNoticeConversation(readback.navigation, focus));
   };
 
   const executeWorkbenchCommand = ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
@@ -4970,7 +5006,16 @@ export function WorkbenchRuntime({
       canNavigateForward={shellCanNavigateForward}
       canOpenSessionInNewWindow={Boolean(onOpenProjectSessionInNewWindow)}
       commandKeymapState={commandKeymapState}
-      sessionCommands={sessionCommands}
+      sessionCommands={{
+        ...sessionCommands,
+        openProjectSessionById: async (sessionId, reveal) => {
+          const focus = beginWorkbenchFocus();
+          await sessionCommands.openProjectSessionById(sessionId, reveal);
+          const location = workbenchWindow.owner.read().windowState.location;
+          if (location.kind === "session" && location.sessionId === sessionId)
+            workbenchWindow.landOnScene("composer", focus);
+        },
+      }}
       panelCommands={panelCommands}
       panelOpeners={panelOpeners}
       openLibraryPage={(pageId, titleSnapshot, reveal) => {
@@ -5205,7 +5250,6 @@ export function WorkbenchRuntime({
             scope={surface.config.scope}
             visible={context.active}
             projects={projects}
-            focusComposerToken={inboxFocusToken}
             onOpenSession={sessionCommands.openProjectSessionById}
             onOpenAgents={showAgentsTab}
             onShowPagesInChat={sessionCommands.showPagesInChat}
@@ -5625,7 +5669,6 @@ export function WorkbenchRuntime({
             scope={surface.config.scope}
             visible={context.active}
             projects={projects}
-            focusComposerToken={inboxFocusToken}
             onOpenSession={sessionCommands.openProjectSessionById}
             onOpenAgents={showAgentsTab}
             onOpenProject={openProjectInbox}
@@ -5924,8 +5967,8 @@ export function WorkbenchRuntime({
               tabId,
             );
           },
-          closeTab: ({ tabId }) => {
-            void closeActiveOwnedScenePanelTab(tabId);
+          closeTab: async ({ tabId }) => {
+            await closeActiveOwnedScenePanelTab(tabId);
           },
         }
       : activeSession
@@ -5961,10 +6004,12 @@ export function WorkbenchRuntime({
         onOpenChat={() => {
           const sessionId = projectAgentDockModel.trigger.sessionId;
           if (!sessionId) return;
+          const focus = beginWorkbenchFocus();
           workbenchWindow.selectSession({
             id: sessionId,
             projectId: selectedProjectSceneId,
           });
+          workbenchWindow.landOnScene("composer", focus);
         }}
         pendingWorktree={projectAgentDockPendingWorktreeModel}
         onOpenPendingWorktreeDetails={() => {
@@ -6345,10 +6390,10 @@ export function WorkbenchRuntime({
       setAutomationsPath(null);
       selectProject(projectId);
     },
-    onSelectSession: (session) => {
+    onSelectSession: (session, focus?: WorkbenchFocusAttempt) => {
       closePendingWorktreeRoute();
       setAutomationsPath(null);
-      selectSession(session);
+      selectSessionAndFocus(session, focus);
     },
     onSelectSidebarThread: (item) => {
       closePendingWorktreeRoute();

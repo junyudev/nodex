@@ -1411,6 +1411,11 @@ export function FloatingComposer({
   const overlay = (
     <div
       data-testid="right-panel-composer-overlay-host"
+      data-workbench-focus-scene={
+        target
+          .closest("[data-workbench-scene-owner]")
+          ?.getAttribute("data-workbench-scene-owner") ?? undefined
+      }
       data-overlay-attention={attention}
       className={cn(
         "pointer-events-none fixed",

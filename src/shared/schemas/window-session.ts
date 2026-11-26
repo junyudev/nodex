@@ -27,12 +27,20 @@ export const WindowSessionBoundsSchema = z.object({
 
 export const WindowSessionNewWindowRequestSchema = z
   .object({
+    focus: z.literal("composer").optional(),
     activeProjectSessionId: z.string().min(1).nullable().optional(),
     activeProjectId: z.string().min(1).nullable().optional(),
     browserUrl: z.url({ protocol: /^https?$/ }).optional(),
     page: WorkbenchPageStageSurfaceConfigSchema.optional(),
   })
   .strict()
+  .refine(
+    ({ focus, activeProjectSessionId }) => focus === undefined || Boolean(activeProjectSessionId),
+    {
+      path: ["focus"],
+      message: "Composer focus requires a chat destination",
+    },
+  )
   .refine(
     ({ page, browserUrl, activeProjectSessionId, activeProjectId }) =>
       page === undefined ||

@@ -40,6 +40,7 @@ import { WindowShutdown } from "./WindowShutdown";
 import {
   createApplicationWindowCoordinator,
   type ApplicationWindowCoordinator,
+  type ApplicationWindowCoordinatorOptions,
 } from "./application-window-coordinator";
 
 class ApplicationWindowLinkOpenError extends Schema.TaggedError<ApplicationWindowLinkOpenError>()(
@@ -335,8 +336,8 @@ export const live = (
         }
       };
 
-      const create = (session: WindowSessionRecord): BrowserWindow => {
-        const window = options.shell.create(session, "foreground");
+      const create: ApplicationWindowCoordinatorOptions["create"] = (session, focus) => {
+        const window = options.shell.create(session, "foreground", focus);
         activateClaimedWindows();
         return window;
       };

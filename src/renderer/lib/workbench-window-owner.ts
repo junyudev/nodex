@@ -5,6 +5,7 @@ import { resolveAutomationsRouteState } from "./workbench-automations-routes";
 import type { PanelId } from "../../shared/types";
 import {
   createDefaultWorkbenchLayoutSnapshot,
+  sameWorkbenchLocation,
   type WorkbenchLayoutSnapshot,
   type WorkbenchLocation,
   type WorkbenchSceneLocation,
@@ -49,7 +50,23 @@ import {
   updateWorkbenchSceneAndNavigate,
   type WorkbenchSessionCatalogEntry,
   type WorkbenchWindowState,
+  type WorkbenchWindowNavigationSnapshot,
 } from "./workbench-window-state";
+
+import {
+  findWorkbenchPanelLeaf,
+  getWorkbenchPanelActiveLeaf,
+} from "../../shared/workbench-panel-layout";
+import { projectWorkbenchScenePreviews } from "./workbench-scene-preview";
+import {
+  beginWorkbenchFocus,
+  createWorkbenchFocusLanding,
+  readWorkbenchHistoryFocus,
+  resolveWorkbenchLanding,
+  type WorkbenchFocusAttempt,
+  type WorkbenchFocusPolicy,
+  type WorkbenchFocusTarget,
+} from "./workbench-focus-landing";
 
 export interface WorkbenchFocusedPanelGroup {
   readonly ownerKey: string;
@@ -138,11 +155,63 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
     { readonly token: object; readonly identity: string; readonly read: () => string }
   >();
   const read = () => scope.get(presentationStateAtom) ?? initialState;
-  const initialize = () => scope.set(presentationStateAtom, (current) => current ?? initialState);
+  const focusLanding = createWorkbenchFocusLanding(() => read().windowState.location);
+  const historyFocus = new WeakMap<WorkbenchWindowNavigationSnapshot, WorkbenchFocusTarget>();
+  let settingsFocus: WorkbenchFocusTarget | null = null;
+  const readCurrentFocus = () =>
+    typeof document === "undefined" ? null : readWorkbenchHistoryFocus(read().windowState.location);
+  const landOnScene = (policy: WorkbenchFocusPolicy, attempt?: WorkbenchFocusAttempt) => {
+    const current = read();
+    const { location, scenesByOwnerKey } = current.windowState;
+    const inboxOwner =
+      location.kind === "project"
+        ? location
+        : location.kind === "inbox"
+          ? { kind: "inbox" as const }
+          : null;
+    const inbox = inboxOwner ? scenesByOwnerKey[makeWorkbenchSceneKey(inboxOwner)] : undefined;
+    const layout = inbox
+      ? projectWorkbenchScenePreviews(
+          inbox,
+          current.ephemeralPanels.previewSurfacesByPanel,
+          current.ephemeralPanels.tabOrderByPanelGroup,
+        ).scene.panels.right.layout
+      : null;
+    const activeLeaf = layout
+      ? (findWorkbenchPanelLeaf(layout, layout.maximizedLeafId) ??
+        getWorkbenchPanelActiveLeaf(layout))
+      : null;
+    const inboxHomeActive =
+      inboxOwner !== null &&
+      (!activeLeaf ||
+        (inbox?.primary?.kind === "inbox" && activeLeaf.activeTabId === inbox.primary.id));
+    focusLanding.request(resolveWorkbenchLanding(policy, location, inboxHomeActive), attempt);
+  };
+  const rememberHistoryFocus = (
+    previous: WorkbenchWindowState,
+    next: WorkbenchWindowState,
+    focus: WorkbenchFocusTarget | null,
+  ) => {
+    if (previous.history === next.history || !focus) return;
+    const outgoing =
+      next.history.forwardStack.length > previous.history.forwardStack.length
+        ? next.history.forwardStack[0]
+        : next.history.backStack.at(-1);
+    if (
+      outgoing?.location === previous.location &&
+      outgoing.scenesByOwnerKey === previous.scenesByOwnerKey
+    )
+      historyFocus.set(outgoing, focus);
+  };
+  const initialize = () => {
+    if (typeof document !== "undefined") beginWorkbenchFocus();
+    scope.set(presentationStateAtom, (current) => current ?? initialState);
+  };
   const transition = (
     update: (current: WorkbenchWindowPresentationState) => WorkbenchWindowPresentationState,
     expectedPresentationRevision?: number,
   ) => {
+    const previousLocation = read().windowState.location;
     scope.set(presentationStateAtom, (stored) => {
       const current = stored ?? initialState;
       if (
@@ -155,10 +224,14 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
         );
       }
       const next = update(current);
+      if (current.windowState.history !== next.windowState.history)
+        rememberHistoryFocus(current.windowState, next.windowState, readCurrentFocus());
       if (next === current) return current;
       return { ...next, presentationRevision: current.presentationRevision + 1 };
     });
-    return read();
+    const next = read();
+    if (!sameWorkbenchLocation(next.windowState.location, previousLocation)) focusLanding.cancel();
+    return next;
   };
   const updateWindow = (
     update: (state: WorkbenchWindowState) => WorkbenchWindowState,
@@ -208,6 +281,25 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
     if (sessionId !== null && sessionId !== previous) sessionOpened?.(sessionId);
     return next;
   };
+  const travelHistory = (direction: "back" | "forward") => {
+    const { history } = read().windowState;
+    const entry = direction === "back" ? history.backStack.at(-1) : history.forwardStack[0];
+    if (!entry) return read();
+    const attempt = typeof document === "undefined" ? undefined : beginWorkbenchFocus();
+    const next = navigateWindow(
+      direction === "back" ? navigateBackInWorkbenchWindow : navigateForwardInWorkbenchWindow,
+    );
+    focusLanding.request(
+      resolveWorkbenchLanding(
+        "restore",
+        next.windowState.location,
+        false,
+        historyFocus.get(entry) ?? null,
+      ),
+      attempt,
+    );
+    return next;
+  };
   const setFocusedPanelGroup = (focus: WorkbenchFocusedPanelGroup | null) =>
     transition((current) => {
       const previous = current.focusedPanelGroup;
@@ -238,6 +330,8 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
     },
     read,
     initialize,
+    focusLanding,
+    landOnScene,
     registerResolvedDatabaseView: (
       sceneOwner: WorkbenchSceneOwner,
       surface: WorkbenchDatabaseViewReference,
@@ -294,8 +388,8 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
       (options?.record === false ? updateWindow : navigateWindow)((state) =>
         navigateWorkbenchWindow(state, location, options),
       ),
-    navigateBack: () => navigateWindow(navigateBackInWorkbenchWindow),
-    navigateForward: () => navigateWindow(navigateForwardInWorkbenchWindow),
+    navigateBack: () => travelHistory("back"),
+    navigateForward: () => travelHistory("forward"),
     selectSession: (session: WorkbenchSessionCatalogEntry, reveal?: ChatSearchReveal) =>
       navigateWindow(
         (state) => selectWorkbenchSession(state, session),
@@ -315,9 +409,23 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
     selectLibrary: () => updateWindow(selectWorkbenchLibrary),
     selectInbox: () => updateWindow(selectWorkbenchInbox),
     selectHome: () => navigateWindow(selectWorkbenchHome),
-    openRoute: (route: Parameters<typeof openWorkbenchRoute>[1]) =>
-      updateWindow((state) => openWorkbenchRoute(state, route)),
-    closeRoute: () => navigateWindow(closeWorkbenchRoute),
+    openRoute: (route: Parameters<typeof openWorkbenchRoute>[1]) => {
+      if (route.kind === "settings" && read().windowState.location.kind !== "settings")
+        settingsFocus = readCurrentFocus();
+      return updateWindow((state) => openWorkbenchRoute(state, route));
+    },
+    closeRoute: () => {
+      const closingSettings = read().windowState.location.kind === "settings";
+      const attempt =
+        closingSettings && typeof document !== "undefined" ? beginWorkbenchFocus() : undefined;
+      const next = navigateWindow(closeWorkbenchRoute);
+      if (closingSettings) {
+        if (settingsFocus) focusLanding.request(settingsFocus, attempt);
+        else landOnScene("composer", attempt);
+        settingsFocus = null;
+      }
+      return next;
+    },
     setDatabaseSearch: (projectId: string, value: string) =>
       updateWindow((state) => setWorkbenchDatabaseSearch(state, projectId, value)),
     setScene: (

@@ -35,6 +35,10 @@ describe("terminal focus", () => {
     config: { terminalSessionId },
   });
 
+  function returnFocusFromBottomPanel(sceneComposer?: HTMLElement) {
+    returnFocusFromPanel("bottom", () => sceneComposer?.focus());
+  }
+
   function appendTerminalTab(terminalId: string): HTMLTextAreaElement {
     const surface = document.createElement("div");
     surface.id = `terminal-panel-${terminalId}`;
@@ -77,7 +81,7 @@ describe("terminal focus", () => {
   afterEach(() => {
     vi.useRealTimers();
     // Ends any request a test left waiting and forgets what the cursor left.
-    returnFocusFromPanel("bottom");
+    returnFocusFromBottomPanel();
     for (const unregister of unregisterTargets.splice(0)) unregister();
     document.body.replaceChildren();
   });
@@ -182,7 +186,7 @@ describe("terminal focus", () => {
       rememberFocusBeforeTerminal(editor);
       input.focus();
 
-      returnFocusFromPanel("bottom");
+      returnFocusFromBottomPanel();
       await nextFrame();
 
       expect(document.activeElement).toBe(editor);
@@ -197,24 +201,23 @@ describe("terminal focus", () => {
       editor.remove();
       input.focus();
 
-      returnFocusFromPanel("bottom");
+      returnFocusFromBottomPanel(composer);
       await nextFrame();
 
       expect(document.activeElement).toBe(composer);
     });
 
-    test("skips a composer the Scene has hidden", async () => {
-      const hiddenSection = document.createElement("section");
-      hiddenSection.setAttribute("aria-hidden", "true");
-      document.body.append(hiddenSection);
-      appendComposer(hiddenSection);
+    test("keeps focus where it moved before the panel's return ran", async () => {
       const composer = appendComposer();
+      const next = document.createElement("input");
+      document.body.append(next);
       appendTerminalTab("terminal-a").focus();
 
-      returnFocusFromPanel("bottom");
+      returnFocusFromBottomPanel(composer);
+      next.focus();
       await nextFrame();
 
-      expect(document.activeElement).toBe(composer);
+      expect(document.activeElement).toBe(next);
     });
 
     test("a cursor outside the hiding panel stays put", async () => {
@@ -224,7 +227,7 @@ describe("terminal focus", () => {
       appendTerminalTab("terminal-a");
       editor.focus();
 
-      returnFocusFromPanel("bottom");
+      returnFocusFromBottomPanel();
       await nextFrame();
 
       expect(document.activeElement).toBe(editor);
@@ -233,7 +236,7 @@ describe("terminal focus", () => {
     test("a cursor resting on the page moves to the composer", async () => {
       const composer = appendComposer();
 
-      returnFocusFromPanel("bottom");
+      returnFocusFromBottomPanel(composer);
       await nextFrame();
 
       expect(document.activeElement).toBe(composer);
@@ -243,7 +246,7 @@ describe("terminal focus", () => {
       const composer = appendComposer();
       requestTerminalFocus(terminal("terminal-a"));
 
-      returnFocusFromPanel("bottom");
+      returnFocusFromBottomPanel(composer);
       await nextFrame();
 
       expect(mountTerminal("terminal-a").focus).not.toHaveBeenCalled();
@@ -264,7 +267,7 @@ describe("terminal focus", () => {
       rememberFocusBeforeTerminal(other);
       rememberFocusBeforeTerminal(null);
       input.focus();
-      returnFocusFromPanel("bottom");
+      returnFocusFromBottomPanel(composer);
       await nextFrame();
 
       expect(document.activeElement).toBe(composer);

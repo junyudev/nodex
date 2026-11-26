@@ -1,8 +1,14 @@
+import {
+  beginWorkbenchFocus,
+  canReceiveWorkbenchFocus,
+  readWorkbenchFocusedElement,
+  workbenchPanelContainsFocus,
+  type WorkbenchFocusAttempt,
+} from "./workbench-focus-landing";
 import { classifyKeyboardActionPath } from "./keyboard-action-runtime";
 import type { PanelId } from "./types";
 
 const TERMINAL_SURFACE_SELECTOR = "[data-codex-terminal]";
-const COMPOSER_INPUT_SELECTOR = "[data-codex-composer='true']";
 /**
  * How long a request waits for its Terminal to mount: a window's first Terminal takes about 400ms
  * and later ones under 100ms. Past this the user has moved on, and the cursor must not jump.
@@ -91,25 +97,26 @@ export function rememberFocusBeforeTerminal(previous: EventTarget | null): void 
  * Returns the cursor to where the user was working when a panel hides, falling back to the Scene's
  * composer. A cursor already outside the panel stays put, as there is nothing to hand back.
  */
-export function returnFocusFromPanel(panelId: PanelId, ownerDocument: Document = document): void {
+export function returnFocusFromPanel(
+  panelId: PanelId,
+  fallback: (attempt: WorkbenchFocusAttempt) => void,
+  ownerDocument: Document = document,
+): void {
   pendingRequest?.end();
-  const panelSelector = `[data-app-shell-focus-area="${panelId}-panel"]`;
-  const active = ownerDocument.activeElement;
-  if (active && active !== ownerDocument.body && !active.closest(panelSelector)) return;
+  const active = readWorkbenchFocusedElement(ownerDocument);
+  if (active && !workbenchPanelContainsFocus(panelId, active)) return;
 
-  const canTakeFocus = (element: HTMLElement) =>
-    element.isConnected &&
-    element.getClientRects().length > 0 &&
-    !element.closest(`${panelSelector}, [inert], [aria-hidden="true"]`);
+  const attempt = beginWorkbenchFocus(ownerDocument);
   const previous = focusBeforeTerminal;
   focusBeforeTerminal = null;
   requestAnimationFrame(() => {
-    const target =
-      previous && canTakeFocus(previous)
-        ? previous
-        : Array.from(ownerDocument.querySelectorAll<HTMLElement>(COMPOSER_INPUT_SELECTOR)).find(
-            canTakeFocus,
-          );
-    target?.focus({ preventScroll: true });
+    if (attempt.moved()) return;
+    if (
+      panelId === "bottom" &&
+      canReceiveWorkbenchFocus(previous) &&
+      !workbenchPanelContainsFocus(panelId, previous)
+    )
+      previous.focus({ preventScroll: true });
+    else fallback(attempt);
   });
 }

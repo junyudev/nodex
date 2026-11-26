@@ -1,3 +1,4 @@
+import type { WorkbenchFocusAttempt } from "@/lib/workbench-focus-landing";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import {
@@ -933,7 +934,7 @@ function SidebarThreadOrganizerSections({
   onSetSidebarSectionCollapsed: (sectionId: SidebarDisclosureSectionId, collapsed: boolean) => void;
   onToggleProjectExpanded: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
-  onSelectSession: (session: ProjectSessionDomain) => void;
+  onSelectSession: (session: ProjectSessionDomain, focus?: WorkbenchFocusAttempt) => void;
   onSelectSidebarThread: (item: CodexSidebarThreadItem) => void | Promise<void>;
   onPreviewSidebarThread?: (item: CodexSidebarThreadItem) => void;
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
@@ -2389,7 +2390,7 @@ export interface ProjectSessionSidebarProps extends Omit<
   onSetSidebarSectionCollapsed: (sectionId: SidebarDisclosureSectionId, collapsed: boolean) => void;
   onToggleProjectExpanded: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
-  onSelectSession: (session: ProjectSessionDomain) => void;
+  onSelectSession: (session: ProjectSessionDomain, focus?: WorkbenchFocusAttempt) => void;
   onSelectSidebarThread: (item: CodexSidebarThreadItem) => void | Promise<void>;
   onPreviewSidebarThread?: (item: CodexSidebarThreadItem) => void;
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;

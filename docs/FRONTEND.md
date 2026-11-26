@@ -295,6 +295,14 @@ measured vertical caption clearance. See [Windows host behavior](product-specs/w
   must not replay an already handled focus request. Async focus that waits for
   mounting, virtualization, or a portal target carries request identity and is
   consumed only after the target receives focus.
+- Workbench navigation goes through its window-owned focus policy. Explicit
+  chat and Inbox arrivals request the destination composer. Back and Forward
+  restore a stable target on the corresponding history entry. Startup,
+  background, and Agent navigation leave focus alone. Capture the focus intent
+  before asynchronous work so the destination yields to a later interaction
+  and lets a closing menu or dialog release focus first. Use addressed
+  targets for Scene and panel handoffs, including when Settings remounts a
+  Scene.
 - Model drag and drop with one semantic target policy and one owning controller
   per gesture family. Nested providers or parallel native/synthetic paths must
   not split registration and dispatch authority.

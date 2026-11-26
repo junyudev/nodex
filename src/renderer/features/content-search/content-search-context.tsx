@@ -1,3 +1,4 @@
+import { beginWorkbenchFocus, returnWorkbenchFocus } from "@/lib/workbench-focus-landing";
 import { registerContentSearchNavigation } from "./content-search-keyboard";
 import { useIntl } from "@/lib/i18n";
 import type { WorkbenchChatSearchRequest } from "@/lib/workbench-surface-reveal";
@@ -304,12 +305,21 @@ export function ContentSearchProvider({
     openRef.current = false;
     activeEnsureAbortRef.current?.abort();
     activeEnsureAbortRef.current = null;
-    if (options?.returnFocus) activeSourceRef.current?.returnFocus?.();
+    const activeDomain = lastDomainRef.current;
+    if (options?.returnFocus && activeDomain !== "browser")
+      activeSourceRef.current?.returnFocus?.();
     for (const source of sourcesRef.current.values()) {
       source.clear();
     }
     const target = browserTargetRef.current;
     if (target?.available) {
+      if (options?.returnFocus && activeDomain === "browser") {
+        const browserTabId = CSS.escape(target.browserTabId);
+        const guest = document.querySelector<HTMLElement>(
+          `[data-browser-sidebar-webview-visible="true"] webview[data-browser-sidebar-browser-tab-id="${browserTabId}"]`,
+        );
+        returnWorkbenchFocus(guest, beginWorkbenchFocus());
+      }
       void target.command({ type: "close-find", ...browserTargetIdentity(target) });
     }
     setState((current) => ({

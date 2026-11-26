@@ -111,6 +111,9 @@ import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
 import { resolveSidebarThreadMutationAuthority } from "./sidebar-thread-backend-routing";
 import { moveSidebarSession, resolveSidebarDropSession } from "./sidebar-session-drop";
 
+import { beginWorkbenchFocus, type WorkbenchFocusAttempt } from "@/lib/workbench-focus-landing";
+import type { WorkbenchWindowOwner } from "@/lib/workbench-window-owner";
+
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SidebarState = Pick<
   ReturnType<typeof useWorkbenchSidebarState>,
@@ -134,7 +137,7 @@ interface WorkbenchSidebarControllerInput {
   readonly pendingWorktreeClientThreadId: string | null;
   readonly catalog: WorkbenchSessionCatalog;
   readonly sidebarCollections: WorkbenchSessionCollections;
-  readonly window: WorkbenchSessionCatalogWindowPort;
+  readonly window: WorkbenchSessionCatalogWindowPort & Pick<WorkbenchWindowOwner, "landOnScene">;
   readonly panelController: WorkbenchPanelController;
   readonly codexControl: ReturnType<typeof useCodexAppServerControl>;
   readonly sidebarState: SidebarState;
@@ -400,7 +403,9 @@ export function useWorkbenchSidebarController({
 
   const selectProject = useCallback(
     (projectId: string) => {
+      const focus = beginWorkbenchFocus();
       workbenchWindow.selectProject(projectId);
+      workbenchWindow.landOnScene("composer", focus);
       ensureProjectExpanded(projectId);
     },
     [ensureProjectExpanded, workbenchWindow],
@@ -506,9 +511,18 @@ export function useWorkbenchSidebarController({
     [catalog, knownSessions, mergeSessionInState, refreshProjectSessions, setSidebarThreadPinned],
   );
 
+  const selectSessionAndFocus = useCallback(
+    (session: ProjectSessionDomain | ProjectSession, focus = beginWorkbenchFocus()) => {
+      selectSession(session);
+      workbenchWindow.landOnScene("composer", focus);
+    },
+    [selectSession, workbenchWindow],
+  );
+
   const selectSidebarThread = useCallback(
     async (item: CodexSidebarThreadItem) => {
       if (item.disabled) return;
+      const focus = beginWorkbenchFocus();
       if (item.kind === "pending-worktree") {
         setSettingsPath(null);
         setLocalEnvironmentSettingsInitial(null);
@@ -520,7 +534,7 @@ export function useWorkbenchSidebarController({
         ? (knownSessions.find((candidate) => candidate.id === item.sessionId) ?? null)
         : (knownSessions.find((candidate) => candidate.thread?.threadId === item.threadId) ?? null);
       if (existingSession) {
-        selectSession(existingSession);
+        selectSessionAndFocus(existingSession, focus);
         return;
       }
 
@@ -538,7 +552,7 @@ export function useWorkbenchSidebarController({
           );
           return;
         }
-        selectSession(ensured);
+        selectSessionAndFocus(ensured, focus);
       } catch {
         toast.danger(
           getIntl().formatMessage({
@@ -551,7 +565,7 @@ export function useWorkbenchSidebarController({
     [
       catalog,
       knownSessions,
-      selectSession,
+      selectSessionAndFocus,
       setAutomationsPath,
       setLocalEnvironmentSettingsInitial,
       setPendingWorktreeClientThreadId,
@@ -560,11 +574,12 @@ export function useWorkbenchSidebarController({
   );
 
   const openRenameSessionDialog = useCallback(
-    (session: ProjectSessionDomain) => {
+    (session: ProjectSessionDomain, returnToComposer = false) => {
       // Core leaves a shared chat's title to its owner or a Space Owner.
       if (!session.canManage) return;
       openModal(appHandle, RenameChatDialog, {
         initialValue: session.displayTitle,
+        returnToComposer,
         onSave: (title) => {
           void catalog.rename(session, title).catch(() => {
             toast.danger(
@@ -620,6 +635,7 @@ export function useWorkbenchSidebarController({
   );
 
   const archiveSessionQuietly = async (session: ProjectSessionDomain): Promise<boolean> => {
+    const focus = beginWorkbenchFocus();
     try {
       const refreshedPresentations = await catalog.archive(session);
       await runWithCleanup(
@@ -630,9 +646,10 @@ export function useWorkbenchSidebarController({
             const fallbackSession =
               sessions[0] ?? (session.projectId === null ? (activeSessions[0] ?? null) : null);
             if (fallbackSession) {
-              selectSession(fallbackSession);
+              selectSessionAndFocus(fallbackSession, focus);
             } else {
               workbenchWindow.selectProject(session.projectId);
+              workbenchWindow.landOnScene("composer", focus);
             }
           }
         },
@@ -656,9 +673,10 @@ export function useWorkbenchSidebarController({
       chatId: session.id,
       archive: () => archiveSessionQuietly(session),
       restore: async () => {
+        const focus = beginWorkbenchFocus();
         await catalog.unarchive(session);
         await refreshSidebarThreadSnapshot();
-        if (wasActive) selectSession(session);
+        if (wasActive) selectSessionAndFocus(session, focus);
       },
       viewArchivedChats: openArchivedChats,
     });
@@ -868,14 +886,14 @@ export function useWorkbenchSidebarController({
   }, []);
 
   const openChatById = useCallback(
-    async (sessionId: string | null) => {
+    async (sessionId: string | null, focus: WorkbenchFocusAttempt = beginWorkbenchFocus()) => {
       if (!sessionId) return;
       const session =
         catalog.findById(sessionId)?.domain ??
         (await catalog.prefetch(sessionId).catch(() => null));
-      if (session && !session.archived) selectSession(session);
+      if (session && !session.archived) selectSessionAndFocus(session, focus);
     },
-    [catalog, selectSession],
+    [catalog, selectSessionAndFocus],
   );
 
   /** Moves to the neighbouring chat in the sidebar's order. */
@@ -915,6 +933,7 @@ export function useWorkbenchSidebarController({
   // that stays, and one Undo reopens exactly the chats that settled.
   const settleSessions = useCallback(
     async (sessions: readonly ProjectSessionDomain[]) => {
+      const focus = beginWorkbenchFocus();
       const targets = sessions.filter((session) => !session.archived && session.settledAt == null);
       if (targets.length === 0) return;
       const ids = new Set(targets.map((session) => session.id));
@@ -948,7 +967,7 @@ export function useWorkbenchSidebarController({
         return;
       }
       if (changed.length === 0) return;
-      void openChatById(successor);
+      void openChatById(successor, focus);
       toast.info(
         getIntl().formatMessage(
           {
@@ -965,10 +984,11 @@ export function useWorkbenchSidebarController({
               defaultMessage: "Undo",
             }),
             onClick: () => {
+              const undoFocus = beginWorkbenchFocus();
               void setSettled(changed, false)
                 .then(() => {
                   const active = targets.find((session) => session.id === activeSessionId);
-                  if (active && successor) selectSession(active);
+                  if (active && successor) selectSessionAndFocus(active, undoFocus);
                 })
                 .catch(() =>
                   toast.danger(
@@ -983,7 +1003,7 @@ export function useWorkbenchSidebarController({
         },
       );
     },
-    [activeSessionId, catalog, openChatById, refreshSidebarThreadSnapshot, selectSession],
+    [activeSessionId, catalog, openChatById, refreshSidebarThreadSnapshot, selectSessionAndFocus],
   );
 
   const toggleSessionSettled = useCallback(
@@ -1039,6 +1059,7 @@ export function useWorkbenchSidebarController({
 
   const setSessionSnooze = useCallback(
     async (session: ProjectSessionDomain, snoozedUntil: string | null) => {
+      const focus = beginWorkbenchFocus();
       const previous = session.snoozedUntil;
       // Snoozing the chat on screen sets it aside, so the reader moves on as Settle does.
       const successor =
@@ -1055,7 +1076,7 @@ export function useWorkbenchSidebarController({
       try {
         await apply(snoozedUntil);
         if (!snoozedUntil) return;
-        void openChatById(successor);
+        void openChatById(successor, focus);
         toast.success(formatChatSnoozeConfirmation(snoozedUntil, new Date()), {
           id: `snoozed-chat-${session.id}`,
           action: {
@@ -1064,9 +1085,10 @@ export function useWorkbenchSidebarController({
               defaultMessage: "Undo",
             }),
             onClick: () => {
+              const undoFocus = beginWorkbenchFocus();
               void apply(previous)
                 .then(() => {
-                  if (successor) selectSession(session);
+                  if (successor) selectSessionAndFocus(session, undoFocus);
                 })
                 .catch(() =>
                   toast.danger(
@@ -1093,7 +1115,7 @@ export function useWorkbenchSidebarController({
         );
       }
     },
-    [activeSessionId, catalog, mergeSessionInState, openChatById, selectSession],
+    [activeSessionId, catalog, mergeSessionInState, openChatById, selectSessionAndFocus],
   );
 
   const copySessionText = useCallback(
@@ -1291,7 +1313,7 @@ export function useWorkbenchSidebarController({
       return;
     }
     if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.rename) {
-      openRenameSessionDialog(session);
+      openRenameSessionDialog(session, true);
       return;
     }
     if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.archive) {
@@ -1469,6 +1491,7 @@ export function useWorkbenchSidebarController({
     resolveForkLocalEnvironmentConfigPath,
     selectProject,
     selectSession,
+    selectSessionAndFocus,
     selectSidebarThread,
     setSessionSnooze,
     openNextChatNeedingReader,

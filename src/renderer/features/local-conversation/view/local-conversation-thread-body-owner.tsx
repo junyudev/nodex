@@ -1315,6 +1315,9 @@ export function LocalConversationThreadBodyOwner({
           },
         });
       },
+      returnFocus() {
+        searchReads.readRoot()?.focus({ preventScroll: true });
+      },
       clear() {
         searchHighlights.clear();
       },
@@ -1610,6 +1613,7 @@ export function LocalConversationThreadBodyOwner({
           <div
             ref={setContentRoot}
             data-thread-find-target="conversation"
+            tabIndex={-1}
             className={LOCAL_CONVERSATION_CONTENT_CLASS_NAME}
           >
             {attachmentFailure ? (

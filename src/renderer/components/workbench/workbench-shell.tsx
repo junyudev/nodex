@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useApplicationReady } from "@/bootstrap/application-surface";
 import { WorkbenchRuntime } from "./workbench-runtime";
 import { useProjects } from "@/lib/use-projects";
+import { beginWorkbenchFocus } from "@/lib/workbench-focus-landing";
 import { useWorkbenchWindowState } from "@/lib/use-workbench-window-state";
 import { useWorkbenchProfilePreferences } from "@/lib/use-workbench-profile-preferences";
 import {
@@ -100,6 +101,19 @@ export function WorkbenchShell({
     [windowSessionBootstrap.session.layout],
   );
   const workbenchWindow = useWorkbenchWindowState(initialWindowLayoutSnapshot);
+  const windowOwner = workbenchWindow.owner;
+  useLayoutEffect(() => {
+    const url = new URL(window.location.href);
+    const sessionId = url.searchParams.get("focusChat");
+    if (!sessionId) return;
+    url.searchParams.delete("focusChat");
+    window.history.replaceState(window.history.state, "", url);
+    const location = windowOwner.read().windowState.location;
+    if (location.kind === "session" && location.sessionId === sessionId)
+      windowOwner.focusLanding.request({ kind: "session", sessionId }, undefined, {
+        waitForWindow: true,
+      });
+  }, [windowOwner]);
   const {
     projects,
     hasMoreProjects,
@@ -248,11 +262,14 @@ export function WorkbenchShell({
     setProjectPickerOpenTick((tick) => tick + 1);
   }, []);
 
+  const { landOnScene } = workbenchWindow;
   const navigateToProject = useCallback(
     (projectId: string) => {
+      const focus = beginWorkbenchFocus();
       setDbProjectState(projectId);
+      landOnScene("composer", focus);
     },
-    [setDbProjectState],
+    [landOnScene, setDbProjectState],
   );
 
   const navigateToProjectIndex = useCallback(
@@ -362,6 +379,7 @@ export function WorkbenchShell({
       await openWorkbenchWindow({
         activeProjectSessionId: session.id,
         activeProjectId: session.projectId,
+        focus: "composer",
       });
     },
     [flushBeforeWindowClone],

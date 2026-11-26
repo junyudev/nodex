@@ -7,6 +7,32 @@ The Workbench has five rail destinations, including Insights: Home for chats, Pr
 Permission modes and approval lifecycle are specified in [Agent Permissions and Approvals](./agent-permissions-behavior.md).
 Thread Summary content and row actions are specified in [Thread Summary Panel Behavior](./thread-summary-panel-behavior.md). Automations, Inbox, and Settings route behavior is specified in [Automations Behavior](./automations-behavior.md), [Inbox Behavior](./inbox-behavior.md), and [Settings Route Behavior](./settings-route-behavior.md).
 
+### Where the keyboard lands
+
+Opening a chat from the sidebar, chat shortcuts, Search, a notification, a
+Readback, or the Agent Dock puts the cursor in that chat's composer. If the chat
+is waiting for an answer in place of its composer, focus goes to the request's
+primary control. Settle, Snooze, and Archive give the keyboard to the successor
+chat, including a replacement draft after archiving a Section. Undo gives it to
+the restored chat when it returns to that chat. Opening a chat in a new window,
+reopening a side chat, or opening a blank remote side chat focuses its own
+composer. Selecting a different Agent Dock target gives focus to the Dock
+composer. Escape from its picker returns focus to the picker button.
+
+Opening a Project preserves its active surface and focuses its Inbox composer
+when that surface is Inbox Home. Back and Forward restore the chat composer,
+Inbox composer, or panel tab that held focus when the reader left the entry, if
+that destination is still available. Startup restoration, Agent navigation, and
+background refreshes leave the keyboard where it is. A delayed arrival yields
+if the reader has moved focus elsewhere.
+
+Closing or cycling a panel tab with the keyboard puts focus on the selected
+tab in the same group, or on the Scene's primary landing if the group has no
+tab. Hiding a right panel that held focus hands it back to the chat composer.
+Closing Settings returns focus within the restored Scene. Closing Find returns
+focus to the searched chat, Review, Page, or Browser page. Rename returns focus
+to its trigger when available, or to the Scene's chat composer.
+
 ## Layout
 
 - Navigation rail: two groups separated by a hairline. Places holds Home, Space, Automations, then Plugins; Insights sits alone below the hairline. Insights sits beside the Home sidebar, as specified in [Insights Behavior](./insights-behavior.md); the others own a contextual sidebar, and Plugins opens Customize, whose sidebar lists Plugins, Skills, and the installed plugins, and whose pages are specified in [Plugins Behavior](./plugins-behavior.md). The rail remains visible when the contextual sidebar is collapsed and while Settings is open. Selection follows the Workbench location, including the return location while in Settings. Every destination previews its sidebar on hover.
@@ -173,7 +199,7 @@ it stale; ordinary submission cannot offer it.
   - Environment: a Terminal describes itself. What describes the process that launched Nodex does not cross into the shell: color policy such as `NO_COLOR`, the launching terminal's identity and size, multiplexer membership, pager overrides, an Agent run's identifiers, and another host's Desktop Tool bindings. Starting Nodex from an Agent or another terminal therefore cannot change how programs render. On macOS and Linux the account shell starts with the login environment and the worktree's saved environment already applied, then runs its own startup files, so anything the user configures there, including `NO_COLOR`, still wins.
   - Output: PTY output reaches xterm byte for byte, complete and in order. Under load the PTY pauses rather than dropping or truncating output. Only the replay tail is bounded, to 16,000 UTF-16 units.
   - Reopening: closing or switching away from a Terminal disposes its xterm view, and reopening rebuilds the display from the replay tail and shows its end. Replay does not answer terminal queries a second time. A full-screen program returns to the alternate screen and redraws at its current size, even when the size did not change. A clear survives reopening while the tail is unchanged.
-  - Keyboard focus: asking for a Terminal puts the cursor in it. Opening the bottom panel onto a Terminal, the Terminal shortcut or command, choosing a Terminal tab, and creating a Terminal all focus its input as soon as it mounts, so the first keystroke reaches the shell. Panel tab cycling, restoring a layout, switching Scenes and Agent commands leave the cursor where it is, and so does a pointer press while the Terminal is still mounting. Hiding a panel that holds the cursor returns it to the editor it came from, or otherwise to the Scene's composer; a cursor already outside that panel stays put. A shell that exits hands its cursor to the Terminal selected next, or back the same way.
+  - Keyboard focus: asking for a Terminal puts the cursor in it. Opening the bottom panel onto a Terminal, the Terminal shortcut or command, choosing a Terminal tab, and creating a Terminal all focus its input as soon as it mounts, so the first keystroke reaches the shell. Cycling a panel tab focuses its tab control. Restoring a layout, switching Scenes and Agent commands do not enter the Terminal, and a pointer press while the Terminal is still mounting cancels its focus request. Hiding a panel that holds the cursor returns it to the editor it came from, or otherwise to the Scene's composer; a cursor already outside that panel stays put. A shell that exits hands its cursor to the Terminal selected next, the selected tab in the same group, or the Scene’s primary landing.
   - Tab title: the title a program sets names the tab, unless it only repeats the working directory; a fixed title from a run action takes precedence, and the working directory's name is the fallback.
 - `browser`: stores optional URL, title, favicon, and device-toolbar restore metadata and renders the Browser feature. Browser surfaces are not Scene singletons; users can create blank tabs to the right, reload, and duplicate existing Browser tabs from the tab context menu. Session re-home is independent of Scene descriptors; targets re-resolve under the new domain scope.
 - Browser Profile settings are not Window Session layout. History, downloads,
