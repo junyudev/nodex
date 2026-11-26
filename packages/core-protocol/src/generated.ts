@@ -1637,6 +1637,8 @@ export interface components {
             readonly cwds?: readonly string[] | null;
             readonly execution_environment?: components["schemas"]["AutomationExecutionEnvironment"] | null;
             readonly import_origin?: components["schemas"]["AutomationImportOrigin"] | null;
+            /** @description Initial instructions copied into a new runbook in the import destination. */
+            readonly import_runbook_markdown?: string | null;
             readonly initial_status?: components["schemas"]["AutomationInitialStatus"] | null;
             readonly kind: components["schemas"]["AutomationExecutionKind"];
             readonly local_environment_config_path?: string | null;
@@ -8797,6 +8799,8 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "create_agent_runtime_session";
                 readonly launch_request_id: string;
+                /** @description A new historical run copy is hidden from chat lists until its history settles. */
+                readonly pending_historical_run_id?: string | null;
                 readonly project_id?: string | null;
                 readonly runtime_id: string;
                 readonly runtime_thread_id: string;
@@ -12214,6 +12218,8 @@ export interface components {
             /** @enum {string} */
             readonly kind: "create_agent_runtime_session";
             readonly launch_request_id: string;
+            /** @description A new historical run copy is hidden from chat lists until its history settles. */
+            readonly pending_historical_run_id?: string | null;
             readonly project_id?: string | null;
             readonly runtime_id: string;
             readonly runtime_thread_id: string;

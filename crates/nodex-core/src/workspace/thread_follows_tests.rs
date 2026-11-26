@@ -24,6 +24,7 @@ pub(super) fn card(w: &TestWorkspace, page: &str, session: &str, active: bool) {
         &w.module,
         &format!("session-{session}"),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             side_chat_source_session_id: None,
@@ -809,6 +810,7 @@ fn intake_deduplicates_discovery_and_dispatch_follows_its_origin_without_automat
         &w.module,
         "bind-intake-runtime",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             side_chat_source_session_id: None,

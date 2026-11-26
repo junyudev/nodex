@@ -248,6 +248,7 @@ fn agent_chat(w: &TestWorkspace, session: &str, member: &str) {
         &w.module,
         &format!("chat-{session}"),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             side_chat_source_session_id: None,

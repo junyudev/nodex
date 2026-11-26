@@ -2324,6 +2324,9 @@ export type AutomationTriggerInput =
 
 export interface Automation {
   id: string;
+  importOrigin?: NonNullable<
+    import("./core-modules/automation-module").AutomationInput["import_origin"]
+  >;
   scope: AutomationScope;
   automationRevision: number;
   kind: AutomationExecutionKind;

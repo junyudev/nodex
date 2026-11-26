@@ -932,6 +932,15 @@ export function candidateActivity(
   now: number,
   intl: IntlShape = getIntl(),
 ): string {
+  if (candidate.chatCount === 0 && candidate.scheduledTasks.length) {
+    return intl.formatMessage(
+      {
+        id: "firstRun.firstRunModel.scheduledTaskCount",
+        defaultMessage: "{count, plural, one {# automation} other {# automations}}",
+      },
+      { count: candidate.scheduledTasks.length },
+    );
+  }
   const chats =
     candidate.chatCount === 1
       ? intl.formatMessage({

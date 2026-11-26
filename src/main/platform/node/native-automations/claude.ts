@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { parseDocument } from "yaml";
 import { z } from "zod";
 import {
+  CLAUDE_AUTOMATIONS,
   NATIVE_AUTOMATION_RUN_LIMIT,
   type NativeAutomationCandidate,
   type NativeAutomationRun,
@@ -29,7 +30,7 @@ export interface ClaudeNativeAutomationSource {
   readonly userDataHome: string;
   /** The Desktop CLI transcript home and the Nodex profile that reads that same directory. */
   readonly nativeHome: string;
-  readonly instanceConfigId: string;
+  readonly instanceConfigId?: string;
 }
 
 /** Resolves Desktop's standard and third-party-provider user-data locations. */
@@ -87,7 +88,7 @@ const runSchema = z.object({
 
 type ClaudeTask = z.infer<typeof taskSchema>;
 type Report = ReturnType<typeof reportSourceIssues>;
-type ClaudeCandidate = NativeAutomationCandidate & { readonly agent: "claude" };
+type ClaudeCandidate = NativeAutomationCandidate & { readonly agent: typeof CLAUDE_AUTOMATIONS };
 
 function claudeTaskSchedule(task: ClaudeTask): NativeAutomationSchedule {
   if (task.cronExpression !== undefined) return claudeCronToRrule(task.cronExpression);
@@ -160,7 +161,7 @@ async function readTask(
     return null;
   }
   return {
-    agent: "claude",
+    agent: CLAUDE_AUTOMATIONS,
     kind: "cron",
     sourceHome: home,
     sourceAutomationId: task.id,
@@ -211,8 +212,9 @@ function latestRuns(runs: NativeAutomationRun[], report: Report) {
   const sorted = runs
     .sort(
       (left, right) =>
-        right.createdAt - left.createdAt ||
+        Number(left.archived) - Number(right.archived) ||
         right.updatedAt - left.updatedAt ||
+        right.createdAt - left.createdAt ||
         left.nativeSessionId.localeCompare(right.nativeSessionId),
     )
     .filter(({ nativeSessionId }) => {
@@ -221,7 +223,10 @@ function latestRuns(runs: NativeAutomationRun[], report: Report) {
       return true;
     });
   if (sorted.length > NATIVE_AUTOMATION_RUN_LIMIT) report("claude-runs", "limit");
-  return sorted.slice(0, NATIVE_AUTOMATION_RUN_LIMIT);
+  return {
+    runs: sorted.slice(0, NATIVE_AUTOMATION_RUN_LIMIT),
+    runConversationIds: sorted.map(({ nativeSessionId }) => nativeSessionId),
+  };
 }
 
 async function readPartitionRuns(
@@ -330,7 +335,7 @@ async function readClaudeSource(
     return { candidates: [], issues };
   }
   const source = {
-    backendKind: "claude",
+    backendKind: CLAUDE_AUTOMATIONS,
     nativeHome,
     instanceConfigId: input.instanceConfigId,
   } as const;
@@ -367,8 +372,10 @@ async function readClaudeSource(
       }
     }
     for (const candidate of selected) {
-      const runs = latestRuns(runsByTask.get(candidate.sourceAutomationId) ?? [], partitionReport);
-      candidates.push({ ...candidate, runs });
+      candidates.push({
+        ...candidate,
+        ...latestRuns(runsByTask.get(candidate.sourceAutomationId) ?? [], partitionReport),
+      });
     }
   }
   return { candidates, issues };

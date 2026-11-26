@@ -132,6 +132,7 @@ mod tests {
             &workspace.module,
             &format!("create:{id}"),
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 agent_selection: None,
                 decision_run: None,
                 session_id: id.into(),

@@ -2395,6 +2395,9 @@ pub enum ProjectWorkspaceIntent {
     /// Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.
     /// Core does not execute the launch or persist the external Thread's mutable state.
     CreateAgentRuntimeSession {
+        /// A new historical run copy is hidden from chat lists until its history settles.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pending_historical_run_id: Option<String>,
         /// Host-only role binding, atomic with Session/execution admission.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         decision_run: Option<NodexDecisionRunInput>,

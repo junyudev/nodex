@@ -89,7 +89,7 @@ fn project_page_home(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn create_page_for(
+pub(crate) fn create_page_for(
     connection: &Connection,
     context: &BoundModuleContext,
     library_id: &str,
@@ -100,6 +100,7 @@ pub(super) fn create_page_for(
     page_id: &str,
     document_id: &str,
     title: &str,
+    markdown: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     crate::library::validate_uuid_v7("page_id", page_id)?;
     crate::library::validate_uuid_v7("document_id", document_id)?;
@@ -164,7 +165,7 @@ pub(super) fn create_page_for(
                 page_id,
                 document_id,
                 title_markdown: &title_markdown,
-                markdown: "",
+                markdown,
                 now: &now,
             };
             let (page_create, document_head, view_ids, placement) = match &home {

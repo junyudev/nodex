@@ -571,7 +571,8 @@ interface NativeObservation {
   readonly content?: unknown;
 }
 
-test("imports Claude history as an independent executable copy with a replacement directory", async ({}, testInfo) => {
+test("imports Claude history and moves scheduled runs into Automation history", async ({}, testInfo) => {
+  const claudeDesktopHome = testInfo.outputPath("claude-desktop");
   await withElectronScenario(
     {
       label: "claude-conversation-import",
@@ -579,6 +580,7 @@ test("imports Claude history as an independent executable copy with a replacemen
       environment: {
         NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: path.resolve("."),
         NODEX_LOG_FILE: "1",
+        CLAUDE_USER_DATA_DIR: claudeDesktopHome,
       },
       onFailure: async ({ readRuntimeLogs }) => {
         await testInfo.attach("claude-import-runtime.log", {
@@ -814,6 +816,73 @@ test("imports Claude history as an independent executable copy with a replacemen
       await reopened.screenshot({
         path: testInfo.outputPath("claude-import-continued-after-restart.png"),
       });
+
+      // The earlier conversation import is now one of Claude Desktop's scheduled runs.
+      fs.writeFileSync(transcriptPath, history);
+      const partition = path.join(claudeDesktopHome, "claude-code-sessions", "account", "org");
+      const taskFolder = path.join(harness.profile.runRoot, "scheduled-builds");
+      const skill = path.join(partition, "SKILL.md");
+      fs.mkdirSync(partition, { recursive: true });
+      fs.mkdirSync(taskFolder);
+      fs.writeFileSync(
+        skill,
+        "---\nname: scheduled-builds\ndescription: Check builds\n---\nCheck the build queue.\n",
+      );
+      const taskName = "Check scheduled builds";
+      const now = Date.now();
+      fs.writeFileSync(
+        path.join(partition, "scheduled-tasks.json"),
+        JSON.stringify({
+          scheduledTasks: [
+            {
+              id: "build-check",
+              displayName: taskName,
+              filePath: skill,
+              enabled: true,
+              createdAt: now,
+              cwd: taskFolder,
+              cronExpression: "15 9 * * *",
+            },
+          ],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(partition, "local_run.json"),
+        JSON.stringify({
+          scheduledTaskId: "build-check",
+          cliSessionId: nativeSessionId,
+          title,
+          cwd: originalCwd,
+          createdAt: now - 60_000,
+          lastActivityAt: now,
+        }),
+      );
+      await openWorkbenchSettings(reopened);
+      await reopened.getByRole("link", { name: "Import", exact: true }).click();
+      const taskImport = reopened.getByRole("region", { name: "Scheduled tasks", exact: true });
+      await expect(taskImport.getByText("1 run", { exact: false })).toBeVisible();
+      await expect(reopened.getByRole("group", { name: title, exact: true })).toHaveCount(0);
+      await taskImport.getByRole("checkbox", { name: taskName, exact: true }).click();
+      await taskImport.getByRole("button", { name: "Import 1 task", exact: true }).click();
+      const openTask = taskImport.getByRole("button", { name: "Open", exact: true });
+      await expect(openTask).toBeVisible();
+      const result = (await invoke(reopened, "automations:list")).items.find(
+        ({ name }) => name === taskName,
+      );
+      expect(result).toMatchObject({
+        status: "PAUSED",
+        mode: "run",
+        importOrigin: { agent: "claude" },
+      });
+      expect(result?.projectId).toBeTruthy();
+      expect(result?.projectId).not.toBe(placement.projectId);
+      expect(await invoke(reopened, "project-sessions:get", imported.sessionId)).toMatchObject({
+        projectId: result?.projectId,
+      });
+      const destination = await invoke(reopened, "workspace:tasks:list", result?.projectId ?? null);
+      expect(destination.items.some(({ id }) => id === imported.sessionId)).toBe(false);
+      await openTask.click();
+      await expect(reopened.getByText(/Imported from Claude/)).toBeVisible();
     },
   );
 });

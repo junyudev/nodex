@@ -42,6 +42,7 @@ fn workspace_lifecycle(terminal_status: &str) {
             &w.module,
             &format!("session-{session}"),
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 agent_selection: None,
                 decision_run: None,
                 side_chat_source_session_id: None,

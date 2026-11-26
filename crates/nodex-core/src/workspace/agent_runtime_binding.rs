@@ -42,7 +42,25 @@ pub(super) fn create_session(
     detached_native_thread_id: Option<&str>,
     side_chat_source_session_id: Option<&str>,
     decision_run: Option<&NodexDecisionRunInput>,
+    pending_historical_run_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    if let Some(run_id) = pending_historical_run_id {
+        require_host(context)?;
+        validate_id("run_id", run_id)?;
+        if context.agent_attribution.is_some()
+            || project_id.is_none()
+            || decision_run.is_some()
+            || !initial_page_ids.is_empty()
+            || side_chat_source_session_id.is_some()
+            || detached_native_thread_id.is_some()
+        {
+            return Err(StoreError::new(
+                StoreErrorCode::InvalidInput,
+                "A historical Automation run requires a new Project chat",
+                false,
+            ));
+        }
+    }
     if decision_run.is_some() {
         require_host(context)?;
         if context.agent_attribution.is_some() {
@@ -178,6 +196,13 @@ pub(super) fn create_session(
         )
         .optional()?
         .is_some();
+    if existing && pending_historical_run_id.is_some() {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "A historical Automation run requires a fresh Session",
+            false,
+        ));
+    }
     if existing && decision_run.is_some() {
         return Err(StoreError::new(
             StoreErrorCode::Conflict,
@@ -225,6 +250,12 @@ pub(super) fn create_session(
             None,
         )?
     };
+    if let Some(run_id) = pending_historical_run_id {
+        connection.execute(
+            "INSERT INTO pending_historical_automation_runs(session_id, run_id) VALUES (?1, ?2)",
+            params![session_id, run_id],
+        )?;
+    }
     if let Some(source_id) = side_chat_source_session_id {
         connection.execute(
             "INSERT INTO project_session_side_chats(session_id, source_session_id) VALUES (?1, ?2)",
@@ -355,6 +386,7 @@ pub(super) fn adopt_native_session(
         launch_request_id,
         "adopt_native_session_execution",
         Some(expected_native_thread_id),
+        None,
         None,
         None,
     )
@@ -659,6 +691,7 @@ mod tests {
 
     fn create_intent(session_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             side_chat_source_session_id: None,

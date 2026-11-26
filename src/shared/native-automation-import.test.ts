@@ -83,7 +83,7 @@ const codexCron = {
 } as const satisfies NativeAutomationCandidate;
 
 describe("native Automation drafts", () => {
-  it("maps a Codex worktree task to a paused Ask first draft with explicit origin", () => {
+  it("maps a Codex worktree task to a paused Run draft with explicit origin", () => {
     expect(
       nativeAutomationCreateDraft(codexCron, { timezone: "Asia/Singapore", projectId: "project" }),
     ).toEqual({
@@ -93,9 +93,11 @@ describe("native Automation drafts", () => {
           sourceHome: "/source/codex",
           sourceAutomationId: "native-task",
         },
-        initial_status: "PAUSED",
+        initial_status: "paused",
+        import_runbook_markdown: "A prior checkpoint.",
+        scope: { kind: "project", project_id: "project" },
         kind: "cron",
-        mode: "ask_first",
+        mode: "run",
         name: "Review builds",
         prompt: "Read recent build logs.",
         trigger: {
@@ -112,7 +114,7 @@ describe("native Automation drafts", () => {
         reasoning_effort: "high",
         notification_policy: { kind: "set", value: "failed_runs_only" },
       },
-      issues: [{ field: "memory", reason: "no-equivalent" }],
+      issues: [],
     });
   });
 

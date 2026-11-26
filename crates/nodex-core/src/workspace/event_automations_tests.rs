@@ -388,6 +388,7 @@ fn launch_assessment(w: &TestWorkspace, r: &AutomationAssessmentRequest) {
         &w.module,
         &format!("launch:{session}"),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: Some(NodexDecisionRunInput {
                 kind: NodexDecisionRunKind::Assessment,
@@ -1130,6 +1131,7 @@ fn follow_updates_wait_for_automation_launch_admission_and_cannot_wake_a_rejecte
             &w.module,
             "prepare-runtime",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 agent_selection: None,
                 decision_run: None,
                 session_id: launch.session_id.clone(),

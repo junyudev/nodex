@@ -375,6 +375,7 @@ fn runtime_launch_hands_off_initial_pages_for_new_and_existing_sessions() {
         let page = create_page(&workspace, &format!("runtime-page-{session_id}"), false);
         let before = status(&workspace, &page).unwrap();
         let intent = ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: Some(nodex_core_contracts::library::AgentWorkSelection {
                 instance_id: "codex".into(),
                 model: "gpt".into(),

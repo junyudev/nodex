@@ -4,6 +4,7 @@ use nodex_core_contracts::{CoreErrorCode, agent::AgentTurnProvenance, workspace:
 
 fn launch(id: &str) -> ProjectWorkspaceIntent {
     ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+        pending_historical_run_id: None,
         agent_selection: None,
         decision_run: None,
         session_id: id.into(),

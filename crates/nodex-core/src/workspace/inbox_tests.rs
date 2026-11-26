@@ -71,6 +71,7 @@ fn routing_session(
             request(
                 &format!("launch:{session_id}"),
                 ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                    pending_historical_run_id: None,
                     decision_run: Some(NodexDecisionRunInput {
                         kind: NodexDecisionRunKind::Routing,
                         request_id: request_id.into(),
@@ -1687,6 +1688,7 @@ fn runtime_session(module: &ProjectWorkspaceModule) {
         module,
         "runtime-session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             side_chat_source_session_id: None,
@@ -5196,6 +5198,7 @@ mod scheduled {
         AutomationInput {
             initial_status: None,
             import_origin: None,
+            import_runbook_markdown: None,
             trigger: AutomationTriggerInput::Clock {
                 rrule: "FREQ=MINUTELY;INTERVAL=5".into(),
                 timezone: None,

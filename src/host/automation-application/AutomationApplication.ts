@@ -21,6 +21,7 @@ import type {
   PageOccurrenceUpdateInput,
 } from "../../shared/types";
 import { asciiSlug } from "../../shared/ascii-name";
+import type { AutomationInput as CoreAutomationInput } from "../../shared/core-modules/automation-module";
 import type { InboxAgentChoice } from "../../shared/inbox";
 import { inboxChatAgentFromCore } from "../../main/core-client/inbox-adapter";
 import { getLogger } from "../../main/logging/logger";
@@ -154,6 +155,7 @@ export interface Automations {
     input: AutomationCreateInput,
     command?: AutomationCommand,
   ) => AutomationEffect<Automation>;
+  readonly importDefinition: (input: CoreAutomationInput) => AutomationEffect<Automation>;
   readonly update: (
     input: AutomationUpdateInput,
     command?: AutomationRevisionCommand,
@@ -188,6 +190,9 @@ export interface AutomationRuns {
     readonly pendingReviewCount: number;
   }>;
   readonly get: (runId: string) => AutomationEffect<AutomationRun | null>;
+  readonly recordHistorical: (
+    run: Extract<AutomationIntent, { readonly kind: "record_historical_run" }>["run"],
+  ) => AutomationEffect<void>;
   readonly begin: (input: AutomationRunMutationInput) => AutomationEffect<boolean>;
   readonly bindSession: (input: {
     readonly runId: string;
@@ -1010,6 +1015,22 @@ export const make: Effect.Effect<
           ),
         ),
       create: createDefinition,
+      importDefinition: Effect.fn("AutomationApplication.automations.importDefinition")(
+        function* (input) {
+          const automationId = yield* allocateDefinitionId(input.name);
+          const committed = yield* apply("automations.importDefinition", {
+            operationId: operationId("import-definition"),
+            intent: { kind: "create_automation", automation_id: automationId, automation: input },
+          });
+          const definition = committed.outcome.automations[0];
+          if (!definition)
+            return yield* error(
+              "automations.importDefinition",
+              new Error("Core omitted the Automation"),
+            );
+          return yield* projectDefinition("automations.importDefinition", definition);
+        },
+      ),
       update: updateDefinition,
       delete: deleteDefinition,
       dispatchNow: dispatchDefinitionNow,
@@ -1046,6 +1067,11 @@ export const make: Effect.Effect<
       ),
       get: (runId) =>
         readRun(runId).pipe(Effect.map((item) => (item ? projectAutomationRun(item) : null))),
+      recordHistorical: (run) =>
+        apply("runs.recordHistorical", {
+          operationId: operationId("record-historical-run"),
+          intent: { kind: "record_historical_run", run },
+        }).pipe(Effect.asVoid),
       begin: (input) =>
         apply("runs.begin", {
           operationId: operationId(`begin-run:${input.runId}`),

@@ -85,7 +85,7 @@ export function resolveFolderPlacement(
   if (owner) return { kind: "project", projectId: owner.projectId, name: owner.name };
   const root = folder.repository?.root ?? folder.path;
   if (
-    matches.length > 0 ||
+    (!explicit && matches.length > 0) ||
     (!explicit &&
       (!isOfferedProjectFolder(folder.path, places) ||
         (folder.alias !== undefined && !isOfferedProjectFolder(folder.alias, places)) ||
@@ -94,7 +94,16 @@ export function resolveFolderPlacement(
     return { kind: "chats" };
   return {
     kind: "new-project",
-    projectId: projectForFolder(root),
+    projectId: matches.some(({ source }) => source.projectId === projectForFolder(root))
+      ? v5(
+          JSON.stringify([
+            "nodex:replacement-folder",
+            normalizeCodexPathIdentity(root),
+            ...matches.map(({ source }) => source.projectId).sort(),
+          ]),
+          v5.URL,
+        )
+      : projectForFolder(root),
     root,
     name: repositoryFromRemoteUrl(folder.repository?.remoteUrl ?? null) ?? (basename(root) || root),
   };

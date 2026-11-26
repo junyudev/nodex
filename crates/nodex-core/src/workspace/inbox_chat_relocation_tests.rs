@@ -186,6 +186,7 @@ fn prepare(w: &TestWorkspace, page: &str) {
         &w.module,
         "previous-chat",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             side_chat_source_session_id: None,
@@ -464,6 +465,7 @@ fn dispatch_assigns_only_empty_user_and_github_pages_to_the_receiving_agent() {
                         &w.module,
                         "receiver",
                         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                            pending_historical_run_id: None,
                             decision_run: None,
                             side_chat_source_session_id: None,
                             session_id: "chat".into(),
@@ -542,6 +544,7 @@ fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_
             &w.module,
             "dispatching-agent",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 decision_run: None,
                 side_chat_source_session_id: None,
                 session_id: "dispatching-agent".into(),
@@ -559,6 +562,7 @@ fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_
                 &w.module,
                 "receiver",
                 ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                    pending_historical_run_id: None,
                     decision_run: None,
                     side_chat_source_session_id: None,
                     session_id: "chat".into(),

@@ -116,6 +116,24 @@ replay carries no times, so the copy dates its history at the conversation's las
 admitting the destination, Nodex has the Agent replay the conversation once: a conversation whose
 transcript is gone, or whose replay is empty, is refused with that reason and creates no chat.
 
+## Importing scheduled tasks
+
+Settings > Import lists Codex and Claude Desktop scheduled tasks in Automations. Each row shows
+the Agent, schedule, destination Project and number of runs it can bring in. Codex uses the same
+history home as conversation import. A Claude task needs an enabled Claude profile that reads the
+same physical history folder as its runs. Tasks with missing folders, unsupported schedules,
+one-time triggers or manual-only triggers show why they are unavailable.
+
+Each working folder goes to its Project. Nodex creates a Project for an available folder that needs
+one, and gives a task that spans Projects an Automation in each. Imported Automations begin paused.
+Importing again continues any remaining work, and a completed row opens the existing Automation.
+
+Nodex copies up to twenty non-archived cron runs updated in the last thirty days into Automation
+history. It reuses earlier conversation copies and moves them to the Automation's Project when
+needed. These conversations belong to their task in Settings. A heartbeat instead continues its
+target chat. Nodex reuses or imports that chat as an ordinary conversation, and it remains listed in
+conversation import.
+
 ## Existing connected history
 
 Previously connected local native conversations retain their saved identity and passive history

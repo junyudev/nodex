@@ -1726,6 +1726,7 @@ mod tests {
             module,
             "side-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 agent_selection: None,
                 decision_run: None,
                 session_id: "session:side".into(),
@@ -1742,6 +1743,7 @@ mod tests {
             module,
             "decision",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 agent_selection: None,
                 decision_run: Some(nodex_core_contracts::workspace::NodexDecisionRunInput {
                     kind: nodex_core_contracts::workspace::NodexDecisionRunKind::Routing,

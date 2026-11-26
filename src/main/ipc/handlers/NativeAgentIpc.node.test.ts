@@ -1,3 +1,4 @@
+import { NativeAutomationImport } from "../../agent-backend/NativeAutomationImport";
 import { tmpdir } from "node:os";
 import { ProjectWorkspace } from "../../project-application/ProjectWorkspace";
 // @effect-diagnostics strictEffectProvide:off
@@ -46,9 +47,11 @@ vi.mock("../../agent-backend/AgentBackendApplication", async () => {
   };
 });
 
-vi.mock("../../agent-backend/NativeSessionCatalog", async () => {
+vi.mock("../../agent-backend/NativeSessionCatalog", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../agent-backend/NativeSessionCatalog")>();
   const Context = await import("effect/Context");
   return {
+    ...actual,
     NativeSessionCatalog: class extends Context.Service<unknown, unknown>()(
       "test/NativeSessionCatalog",
     ) {},
@@ -431,6 +434,10 @@ describe("NativeSessionCatalogIpc", () => {
               listProjectWindow: () => Effect.succeed({ items: [], nextCursor: null }),
             } as unknown as ProjectWorkspace["Service"]),
             Layer.succeed(NativeSessionCatalog, catalog),
+            Layer.succeed(NativeAutomationImport, {
+              catalog: Effect.succeed({ rows: [], cronConversationKeys: [] }),
+              importSelection: () => Effect.die("Unexpected automation import"),
+            }),
             Layer.succeed(AgentRuntimeApplication, {
               findNativeImports: ({ nativeThreadIds }: { nativeThreadIds: readonly string[] }) =>
                 Effect.sync(() => {

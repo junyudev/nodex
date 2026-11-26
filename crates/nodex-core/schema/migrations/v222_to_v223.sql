@@ -3,7 +3,13 @@ CREATE TABLE automation_import_origins (
   agent TEXT NOT NULL CHECK (agent IN ('codex', 'claude')),
   source_home TEXT NOT NULL CHECK (length(source_home) > 0),
   source_automation_id TEXT NOT NULL CHECK (length(source_automation_id) > 0),
-  UNIQUE (agent, source_home, source_automation_id)
+  placement_project_id TEXT NOT NULL,
+  UNIQUE (agent, source_home, source_automation_id, placement_project_id)
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE pending_historical_automation_runs (
+  session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE,
+  run_id TEXT NOT NULL
 ) WITHOUT ROWID, STRICT;
 
 CREATE TABLE automation_run_session_adoptions (

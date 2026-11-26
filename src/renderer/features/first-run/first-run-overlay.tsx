@@ -148,9 +148,10 @@ function FirstRunFlow({
               {intl.formatMessage(
                 {
                   id: "firstRun.firstRunOverlay.importProgress",
-                  defaultMessage: "Bringing in chats · {done} of {total}",
+                  defaultMessage:
+                    "{kind, select, chats {Bringing in chats} automations {Bringing in automations} other {Importing}} · {done} of {total}",
                 },
-                { done: progress.settled, total: progress.total },
+                { kind: progress.kind, done: progress.settled, total: progress.total },
               )}
             </span>
           ) : steps.length > 1 ? (

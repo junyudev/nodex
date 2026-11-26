@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
 import { resolveSidebarRowStatus } from "@/lib/sidebar-status";
 import { SidebarStatusIndicator } from "@/components/workbench/sidebar-status-indicator";
 import type { Automation } from "@/lib/types";
@@ -257,7 +258,15 @@ function AutomationRunRow({
         >
           {run.title}
         </span>
-        <span className="flex shrink-0 group-hover/run:hidden group-focus-within/run:hidden">
+        <span className="flex shrink-0 items-center gap-1.5 group-hover/run:hidden group-focus-within/run:hidden">
+          {run.isRunning ? null : (
+            <time
+              className="text-xs text-token-description-foreground tabular-nums"
+              dateTime={new Date(run.createdAt).toISOString()}
+            >
+              {formatCompactRelativeTime(run.createdAt)}
+            </time>
+          )}
           <StatusSlot running={run.isRunning} unread={run.isUnread} />
         </span>
       </div>

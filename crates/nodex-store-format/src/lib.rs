@@ -360,7 +360,7 @@ pub const PUBLISHED_STORE_FORMATS: &[PublishedStoreFormat] = &[
     ),
     format(
         223,
-        "26b39242545d37e45319c3156666de32169d1c8f7de5d1fdf7a86a491a099c42",
+        "fec7e56bea486a09419aaa8ae2ac92bf75b3233d1c07101ca3bd48f296ec25f2",
     ),
 ];
 

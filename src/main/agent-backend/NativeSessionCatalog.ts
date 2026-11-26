@@ -33,7 +33,10 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { projectCodexGatewayThreadReadThread } from "../codex-runtime/CodexGatewayProtocolProjection";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import {
+  AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
+} from "../agent-runtime/AgentRuntimeApplication";
 import {
   canonicalNativeSessionHome,
   nativeSessionCwdAvailable,
@@ -66,6 +69,24 @@ export class NativeSessionCatalog extends Context.Service<
     ) => Effect.Effect<PreparedImport, NativeSessionCatalogError>;
   }
 >()("nodex/main/agent-backend/NativeSessionCatalog") {}
+
+/** Preserve the shared import ledger's distinction between refusal and uncertain admission. */
+export const prepareNativeSessionImport = (
+  catalog: NativeSessionCatalog["Service"],
+  input: NativeConversationImportInput,
+) =>
+  catalog.prepareImport(input).pipe(
+    Effect.mapError((cause) =>
+      cause.admissionRejected
+        ? new AgentRuntimeApplicationError({
+            operation: "import",
+            message: cause.message,
+            admissionRejected: true,
+            cause,
+          })
+        : cause,
+    ),
+  );
 
 const fail = (operation: string, cause: unknown, admissionRejected = false) =>
   new NativeSessionCatalogError({

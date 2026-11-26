@@ -120,6 +120,7 @@ const candidate = (path: string, overrides: Partial<ProjectCandidate> = {}): Pro
   lastActiveAt: scannedAt,
   suggested: true,
   recentChats: [],
+  scheduledTasks: [],
   ...overrides,
 });
 

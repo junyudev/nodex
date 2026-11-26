@@ -29,6 +29,7 @@ import {
   chooseProjectFolders,
   createFolderProject,
   importRecentChats,
+  importScheduledTasks,
   useFolderLabel,
   useProjectCandidates,
 } from "./first-run-projects";
@@ -182,6 +183,7 @@ export function FirstRunProjectsStep({
   // Null until the person changes something, so a late scan can still preselect its suggestions.
   const [picked, setPicked] = useState<ReadonlySet<string> | null>(null);
   const [bringChats, setBringChats] = useState(false);
+  const [bringAutomations, setBringAutomations] = useState(false);
   const [namingEmpty, setNamingEmpty] = useState(false);
   const [emptyName, setEmptyName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -204,6 +206,15 @@ export function FirstRunProjectsStep({
     ]);
   const selected = choices.filter((choice) => selectedKeys.has(choice.key));
   const chats = selected.flatMap((choice) => choice.candidate?.recentChats ?? []);
+  const tasks = selected.flatMap((choice) => choice.candidate?.scheduledTasks ?? []);
+  const bringAutomationsLabel = intl.formatMessage(
+    {
+      id: "firstRun.firstRunProjectsStep.importScheduledTasks",
+      defaultMessage:
+        "{count, plural, one {Also bring # automation (paused)} other {Also bring # automations (paused)}}",
+    },
+    { count: tasks.length },
+  );
   const scanning = scan.isPending;
   const selection =
     selected.length === 0 ? "none" : selected.length === choices.length ? "all" : "some";
@@ -266,6 +277,9 @@ export function FirstRunProjectsStep({
     if (!first) return;
     if (bringChats) {
       importRecentChats(created.flatMap(({ choice }) => choice.candidate?.recentChats ?? []));
+    }
+    if (bringAutomations) {
+      importScheduledTasks(created.flatMap(({ choice }) => choice.candidate?.scheduledTasks ?? []));
     }
     onContinue({ projectId: first.projectId, task: firstTaskForChoice(first.choice) });
   };
@@ -433,6 +447,17 @@ export function FirstRunProjectsStep({
               />
             </span>
           </span>
+        </label>
+      ) : null}
+      {tasks.length > 0 ? (
+        <label className="mt-3 flex cursor-interaction items-center gap-2.5 px-3.5 text-left text-sm">
+          <NodexCheckbox
+            ariaLabel={bringAutomationsLabel}
+            checked={bringAutomations}
+            disabled={busy}
+            onCheckedChange={setBringAutomations}
+          />
+          {bringAutomationsLabel}
         </label>
       ) : null}
       <FirstRunPrimary

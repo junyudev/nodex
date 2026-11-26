@@ -4873,6 +4873,7 @@ export function WorkbenchRuntime({
         onRequestProjectPickerOpen,
         onOpenThread: openSettingsThreadSessionById,
         onOpenCustomize: openPlugins,
+        onOpenAutomations: openAutomations,
         onStartChat: (prompt: string) =>
           void startNewChatWithPrompt({ projectId: activeProjectId, prompt }),
         projects,

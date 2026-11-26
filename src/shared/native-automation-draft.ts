@@ -2,19 +2,21 @@ import { claudeAgent } from "./agents/claude";
 import { CODEX_BINDING } from "./agents/codex";
 import { isAbsoluteAppFilesystemPath } from "./app-protocol";
 import type { AutomationInput } from "./core-modules/automation-module";
-import type {
-  NativeAutomationCandidate,
-  NativeAutomationOrigin,
-  NativeAutomationScheduleProblem,
+import {
+  CLAUDE_AUTOMATIONS,
+  CODEX_AUTOMATIONS,
+  type NativeAutomationCandidate,
+  type NativeAutomationOrigin,
+  type NativeAutomationScheduleProblem,
 } from "./native-automation-import";
 
-/** Create metadata awaiting the Core import contract. */
 export type NativeAutomationCreateDraft = AutomationInput & {
-  readonly initial_status: "PAUSED";
+  readonly initial_status: NonNullable<AutomationInput["initial_status"]>;
   readonly import_origin: NativeAutomationOrigin;
 };
 
 type DraftBlocker =
+  | { readonly field: "profile"; readonly reason: "no-claude-profile" }
   | { readonly field: "schedule"; readonly reason: NativeAutomationScheduleProblem }
   | { readonly field: "heartbeatTarget"; readonly reason: "needs-nodex-session" }
   | { readonly field: "projectId"; readonly reason: "needs-project" }
@@ -26,12 +28,7 @@ type DraftBlocker =
   | { readonly field: "name"; readonly reason: "empty" };
 
 type UnmappedField = {
-  readonly field:
-    | "memory"
-    | "notificationPolicy"
-    | "additionalFolders"
-    | "model"
-    | "reasoningEffort";
+  readonly field: "notificationPolicy" | "additionalFolders" | "model" | "reasoningEffort";
   readonly reason: "no-equivalent" | "exceeds-core-bound";
 };
 
@@ -68,7 +65,7 @@ export function nativeAutomationCreateDraft(
   const name = candidate.name.trim();
   const prompt = candidate.prompt.trim();
   const nativeEnvironmentFile =
-    agent === "codex" ? candidate.localEnvironmentConfigPath : undefined;
+    agent === CODEX_AUTOMATIONS ? candidate.localEnvironmentConfigPath : undefined;
   const environmentFile = nativeEnvironmentFile?.trim();
   const invalidEnvironmentFile = !!environmentFile && !validAbsolutePath(environmentFile);
   const invalidFolder = kind === "cron" && folders.some((folder) => !validAbsolutePath(folder));
@@ -84,6 +81,10 @@ export function nativeAutomationCreateDraft(
   const nameTooLong = Array.from(name).length > 256;
   const promptTooLong = utf8.encode(prompt).length > 1024 * 1024;
 
+  const instanceId =
+    agent === CLAUDE_AUTOMATIONS ? candidate.conversationSource.instanceConfigId : undefined;
+  if (agent === CLAUDE_AUTOMATIONS && !instanceId)
+    issues.push({ field: "profile", reason: "no-claude-profile" });
   if (schedule.kind === "unsupported") issues.push({ field: "schedule", reason: schedule.reason });
   if (missingTarget) issues.push({ field: "heartbeatTarget", reason: "needs-nodex-session" });
   if (missingProject) issues.push({ field: "projectId", reason: "needs-project" });
@@ -96,9 +97,7 @@ export function nativeAutomationCreateDraft(
   if (nameTooLong) issues.push({ field: "name", reason: "exceeds-core-bound" });
   if (promptTooLong) issues.push({ field: "prompt", reason: "exceeds-core-bound" });
 
-  if (agent === "codex" && candidate.memory)
-    issues.push({ field: "memory", reason: "no-equivalent" });
-  if (agent === "claude" && candidate.additionalFolders?.length)
+  if (agent === CLAUDE_AUTOMATIONS && candidate.additionalFolders?.length)
     issues.push({ field: "additionalFolders", reason: "no-equivalent" });
   const notification = candidate.notificationPolicy;
   if (notification && notification !== "failed_runs_only")
@@ -113,6 +112,7 @@ export function nativeAutomationCreateDraft(
 
   if (
     schedule.kind === "unsupported" ||
+    (agent === CLAUDE_AUTOMATIONS && !instanceId) ||
     missingTarget ||
     missingProject ||
     missingFolder ||
@@ -129,17 +129,19 @@ export function nativeAutomationCreateDraft(
       kind,
       name,
       prompt,
-      mode: "ask_first",
-      initial_status: "PAUSED",
+      mode: "run",
+      initial_status: "paused",
       import_origin: { agent, sourceHome, sourceAutomationId },
+      ...(agent === CODEX_AUTOMATIONS &&
+        candidate.memory !== undefined && { import_runbook_markdown: candidate.memory }),
+      ...(projectId && { scope: { kind: "project" as const, project_id: projectId } }),
       trigger: { kind: "clock", rrule: schedule.rrule, timezone },
-      backend_binding:
-        agent === "codex"
-          ? CODEX_BINDING
-          : {
-              driver: claudeAgent.driver,
-              instanceId: candidate.conversationSource.instanceConfigId,
-            },
+      backend_binding: !instanceId
+        ? CODEX_BINDING
+        : {
+            driver: claudeAgent.driver,
+            instanceId,
+          },
       ...(kind === "heartbeat"
         ? { target_session_id: targetSessionId?.trim() }
         : {

@@ -152,6 +152,11 @@ copies the selected folders' chats from the last 30 days, at most 20 from each, 
 by its working folder. Copies are made in the background. Progress replaces the dots while setup
 shows, each chat appears in the sidebar as it finishes, and a toast reports the total. A chat that fails can be retried in Settings → Import.
 
+Project setup leaves scheduled run chats out of folder activity, chat counts and recent chats.
+When the chosen folders have importable scheduled tasks, **Also bring automations (paused)** is
+available and off by default. Copies run in the background after adding the Projects. If an import
+needs another attempt, continue it in Settings > Import.
+
 ## Landing
 
 Finishing opens New Chat in the first Project added, with a first task in the Composer, not sent, and

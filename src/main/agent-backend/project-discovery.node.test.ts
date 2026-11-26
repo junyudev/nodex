@@ -240,6 +240,52 @@ describe("project-discovery", () => {
       }),
     );
 
+    it.effect("discovers task folders without counting the task’s cron run conversations", () =>
+      Effect.gen(function* () {
+        const folder = "/code/builds";
+        const selection = { sourceKey: "task", folders: [folder] };
+        const result = yield* discoverProjects({
+          sources: [{ backendKind: "codex" }],
+          places: projectDiscoveryPlaces("/home/.nodex", "/home"),
+          now: NOW,
+          readPage: () =>
+            Effect.succeed(
+              page([
+                { ...entry("run", folder), updatedAt: NOW },
+                { ...entry("heartbeat-target", folder), updatedAt: NOW - 3 * DAY },
+                entry("run-in-another-folder", "/code/evidence"),
+              ]),
+            ),
+          cronConversationKeys: new Set([
+            JSON.stringify(["codex", "/home/.codex", "run"]),
+            JSON.stringify(["codex", "/home/.codex", "run-in-another-folder"]),
+          ]),
+          automations: [
+            {
+              id: "row",
+              selection,
+              agent: "codex",
+              kind: "cron",
+              name: "Builds",
+              schedule: { kind: "rrule", rrule: "FREQ=DAILY" },
+              placement: { kind: "new-project", projectId: "builds", root: folder, name: "Builds" },
+              runCount: 2,
+              status: { kind: "ready" },
+            },
+          ],
+          probe: () => Effect.succeed(null),
+        });
+        expect(result.candidates).toHaveLength(1);
+        expect(result.candidates[0]).toMatchObject({
+          path: folder,
+          chatCount: 1,
+          lastActiveAt: NOW - 3 * DAY,
+          recentChats: [{ nativeSessionId: "heartbeat-target" }],
+          scheduledTasks: [selection],
+        });
+      }),
+    );
+
     it.effect("keeps what other histories found when one can't be read", () =>
       Effect.gen(function* () {
         const result = yield* discoverProjects({

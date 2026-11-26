@@ -28,7 +28,9 @@ pub(super) const ROOT_CHAT_SQL: &str = "NOT EXISTS (SELECT 1 FROM project_sessio
      AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)";
 
 /// Clock Cron runs remain in Automations until someone continues their chat.
-pub(super) const CHAT_LIST_AUTOMATION_SQL: &str = "(
+pub(super) const CHAT_LIST_AUTOMATION_SQL: &str = "NOT EXISTS (
+     SELECT 1 FROM pending_historical_automation_runs pending WHERE pending.session_id = session.id
+   ) AND (
      EXISTS (SELECT 1 FROM automation_run_session_adoptions adopted WHERE adopted.session_id = session.id)
      OR NOT EXISTS (
        SELECT 1 FROM automation_execution_runs run

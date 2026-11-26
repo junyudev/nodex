@@ -2,6 +2,8 @@ import { getIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import { useSyncExternalStore } from "react";
+import { importNativeAutomation } from "@/lib/native-automation-import";
+import type { NativeAutomationSelection } from "../../../shared/native-automation-import";
 import { nativeConversationImportLedger } from "@/lib/native-conversation-import-ledger";
 import {
   nativeConversationCandidate,
@@ -38,7 +40,10 @@ export function useProjectCandidates(enabled: boolean) {
   });
 }
 
+type ImportKind = "chats" | "automations";
+
 export interface ChatImportProgress {
+  readonly kind: ImportKind | "both";
   readonly total: number;
   readonly settled: number;
   readonly failed: number;
@@ -47,8 +52,18 @@ export interface ChatImportProgress {
 const IMPORT_CONCURRENCY = 2;
 const listeners = new Set<() => void>();
 let progress: ChatImportProgress | null = null;
-const publish = (next: ChatImportProgress | null) => {
-  progress = next;
+const active = new Map<ImportKind, Omit<ChatImportProgress, "kind">>();
+const publish = (kind: ImportKind, next: Omit<ChatImportProgress, "kind"> | null) => {
+  if (next) active.set(kind, next);
+  else active.delete(kind);
+  progress = active.size
+    ? {
+        kind: active.size === 2 ? "both" : active.has("chats") ? "chats" : "automations",
+        total: [...active.values()].reduce((sum, item) => sum + item.total, 0),
+        settled: [...active.values()].reduce((sum, item) => sum + item.settled, 0),
+        failed: [...active.values()].reduce((sum, item) => sum + item.failed, 0),
+      }
+    : null;
   for (const listener of listeners) listener();
 };
 
@@ -73,28 +88,41 @@ async function importChat(chat: ProjectCandidateChat): Promise<boolean> {
   return settlement.kind === "imported";
 }
 
-/**
- * Copies chats behind whatever the person does next, through the same ledger Settings shows, so a
- * chat that fails can be retried there. Each copy appears in the sidebar as it finishes.
- */
-export function importRecentChats(items: readonly ProjectCandidateChat[]): void {
-  if (items.length === 0 || progress) return;
+function importInBackground<Item>(
+  kind: ImportKind,
+  items: readonly Item[],
+  importItem: (item: Item) => Promise<boolean>,
+  completed: (copied: number, total: number) => void,
+): void {
+  if (!items.length || active.has(kind)) return;
   const queue = [...items];
   let settled = 0;
   let failed = 0;
-  publish({ total: items.length, settled, failed });
+  publish(kind, { total: items.length, settled, failed });
   const worker = async () => {
     for (let item = queue.shift(); item; item = queue.shift()) {
-      const imported = await importChat(item).catch(() => false);
+      const imported = await importItem(item).catch(() => false);
       settled += 1;
       if (!imported) failed += 1;
-      publish({ total: items.length, settled, failed });
+      publish(kind, { total: items.length, settled, failed });
     }
   };
   void Promise.all(Array.from({ length: IMPORT_CONCURRENCY }, worker)).then(() => {
-    publish(null);
-    const copied = items.length - failed;
-    if (failed === 0) {
+    publish(kind, null);
+    completed(items.length - failed, items.length);
+  });
+}
+
+const retryDescription = () =>
+  getIntl().formatMessage({
+    id: "firstRun.firstRunProjects.retryTheRestInSettings",
+    defaultMessage: "Retry the rest in Settings → Import.",
+  });
+
+/** Conversation copies keep their usual Settings import ledger while setup continues. */
+export function importRecentChats(items: readonly ProjectCandidateChat[]): void {
+  importInBackground("chats", items, importChat, (copied, total) => {
+    if (copied === total) {
       toast.success(
         copied === 1
           ? getIntl().formatMessage({
@@ -116,17 +144,46 @@ export function importRecentChats(items: readonly ProjectCandidateChat[]): void 
             id: "firstRun.firstRunProjects.valueOfValueChatsImported",
             defaultMessage: "{value1} of {value2} chats imported",
           },
-          { value1: copied, value2: items.length },
+          { value1: copied, value2: total },
         ),
-        {
-          description: getIntl().formatMessage({
-            id: "firstRun.firstRunProjects.retryTheRestInSettings",
-            defaultMessage: "Retry the rest in Settings → Import.",
-          }),
-        },
+        { description: retryDescription() },
       );
     }
   });
+}
+
+export function importScheduledTasks(items: readonly NativeAutomationSelection[]): void {
+  importInBackground(
+    "automations",
+    items,
+    async (item) => (await importNativeAutomation(item)).kind === "imported",
+    (copied, total) => {
+      const intl = getIntl();
+      if (copied === total) {
+        toast.success(
+          intl.formatMessage(
+            {
+              id: "firstRun.firstRunProjects.automationsImported",
+              defaultMessage:
+                "{count, plural, one {# automation imported} other {# automations imported}}",
+            },
+            { count: copied },
+          ),
+        );
+        return;
+      }
+      toast.warning(
+        intl.formatMessage(
+          {
+            id: "firstRun.firstRunProjects.partialAutomations",
+            defaultMessage: "{copied} of {total} automations imported",
+          },
+          { copied, total },
+        ),
+        { description: retryDescription() },
+      );
+    },
+  );
 }
 
 export function useChatImportProgress(): ChatImportProgress | null {

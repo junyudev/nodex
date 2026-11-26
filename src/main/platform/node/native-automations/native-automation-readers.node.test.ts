@@ -84,7 +84,7 @@ it.effect("uses committed Codex data, links runs, and respects scope and legacy 
         },
       ]);
       expect(nativeAutomationConversationIds(result.candidates).get("codex")?.get(home)).toEqual(
-        new Set(["run-newest", "run-earlier", "legacy-run", "native-target"]),
+        new Set(["run-newest", "run-earlier", "legacy-run"]),
       );
 
       const insert = writer.prepare(

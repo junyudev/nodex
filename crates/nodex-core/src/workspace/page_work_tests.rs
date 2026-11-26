@@ -306,6 +306,7 @@ fn page_work_readiness_waits_for_acceptance_and_ignores_later_reports() {
         &w.module,
         "prerequisite:session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
             agent_selection: None,
             decision_run: None,
             session_id: "prerequisite:chat".into(),
@@ -612,6 +613,7 @@ fn managed_chat_owner_uses_its_active_work_page_without_following_related_links(
             &w.module,
             "chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 agent_selection: None,
                 decision_run: None,
                 side_chat_source_session_id: None,

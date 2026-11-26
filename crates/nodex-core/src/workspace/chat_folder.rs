@@ -466,6 +466,7 @@ mod tests {
             module,
             "execution",
             Intent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
                 decision_run: None,
                 session_id: "draft".into(),
                 project_id: None,

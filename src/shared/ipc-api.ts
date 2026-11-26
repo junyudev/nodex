@@ -2730,6 +2730,14 @@ export interface IpcApi
     args: [];
     result: import("./project-discovery").ProjectDiscoveryResult;
   };
+  "native-automations:list": {
+    args: [];
+    result: import("./native-automation-import").NativeAutomationCatalogResult;
+  };
+  "native-automations:import": {
+    args: [selection: import("./native-automation-import").NativeAutomationSelection];
+    result: import("./native-automation-import").NativeAutomationImportResult;
+  };
   "native-sessions:preview-import": {
     args: [input: NativeConversationImportPreviewInput];
     result: NativeConversationImportPreviewResult;
