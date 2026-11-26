@@ -9,7 +9,9 @@ use nodex_core_contracts::{ProjectionImpact, document::PageFileReferenceChange};
 
 use crate::domain::derived_records::{BlockDocumentAssetKind, BlockDocumentReference};
 use crate::infrastructure::document_repository::{DocumentHeadRow, DocumentReadRepository};
-use crate::infrastructure::event_log::{NewChangeLogEntry, append_change_log};
+use crate::infrastructure::event_log::{
+    NewChangeLogEntry, PAGE_TITLE_CHANGED_KIND, append_change_log,
+};
 use crate::infrastructure::local_commit::{self, CommitContext, RegisteredDocumentEffect};
 use crate::infrastructure::projection_impact::{
     PageProjectionCoordinates, PageProjectionDatabaseCoordinates, expand_database_coordinates,
@@ -603,7 +605,8 @@ fn persist_yjs_commit_inner(
             &input.materialization.references,
         ]),
     )?;
-    let projection_impact = if input.base_materialization.title != input.materialization.title
+    let title_changed = input.base_materialization.title != input.materialization.title;
+    let projection_impact = if title_changed
         || input.base_materialization.rich_title != input.materialization.rich_title
         || nested_page_placement_changed
     {
@@ -611,6 +614,32 @@ fn persist_yjs_commit_inner(
     } else {
         projection_impact
     };
+    if title_changed && let Some(page) = &page_impact {
+        // Publish with the title write, independently of any Library effects
+        // from restoring Files in the same operation.
+        let payload = json!({
+            "module": "library",
+            "affectedPageIds": [&page.page_id],
+            "affectedDatabaseIds": [],
+            "affectedParentKeys": [],
+        });
+        append_change_log(
+            connection,
+            NewChangeLogEntry {
+                project_id: input.actor_project_id,
+                store_epoch: input.store_epoch,
+                kind: PAGE_TITLE_CHANGED_KIND,
+                operation_id: Some(input.operation_id),
+                block_ids: std::slice::from_ref(&page.page_id),
+                document_ids: &[],
+                database_block_ids: &[],
+                payload_json: &payload.to_string(),
+                projection_impact: &ProjectionImpact::None,
+                committed_at: &now,
+            },
+            context,
+        )?;
+    }
     let database_ids = page_impact
         .as_ref()
         .and_then(|impact| impact.database.as_ref())

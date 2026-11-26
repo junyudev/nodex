@@ -2,6 +2,13 @@ import { expect, test } from "@playwright/test";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../scripts/scenarios/scenarios/board-dense";
 import { focusBoardDenseUi } from "../../scripts/scenarios/scenarios/board-dense-ui";
+import {
+  LIBRARY_FILES_PAGE_A_KEY,
+  LIBRARY_FILES_SCENARIO_ID,
+} from "../../scripts/scenarios/scenarios/library-files";
+import { openLibraryFilesPage } from "../../scripts/scenarios/scenarios/library-files-ui";
+import type { LibraryNavigationChangedEvent } from "../../src/shared/library-events";
+import type { PageSearchMetadataSnapshot } from "../../src/shared/types";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 
 const primaryShortcut = (key: string): string =>
@@ -78,6 +85,52 @@ test("opens a Page body hit from the palette and continues through occurrences i
       await expect(matchingBlock).toBeHidden();
       await openHit("K");
       await expect(tab).toHaveCount(1);
+    },
+  );
+});
+
+test("refreshes Page search metadata after each title edit", async () => {
+  await withElectronScenario(
+    { label: "page-search-rename", scenarioId: LIBRARY_FILES_SCENARIO_ID },
+    async ({ page, manifest }) => {
+      const pageId = manifest?.pageIdsByKey[LIBRARY_FILES_PAGE_A_KEY];
+      if (!manifest || !pageId) throw new Error("library/files Page A did not materialize");
+      const initialTitle = "Shared image A";
+      await openLibraryFilesPage(page, manifest, LIBRARY_FILES_PAGE_A_KEY, initialTitle);
+
+      const subscription = await page.evaluateHandle((pageId) => {
+        const api = window.api!;
+        const readTitle = async () => {
+          const snapshot = (await api.invoke("pages:search-metadata", undefined, [
+            pageId,
+          ])) as PageSearchMetadataSnapshot;
+          return snapshot.documents.find((document) => document.pageId === pageId)?.title;
+        };
+        let title = readTitle();
+        const unsubscribe = api.on("library-navigation-changed", (payload) => {
+          const event = payload as LibraryNavigationChangedEvent;
+          if (event.changeKind === "content" && event.affectedPageIds.includes(pageId)) {
+            title = readTitle();
+          }
+        });
+        return { read: () => title, unsubscribe };
+      }, pageId);
+
+      try {
+        const stage = page.locator(`[data-page-stage-page-id="${pageId}"]:visible`);
+        const title = stage.getByRole("textbox", { name: "Page title", exact: true });
+        const readSubscribedTitle = () => subscription.evaluate(({ read }) => read());
+        await expect.poll(readSubscribedTitle).toBe(initialTitle);
+
+        for (const nextTitle of ["Search metadata probe", "Search metadata probe two"]) {
+          await title.fill(nextTitle);
+          await title.press("Tab");
+          await expect.poll(readSubscribedTitle).toBe(nextTitle);
+        }
+      } finally {
+        await subscription.evaluate(({ unsubscribe }) => unsubscribe());
+        await subscription.dispose();
+      }
     },
   );
 });

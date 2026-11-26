@@ -36,6 +36,7 @@ use super::writer::StoreReaders;
 
 const DEFAULT_REPLAY_LIMIT: u32 = 256;
 const MAX_REPLAY_LIMIT: u32 = 1_024;
+pub(crate) const PAGE_TITLE_CHANGED_KIND: &str = "library.page_title_changed";
 const AUTHORIZED_STREAM_BOUNDS_SQL: &str = "SELECT metadata.store_epoch,
             journal.replay_floor_seq, journal.commit_head_seq
      FROM block_store_metadata metadata
@@ -1063,7 +1064,11 @@ fn reconstruct_event(
         return Err(corrupt("Core event payload exceeds its bound"));
     }
     let payload = match row.kind.as_str() {
-        "library.changed" | "block_mutation" | "block_relocation" | "block_transfer" => {
+        "library.changed"
+        | PAGE_TITLE_CHANGED_KIND
+        | "block_mutation"
+        | "block_relocation"
+        | "block_transfer" => {
             let metadata = decode_library_metadata(row)?;
             require_module(&metadata.module, "library")?;
             validate_strings(&metadata.affected_page_ids, "Library Page")?;
