@@ -1,6 +1,20 @@
 import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  composerDraftIntents,
+  requestComposerFocus,
+  type ComposerFocusTransfer,
+} from "@/lib/composer-draft-intents";
 import { DownArrowIcon } from "@/components/shared/icons";
 import { AnimatePresence, motion } from "motion/react";
 import { selectTurnRenderModel } from "../projection/build-turn-render-model";
@@ -14,7 +28,10 @@ import {
   LocalConversationAboveComposerPortalHost,
   LocalConversationAboveComposerQueuePortalHost,
 } from "./local-conversation-above-composer-portal";
-import { useLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
+import {
+  focusThreadScrollRegion,
+  useLocalConversationThreadScrollController,
+} from "./local-conversation-thread-scroll-controller";
 import {
   FloatingConversationCompletionPreview,
   resolveFloatingConversationAnswerPreview,
@@ -46,11 +63,15 @@ function LocalConversationFooterChrome({
   actions,
   catchUpControl,
   contextRailLeadingContent,
+  captureUnmountedPromptFocus,
+  onReleasePromptFocus,
 }: {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
   catchUpControl: ReactNode;
   contextRailLeadingContent?: ReactNode;
+  captureUnmountedPromptFocus: (transfer: ComposerFocusTransfer) => void;
+  onReleasePromptFocus?: (editor: HTMLElement | null | undefined) => boolean;
 }) {
   return (
     <div className="flex flex-col" data-thread-find-composer="true">
@@ -62,6 +83,8 @@ function LocalConversationFooterChrome({
           model={model}
           actions={actions}
           contextRailLeadingContent={contextRailLeadingContent}
+          captureUnmountedPromptFocus={captureUnmountedPromptFocus}
+          onReleasePromptFocus={onReleasePromptFocus}
         />
       </div>
     </div>
@@ -75,23 +98,48 @@ function LocalConversationFooterComponent({
   // The owner whose floating composer shows its conversation; any other owner starts compact.
   // Held here so switching between floating and docked presentations keeps it.
   const [expandedOwnerKey, setExpandedOwnerKey] = useState<string | null>(null);
-  if (rightPanelComposerOverlay?.enabled === true) {
+  const floating = rightPanelComposerOverlay?.enabled === true;
+  const owner = props.model.composerScopeIdentity ?? props.model.threadId;
+  const previousPresentationRef = useRef({ floating, owner });
+  const transferRef = useRef<ComposerFocusTransfer | null>(null);
+  const captureUnmountedPromptFocus = useCallback((transfer: ComposerFocusTransfer) => {
+    transferRef.current = transfer;
+  }, []);
+  const chat = props.model.composerChatKey;
+  useLayoutEffect(() => {
+    const transfer = transferRef.current;
+    transferRef.current = null;
+    const previous = previousPresentationRef.current;
+    previousPresentationRef.current = { floating, owner };
+    if (floating === previous.floating || owner !== previous.owner) return;
+    if (chat && transfer?.isCurrent() && !composerDraftIntents.read(chat)) {
+      requestComposerFocus(chat, transfer);
+    }
+  });
+
+  if (floating) {
     return (
       <FloatingLocalConversationFooter
         {...props}
         overlay={rightPanelComposerOverlay}
+        captureUnmountedPromptFocus={captureUnmountedPromptFocus}
         expandedOwnerKey={expandedOwnerKey}
         onExpandedOwnerKeyChange={setExpandedOwnerKey}
       />
     );
   }
-  return <DockedLocalConversationFooter {...props} />;
+  return (
+    <DockedLocalConversationFooter
+      {...props}
+      captureUnmountedPromptFocus={captureUnmountedPromptFocus}
+    />
+  );
 }
 
 type LocalConversationFooterBranchProps = Omit<
   LocalConversationFooterProps,
   "rightPanelComposerOverlay"
->;
+> & { captureUnmountedPromptFocus: (transfer: ComposerFocusTransfer) => void };
 
 /**
  * The composer floating over full-width content. It expands into its own view of the thread, so
@@ -104,6 +152,7 @@ function FloatingLocalConversationFooter({
   normalizedPreview = null,
   onMarkConversationRead,
   overlay,
+  captureUnmountedPromptFocus,
   expandedOwnerKey,
   onExpandedOwnerKeyChange,
 }: LocalConversationFooterBranchProps & {
@@ -113,6 +162,20 @@ function FloatingLocalConversationFooter({
 }) {
   const intl = useIntl();
   const transcriptOwnerKey = model.composerScopeIdentity?.trim() || model.threadId;
+  const control = overlay.placement?.control;
+  useLayoutEffect(() => {
+    const intent = model.composerIntent;
+    const chat = model.composerChatKey;
+    if (
+      control &&
+      !control.state.visible &&
+      chat &&
+      intent &&
+      composerDraftIntents.shouldReveal(chat, intent)
+    ) {
+      control.onStateChange({ visible: true });
+    }
+  }, [control, model.composerChatKey, model.composerIntent]);
   const hasTranscript = Boolean(overlay.transcript);
   const expanded = Boolean(
     hasTranscript && transcriptOwnerKey && expandedOwnerKey === transcriptOwnerKey,
@@ -190,6 +253,7 @@ function FloatingLocalConversationFooter({
         model={model}
         actions={actions}
         catchUpControl={null}
+        captureUnmountedPromptFocus={captureUnmountedPromptFocus}
         contextRailLeadingContent={overlay.leadingContent}
       />
     </FloatingComposer>
@@ -204,12 +268,14 @@ function DockedLocalConversationFooter({
   model,
   actions,
   variant = "thread",
+  captureUnmountedPromptFocus,
 }: LocalConversationFooterBranchProps) {
   const intl = useIntl();
   const {
     addScrollListener,
     clearPendingLatestTurnSubmitPlacement,
     getLastScrollDistanceFromBottomPx,
+    getScrollElement,
     isScrolledFromBottom,
     prepareLatestTurnSubmitPlacement,
     responseSpacerState,
@@ -283,6 +349,10 @@ function DockedLocalConversationFooter({
     }
     scrollToBottom();
   }, [responseSpacerState, scrollToBottom]);
+  const releasePromptFocus = (editor: HTMLElement | null | undefined) =>
+    focusThreadScrollRegion(
+      getScrollElement() ?? editor?.closest<HTMLElement>("[data-new-thread-home-main]"),
+    );
   const catchUpControl = (
     <div className="relative h-0" data-thread-catch-up-control="true">
       <AnimatePresence initial={false}>
@@ -324,6 +394,8 @@ function DockedLocalConversationFooter({
         model={model}
         actions={actionsWithSubmitPlacement}
         catchUpControl={catchUpControl}
+        captureUnmountedPromptFocus={captureUnmountedPromptFocus}
+        onReleasePromptFocus={releasePromptFocus}
       />
     </div>
   );

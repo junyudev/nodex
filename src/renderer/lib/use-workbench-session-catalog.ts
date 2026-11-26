@@ -870,9 +870,11 @@ export function useWorkbenchSessionCatalog({
         return {
           session: forked,
           threadId: result.threadId,
-          ...(input.message
-            ? { composerIntent: { prompt: input.message, focusNonce: Date.now() } }
-            : {}),
+          composerIntent: {
+            prompt: input.message ?? "",
+            ...(input.message ? {} : { attachmentMode: "append" }),
+            focusNonce: Date.now(),
+          },
         };
       }
       if (session.thread && (session.thread.executionHostId ?? "local") === "local")

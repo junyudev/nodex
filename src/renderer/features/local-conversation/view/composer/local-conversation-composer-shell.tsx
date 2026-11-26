@@ -1,3 +1,4 @@
+import type { ComposerFocusTransfer } from "@/lib/composer-draft-intents";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { AsyncQuestionComposer } from "./async-question-surface";
@@ -99,6 +100,8 @@ interface LocalConversationComposerShellProps {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
   contextRailLeadingContent?: ReactNode;
+  onReleasePromptFocus?: (editor: HTMLElement | null | undefined) => boolean;
+  captureUnmountedPromptFocus?: (transfer: ComposerFocusTransfer) => void;
 }
 
 const QUEUE_GHOST_BUTTON_CLASS_NAME =
@@ -965,6 +968,8 @@ function ScopedLocalConversationComposerShell({
   model,
   actions,
   contextRailLeadingContent,
+  onReleasePromptFocus,
+  captureUnmountedPromptFocus,
 }: LocalConversationComposerShellProps) {
   const intelligenceController = useComposerIntelligenceController(model, actions);
 
@@ -1071,6 +1076,8 @@ function ScopedLocalConversationComposerShell({
         </>
       ) : (
         <ThreadComposer
+          onReleasePromptFocus={onReleasePromptFocus}
+          captureUnmountedPromptFocus={captureUnmountedPromptFocus}
           backgroundAgentRows={model.composerShell.backgroundAgentRows}
           model={model}
           actions={actions}

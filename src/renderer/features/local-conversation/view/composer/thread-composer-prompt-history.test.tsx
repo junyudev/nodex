@@ -111,6 +111,9 @@ function PromptHistoryHarness({
       focusAtEnd: () => {
         focusCountRef.current += 1;
       },
+      focusAtSelection: () => {
+        focusCountRef.current += 1;
+      },
       setText,
       setPromptText: setText,
       insertText: (text) => setText(`${textRef.current}${text}`),

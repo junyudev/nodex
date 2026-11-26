@@ -58,12 +58,14 @@ async function openSideMenu({
   left,
   top = 200,
   initialBlock = { id: "block-1", type: "paragraph", content: "A block" },
+  onAddBlocksToComposer,
 }: {
   readonly width?: number;
   readonly height?: number;
   readonly left: number;
   readonly top?: number;
   readonly initialBlock?: PartialBlock;
+  readonly onAddBlocksToComposer?: () => void;
 }) {
   await page.viewport(width, height);
   const editor = BlockNoteEditor.create({
@@ -77,6 +79,7 @@ async function openSideMenu({
         value={{
           getSnapshot: () => ({
             canSendBlocks: false,
+            onAddBlocksToComposer,
             sourceProjectId: null,
             sourcePageId: null,
             onMoveBlocksToDestination: () => undefined,
@@ -217,6 +220,25 @@ test("fits a table to its block width and restores content sizing", async () => 
     expect(getColumnWidths()).toEqual([undefined, undefined]);
   } finally {
     fixture.close();
+  }
+});
+
+test("adding a Block to the chat leaves focus in its composer", async () => {
+  const destination = document.createElement("textarea");
+  document.body.append(destination);
+  const fixture = await openSideMenu({
+    left: 300,
+    onAddBlocksToComposer: () => destination.focus(),
+  });
+  try {
+    await act(async () => {
+      await userEvent.click(fixture.view.getByRole("option", { name: "Add to composer" }));
+    });
+    await waitFor(() => expect(fixture.dialog.isConnected).toBe(false));
+    expect(document.activeElement).toBe(destination);
+  } finally {
+    fixture.close();
+    destination.remove();
   }
 });
 

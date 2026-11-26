@@ -1,3 +1,4 @@
+import { composerDraftIntents, requestComposerFocus } from "@/lib/composer-draft-intents";
 import { describe, expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
@@ -433,6 +434,9 @@ describe("PendingWorktreeRoute", () => {
       clientThreadId: CLIENT_THREAD_ID,
       threadId: "thread-real",
     });
+    const pending = { kind: "pending-worktree", clientThreadId: CLIENT_THREAD_ID } as const;
+    const chat = { kind: "session", sessionId: "thread-real-session" } as const;
+    const intent = requestComposerFocus(pending);
     let openAttempts = 0;
     let closeCount = 0;
     const view = render(
@@ -442,9 +446,11 @@ describe("PendingWorktreeRoute", () => {
         onClose={() => {
           closeCount += 1;
         }}
-        onOpenThread={async () => {
+        onOpenThread={async (threadId) => {
           openAttempts += 1;
-          return openAttempts > 1;
+          if (openAttempts === 1) return false;
+          composerDraftIntents.adoptResolvedWorktree(chat, "local", threadId);
+          return true;
         }}
       />,
     );
@@ -460,5 +466,7 @@ describe("PendingWorktreeRoute", () => {
       expect(openAttempts).toBe(2);
       expect(closeCount).toBe(1);
     });
+    expect(composerDraftIntents.read(chat)).toBe(intent);
+    composerDraftIntents.acknowledge(chat, intent);
   });
 });

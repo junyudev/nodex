@@ -24,7 +24,6 @@ import {
   clearComposerCompletedDraftAtom,
   composerFileAttachmentsAtom,
   composerGoalModeActiveAtom,
-  composerResetGenerationAtom,
   consumeComposerDraftTransfer,
   createComposerDraftTransfer,
   publishComposerDraftTransfer,
@@ -79,7 +78,7 @@ afterEach(() => {
 });
 
 describe("ComposerScope draft ownership", () => {
-  test("clears the completed draft atom set and increments reset generation once", () => {
+  test("clears the completed draft attachments and goal mode", () => {
     const store = createStore();
     let handle: ScopeHandle | null = null;
     render(
@@ -108,7 +107,6 @@ describe("ComposerScope draft ownership", () => {
 
     expect(committedHandle.get(composerFileAttachmentsAtom)).toEqual([]);
     expect(committedHandle.get(composerGoalModeActiveAtom)).toBe(false);
-    expect(committedHandle.get(composerResetGenerationAtom)).toBe(1);
   });
 
   test("publishes and consumes a conversation transfer exactly once", () => {

@@ -65,7 +65,7 @@ export function LocalConversationForkFromTurnDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <DialogContent size="compact" showCloseButton={false}>
+      <DialogContent size="compact" showCloseButton={false} finalFocus={!isSubmitting}>
         <DialogFrame className="gap-4">
           <DialogHeader>
             <DialogTitle>

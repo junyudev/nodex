@@ -299,6 +299,7 @@ export const sendAgentPromptWithEvidence = async (
   projectSessionId: string,
   prompt: string,
   beforeSend: () => Promise<void> = async () => undefined,
+  submit: "pointer" | "keyboard" = "pointer",
 ): Promise<AgentPromptSubmissionResult> => {
   const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
   await expect(composer).toBeVisible();
@@ -352,7 +353,8 @@ export const sendAgentPromptWithEvidence = async (
     };
     scope.__agentFirstSubmissionFrame = requestAnimationFrame(sample);
   }, prompt);
-  await sendButton.click();
+  if (submit === "keyboard") await composer.press("Enter");
+  else await sendButton.click();
 
   await expect(
     page.locator("[data-user-message-bubble='true']", { hasText: prompt }),

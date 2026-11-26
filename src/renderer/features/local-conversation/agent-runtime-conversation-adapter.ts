@@ -35,7 +35,11 @@ import { agentRuntimeSettingsQueryOptions } from "@/lib/agent-runtime-settings";
 import { hostedChatMemberActionsQueryOptions } from "@/lib/query-options";
 import { planAgentApprovalDeclineOnSend } from "./agent-approval";
 import { approvalsRefusedBySend } from "./agent-approval-runtime";
-import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
+import {
+  composerDraftIntents,
+  requestComposerFocus,
+  type ComposerChatKey,
+} from "@/lib/composer-draft-intents";
 import { nodexCreditBalance } from "../../../shared/nodex-account";
 import { isNodexProviderId, NODEX_MODELS } from "../../../shared/nodex-models";
 import { isManagedRuntimeInstanceId } from "../../../shared/managed-runtime-instances";
@@ -1866,6 +1870,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         result: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult,
       ) => {
         await input.onRefresh(result.projectId);
+        requestComposerFocus({ kind: "session", sessionId: result.sessionId });
         await input.onOpenThread(result.threadId, { runtimeSessionId: result.sessionId });
       },
       hosted,
@@ -1925,6 +1930,12 @@ export function useAgentRuntimeConversationAdapter(input: {
             defaultMessage: "Project draft materialization is unavailable",
           }),
         );
+      if (sessionId !== request.sessionId && !request.projectDraftId) {
+        composerDraftIntents.moveFocusTransfer(
+          { kind: "session", sessionId: request.sessionId },
+          { kind: "session", sessionId },
+        );
+      }
       sessionFirstSubmissionOwner.update(submission.launchId, {
         targetSessionId: sessionId,
         targetProjectId: request.projectId,
@@ -2012,6 +2023,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         await input.onRefresh(request.projectId);
         if (input.onLaunched) await input.onLaunched(launched);
         else await input.onOpenThread(launched.threadId, { runtimeSessionId: launched.sessionId });
+        composerDraftIntents.completeFirstSend({ kind: "session", sessionId: launched.sessionId });
       } catch (cause) {
         toast.danger(
           getIntl().formatMessage(

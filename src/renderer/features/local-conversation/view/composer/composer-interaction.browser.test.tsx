@@ -14,11 +14,26 @@ import { AppProviders } from "@/app-providers";
 import { clearPersistedAtomStoreForTests } from "@/lib/persisted-atom-store";
 import { buildComposerActions } from "@/test/composer-actions-fixture";
 import { buildComposerShellFixture } from "@/test/composer-shell-fixture";
-import { TestComposerScopePath } from "@/test/maitai-scope-harness";
+import { TestComposerScopePath, TestThreadRouteScopePath } from "@/test/maitai-scope-harness";
 import { createCommandKeymapState } from "../../../../../shared/command-keybindings";
 import type { PersistedAtomEvent, PersistedAtomMutation } from "../../../../../shared/ipc-api";
 import type { ThreadFooterModel } from "../../thread-stage-types";
 import { ThreadComposer } from "./local-conversation-thread-composer";
+import { LocalConversationFooter } from "../local-conversation-footer";
+import {
+  EnsureLocalConversationThreadScrollController,
+  LocalConversationThreadScrollLayout,
+} from "../local-conversation-thread-scroll-controller";
+import { RightPanelComposerPresentationProvider } from "../right-panel-composer-presentation";
+import {
+  composerDraftIntents,
+  requestComposerFocus,
+  useComposerDraftIntent,
+} from "@/lib/composer-draft-intents";
+import {
+  isComposerDictationShortcutRelease,
+  isComposerDictationShortcutTargetBlocked,
+} from "./use-composer-dictation";
 
 describe("composer subagent mention", () => {
   test("restored subagent mentions follow the same identity and document theme as Thread avatars", async () => {
@@ -200,18 +215,22 @@ describe("local conversation thread composer", () => {
     };
   }
 
-  test.each(["send", "queue", "steer"] as const)(
+  test.each(["send", "queue", "steer", "replace"] as const)(
     "%s preserves typed drafts through rerenders and rejection, then clears an accepted retry",
     async (route) => {
       const model = composerModel(route !== "send");
+      if (route === "replace" && model.composerIntent) {
+        model.composerIntent.queuedFollowUpEdit = { followUpId: "queued", ledgerRevision: 3 };
+      }
       const submit = vi
         .fn()
         .mockRejectedValueOnce(new Error("Try again"))
-        .mockResolvedValue(undefined);
+        .mockResolvedValue(route === "replace" ? true : undefined);
       const actions = buildComposerActions({
         onSendPrompt: route === "send" ? submit : vi.fn(),
         onEnqueueQueuedFollowUp: route === "queue" ? submit : vi.fn(),
         onSteerPrompt: route === "steer" ? submit : vi.fn(),
+        ...(route === "replace" ? { onReplaceQueuedFollowUp: submit } : {}),
       });
       const tree = (noticeTitle: string | null) => (
         <AppProviders>
@@ -283,6 +302,8 @@ describe("local conversation thread composer", () => {
       if (route === "send") expect(submit.mock.calls[1]?.[0]).toBe(draft);
       else if (route === "queue")
         expect(submit.mock.calls[1]?.slice(0, 2)).toEqual([model.threadId, draft]);
+      else if (route === "replace")
+        expect(submit.mock.calls[1]?.slice(0, 4)).toEqual([model.threadId, "queued", 3, draft]);
       else
         expect(submit.mock.calls[1]?.[0]).toMatchObject({
           prompt: draft,
@@ -291,6 +312,202 @@ describe("local conversation thread composer", () => {
       await waitFor(() =>
         expect(view.getByLabelText("Ask for follow-up changes").textContent).toBe(""),
       );
+      expect(document.activeElement).toBe(view.getByLabelText("Ask for follow-up changes"));
+      await act(async () => {
+        await userEvent.keyboard("Next");
+      });
+      expect(view.getByLabelText("Ask for follow-up changes").textContent).toBe("Next");
     },
   );
+
+  test("waits for a visible composer and gives a newer request priority at the same timestamp", async () => {
+    const chat = { kind: "session", sessionId: "delayed-focus-browser" } as const;
+    const model = composerModel(false);
+    const actions = buildComposerActions();
+    function Surface({ shown, dialog }: { shown: boolean; dialog?: boolean }) {
+      const intent = useComposerDraftIntent(chat);
+      return (
+        <>
+          <RightPanelComposerPresentationProvider visible={shown}>
+            <div inert={!shown}>
+              <ThreadComposer
+                model={{ ...model, composerChatKey: chat, composerIntent: intent }}
+                actions={actions}
+              />
+            </div>
+          </RightPanelComposerPresentationProvider>
+          {dialog ? <div role="dialog" aria-label="Confirmation" /> : null}
+        </>
+      );
+    }
+    const tree = (shown: boolean, dialog = false) => (
+      <AppProviders>
+        <TestComposerScopePath>
+          <Surface shown={shown} dialog={dialog} />
+        </TestComposerScopePath>
+      </AppProviders>
+    );
+    const view = render(tree(false));
+    const first = { prompt: "Earlier", focusNonce: 100 };
+    const latest = { prompt: "Latest", focusNonce: 100 };
+    await act(async () => {
+      composerDraftIntents.set(chat, first);
+    });
+    const editor = await view.findByLabelText("Do anything");
+    expect(document.activeElement).not.toBe(editor);
+    expect(composerDraftIntents.read(chat)).toBe(first);
+    await act(async () => {
+      composerDraftIntents.set(chat, latest);
+      view.rerender(tree(true, true));
+    });
+    expect(editor.textContent).toBe("Latest");
+    expect(composerDraftIntents.read(chat)).toBe(latest);
+    await act(async () => {
+      view.rerender(tree(true));
+    });
+    await waitFor(() => expect(document.activeElement).toBe(editor));
+    expect(composerDraftIntents.read(chat)).toBeNull();
+  });
+
+  test("discards delayed focus after the person types in a different field", async () => {
+    const chat = { kind: "session", sessionId: "abandoned-focus-browser" } as const;
+    const model = composerModel(false);
+    const actions = buildComposerActions();
+    function Surface({ shown }: { shown: boolean }) {
+      const intent = useComposerDraftIntent(chat);
+      return (
+        <>
+          <input aria-label="Other field" />
+          <RightPanelComposerPresentationProvider visible={shown}>
+            <div inert={!shown}>
+              <ThreadComposer
+                model={{ ...model, composerChatKey: chat, composerIntent: intent }}
+                actions={actions}
+              />
+            </div>
+          </RightPanelComposerPresentationProvider>
+        </>
+      );
+    }
+    const tree = (shown: boolean) => (
+      <AppProviders>
+        <TestComposerScopePath>
+          <Surface shown={shown} />
+        </TestComposerScopePath>
+      </AppProviders>
+    );
+    const view = render(tree(false));
+    await act(async () => {
+      requestComposerFocus(chat);
+      await userEvent.click(view.getByLabelText("Other field"));
+      await userEvent.keyboard("My edit");
+    });
+    await act(async () => {
+      view.rerender(tree(true));
+    });
+    await waitFor(() => expect(composerDraftIntents.read(chat)).toBeNull());
+    expect(document.activeElement).toBe(view.getByLabelText("Other field"));
+  });
+
+  test("preserves the caret across dock changes and releases an idle docked composer into the Conversation", async () => {
+    const chat = { kind: "session", sessionId: "dock-focus-browser" } as const;
+    const model = composerModel(false);
+    const actions = buildComposerActions();
+    const target = document.createElement("div");
+    target.style.height = "360px";
+    document.body.append(target);
+    function Surface({ floating }: { floating: boolean }) {
+      const intent = useComposerDraftIntent(chat);
+      return (
+        <LocalConversationThreadScrollLayout
+          footer={
+            <LocalConversationFooter
+              model={{ ...model, composerChatKey: chat, composerIntent: intent }}
+              actions={actions}
+              rightPanelComposerOverlay={{ enabled: floating, target }}
+            />
+          }
+        >
+          <p>Previous message</p>
+        </LocalConversationThreadScrollLayout>
+      );
+    }
+    const tree = (floating: boolean) => (
+      <AppProviders>
+        <TestThreadRouteScopePath>
+          <EnsureLocalConversationThreadScrollController>
+            <Surface floating={floating} />
+          </EnsureLocalConversationThreadScrollController>
+        </TestThreadRouteScopePath>
+      </AppProviders>
+    );
+    const view = render(tree(false));
+    try {
+      const docked = await view.findByLabelText("Ask for follow-up changes");
+      await act(async () => {
+        await userEvent.click(docked);
+        await userEvent.keyboard("ab{ArrowLeft}");
+      });
+      await act(async () => {
+        view.rerender(tree(true));
+      });
+      const overlay = await view.findByLabelText("Do anything");
+      await waitFor(() => expect(document.activeElement).toBe(overlay));
+      await act(async () => {
+        await userEvent.keyboard("X");
+        view.rerender(tree(false));
+      });
+      const restored = await view.findByLabelText("Ask for follow-up changes");
+      await waitFor(() => expect(document.activeElement).toBe(restored));
+      expect(restored.textContent).toBe("aXb");
+      await act(async () => {
+        await userEvent.keyboard("{Escape}");
+      });
+      expect(document.activeElement).toBe(restored);
+      await act(async () => {
+        await userEvent.keyboard("{ArrowRight}{Backspace}{Backspace}{Backspace}");
+      });
+      await waitFor(() => expect(restored.textContent).toBe(""));
+      await act(async () => {
+        await userEvent.keyboard("{Escape}");
+      });
+      expect(document.activeElement).toBe(view.getByRole("region", { name: "Conversation" }));
+    } finally {
+      view.unmount();
+      target.remove();
+    }
+  });
+
+  test("dictation hold ends on either release and belongs only to the eligible composer", async () => {
+    const down = new KeyboardEvent("keydown", { key: "m", code: "KeyM", ctrlKey: true });
+    const keyUp = new KeyboardEvent("keyup", { key: "m", code: "KeyM", ctrlKey: true });
+    const modifierUp = new KeyboardEvent("keyup", { key: "Control", code: "ControlLeft" });
+    const unrelatedUp = new KeyboardEvent("keyup", { key: "a", code: "KeyA", ctrlKey: true });
+    expect(isComposerDictationShortcutRelease(down, keyUp)).toBe(true);
+    expect(isComposerDictationShortcutRelease(down, modifierUp)).toBe(true);
+    expect(isComposerDictationShortcutRelease(down, unrelatedUp)).toBe(false);
+
+    const view = render(
+      <AppProviders>
+        <input aria-label="Page editor" />
+        <button data-codex-terminal="">Terminal</button>
+        <TestComposerScopePath>
+          <ThreadComposer model={composerModel(false)} actions={buildComposerActions()} />
+        </TestComposerScopePath>
+      </AppProviders>,
+    );
+    const editor = await view.findByLabelText("Ask for follow-up changes");
+    const outside = view.getByLabelText("Page editor");
+    const terminal = view.getByRole("button", { name: "Terminal" });
+    await act(async () => {
+      editor.focus();
+    });
+    expect(isComposerDictationShortcutTargetBlocked(editor, editor)).toBe(false);
+    await act(async () => outside.focus());
+    expect(isComposerDictationShortcutTargetBlocked(outside, editor)).toBe(true);
+    await act(async () => terminal.focus());
+    expect(isComposerDictationShortcutTargetBlocked(terminal, editor)).toBe(true);
+    await act(async () => terminal.blur());
+    expect(isComposerDictationShortcutTargetBlocked(document.body, editor)).toBe(false);
+  });
 });

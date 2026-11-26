@@ -61,7 +61,7 @@ When the Page can reach a chat, the menu opens with its chat actions:
   opens the picker itself.
 - `Add to composer`, only beside a chat: the selection's content joins the end of
   that chat's draft as its own paragraphs, its images become draft attachments,
-  and the Composer takes focus. Its tooltip shows the current `Add to composer` binding.
+  and the Composer takes focus. If it is minimized, it opens first. Its tooltip shows the current `Add to composer` binding.
 
 The picker lists the chat beside the Page first as `This chat`: its live Thread,
 or a first Turn in it while it has none and may start one there. The Page's
