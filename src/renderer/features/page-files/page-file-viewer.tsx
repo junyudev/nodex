@@ -1,12 +1,24 @@
 import { getIntl, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 
-import { DownloadIcon, PageIcon, RefreshIcon } from "@/components/shared/icons";
+import {
+  AttachmentIcon,
+  CopyIcon,
+  DownloadIcon,
+  FolderIcon,
+  OpenInIcon,
+  PageIcon,
+  RefreshIcon,
+} from "@/components/shared/icons";
 import { ChevronRightLgIcon, EllipsisIcon } from "@/components/shared/icons/customize-action-icons";
 import { FileBlankIcon } from "@/components/shared/icons/file-viewer-icons";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { EmptyState } from "@/components/ui/empty-state";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import {
   ViewerButton,
@@ -15,8 +27,13 @@ import {
   ViewerIconButton,
 } from "@/components/ui/viewer-header";
 import { writeTextToClipboard } from "@/lib/clipboard";
-import { saveAuthorizedFile } from "@/lib/library-file-resources";
+import {
+  materializeAuthorizedFile,
+  revealFileExport,
+  saveAuthorizedFile,
+} from "@/lib/library-file-resources";
 import { pageFileHasSourceView, resolvePageFileViewKind } from "@/lib/page-file-view-kind";
+import { revealInFileManagerLabel } from "@/lib/reveal-in-file-manager-label";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { useTheme } from "@/lib/use-theme";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
@@ -82,6 +99,13 @@ export function PageFileViewer({
             }),
       );
     }
+  };
+
+  const reveal = (): void => {
+    if (!authority) return;
+    void revealFileExport(() =>
+      materializeAuthorizedFile(authority, fileSource(item.file.file_id), name),
+    );
   };
 
   return (
@@ -176,6 +200,7 @@ export function PageFileViewer({
                 >
                   {item.logical_path ? (
                     <NodexDropdownItem
+                      leftSlot={<CopyIcon />}
                       onSelect={() => void writeTextToClipboard(item.logical_path ?? "")}
                     >
                       {intl.formatMessage({
@@ -184,13 +209,21 @@ export function PageFileViewer({
                       })}
                     </NodexDropdownItem>
                   ) : null}
-                  <NodexDropdownItem onSelect={onManage}>
+                  <NodexDropdownItem
+                    leftSlot={<FolderIcon />}
+                    disabled={!authority}
+                    onSelect={reveal}
+                  >
+                    {revealInFileManagerLabel()}
+                  </NodexDropdownItem>
+                  <NodexDropdownSeparator />
+                  <NodexDropdownItem leftSlot={<AttachmentIcon />} onSelect={onManage}>
                     {intl.formatMessage({
                       id: "pageFiles.pageFileViewer.manage",
                       defaultMessage: "Manage in Page files…",
                     })}
                   </NodexDropdownItem>
-                  <NodexDropdownItem onSelect={onOpenInLibrary}>
+                  <NodexDropdownItem leftSlot={<OpenInIcon />} onSelect={onOpenInLibrary}>
                     {intl.formatMessage({
                       id: "pageFiles.pageFileViewer.openLibrary",
                       defaultMessage: "Open in Library…",

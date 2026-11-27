@@ -29,6 +29,8 @@ import {
   saveFile,
   materializeFile,
 } from "./api";
+import { toastFailure } from "./failure-toast";
+import { openFileLink } from "./file-system-operations";
 
 export interface LibraryFileAuthority {
   readonly contentRoutingContext: ContentRoutingContext;
@@ -280,16 +282,36 @@ export async function saveAuthorizedFile(
   });
 }
 
-/** Export an authorized exact version to a rebuildable local cache for clipboard paths. */
+/**
+ * Export an authorized exact version to a rebuildable local cache: a read-only copy named `name`,
+ * or the File's own name, for clipboard paths and the system file manager.
+ */
 export async function materializeAuthorizedFile(
   authority: FileReadAuthority,
   source: string,
+  name?: string,
 ): Promise<string> {
   const presentation = await readFilePresentation(authority, source);
   return materializeFile(authority.contentRoutingContext, {
     fileId: presentation.file_id,
     source: authority.readSource,
     version: presentation.version,
-    defaultName: presentation.default_name,
+    defaultName: name ?? presentation.default_name,
   });
+}
+
+/**
+ * Shows a File in Finder, File Explorer or the file manager as the read-only copy `materialize`
+ * exports; Core's storage is never revealed. A failure is reported to the person, never thrown.
+ */
+export async function revealFileExport(materialize: () => Promise<string>): Promise<void> {
+  const failed = getIntl().formatMessage({
+    id: "lib.libraryFileResources.revealFailed",
+    defaultMessage: "Couldn’t reveal File",
+  });
+  try {
+    if (!(await openFileLink({ path: await materialize() }, "fileManager"))) toastFailure(failed);
+  } catch (error) {
+    toastFailure(failed, error);
+  }
 }

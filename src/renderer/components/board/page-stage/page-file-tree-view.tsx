@@ -3,12 +3,16 @@ import { useIntl } from "@/lib/i18n";
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import {
+  AttachmentIcon,
   ChevronDownIcon,
+  CopyIcon,
   DownloadIcon,
+  FolderIcon,
   MoreActionsIcon,
   ProjectFolderIcon,
   ProjectFolderOpenIcon,
 } from "@/components/shared/icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { ColorfulFileResourceIcon } from "@/components/shared/file-resource-icon";
 import {
   NodexContextMenuContent,
@@ -19,6 +23,7 @@ import {
 } from "@/components/ui/context-menu";
 import { formatBytes } from "@/lib/file-metadata-format";
 import type { PageFileTreeProvenance, PageFileTreeRow } from "@/lib/page-file-tree";
+import { revealInFileManagerLabel } from "@/lib/reveal-in-file-manager-label";
 import { cn } from "@/lib/utils";
 import type { LibraryPageFileItem } from "../../../../shared/library-files";
 
@@ -33,6 +38,7 @@ export interface PageFileTreeFileActions {
   readonly opensInPlace?: (item: LibraryPageFileItem) => boolean;
   readonly onSave: (item: LibraryPageFileItem) => void;
   readonly onCopyPath: (item: LibraryPageFileItem) => void;
+  readonly onReveal: (item: LibraryPageFileItem) => void;
   readonly onManage: (item: LibraryPageFileItem) => void;
   /** Absent while the Page's entries cannot change. */
   readonly onRemovePath?: (item: LibraryPageFileItem) => void;
@@ -418,7 +424,10 @@ function FileTreeRow({
       </NodexContextMenuTrigger>
       <NodexContextMenuPortal>
         <NodexContextMenuContent>
-          <NodexContextMenuItem onSelect={() => actions.onOpen(item, "preview")}>
+          <NodexContextMenuItem
+            leftSlot={<NativeMenuIcon iconKey="openIn" />}
+            onSelect={() => actions.onOpen(item, "preview")}
+          >
             {inPlace
               ? intl.formatMessage({
                   id: "board.pageFileTreeView.preview",
@@ -426,32 +435,49 @@ function FileTreeRow({
                 })
               : intl.formatMessage({ id: "board.pageFileTreeView.open", defaultMessage: "Open" })}
           </NodexContextMenuItem>
-          <NodexContextMenuItem onSelect={() => actions.onOpen(item, "durable")}>
+          <NodexContextMenuItem
+            leftSlot={<NativeMenuIcon iconKey="newTab" />}
+            onSelect={() => actions.onOpen(item, "durable")}
+          >
             {intl.formatMessage({
               id: "board.pageFileTreeView.openInNewTab",
               defaultMessage: "Open in new tab",
             })}
           </NodexContextMenuItem>
-          <NodexContextMenuItem onSelect={() => actions.onSave(item)}>
+          <div role="separator" className="my-1 h-px bg-border" />
+          <NodexContextMenuItem
+            leftSlot={<DownloadIcon className="icon-xs" />}
+            onSelect={() => actions.onSave(item)}
+          >
             {intl.formatMessage({ id: "board.pageFileTreeView.save", defaultMessage: "Save…" })}
           </NodexContextMenuItem>
           {path ? (
-            <NodexContextMenuItem onSelect={() => actions.onCopyPath(item)}>
+            <NodexContextMenuItem leftSlot={<CopyIcon />} onSelect={() => actions.onCopyPath(item)}>
               {intl.formatMessage({
                 id: "board.pageFileTreeView.copyPath",
                 defaultMessage: "Copy path",
               })}
             </NodexContextMenuItem>
           ) : null}
+          <NodexContextMenuItem leftSlot={<FolderIcon />} onSelect={() => actions.onReveal(item)}>
+            {revealInFileManagerLabel()}
+          </NodexContextMenuItem>
           <div role="separator" className="my-1 h-px bg-border" />
-          <NodexContextMenuItem onSelect={() => actions.onManage(item)}>
+          <NodexContextMenuItem
+            leftSlot={<AttachmentIcon />}
+            onSelect={() => actions.onManage(item)}
+          >
             {intl.formatMessage({
               id: "board.pageFileTreeView.managePageFiles",
               defaultMessage: "Manage in Page files…",
             })}
           </NodexContextMenuItem>
           {path && actions.onRemovePath ? (
-            <NodexContextMenuItem tone="danger" onSelect={() => actions.onRemovePath?.(item)}>
+            <NodexContextMenuItem
+              tone="danger"
+              leftSlot={<NativeMenuIcon iconKey="remove" />}
+              onSelect={() => actions.onRemovePath?.(item)}
+            >
               {item.body_count > 0
                 ? intl.formatMessage({
                     id: "board.pageFileTreeView.removePath",

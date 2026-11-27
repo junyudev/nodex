@@ -6403,6 +6403,7 @@
   "lib.libraryFileResources.notImage": "此文件不是图片",
   "lib.libraryFileResources.readFailed": "无法读取文件",
   "lib.libraryFileResources.readPageFilesFailed": "无法读取页面文件",
+  "lib.libraryFileResources.revealFailed": "无法显示文件",
   "lib.libraryFileResources.singleFileLimit": "{name} 超过单个文件 64 MiB 的上限",
   "lib.localEnvironmentForm.actionCommand": "输入操作命令",
   "lib.localEnvironmentForm.actionFieldsRequired": "请为每个操作填写名称和命令",

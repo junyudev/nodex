@@ -1945,9 +1945,12 @@ export function SlashStatusIcon({ className }: IconProps) {
   );
 }
 
-export function ComposerAddFilesIcon({ className }: IconProps) {
+/** Files attached to something: a Page's Files, or Files added to a message. */
+export function AttachmentIcon({ className }: IconProps) {
   return <Paperclip16Glyph width={21} height={21} className={cn("icon-xs shrink-0", className)} />;
 }
+
+export const ComposerAddFilesIcon = AttachmentIcon;
 
 export function ComposerAppshotIcon({ className }: IconProps) {
   return (

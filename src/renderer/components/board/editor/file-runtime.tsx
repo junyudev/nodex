@@ -38,7 +38,8 @@ export interface FilePlacementRuntime {
   metadata(source: string): Promise<LibraryFilePresentation>;
   readImageDataUrl(source: string): Promise<string>;
   save(source: string, logicalPath: string): Promise<void>;
-  materialize(source: string): Promise<string>;
+  /** A read-only local copy of the File, named `name` or the File's own name. */
+  materialize(source: string, name?: string): Promise<string>;
   preload(source: string, demand: FileReadDemand): void;
   snapshot(source: string): FileReadSnapshot;
   subscribe(source: string, demand: FileReadDemand, listener: () => void): () => void;
@@ -120,7 +121,7 @@ export const createFilePlacementRuntime = (
     readImageDataUrl: async (source) =>
       await fileDataUrl(await acquireReads().readBytes(fileIdFromSource(source))),
     save: (source, logicalPath) => saveAuthorizedFile(authority, source, logicalPath),
-    materialize: (source) => materializeAuthorizedFile(authority, source),
+    materialize: (source, name) => materializeAuthorizedFile(authority, source, name),
     preload: (source, demand) => acquireReads().preload(fileIdFromSource(source), demand),
     snapshot,
     subscribe: (source, demand, listener) =>
@@ -270,7 +271,7 @@ export function createFilePreviewRuntime(authority: FilePreviewAuthority): FileP
     metadata: async (source) => requireRuntime(source).metadata(source),
     readImageDataUrl: async (source) => requireRuntime(source).readImageDataUrl(source),
     save: async (source, name) => requireRuntime(source).save(source, name),
-    materialize: async (source) => requireRuntime(source).materialize(source),
+    materialize: async (source, name) => requireRuntime(source).materialize(source, name),
     preload: (source, demand) => runtimeFor(source)?.preload(source, demand),
     snapshot: (source) => runtimeFor(source)?.snapshot(source) ?? UNAVAILABLE_PREVIEW_FILE,
     subscribe: (source, demand, listener) =>

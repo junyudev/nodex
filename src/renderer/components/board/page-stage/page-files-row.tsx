@@ -13,7 +13,11 @@ import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { fileSource } from "../../../../shared/file-resources";
 import { importPreparedPageEntries, removePageEntry } from "@/lib/library-file-commands";
 import { prepareDroppedFiles } from "@/lib/api";
-import { saveAuthorizedFile } from "@/lib/library-file-resources";
+import {
+  materializeAuthorizedFile,
+  revealFileExport,
+  saveAuthorizedFile,
+} from "@/lib/library-file-resources";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { appScope, scopedAtom, scopedAtomFamily, useScopedAtom } from "@/lib/maitai";
 import { buildPageFileTree, type PageFileTreeProvenance } from "@/lib/page-file-tree";
@@ -193,6 +197,17 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
               id: "board.pageFilesRow.saveFailed",
               defaultMessage: "Couldn’t save File",
             }),
+      ),
+    );
+  };
+
+  const revealFile = (item: LibraryPageFileItem): void => {
+    if (!authority) return;
+    void revealFileExport(() =>
+      materializeAuthorizedFile(
+        { ...authority, readSource: { kind: "page", page_id: pageId } },
+        fileSource(item.file.file_id),
+        fileTitle(item),
       ),
     );
   };
@@ -427,6 +442,7 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
             opensInPlace={(item) => authority !== null && isImageFile(item)}
             onSave={saveFile}
             onCopyPath={(item) => void writeTextToClipboard(pageFileLabel(item))}
+            onReveal={revealFile}
             onManage={(item) => openFiles(item.file.file_id)}
             onRemovePath={
               authority

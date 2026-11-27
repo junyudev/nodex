@@ -340,6 +340,8 @@ Library File:
 - `Save…` reads the currently authorized File bytes through Core and opens a
   destination chooser; no Profile path is revealed
 - `Copy reference` copies the stable `nodex://files/<file-id>` reference
+- `Reveal in Finder` shows a read-only copy of the version the surface reads,
+  as a Page File does (see [Opening Files](page-files-behavior.md#opening-files))
 
 Linked file or legacy saved attachment: the same menu as every local file
 reference, including Open file, Open in the preferred editor, Open with, Save

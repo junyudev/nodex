@@ -1,7 +1,9 @@
 import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactElement } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
+import { CopyIcon, DownloadIcon, FolderIcon } from "@/components/shared/icons";
 import { Link2 } from "@/components/shared/icons/generic-icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 
 import {
   useBlockReferenceHostRuntime,
@@ -23,6 +25,7 @@ import { resolveManagedAssetPath } from "@/lib/assets";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { openFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
 import { useFileReferenceRouter, type FileReferenceRouter } from "@/lib/file-reference-router";
+import { revealFileExport } from "@/lib/library-file-resources";
 import { appScope, useScopeHandle, type ScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
@@ -206,26 +209,47 @@ function LibraryFileMenu({
       <NodexContextMenuTrigger>{chip}</NodexContextMenuTrigger>
       <NodexContextMenuPortal>
         <NodexContextMenuContent finalFocus={false} data-attachment-menu="true">
-          <NodexContextMenuItem onSelect={() => open("preview")}>
+          <NodexContextMenuItem
+            leftSlot={<NativeMenuIcon iconKey="openIn" />}
+            onSelect={() => open("preview")}
+          >
             <FormattedMessage id="editor.attachmentChip.open" defaultMessage="Open" />
           </NodexContextMenuItem>
           {destination.kind === "page-file" ? (
-            <NodexContextMenuItem onSelect={() => open("durable")}>
+            <NodexContextMenuItem
+              leftSlot={<NativeMenuIcon iconKey="newTab" />}
+              onSelect={() => open("durable")}
+            >
               <FormattedMessage
                 id="editor.attachmentChip.openInTab"
                 defaultMessage="Open in new tab"
               />
             </NodexContextMenuItem>
           ) : null}
-          <NodexContextMenuItem onSelect={() => void save()}>
+          <div role="separator" className="my-1 h-px bg-border" />
+          <NodexContextMenuItem
+            leftSlot={<DownloadIcon className="icon-xs" />}
+            onSelect={() => void save()}
+          >
             <FormattedMessage id="editor.attachmentChip.save" defaultMessage="Save…" />
           </NodexContextMenuItem>
-          <NodexContextMenuItem onSelect={() => void writeTextToClipboard(source)}>
+          <NodexContextMenuItem
+            leftSlot={<CopyIcon />}
+            onSelect={() => void writeTextToClipboard(source)}
+          >
             <FormattedMessage
               id="editor.attachmentChip.copyReference"
               defaultMessage="Copy reference"
             />
           </NodexContextMenuItem>
+          {runtime ? (
+            <NodexContextMenuItem
+              leftSlot={<FolderIcon />}
+              onSelect={() => void revealFileExport(() => runtime.materialize(source, name))}
+            >
+              {getIntl().formatMessage(getFileManagerRevealMessage(navigator.platform))}
+            </NodexContextMenuItem>
+          ) : null}
         </NodexContextMenuContent>
       </NodexContextMenuPortal>
     </NodexContextMenuRoot>
