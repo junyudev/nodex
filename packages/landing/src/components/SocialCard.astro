@@ -1,11 +1,27 @@
 ---
 // One social preview: on the left, Nodex's name, the page's promise at the card's center, and the
 // site's address; running off the card's edges, the window that shows the promise. The default slot
-// holds the promise; the `aside` slot holds the window's content.
+// holds the promise; the `aside` slot holds the window's content. GitHub's repository preview is
+// 2:1, so its card is 30px shorter.
+interface Props {
+  github?: boolean;
+}
+
+const { github = false } = Astro.props;
 ---
 
-<div class="relative h-[630px] w-[1200px] overflow-hidden bg-page font-sans text-ink">
-  <div class="absolute inset-y-16 left-16 grid w-[440px] grid-rows-[1fr_auto_1fr]">
+<div
+  class:list={[
+    "relative w-[1200px] overflow-hidden bg-page font-sans text-ink",
+    github ? "h-[600px]" : "h-[630px]",
+  ]}
+>
+  <div
+    class:list={[
+      "absolute inset-y-16 left-16 grid grid-rows-[1fr_auto_1fr]",
+      github ? "w-[480px]" : "w-[440px]",
+    ]}
+  >
     <div class="flex items-center gap-3 self-start">
       <img src="/nodex-icon.png" alt="" width="48" height="48" class="size-12" />
       <span class="text-[31px] font-semibold tracking-[-0.02em]">Nodex</span>
@@ -16,7 +32,10 @@
     <span class="self-end font-mono text-[20px] text-ink-3">{Astro.site!.host}</span>
   </div>
   <div
-    class="absolute -top-6 -right-6 -bottom-6 left-[540px] bg-app pt-6 pr-6 pb-6 font-app text-app-fg shadow-window"
+    class:list={[
+      "absolute -top-6 -right-6 -bottom-6 bg-app pt-6 pr-6 pb-6 font-app text-app-fg shadow-window",
+      github ? "left-[600px]" : "left-[540px]",
+    ]}
   >
     <slot name="aside" />
   </div>

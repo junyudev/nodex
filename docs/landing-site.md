@@ -343,6 +343,12 @@ People see a card in a feed at about 500px wide, not at its 1200×630 design siz
 - Show nothing a release would make stale, such as a version number. Cards are recorded when they
   change, not with each release. Anything a card shows follows the demos' rule and must have shipped.
 
+The GitHub card is the repository's social preview. No page names it: GitHub shows it at 2:1, so it
+is 1200×600, and takes it only as an upload in the repository's Settings › General › Social preview.
+It pairs the README's promise, one sentence a line, with the home card's Aerial view in a narrower
+window. That window's bands must stay at least 34rem wide, or the delegation map stacks and loses its
+tree. After recording it again, upload `public/og-github.png` there.
+
 After changing a card or the replica it shows, record it again with `vp run capture:landing --og`,
 compare the result at 500px wide, and commit the images. Each page names its card with a hash of
 the image's bytes (`og.png?v=…`), so a card recorded again is a new image URL and a platform that

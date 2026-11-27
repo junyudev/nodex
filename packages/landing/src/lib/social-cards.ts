@@ -4,6 +4,8 @@
  */
 export const SOCIAL_CARD_VIEWPORT = { width: 1200, height: 630 } as const;
 export const SOCIAL_CARD_SCALE = 2;
+/** GitHub shows a repository's preview at 2:1. */
+export const GITHUB_CARD_VIEWPORT = { width: 1200, height: 600 } as const;
 
 export const SOCIAL_CARDS = {
   home: {
@@ -18,6 +20,17 @@ export const SOCIAL_CARDS = {
     file: "og-changelog.png",
     alt: "The Nodex changelog: every change, release by release, grouped into Added, Changed and Fixed.",
   },
+  // No page names this card: it is uploaded by hand as the GitHub repository's social preview.
+  github: {
+    file: "og-github.png",
+    alt: "Nodex, the cross-agent workspace and notebook: any agent can lead, any agent can help. Aerial view shows two chats at work with their subagents: a Claude Code lead handing its routes to Codex, its tests to Antigravity and its docs to OpenCode, and an Antigravity lead whose Codex subagent passes its screenshots to DeepSeek.",
+    viewport: GITHUB_CARD_VIEWPORT,
+  },
 } as const;
 
 export type SocialCardId = keyof typeof SOCIAL_CARDS;
+
+export function socialCardViewport(id: SocialCardId): { width: number; height: number } {
+  const card = SOCIAL_CARDS[id];
+  return "viewport" in card ? card.viewport : SOCIAL_CARD_VIEWPORT;
+}

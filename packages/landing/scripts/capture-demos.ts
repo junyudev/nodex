@@ -6,7 +6,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium, type Browser } from "playwright";
 import { CAPTURE_DEMOS, captureDemoPath, type CaptureDemoId } from "../src/demos/capture-demos";
 import type { Locale } from "../src/lib/locale";
-import { SOCIAL_CARDS, SOCIAL_CARD_VIEWPORT } from "../src/lib/social-cards";
+import {
+  SOCIAL_CARDS,
+  SOCIAL_CARD_VIEWPORT,
+  socialCardViewport,
+  type SocialCardId,
+} from "../src/lib/social-cards";
 
 // Inside the checkout, where git ignores `*.local`, so recordings are never committed by accident.
 const DEFAULT_OUT = fileURLToPath(
@@ -86,7 +91,7 @@ const help = `Record landing demos in real time with Chromium and ffmpeg.
   --fps <number>        Constant video frame rate, 1–60. Default: 30
   --scale <number>      Device scale factor, 1–4. Default: fits each demo to about 1800px
                         wide; 2 with --og
-  --og                 Only render each /capture/og/<card>/ social card (1200×630 at --scale)
+  --og                 Only render each /capture/og/<card>/ social card (1200×630, GitHub's 1200×600, at --scale)
   --help               Show this help
 
 Start the landing server separately. Requires Playwright Chromium. Demos also need
@@ -645,6 +650,8 @@ async function socialCards(browser: Browser, options: Options, scale: number): P
   try {
     const rows: Output[] = [];
     for (const [id, card] of Object.entries(SOCIAL_CARDS)) {
+      const viewport = socialCardViewport(id as SocialCardId);
+      await page.setViewportSize(viewport);
       const url = new URL(`/capture/og/${id}/`, options.baseUrl);
       const response = await page.goto(url.href, { waitUntil: "networkidle" });
       if (!response?.ok()) throw new Error(`Capture page returned ${response?.status()}: ${url}`);
@@ -652,9 +659,7 @@ async function socialCards(browser: Browser, options: Options, scale: number): P
       await page.waitForTimeout(1500);
       const file = join(options.out, card.file);
       await page.screenshot({ path: file });
-      rows.push(
-        await output(file, SOCIAL_CARD_VIEWPORT.width * scale, SOCIAL_CARD_VIEWPORT.height * scale),
-      );
+      rows.push(await output(file, viewport.width * scale, viewport.height * scale));
     }
     return rows;
   } finally {

@@ -10,15 +10,19 @@ import { AGENTS } from "./lumen";
  * Antigravity lead's Codex subagent passes its screenshots to DeepSeek. Slightly enlarged, so its
  * names stay readable in a feed's thumbnail, and still, as a card is.
  */
-export default function OgAerial() {
+export default function OgAerial({ narrow = false }: { readonly narrow?: boolean }) {
   return (
     <DemoLocaleProvider locale="en">
-      <OgAerialBands />
+      <OgAerialBands narrow={narrow} />
     </DemoLocaleProvider>
   );
 }
 
-function OgAerialBands() {
+/**
+ * `narrow` fits the GitHub card's narrower window, which gives its wider headline room. Its bands
+ * must stay at least 34rem wide, or the delegation map stacks and loses its tree.
+ */
+function OgAerialBands({ narrow }: { readonly narrow: boolean }) {
   const story = useLumen();
   const copy = useReplicaCopy();
   const [webauthn, tests, docs] = story.subagents;
@@ -57,7 +61,9 @@ function OgAerialBands() {
     },
   ];
   return (
-    <div className="flex h-full flex-col gap-7 px-6 pt-6 [zoom:1.1]">
+    <div
+      className={`flex h-full flex-col gap-7 px-6 ${narrow ? "justify-center [zoom:1]" : "pt-6 [zoom:1.1]"}`}
+    >
       {chats.map((chat) => (
         <AerialBand key={chat.id} chat={chat} leadWidth={224} still />
       ))}
