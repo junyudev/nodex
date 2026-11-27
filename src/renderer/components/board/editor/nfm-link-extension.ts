@@ -4,6 +4,7 @@ import { markPasteRule } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { find, tokenize } from "linkifyjs";
 import { Link, isAllowedUri, type LinkOptions } from "@tiptap/extension-link";
+import { createLinkSiteIconsPlugin, type LinkSiteIconSlots } from "./nfm-link-site-icons";
 import {
   readNfmAutolinkSettings,
   shouldAutoLinkMatchInText,
@@ -24,7 +25,7 @@ function shouldAutoLinkPasteMatch(fullText: string, startIndex: number, value: s
   return shouldAutoLinkMatchInText(fullText, startIndex, value, settings);
 }
 
-export function createNfmLinkExtension() {
+export function createNfmLinkExtension(siteIcons?: LinkSiteIconSlots) {
   return Link.extend({
     addOptions() {
       const parentOptions = this.parent?.();
@@ -101,6 +102,7 @@ export function createNfmLinkExtension() {
 
       return [
         ...parentPlugins,
+        ...(siteIcons ? [createLinkSiteIconsPlugin(this.type, siteIcons)] : []),
         createAutomaticAutolinkPlugin({
           type: this.type,
           defaultProtocol,

@@ -14,7 +14,6 @@ import {
   resolveOrderedListPadding,
 } from "@/lib/ordered-list-groups";
 import { NodexReference } from "@/components/nodex-reference/nodex-reference";
-import { parseNodexDestination } from "../../../shared/nodex-reference";
 import type { MarkdownBlock, MarkdownInline } from "../../../shared/nodex-markdown";
 import type { ImagePlaceholderReference } from "../../../shared/message-agent-input";
 import type { RichTextColor } from "../../../shared/rich-text/colors";
@@ -799,13 +798,10 @@ function InlineItem({
 
   const props = item.props ?? {};
   if (item.type === "link") {
-    const destination = parseNodexDestination(item.href?.trim());
-    // A link whose text is its own URL names the target, like a mention.
-    if (destination && inlinePlainText(item.content) === item.href?.trim())
-      return <NodexReference destination={destination} variant="mention" />;
     return (
       <FileLinkAnchor
         href={item.href ?? ""}
+        text={inlinePlainText(item.content)}
         projectWorkspacePath={projectWorkspacePath}
         className="nfm-render-link"
       >

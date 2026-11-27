@@ -1,34 +1,10 @@
 import { useIntl } from "@/lib/i18n";
 import { BrowserUseIcon } from "@/components/shared/icons";
-import { SiteFavicon } from "@/components/shared/site-favicon";
-import {
-  WebsiteFigmaIcon,
-  WebsiteGitHubIcon,
-  WebsiteGmailIcon,
-  WebsiteGoogleCalendarIcon,
-  WebsiteGoogleDriveIcon,
-  WebsiteLinearIcon,
-  WebsiteNotionIcon,
-  WebsiteSalesforceIcon,
-  WebsiteSlackIcon,
-} from "@/components/shared/icons/website-icons";
-import { resolveBrowserWebsiteSourceIconId } from "../../../../../../shared/browser-website-source";
+import { SiteIcon } from "@/components/shared/site-icon";
 import { formatCodexMcpVisualSourceName } from "../../../../../../shared/codex-mcp-tool-call";
 import type { CodexWebMcpCall } from "../../../../../../shared/codex-webmcp-tool-call";
 import { ThreadActivityDisclosure } from "./tool-primitives";
 import { ToolCallCodePanel } from "./tool-call-inspection";
-
-const WEBSITE_SOURCE_ICONS = {
-  figma: WebsiteFigmaIcon,
-  github: WebsiteGitHubIcon,
-  gmail: WebsiteGmailIcon,
-  googleCalendar: WebsiteGoogleCalendarIcon,
-  googleDrive: WebsiteGoogleDriveIcon,
-  linear: WebsiteLinearIcon,
-  notion: WebsiteNotionIcon,
-  salesforce: WebsiteSalesforceIcon,
-  slack: WebsiteSlackIcon,
-};
 
 function parseJsonOrText(value: string): unknown {
   try {
@@ -46,35 +22,18 @@ function formatJsonOrText(value: string): string {
   }
 }
 
-function WebMcpSourceIcon({ href, loadRemote }: { href: string | null; loadRemote: boolean }) {
-  const sourceId = href ? resolveBrowserWebsiteSourceIconId(href) : null;
-  const SourceIcon = sourceId ? WEBSITE_SOURCE_ICONS[sourceId] : null;
-  if (SourceIcon)
-    return (
-      <SourceIcon
-        aria-hidden
-        className="icon-xs shrink-0 rounded-2xs text-token-conversation-body"
-      />
-    );
+function WebMcpSourceIcon({ href }: { href: string | null }) {
   if (href === null)
     return <BrowserUseIcon aria-hidden className="icon-xs shrink-0 text-token-conversation-body" />;
-  return (
-    <SiteFavicon
-      className="icon-xs text-token-conversation-body"
-      href={href}
-      loadRemote={loadRemote}
-    />
-  );
+  return <SiteIcon className="icon-xs text-token-conversation-body" href={href} />;
 }
 
 export function WebMcpToolActivity({
   call,
   fallbackPageUrl,
-  loadRemoteLogos = true,
 }: {
   call: CodexWebMcpCall;
   fallbackPageUrl: string | null;
-  loadRemoteLogos?: boolean;
 }) {
   const intl = useIntl();
   const sourceUrl =
@@ -109,7 +68,7 @@ export function WebMcpToolActivity({
       : (call.title ?? formatCodexMcpVisualSourceName(call.name, { style: "sentence" }));
   return (
     <ThreadActivityDisclosure
-      icon={<WebMcpSourceIcon href={sourceUrl} loadRemote={loadRemoteLogos} />}
+      icon={<WebMcpSourceIcon href={sourceUrl} />}
       status="completed"
       summary={summary}
     >

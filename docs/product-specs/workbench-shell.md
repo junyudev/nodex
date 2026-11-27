@@ -314,6 +314,40 @@ in Space. A chat is a Scene and never a tab, so Primary or middle activation
 opens it in a new window. A link naming another Space opens in a window of that
 Space. Outside the Workbench a reference is shown but not offered to open.
 
+### Web links
+
+A web link in read text (a chat's messages and the Agent's replies, tool activity,
+thoughts and plans, Inbox bubbles, and Pages, editable or not) shows where it goes
+before its words:
+
+- Sites Nodex draws itself (GitHub, Linear, Figma, Notion, Slack, Gmail, Google
+  Calendar and Drive, Salesforce) show their mark. Nothing leaves the device.
+- Other public sites show their favicon. Nodex asks Google's icon service for it,
+  from the app rather than the page, sending only the site's domain, and keeps it on
+  this device, about a month when found and a day when not. **Website icons for
+  links** in Settings → General turns this off, and on, at once everywhere; while
+  it is off such sites show a globe. A see-through favicon drawn in the
+  background's own tone, such as a black mark in dark mode, sits on a small plate of
+  the other tone.
+- This device and private networks (`localhost`, `*.local` and similar names,
+  single-label hosts, private, shared and link-local addresses) show a globe. Their
+  names never leave the device.
+
+A globe holds the place while an icon loads, so text never shifts. A link written in
+its author's own words shows its address on hover; a link written as its own URL
+needs no hover. The icon belongs to the link: it is not selected or copied, and a
+copied link keeps its address.
+
+A link to a GitHub issue or pull request reads as the thread. Its state glyph takes
+the GitHub mark's place once known: an open, draft, merged or closed pull request, an
+open, completed or not-planned issue. Written as its own URL it shows the thread's
+number and live title, as a mention does; written in its author's words it keeps
+them. Hovering shows `owner/repo#N`, the state and the title. Titles and states are
+read in batches, only for links on or near the screen, with the account connected in
+Settings → GitHub, and shared with [GitHub tabs](github-tabs-behavior.md). Without a
+connection, in a team Space, or for a thread GitHub does not show, the link keeps the
+GitHub mark and reads `owner/repo#N`. It opens as any GitHub link does.
+
 ### Links inside a Browser page
 
 A link in a Browser page behaves as it does in a desktop browser, with tabs in

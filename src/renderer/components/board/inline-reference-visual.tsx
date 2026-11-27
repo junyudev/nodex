@@ -1,4 +1,9 @@
-import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
+import type {
+  ComponentPropsWithRef,
+  ComponentPropsWithoutRef,
+  CSSProperties,
+  ReactNode,
+} from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -31,7 +36,7 @@ type InlineReferenceVisualButtonProps = InlineReferenceVisualBaseProps &
   Omit<ComponentPropsWithoutRef<"button">, "children"> & { readonly as: "button" };
 
 type InlineReferenceVisualAnchorProps = InlineReferenceVisualBaseProps &
-  Omit<ComponentPropsWithoutRef<"a">, "children"> & { readonly as: "a" };
+  Omit<ComponentPropsWithRef<"a">, "children"> & { readonly as: "a" };
 
 export type InlineReferenceVisualProps =
   | InlineReferenceVisualSpanProps

@@ -9,6 +9,7 @@ import { FileReferenceIntentProvider } from "@/lib/file-reference-intent";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installWindowApi } from "../../test/browser-globals";
+import { TestQueryProvider } from "../../test/query";
 
 const invoke = vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>(async () => true);
 const menu = vi.hoisted(() => ({
@@ -224,11 +225,13 @@ describe("FileLinkAnchor", () => {
         saveLink: save,
       });
       const { getByRole } = render(
-        <LinkOpeningProvider router={links}>
-          <FileReferenceIntentProvider sidePanel markdownContext>
-            <FileLinkAnchor href="https://example.com">Example</FileLinkAnchor>
-          </FileReferenceIntentProvider>
-        </LinkOpeningProvider>,
+        <TestQueryProvider>
+          <LinkOpeningProvider router={links}>
+            <FileReferenceIntentProvider sidePanel markdownContext>
+              <FileLinkAnchor href="https://example.com">Example</FileLinkAnchor>
+            </FileReferenceIntentProvider>
+          </LinkOpeningProvider>
+        </TestQueryProvider>,
       );
       const anchor = getByRole("link", { name: "Example" });
       await act(async () => {

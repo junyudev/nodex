@@ -67,6 +67,7 @@ import { NfmFormattingToolbar } from "./nfm-formatting-toolbar";
 import { NfmFormattingToolbarController } from "./nfm-formatting-toolbar-controller";
 import { NfmTextActionMenuRuntimeProvider } from "./nfm-text-action-menu-runtime";
 import { NfmLinkToolbar } from "./nfm-link-toolbar";
+import { LinkSiteIconPortals } from "./nfm-link-site-icon-portals";
 import { NfmLinkToolbarController } from "./nfm-link-toolbar-controller";
 import { NfmSideMenuDeleteIcon } from "@/components/shared/icons";
 import { NodexMenuRowContent } from "@/components/ui/menu-row";
@@ -492,6 +493,7 @@ function NfmFileEditorView({
         slashMenu={false}
         tableHandles={false}
       >
+        <LinkSiteIconPortals slots={owner.linkSiteIcons} />
         {!readOnly && (
           <>
             <FormattingToolbarController formattingToolbar={NfmFileFormattingToolbar} />
@@ -2556,6 +2558,7 @@ function NfmEditorInstance({
                         tableHandles={false}
                         data-theming-css-variables-demo
                       >
+                        <LinkSiteIconPortals slots={owner.linkSiteIcons} />
                         <NfmSideMenuOpenProvider>
                           <NfmAskForChangeProvider
                             projectId={executionProjectId}

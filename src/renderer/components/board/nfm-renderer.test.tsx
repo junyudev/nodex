@@ -195,6 +195,28 @@ describe("NfmRenderer", () => {
     );
   });
 
+  test("names a GitHub thread a link spells out, and keeps a worded link's words", async () => {
+    const pull = "https://github.com/acme/app/pull/7";
+    const { container } = render(
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmRenderer
+            content={`[${pull}](${pull}) and [the fix](https://github.com/acme/app/issues/8)`}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
+    );
+
+    await settleAsyncRender();
+
+    expect(container.querySelector('[data-github-thread-link="mention"]')?.textContent).toBe(
+      "acme/app#7",
+    );
+    expect(container.querySelector('[data-github-thread-link="link"]')?.textContent).toBe(
+      "the fix",
+    );
+  });
+
   test("passes project workspace context to relative file-like links", async () => {
     const { container } = render(
       <NodexTooltipProvider>

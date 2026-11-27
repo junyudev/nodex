@@ -1,6 +1,6 @@
 import { useRoutedWebLink } from "@/lib/web-link-navigation";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { SiteFavicon } from "@/components/shared/site-favicon";
+import { SiteIcon } from "@/components/shared/site-icon";
 import type { WebSource } from "../../../../../../shared/codex-web-search";
 
 /** Pages a web search returned, as compact chips that open the page. */
@@ -38,7 +38,7 @@ function WebSourceChip({ source }: { source: WebSource }) {
         rel="noopener noreferrer"
         className="inline-flex h-6 max-w-40 cursor-interaction items-center gap-2 rounded-full bg-(--color-background-secondary-soft) py-1 ps-1 pe-2 text-xs text-(--color-text-secondary) no-underline select-none hover:bg-(--color-background-secondary-ghost-hover) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
       >
-        <SiteFavicon className="icon-sm" compactGlobe href={source.url} />
+        <SiteIcon className="icon-sm" compactGlobe href={source.url} />
         <span className="truncate">{name}</span>
       </a>
     </NodexTooltip>

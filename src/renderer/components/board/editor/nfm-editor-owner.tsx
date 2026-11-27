@@ -29,6 +29,7 @@ import {
   NFM_DISABLED_EXTENSIONS,
 } from "./nfm-editor-extensions";
 import { createNfmLinkExtension } from "./nfm-link-extension";
+import { LinkSiteIconSlots } from "./nfm-link-site-icons";
 import { NFM_DROP_CURSOR_OPTIONS } from "./nfm-drop-indicator";
 import {
   NfmStructuralEditingController,
@@ -87,6 +88,8 @@ export class NfmEditorOwner {
   >;
   readonly controller: NfmStructuralEditingController;
   readonly structuralSession: NfmStructuralEditingSession;
+  /** Where this editor's link icons are drawn; the editor's views render into them. */
+  readonly linkSiteIcons = new LinkSiteIconSlots();
   private callbacks: NfmEditorCallbackPorts | null = null;
   private disposePromise: Promise<void> | null = null;
   private retired = false;
@@ -152,7 +155,7 @@ export class NfmEditorOwner {
             }),
           ),
       }),
-      _tiptapOptions: { extensions: [createNfmLinkExtension()] },
+      _tiptapOptions: { extensions: [createNfmLinkExtension(this.linkSiteIcons)] },
     });
     const historyScope =
       input.editorSession?.descriptor ??

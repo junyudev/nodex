@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithAppMaitai as render } from "@/test/app-maitai";
+import { createTestQueryClient, TestQueryProvider } from "@/test/query";
 import {
   applyContentSearchDomMarks,
   clearContentSearchMarks,
@@ -24,17 +25,21 @@ const context = {
   markdownStreaming: true,
   readChangedFilePaths: () => [],
 };
+// Web links read their site's icon; one client keeps rerenders on the same cache.
+const queryClient = createTestQueryClient();
 const message = (content: string, streaming = true) => (
   <StrictMode>
-    <NodexTooltipProvider>
-      <MarkdownRenderer
-        dialect="conversation"
-        content={content}
-        parseIncompleteMarkdown={streaming}
-        animateStreamingText={streaming}
-        visualizationContext={context}
-      />
-    </NodexTooltipProvider>
+    <TestQueryProvider client={queryClient}>
+      <NodexTooltipProvider>
+        <MarkdownRenderer
+          dialect="conversation"
+          content={content}
+          parseIncompleteMarkdown={streaming}
+          animateStreamingText={streaming}
+          visualizationContext={context}
+        />
+      </NodexTooltipProvider>
+    </TestQueryProvider>
   </StrictMode>
 );
 
