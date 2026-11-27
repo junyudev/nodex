@@ -31,9 +31,8 @@ export const isManagedChat = Effect.fn("ChatNotification.isManaged")(function* (
 /** Page Turns own attention for managed chats. Decision runs stay out of chat attention. */
 export const chatNotificationRole = Effect.fn("ChatNotification.role")(function* (
   core: CoreModules["Service"],
-  event: CodexThreadNotificationEvent,
+  sessionId: string | null,
 ) {
-  const sessionId = yield* notificationSession(core, event);
   if (!sessionId) return "chat";
   if (yield* readDecisionRun(core, sessionId)) return "decision";
   return (yield* isManagedChat(core, sessionId)) ? "managed" : "chat";

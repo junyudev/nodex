@@ -61,6 +61,8 @@ it.effect("owns only the trusted bootstrap handlers before Core is ready", () =>
     const windows = WindowRuntime.of({
       acknowledgeClose: () => undefined,
       has: () => true,
+      hasAppRenderer: () => true,
+      hasAuxiliaryRole: () => false,
     } as unknown as WindowRuntime["Service"]);
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
@@ -127,6 +129,8 @@ it.effect(
       } as unknown as ApplicationWindowShellRuntime["Service"]);
       const windows = WindowRuntime.of({
         has: () => true,
+        hasAppRenderer: () => true,
+        hasAuxiliaryRole: () => false,
       } as unknown as WindowRuntime["Service"]);
       const scope = yield* Scope.Scope;
       yield* Layer.buildWithScope(
@@ -250,7 +254,9 @@ it.effect("answers initialization with the window's whole binding once its gate 
               WindowRuntime,
               WindowRuntime.of({
                 bootstrap,
-                has: () => true,
+                has: (id: number) => id === 7,
+                hasAppRenderer: () => true,
+                hasAuxiliaryRole: (id: number, role: string) => id === 8 && role === "mini",
               } as unknown as WindowRuntime["Service"]),
             ),
             Layer.succeed(
@@ -291,6 +297,7 @@ it.effect("answers initialization with the window's whole binding once its gate 
     yield* Deferred.succeed(done, undefined);
     const reply = (yield* Fiber.join(pending)) as WindowBootstrap;
     assert.deepStrictEqual(reply, {
+      kind: "window-session",
       space,
       windowSession: session,
       runtimeCapabilities: { enabledDevelopmentFeatures: ["database-page-reorder-menu"] },
@@ -298,6 +305,19 @@ it.effect("answers initialization with the window's whole binding once its gate 
     });
     assert.deepStrictEqual(bootstrap.mock.calls, [[7, "space:team"]]);
     assert.deepStrictEqual(spaceContext.mock.calls, [[event]]);
+
+    const captureFrame = { url: "app://-/index.html?initialRoute=%2Fmini" };
+    const captureEvent = {
+      sender: { id: 8, getType: () => "window", mainFrame: captureFrame, isDestroyed: () => false },
+      senderFrame: captureFrame,
+    } as unknown as IpcMainInvokeEvent;
+    assert.deepStrictEqual(yield* initialize(captureEvent), {
+      kind: "mini",
+      space,
+      runtimeCapabilities: { enabledDevelopmentFeatures: ["database-page-reorder-menu"] },
+      diagnostics,
+    });
+    assert.deepStrictEqual(bootstrap.mock.calls, [[7, "space:team"]]);
 
     // Unreadable diagnostics leave them off rather than failing the window.
     settingsFail = true;

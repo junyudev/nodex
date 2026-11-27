@@ -69,7 +69,12 @@ import {
   DesktopNotificationRuntime,
   live as desktopNotificationRuntimeLive,
 } from "../host-runtime/DesktopNotificationRuntime";
+import {
+  WorkbenchNotificationDelivery,
+  live as workbenchNotificationDeliveryLive,
+} from "../host-runtime/WorkbenchNotificationDelivery";
 import { DeepLinkRuntime, live as deepLinkRuntimeLive } from "../host-runtime/DeepLinkRuntime";
+import { MiniRuntime, live as miniRuntimeLive } from "../mini/MiniRuntime";
 import { DictationRuntime, live as dictationRuntimeLive } from "../host-runtime/DictationRuntime";
 import {
   McpAppSandboxRuntime,
@@ -292,9 +297,17 @@ const deepLinks = Layer.unwrap(
   Effect.gen(function* () {
     const applicationWindows = yield* ApplicationWindowRuntime;
     const windows = yield* WindowRuntime;
-    return deepLinkRuntimeLive({ focusWindow: applicationWindows.focusLast, windows });
+    return deepLinkRuntimeLive({
+      focusWindow: applicationWindows.focusLast,
+      focusPersonalWindow: applicationWindows.focusPersonal,
+      windows,
+    });
   }),
 ).pipe(Layer.provideMerge(applicationWindows));
+
+const workbenchNotifications = workbenchNotificationDeliveryLive.pipe(
+  Layer.provide(applicationWindows),
+);
 
 /** Physical Window resources and their bounded, scope-owned shutdown policy. */
 export const live: Layer.Layer<
@@ -306,8 +319,10 @@ export const live: Layer.Layer<
   | ComposerAppshotRuntime
   | ComputerUseSettingsRuntime
   | CodexMedia
+  | MiniRuntime
   | DictationDictionary
   | DesktopNotificationRuntime
+  | WorkbenchNotificationDelivery
   | DeepLinkRuntime
   | DictationRuntime
   | ElectronPrivacy
@@ -368,10 +383,12 @@ export const live: Layer.Layer<
   applicationHostRuntimeLive(),
   applicationMenu,
   computerUseSettings,
+  miniRuntimeLive(resolveBundledElectronPreload(__dirname, "index.js")),
   remoteHostedPipIntegration,
   codexMedia,
   dictationDictionary,
   deepLinks,
+  workbenchNotifications,
   dictation,
   structuralClipboard,
   editorHistoryRuntimeLive,

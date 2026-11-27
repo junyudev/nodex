@@ -24,6 +24,7 @@ import type { FileReferenceRouterPort } from "@/lib/file-reference-router";
 import { useRegisterFileLocationNavigator } from "@/lib/file-location-navigation";
 import { useApplicationPending, useApplicationReady } from "@/bootstrap/application-surface";
 import { useFirstRunPresentation } from "@/features/first-run/first-run-state";
+import { DictationRecordingNavigationContext } from "@/features/dictation/dictation-recording-navigation";
 import { subscribeDictationRecordingNavigation } from "@/lib/global-dictation-commands";
 import {
   useCallback,
@@ -155,9 +156,9 @@ import { libraryContentRoute, projectContentRoute } from "../../../shared/conten
 import { readCaptureSelection } from "@/lib/capture-selection";
 import {
   InboxQuickCapture,
-  type InboxCaptureDestination,
   type InboxQuickCaptureRequest,
 } from "@/features/inbox/inbox-quick-capture";
+import type { InboxCaptureDestination } from "@/features/inbox/inbox-capture-card";
 import { resolveInboxCaptureScope } from "@/features/inbox/inbox-capture-scope";
 import {
   useCodexAppServerControl,
@@ -4355,6 +4356,7 @@ export function WorkbenchRuntime({
     commandId,
     source,
     browserTab,
+    inboxScope,
   }: WorkbenchCommandInvocation): boolean => {
     switch (commandId) {
       case "focusBrowserAddressBar":
@@ -4365,6 +4367,10 @@ export function WorkbenchRuntime({
         return panelCommands.closeBrowserTab(browserTab);
       case "settings":
         openSettings();
+        return true;
+      case "openInbox":
+        if (!inboxScope) return false;
+        void openInboxScope(inboxScope, false);
         return true;
       case CAPTURE_TO_INBOX_COMMAND_ID:
         return captureToInbox(source);
@@ -7081,7 +7087,9 @@ export function WorkbenchRuntime({
               }}
             >
               <OpenAgentsTabContext value={agentsTabScene ? openAgentsTab : null}>
-                <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+                <DictationRecordingNavigationContext value={openVoiceSettings}>
+                  <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+                </DictationRecordingNavigationContext>
               </OpenAgentsTabContext>
             </SkillNavigationContext>
             {/* Its grace period counts from when it can be seen, which setup would prevent. */}

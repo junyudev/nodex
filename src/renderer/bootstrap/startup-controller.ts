@@ -185,6 +185,7 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
 
   void measure("native", awaitInitialization)
     .then(async (bootstrap) => {
+      if (bootstrap.kind !== "window-session") throw new Error("Expected a Window Session");
       await localeReady;
       if (disposed) return;
       const { bindRendererSpace } = await import("../lib/renderer-space");

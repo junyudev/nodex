@@ -1,4 +1,5 @@
 import { PhoneRequests } from "./PhoneRequests";
+import { CHAT_REPLY_PREVIEW_BATCH_LIMIT } from "../../shared/chat-reply-preview";
 import { automaticModelCatalog, modelIsOn } from "../../shared/model-policy";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentCatalog, ChatActivity, ChatSummary } from "@nodex/mobile-protocol";
@@ -29,6 +30,7 @@ import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { mobileAgentChoice } from "./inbox";
 import { mobileAgentModel, mobileModelEffort } from "./agent-model";
 import {
+  chatProgress,
   idleActivity,
   nativeActivity,
   projectRequests,
@@ -107,6 +109,7 @@ export const projectChatRow = (
   metadata: ChatRuntimeMetadata | undefined,
   live: ChatActivity | undefined,
   providers: Providers = [],
+  settledReply?: string,
 ): ChatSummary => {
   const base = summaryOf(row);
   const entry = metadata ? withSessionMetadata(base, metadata) : base;
@@ -114,6 +117,11 @@ export const projectChatRow = (
     live ?? nativeActivity(entry.sessionId, entry.status.status_type, entry.status.active_flags);
   return {
     ...activity,
+    progress:
+      activity.progress ??
+      (activity.status === "idle" || activity.status === "failed"
+        ? chatProgress(settledReply)
+        : null),
     title: entry.title,
     preview: Array.from(entry.preview).slice(0, 240).join(""),
     projectId: entry.projectId,
@@ -264,6 +272,23 @@ export const makeMobileCatalog = Effect.gen(function* () {
     };
   });
 
+  const settledProgress = (sessionIds: readonly string[], archived = false) =>
+    sessionIds.length === 0
+      ? Effect.succeed(new Map<string, string>())
+      : runtime.replyPreviews({ sessionIds, archived, presentation: "notification" }).pipe(
+          Effect.map((replies) => new Map(replies.map(({ sessionId, text }) => [sessionId, text]))),
+          Effect.orElseSucceed(() => new Map<string, string>()),
+        );
+
+  const visibleActivity = (data: ChatActivity) =>
+    // A Space-wide Runtime signal carries no read authority for an assistant's words.
+    data.progress
+      ? workspace.getProjectSession(data.sessionId).pipe(
+          Effect.map((row) => (row ? data : { ...data, progress: null })),
+          Effect.orElseSucceed(() => ({ ...data, progress: null })),
+        )
+      : Effect.succeed(data);
+
   const chats: MobileHandlers["chats.list"] = (input) =>
     Effect.gen(function* () {
       const query = input.query?.trim();
@@ -359,7 +384,18 @@ export const makeMobileCatalog = Effect.gen(function* () {
       const live = new Map(
         (yield* activity.read).items.map((item) => [item.sessionId, runtimeActivity(item)]),
       );
-      const providers = yield* runtime.catalog().pipe(Effect.orElseSucceed(() => []));
+      const [providers, replies] = yield* Effect.all(
+        [
+          runtime.catalog().pipe(Effect.orElseSucceed(() => [])),
+          settledProgress(
+            rows.flatMap(({ task: { session } }) =>
+              session.execution_ref && !live.has(session.id) ? [session.id] : [],
+            ),
+            archived,
+          ),
+        ],
+        { concurrency: 2 },
+      );
       return {
         items: yield* Effect.forEach(
           rows,
@@ -370,6 +406,7 @@ export const makeMobileCatalog = Effect.gen(function* () {
               ref ? metadata.get(`${ref.runtime_id}\0${ref.thread_id}`) : undefined,
               live.get(row.task.session.id),
               providers,
+              replies.get(row.task.session.id),
             );
             return memberActivity(summary).pipe(
               Effect.map((activity) => ({ ...summary, ...activity })),
@@ -384,16 +421,29 @@ export const makeMobileCatalog = Effect.gen(function* () {
   const observeActivity = (push: (data: ChatActivity) => Effect.Effect<void>) =>
     Effect.gen(function* () {
       const known = new Map<string, ChatActivity>();
+      const pushCurrent = (data: ChatActivity) =>
+        visibleActivity(data).pipe(Effect.flatMap(memberActivity), Effect.flatMap(push));
+      const pushSettled = Effect.fnUntraced(function* (ids: readonly string[]) {
+        // A full activity reset can settle more chats than one reply-preview read admits.
+        const batchSize = CHAT_REPLY_PREVIEW_BATCH_LIMIT;
+        for (let offset = 0; offset < ids.length; offset += batchSize) {
+          const batch = ids.slice(offset, offset + batchSize);
+          const replies = yield* settledProgress(batch);
+          yield* Effect.forEach(batch, (id) => push(idleActivity(id, replies.get(id))), {
+            discard: true,
+          });
+        }
+      });
       const load = Effect.gen(function* () {
         const snapshot = yield* activity.read;
         const next = new Map(snapshot.items.map((item) => [item.sessionId, runtimeActivity(item)]));
         if (snapshot.complete) {
-          for (const id of known.keys()) if (!next.has(id)) yield* push(idleActivity(id));
+          yield* pushSettled([...known.keys()].filter((id) => !next.has(id)));
           known.clear();
         }
         for (const [id, data] of next) {
           known.set(id, data);
-          yield* push(yield* memberActivity(data));
+          yield* pushCurrent(data);
         }
         return snapshot.sequence;
       });
@@ -406,7 +456,7 @@ export const makeMobileCatalog = Effect.gen(function* () {
             if (change.sequence <= floor) return;
             if (change.type === "reset" || change.sequence !== floor + 1) {
               if (change.type === "remove" && !known.has(change.sessionId))
-                yield* push(idleActivity(change.sessionId));
+                yield* pushSettled([change.sessionId]);
               floor = yield* load;
               return;
             }
@@ -414,10 +464,10 @@ export const makeMobileCatalog = Effect.gen(function* () {
             if (change.type === "upsert") {
               const data = runtimeActivity(change.activity);
               known.set(data.sessionId, data);
-              yield* push(yield* memberActivity(data));
+              yield* pushCurrent(data);
             } else {
               known.delete(change.sessionId);
-              yield* push(idleActivity(change.sessionId));
+              yield* pushSettled([change.sessionId]);
             }
           }),
         ),

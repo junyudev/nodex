@@ -1,18 +1,20 @@
-import { resolveNotificationTargetClient } from "./notification-target";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { chatNotificationRole } from "../../host/work-observation/notification-session";
+import {
+  chatNotificationRole,
+  notificationSession,
+} from "../../host/work-observation/notification-session";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { makeCodexThreadNotificationHandler } from "../codex/codex-thread-notification-handler";
+import { MiniRuntime } from "../mini/MiniRuntime";
 import { getLogger } from "../logging/logger";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
-import { RendererClientRuntime } from "./RendererClientRuntime";
+import { WorkbenchNotificationDelivery } from "./WorkbenchNotificationDelivery";
 import { UserPresence } from "../../host/UserPresence";
 
 const logger = getLogger({ component: "codex-thread-notification-runtime" });
@@ -27,9 +29,9 @@ export const live: Layer.Layer<
   | ApplicationSettings
   | CodexRendererPresentationRegistry
   | DesktopNotificationRuntime
-  | RendererClientRuntime
+  | MiniRuntime
+  | WorkbenchNotificationDelivery
   | UserPresence
-  | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const spaceId = (yield* CoreAuthority).identity.libraryId;
@@ -39,9 +41,8 @@ export const live: Layer.Layer<
     const conversations = yield* CodexRendererPresentationRegistry;
     const presence = yield* UserPresence;
     const notifications = yield* DesktopNotificationRuntime;
-    const rendererClients = yield* RendererClientRuntime;
-    const windows = yield* WindowRuntime;
-    let accepting = true;
+    const mini = yield* MiniRuntime;
+    const delivery = yield* WorkbenchNotificationDelivery;
     let currentSettings = (yield* applicationSettings.snapshot().pipe(Effect.orDie)).notifications;
     const handle = makeCodexThreadNotificationHandler({
       getSettings: () => currentSettings,
@@ -52,39 +53,11 @@ export const live: Layer.Layer<
           hostId,
           sessionId: conversation.runtimeSessionId,
         }),
-      resolveTargetClientId: (conversationId) =>
-        resolveNotificationTargetClient(conversationId, conversations, windows, rendererClients),
-      showNotification: (notification, targetClientId, onAction) => {
-        const webContentsId = rendererClients.getWebContentsIdForClientId(targetClientId);
-        if (webContentsId === null) return;
-        const targetWindow = windows.get(webContentsId);
-        if (!targetWindow || targetWindow.isDestroyed()) return;
-        notifications.show(notification, targetWindow.webContents, (action) => {
-          if (accepting) onAction(action);
-        });
-      },
+      showNotification: (notification, resolveAction) =>
+        delivery.show(notification, spaceId, resolveAction),
       dismissNotification: notifications.dismiss,
-      dispatchAction: (targetClientId, action) =>
-        rendererClients.sendToClient(targetClientId, "desktop-notification:action", {
-          ...action,
-          spaceId,
-        }),
-      focusTargetClient: (targetClientId) => {
-        const webContentsId = rendererClients.getWebContentsIdForClientId(targetClientId);
-        if (webContentsId === null) return;
-        const targetWindow = windows.get(webContentsId);
-        if (!targetWindow || targetWindow.isDestroyed()) return;
-        if (targetWindow.isMinimized()) targetWindow.restore();
-        targetWindow.show();
-        targetWindow.focus();
-      },
       logger,
     });
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        accepting = false;
-      }),
-    );
     yield* events.events.pipe(
       Stream.runForEach((event) => {
         if (event.kind === "conversationSeen") {
@@ -95,14 +68,16 @@ export const live: Layer.Layer<
           const snapshot = yield* applicationSettings.snapshot();
           currentSettings = snapshot.notifications;
           const notification = event.value;
-          const role = yield* chatNotificationRole(core, notification);
-          if (role === "decision") return;
-          if (notification.type !== "turn-completed") {
-            if (role === "managed") return;
-            handle(notification);
+          const sessionId = yield* notificationSession(core, notification);
+          const role = yield* chatNotificationRole(core, sessionId);
+          if (role === "decision" || (role === "managed" && notification.type !== "turn-completed"))
             return;
-          }
-          handle(notification, { managed: role === "managed" });
+          const coveredByMini =
+            "conversation" in notification &&
+            !notification.conversation.sideConversationParentNavigationPath &&
+            sessionId !== null &&
+            mini.restingCoverage().chats.includes(sessionId);
+          handle(notification, { managed: role === "managed", coveredByMini });
         }).pipe(
           Effect.catch((cause) =>
             Effect.sync(() => logger.warn("Could not resolve notification policy", { cause })),

@@ -504,6 +504,19 @@ export const settingsMessages = defineMessages({
   },
   appUpdatesStable: { id: "settings.appUpdates.stable", defaultMessage: "Stable" },
   appUpdatesNightly: { id: "settings.appUpdates.nightly", defaultMessage: "Nightly" },
+  generalOpenAtLogin: {
+    id: "settings.general.openAtLogin",
+    defaultMessage: "Open at login",
+  },
+  generalOpenAtLoginDescription: {
+    id: "settings.general.openAtLoginDescription",
+    defaultMessage: "Start Nodex in the background so Mini is ready, without opening a window.",
+  },
+  generalMini: { id: "settings.mini.label", defaultMessage: "Mini" },
+  generalMiniDescription: {
+    id: "settings.mini.description",
+    defaultMessage: "When Mini shows your chats over other apps.",
+  },
   generalShowTips: { id: "settings.general.tips.label", defaultMessage: "Show tips" },
   generalShowTipsDescription: {
     id: "settings.general.tips.description",
@@ -1712,6 +1725,18 @@ export const SETTINGS_SEARCH_PANELS = {
             ],
             () => readSettingsHostPresentation().terminalShell,
           ),
+          entry(
+            settingsMessages.generalOpenAtLogin,
+            settingsMessages.generalOpenAtLoginDescription,
+            ["startup", "background", "Mini"],
+            () => readSettingsHostPresentation().launchAtLogin,
+          ),
+          entry(settingsMessages.generalMini, settingsMessages.generalMiniDescription, [
+            "floating",
+            "overlay",
+            "shortcut",
+            "quick chat",
+          ]),
           entry(settingsMessages.generalShowTips, settingsMessages.generalShowTipsDescription, [
             "tips",
             "hints",

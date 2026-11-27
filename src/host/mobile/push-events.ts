@@ -224,7 +224,7 @@ export const makeMobilePushEvents = Effect.gen(function* () {
           const sessionId = conversation.runtimeSessionId;
           // A side chat's reply stays beside its source chat, which a phone does not show.
           if (!sessionId || conversation.sideConversationParentNavigationPath) return;
-          const role = yield* chatNotificationRole(core, occurrence);
+          const role = yield* chatNotificationRole(core, sessionId);
           if (role === "decision") return;
           const kind = pushKind(occurrence, role === "managed");
           if (!kind) return;

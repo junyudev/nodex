@@ -3,6 +3,8 @@ import {
   readDecisionRunState,
 } from "../../host/nodex-decisions/decision-run-role";
 import { agentDefinition } from "../../shared/agents/registry";
+import { parseCodexHeartbeatAssistantMessage } from "../../shared/automation-heartbeat";
+import { resolveCodexTurnNotificationReply } from "../../shared/codex-thread-notification";
 import { CHAT_REPLY_PREVIEW_BATCH_LIMIT } from "../../shared/chat-reply-preview";
 import { antigravityAgent } from "../../shared/agents/antigravity";
 import { isAbsolute } from "node:path";
@@ -6009,7 +6011,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
      * Each named chat's latest reply as row text. Core names the chats this reader may see and
      * their executions in one read; the execution owner answers every reply in one more.
      */
-    replyPreviews: (input: { readonly sessionIds: readonly string[] }) =>
+    replyPreviews: (input: {
+      readonly sessionIds: readonly string[];
+      readonly archived?: boolean;
+      readonly presentation?: "notification";
+    }) =>
       ownedOpenRead(
         "reply-previews",
         Effect.gen(function* () {
@@ -6024,7 +6030,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           const listed = yield* host(
             core.workspace.read({
               kind: "session_window",
-              archived: false,
+              archived: input.archived ?? false,
               order: "identity",
               session_ids: sessionIds,
               window: { first: sessionIds.length },
@@ -6050,7 +6056,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           );
           return replies.flatMap((reply) => {
             const sessionId = sessionByThread.get(reply.threadId);
-            const text = presentChatReplyPreview(reply.text);
+            const copy =
+              input.presentation === "notification"
+                ? resolveCodexTurnNotificationReply({
+                    lastAgentMessage: reply.text,
+                    heartbeatAssistantMessage: parseCodexHeartbeatAssistantMessage(reply.text),
+                  })
+                : reply.text;
+            const text = copy && presentChatReplyPreview(copy);
             return sessionId && text ? [{ sessionId, text }] : [];
           });
         }),

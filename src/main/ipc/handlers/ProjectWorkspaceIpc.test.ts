@@ -255,6 +255,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
             Layer.succeed(ElectronDesktop, { dialog: {} } as unknown as ElectronDesktop["Service"]),
             Layer.succeed(WindowRuntime, {
               has: (id: number) => id === 17,
+              hasAppRenderer: (id: number) => id === 17,
             } as unknown as WindowRuntime["Service"]),
           ),
         ),

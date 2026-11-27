@@ -36,7 +36,7 @@ import {
   formatAcceleratorLabel,
   keyboardEventToAccelerator,
   normalizeAccelerator,
-  validateGlobalDictationShortcut,
+  validateOsGlobalShortcut,
   type CommandKeybindingRecord,
   type CommandKeybindingUpdate,
   type CommandKeymapEntry,
@@ -212,7 +212,11 @@ export function KeyboardShortcutsSettingsPage() {
   const handleCapture = async (entry: CommandKeymapEntry, accelerator: string) => {
     if (!state || !capture || capture.commandId !== entry.id) return;
     if (entry.shortcutScope === "os-global") {
-      const validationError = validateGlobalDictationShortcut(accelerator, state.platform);
+      const validationError = validateOsGlobalShortcut(
+        entry.id,
+        accelerator,
+        state.platform,
+      )?.message;
       if (validationError) {
         setCapture(null);
         setRowErrors((current) => ({ ...current, [entry.id]: validationError }));
@@ -359,7 +363,11 @@ export function KeyboardShortcutsSettingsPage() {
                       ? capture
                       : null
                   }
-                  rowError={row.isFirst ? rowErrors[row.entry.id] : ""}
+                  rowError={
+                    row.isFirst
+                      ? rowErrors[row.entry.id] || row.entry.registrationIssue?.message
+                      : ""
+                  }
                   pending={updateMutation.isPending}
                   onCancelCapture={() => setCapture(null)}
                   onBeginCapture={beginCapture}

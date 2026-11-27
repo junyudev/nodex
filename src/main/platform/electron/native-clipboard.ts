@@ -21,6 +21,12 @@ export interface NativeClipboardBridge {
   ) => "written" | "superseded" | "write_failed" | "readback_mismatch";
 }
 
+export interface NativeMiniPanelBridge {
+  readonly isPrimaryMouseDown: () => boolean;
+  readonly makeMiniPanelKey: (handle: Buffer) => boolean;
+  readonly orderMiniPanelOut: (handle: Buffer) => void;
+}
+
 const require = createRequire(import.meta.url);
 
 export function loadNativeClipboardBridge(options: {
@@ -28,7 +34,7 @@ export function loadNativeClipboardBridge(options: {
   readonly resourcesPath: string;
   readonly appPath: string;
   readonly architecture: string;
-}): NativeClipboardBridge {
+}): NativeClipboardBridge & NativeMiniPanelBridge {
   const bindingPath = options.packaged
     ? path.join(options.resourcesPath, "native", "nodex-clipboard.node")
     : path.join(
@@ -38,5 +44,5 @@ export function loadNativeClipboardBridge(options: {
         options.architecture,
         "nodex-clipboard.node",
       );
-  return require(bindingPath) as NativeClipboardBridge;
+  return require(bindingPath) as NativeClipboardBridge & NativeMiniPanelBridge;
 }

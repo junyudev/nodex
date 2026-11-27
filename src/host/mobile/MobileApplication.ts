@@ -17,7 +17,7 @@ import { makeMobileInbox } from "./inbox";
 import { MobilePushRelay } from "../../main/platform/node/MobilePushRelay";
 import { makePushDelivery } from "./push-delivery";
 import { makeMobilePushEvents } from "./push-events";
-import { MobileRpc, requirePhoneInvocation, type PushMobileEvent } from "./rpc";
+import { MobileRpc, requireCompanionInvocation, type PushMobileEvent } from "./rpc";
 import { makeMobileTranscript } from "./transcript";
 import { nativeActivity } from "./transcript-projection";
 
@@ -79,7 +79,7 @@ export const live = Layer.effect(
         }),
       open: (send) =>
         Effect.gen(function* () {
-          yield* requirePhoneInvocation;
+          yield* requireCompanionInvocation;
           const inbox = yield* makeMobileInbox(files).pipe(Effect.provide(inboxContext));
           const activity = new Map<string, ChatActivity>();
           const push: PushMobileEvent = (event, data) => {

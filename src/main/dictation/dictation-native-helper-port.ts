@@ -43,7 +43,7 @@ export type DictationNativeHelperEvent =
       readonly diagnostic: string | null;
     };
 
-/** Platform bindings stay opaque to the global capture lifecycle. */
+/** Platform bindings stay opaque to the global dictation lifecycle. */
 export interface DictationNativeHelperPort<Binding> {
   captureBareModifier(signal?: AbortSignal): Promise<string>;
   queryBuiltInMicrophoneName(): Promise<string | null>;

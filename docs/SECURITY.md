@@ -1283,6 +1283,32 @@ provides attribution, and removing it drops Agent authorship.
 - Usage analytics follow [Product Analytics Behavior](product-specs/product-analytics-behavior.md). Main is the only exit. Events decode against a closed catalog at the Main boundary, so content has no field to travel in and a renderer cannot report installation or execution facts. The identity is a random per-Profile ID, never linked to an account. Nothing is sent before the first-launch notice has been on screen long enough to act on, turning analytics off discards anything unsent, and the Statsig client key in the application can only submit events. The service sees the connecting IP address as with any request. Nodex does not use Statsig AutoCapture or Session Replay.
 - The bundled Browser automation runtime always starts with its own ambient analytics and diagnostics network disabled. Nodex's telemetry setting never enables that runtime traffic, while page navigation and agent browser control remain available.
 
+### Mini panel
+
+- Mini requires a registered auxiliary window and a trusted, top-level app renderer. Main
+  binds it to the personal Space, where it can read Inbox settings and summaries, send messages,
+  start work, and resolve reply destinations. Inbox management commands require a Workbench window.
+- Mini can read Library File images and metadata, use the native image picker and clipboard
+  paste, prepare uploads from browser File bytes, and import supported images. To discard an
+  import, the same renderer must have created the File and supply its original revision. Core
+  checks whether the File changed or came into use.
+- Mini can list Projects, use personal state bound to the Space and Member, and participate
+  in commit delivery. It can also read the keymap, use the application locale, and use composer
+  dictation. Panel controls require the Mini role. Window Session, Workbench and Open at Login
+  operations require a primary window. The panel denies new windows and renderer-initiated
+  navigation.
+
+### Mini companion
+
+- Mini companion IPC admits only the registered panel's trusted top-level app renderer.
+  Main binds each renderer document to the active Owner of its personal Space and
+  closes the companion session on navigation, renderer loss, or window destruction.
+  The renderer supplies a method and its parameters. Main admits a fixed method set,
+  validates calls against the companion schemas, and sends events only to that panel.
+- Mini uses local desktop Member authority to answer the pending requests exposed by
+  the companion contract. Its in-process grant cannot authorize phone operations or
+  register for push.
+
 ### Dictation and microphone controls
 
 - The final signed macOS app carries a microphone usage description and the `com.apple.security.device.audio-input` entitlement. Nested Electron code uses a separate inherit entitlement set with its required runtime allowances but does not inherit microphone authority; native helpers are signed without the Electron runtime entitlements. The staged and final app are both checked; source plist presence is not release evidence.

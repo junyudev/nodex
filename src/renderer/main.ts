@@ -7,6 +7,7 @@ import {
   type LanguageSettingsReader,
 } from "../shared/i18n/locales";
 import { initializeRendererLanguageSettings } from "./lib/renderer-language-settings";
+import { MINI_ROUTE } from "../shared/mini";
 
 initializeRendererDocument();
 
@@ -19,8 +20,31 @@ function prepareLanguage(bridge: LanguageSettingsReader | undefined): Promise<vo
   });
 }
 
+/** The ordinary preload's language settings, for every window that has it. */
+function applicationLanguageReader(
+  api: NonNullable<Window["api"]> | undefined,
+): LanguageSettingsReader | undefined {
+  return (
+    api && {
+      readLanguageSettings: () => startupOperations.readLanguageSettings(api),
+      onLanguageSettingsChanged: (listener) =>
+        api.on(LANGUAGE_SETTINGS_CHANGED_CHANNEL, (value: unknown) => {
+          if (!value || typeof value !== "object" || !("locale" in value)) return;
+          if (!isAppLocale(value.locale) || !("preference" in value)) return;
+          if (value.preference !== null && !isAppLocale(value.preference)) return;
+          listener({ locale: value.locale, preference: value.preference });
+        }),
+    }
+  );
+}
+
 const initialRoute = new URLSearchParams(window.location.search).get("initialRoute");
-if (initialRoute === "/avatar-overlay") {
+if (initialRoute === MINI_ROUTE) {
+  void Promise.all([
+    prepareLanguage(applicationLanguageReader(window.api)),
+    import("./mini-renderer"),
+  ]).then(([, { mountMiniRenderer }]) => mountMiniRenderer());
+} else if (initialRoute === "/avatar-overlay") {
   void Promise.all([
     prepareLanguage(window.avatarOverlay),
     import("./avatar-overlay-renderer"),
@@ -31,18 +55,5 @@ if (initialRoute === "/avatar-overlay") {
     import("./global-dictation-renderer"),
   ]).then(([, { mountGlobalDictationRenderer }]) => mountGlobalDictationRenderer());
 } else {
-  const api = window.api;
-  const languageReady = prepareLanguage(
-    api && {
-      readLanguageSettings: () => startupOperations.readLanguageSettings(api),
-      onLanguageSettingsChanged: (listener) =>
-        api.on(LANGUAGE_SETTINGS_CHANGED_CHANNEL, (value: unknown) => {
-          if (!value || typeof value !== "object" || !("locale" in value)) return;
-          if (!isAppLocale(value.locale) || !("preference" in value)) return;
-          if (value.preference !== null && !isAppLocale(value.preference)) return;
-          listener({ locale: value.locale, preference: value.preference });
-        }),
-    },
-  );
-  startStartupController(languageReady);
+  startStartupController(prepareLanguage(applicationLanguageReader(window.api)));
 }

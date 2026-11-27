@@ -12,6 +12,7 @@ export function makeTestApplicationSettings(input?: {
   readonly pullRequestInstructions?: string;
 }): ApplicationSettings["Service"] {
   return ApplicationSettings.of({
+    miniVisibilityChanges: Stream.empty,
     terminalShellSettingsChanges: Stream.empty,
     linkOpeningSettingsChanges: Stream.succeed(DEFAULT_LINK_OPENING_SETTINGS),
     modelPolicyChanges: Stream.succeed(DEFAULT_MODEL_POLICY),

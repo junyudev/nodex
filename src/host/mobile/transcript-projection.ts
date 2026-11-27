@@ -184,6 +184,23 @@ export const parseChatItemId = (id: string): [string, string, string | null] | n
   }
 };
 
+/** Cards carry a single line, limited by code points so clipping preserves Unicode. */
+export const chatProgress = (text: string | null | undefined): string | null => {
+  const line = text?.trim().replace(/\s+/gu, " ");
+  if (!line) return null;
+  const chars = Array.from(line);
+  return chars.length > 160 ? `${chars.slice(0, 159).join("")}…` : line;
+};
+
+const runtimeProgress = ({ readback, backgroundTasks }: AgentRuntimeSessionActivity) => {
+  const task = backgroundTasks.find(({ description, threadTitle }) => description || threadTitle);
+  return (
+    chatProgress(readback?.text) ??
+    chatProgress(task?.description) ??
+    chatProgress(task?.threadTitle)
+  );
+};
+
 export const runtimeActivity = (activity: AgentRuntimeSessionActivity): ChatActivity => ({
   sessionId: activity.sessionId,
   status:
@@ -194,13 +211,15 @@ export const runtimeActivity = (activity: AgentRuntimeSessionActivity): ChatActi
         : activity.status,
   pendingRequestCount: activity.pendingRequestCount,
   attention: activity.approvalPrompt ?? null,
+  progress: runtimeProgress(activity),
 });
 
-export const idleActivity = (sessionId: string): ChatActivity => ({
+export const idleActivity = (sessionId: string, reply?: string): ChatActivity => ({
   sessionId,
   status: "idle",
   pendingRequestCount: 0,
   attention: null,
+  progress: chatProgress(reply),
 });
 
 export const nativeActivity = (
@@ -218,7 +237,13 @@ export const nativeActivity = (
       : status === "active"
         ? "running"
         : "idle";
-  return { sessionId, status: mapped, pendingRequestCount: pending.length, attention: null };
+  return {
+    sessionId,
+    status: mapped,
+    pendingRequestCount: pending.length,
+    attention: null,
+    progress: null,
+  };
 };
 
 /** Projects Runtime items for a host that writes paths as `hostPaths`, as its replies do. */

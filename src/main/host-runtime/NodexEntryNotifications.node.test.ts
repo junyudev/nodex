@@ -1,3 +1,4 @@
+import type { DesktopNotificationActionPayload } from "../../shared/types";
 import { describe, expect } from "vite-plus/test";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { assert, it } from "@effect/vitest";
@@ -6,9 +7,7 @@ import { make, turnNotification } from "./NodexEntryNotifications";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
-import { WindowRuntime } from "../window-runtime/WindowRuntime";
-import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
-import { RendererClientRuntime } from "./RendererClientRuntime";
+import { WorkbenchNotificationDelivery } from "./WorkbenchNotificationDelivery";
 import * as Clock from "effect/Clock";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -39,6 +38,17 @@ describe("NodexEntryNotifications", () => {
     const elsewhere = { foreground: true, seen: false };
     const reading = { foreground: true, seen: true };
     expect(turnNotification(occurrence, "off", true, away)).toBeNull();
+    const miniResting = { ...away, miniTurns: [{ pageId: "page", episode: "episode" }] };
+    expect(
+      turnNotification({ ...occurrence, episode: "new" }, "always", true, miniResting),
+    ).not.toBeNull();
+    expect(
+      turnNotification({ ...occurrence, pageId: "other" }, "always", true, miniResting),
+    ).not.toBeNull();
+    expect(turnNotification(occurrence, "always", true, miniResting)).toBeNull();
+    expect(
+      turnNotification({ ...occurrence, blocking: true }, "always", true, miniResting),
+    ).toBeNull();
     expect(turnNotification(occurrence, "unseen", true, reading)).toBeNull();
     // A focused window showing something else still leaves the Turn untold.
     expect(turnNotification(occurrence, "unseen", true, elsewhere)).not.toBeNull();
@@ -52,7 +62,7 @@ describe("NodexEntryNotifications", () => {
       turnNotification(occurrence, "always", true, away)?.id,
     );
   });
-  it.effect("claims Turn and Snooze intents once and opens each Inbox message on click", () =>
+  it.effect("publishes Turn and Snooze intents once and keeps their exact Inbox targets", () =>
     Effect.gen(function* () {
       let episode = "one";
       const claimed = new Set<string>();
@@ -65,10 +75,10 @@ describe("NodexEntryNotifications", () => {
       };
       const shown: unknown[] = [];
       const clicks: unknown[] = [];
-      const clickHandlers: ((action: unknown) => void)[] = [];
+      const clickHandlers: ((action: DesktopNotificationActionPayload) => void)[] = [];
       const service = yield* make.pipe(
         Effect.provideService(CoreAuthority, {
-          identity: { libraryId: "personal" },
+          identity: { libraryId: "team" },
         } as CoreAuthority["Service"]),
         Effect.provideService(CoreModules, {
           workspace: {
@@ -110,28 +120,15 @@ describe("NodexEntryNotifications", () => {
           hasForegroundClient: () => false,
           isPresentedInForeground: () => false,
         } as never),
-        Effect.provideService(WindowRuntime, {
-          getLastFocused: () => ({
-            isDestroyed: () => false,
-            isMinimized: () => false,
-            show: () => {},
-            focus: () => {},
-            webContents: { id: 1 },
-          }),
-        } as never),
-        Effect.provideService(DesktopNotificationRuntime, {
-          show: (payload: unknown, _target: unknown, handler: (action: unknown) => void) => {
+        Effect.provideService(WorkbenchNotificationDelivery, {
+          show: (payload, spaceId, resolveAction) => {
             shown.push(payload);
-            clickHandlers.push(handler);
+            clickHandlers.push((action) => {
+              const invocation = resolveAction(action);
+              if (invocation) clicks.push({ ...invocation, spaceId });
+            });
           },
-        } as never),
-        Effect.provideService(RendererClientRuntime, {
-          getClientIdForWebContentsId: () => "client",
-          sendToClient: (_id: unknown, _channel: unknown, payload: unknown) => {
-            clicks.push(payload);
-            return true;
-          },
-        } as never),
+        }),
       );
       yield* service.drain;
       yield* service.drain;
@@ -143,16 +140,16 @@ describe("NodexEntryNotifications", () => {
       episode = "two";
       yield* service.drain;
       assert.lengthOf(shown, 3);
-      clickHandlers[0]?.({ actionType: "open" });
+      clickHandlers[0]?.({ notificationId: "test", actionId: null, actionType: "open" });
       expect(clicks[0]).toMatchObject({
-        spaceId: "personal",
+        spaceId: "team",
         inboxEntry: { pageId: snooze.page_id, scope: { kind: "all" } },
       });
       expect(clicks[0]).not.toHaveProperty("inboxEntry.turnEpisode");
-      clickHandlers[2]?.({ actionType: "open" });
+      clickHandlers[2]?.({ notificationId: "test", actionId: null, actionType: "open" });
       expect(clicks[1]).toMatchObject({
-        spaceId: "personal",
-        inboxEntry: { pageId: "page", scope: { kind: "all" } },
+        spaceId: "team",
+        inboxEntry: { pageId: "page", turnEpisode: "two", scope: { kind: "all" } },
       });
     }),
   );

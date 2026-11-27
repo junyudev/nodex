@@ -352,6 +352,7 @@ const buildHarness = (input: {
             Layer.succeed(
               ApplicationSettings,
               ApplicationSettings.of({
+                miniVisibilityChanges: Stream.empty,
                 terminalShellSettingsChanges: Stream.empty,
                 modelPolicyChanges: Stream.never,
                 usageMeterSettingsChanges: Stream.empty,

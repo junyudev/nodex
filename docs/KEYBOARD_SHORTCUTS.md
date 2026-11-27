@@ -8,6 +8,10 @@ Settings -> Keyboard shortcuts edits the command-keymap registry used by the wor
 
 The editable settings tab covers Nodex-supported command ids only. Page editor `Send to chat` (`pageEditorSendToChat`) and `Add to composer` (`pageEditorAddToComposer`) are editable commands that run only inside the Page editor. Their menus and tooltips show the current platform binding. Editor-native formatting, block activation, and text input behavior remain owned by the editor surface and are documented separately below.
 
+## Open Mini
+
+**Shift+Alt+Space** (Shift+Option+Space on macOS) opens Mini over the current app on macOS and Windows. When a Nodex Workbench window has focus, it opens **Capture to Inbox** in that window. Edit or unassign the shortcut in **Settings → Keyboard shortcuts**. Mini uses a distinct chord from global dictation. See [Mini](product-specs/mini-behavior.md).
+
 ## Focus and Typing
 
 Chat, navigation, and panel modifier shortcuts work while focus is in the chat

@@ -4,7 +4,7 @@ export type CodexRendererOs = "darwin" | "linux" | "unknown" | "win32";
 export type CodexRendererWindowType = "browser" | "electron";
 export type CodexRendererWindowChrome = "application-menu" | "native";
 
-const COMPACT_ROUTE_PREFIXES = ["/global-dictation", "/hotkey-window"] as const;
+const COMPACT_ROUTE_PREFIXES = ["/global-dictation", "/mini"] as const;
 
 export function resolveCodexRendererOsFromText(platformText: string): CodexRendererOs {
   const normalized = platformText.trim().toLowerCase();

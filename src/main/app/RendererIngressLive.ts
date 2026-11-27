@@ -29,7 +29,7 @@ import * as ChangelogFeedRuntime from "../host-runtime/ChangelogFeedRuntime";
 import { electronUpdateFetch } from "../electron-update-fetch";
 import { makeChangelogFeedRequest } from "../platform/electron/ChangelogFeedNetwork";
 import * as ProductAnalyticsIpc from "../ipc/handlers/ProductAnalyticsIpc";
-import * as WindowsStartupIpc from "../ipc/handlers/WindowsStartupIpc";
+import * as OpenAtLoginIpc from "../ipc/handlers/OpenAtLoginIpc";
 import * as ProviderKeysIpc from "../ipc/handlers/ProviderKeysIpc";
 import * as ProviderKeyUsageIpc from "../ipc/handlers/ProviderKeyUsageIpc";
 import * as ProviderKeyUsage from "../provider-keys/ProviderKeyUsage";
@@ -55,6 +55,9 @@ import * as ChromeControlSettingsIpc from "../ipc/handlers/ChromeControlSettings
 import * as ComputerUseSettingsIpc from "../ipc/handlers/ComputerUseSettingsIpc";
 import * as CoreAuthorityIpc from "../ipc/handlers/CoreAuthorityIpc";
 import * as ApplicationLocalStateIpc from "../ipc/handlers/ApplicationLocalStateIpc";
+import * as MiniCompanionIpc from "../ipc/handlers/MiniCompanionIpc";
+import * as MiniCompanion from "../mini/MiniCompanion";
+import * as MiniIpc from "../ipc/handlers/MiniIpc";
 import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc";
 import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
 import * as AgentRuntimeIpc from "../ipc/handlers/AgentRuntimeIpc";
@@ -117,7 +120,7 @@ export const live = Layer.mergeAll(
   AppUpdateIpc.live,
   ChangelogFeedIpc.live.pipe(Layer.provide(changelogFeed)),
   ProductAnalyticsIpc.live,
-  WindowsStartupIpc.live,
+  OpenAtLoginIpc.live,
   NodexAccountIpc.live,
   ProviderKeysIpc.live,
   ProviderKeyUsageIpc.live.pipe(Layer.provide(ProviderKeyUsage.live(providerKeyUsageReader()))),
@@ -162,6 +165,8 @@ export const live = Layer.mergeAll(
   ExecutionHostIpc.live,
   ApplicationLocalStateIpc.live,
   ApplicationSettingsIpc.live,
+  MiniIpc.live,
+  MiniCompanionIpc.live,
   SpaceAdministrationIpc.live,
   AgentBackendIpc.live,
   AgentRuntimeIpc.live,
@@ -198,4 +203,4 @@ export const live = Layer.mergeAll(
   StoreAdministrationIpc.live,
   WorktreeEnvironmentIpc.live,
   terminalIngress,
-);
+).pipe(Layer.provide(MiniCompanion.live));

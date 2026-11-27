@@ -8,7 +8,7 @@ import {
 import type {
   AppInitializationStep,
   RendererInitializationReport,
-  WindowBootstrap,
+  AppRendererBootstrap,
 } from "../shared/app-startup";
 import {
   CORE_AUTHORITY_STATUS_CHANNEL,
@@ -167,7 +167,7 @@ function memoizeSuccessfulRequest<T>(read: () => Promise<T>): () => Promise<T> {
 
 // The reply names this document's Space, so every Space request waits for the same one read.
 const awaitInitialization = memoizeSuccessfulRequest(
-  () => ipcRenderer.invoke("app:await-initialization") as Promise<WindowBootstrap>,
+  () => ipcRenderer.invoke("app:await-initialization") as Promise<AppRendererBootstrap>,
 );
 
 const invokeBoundIpc = async <Channel extends keyof IpcApi>(

@@ -1,6 +1,10 @@
 import { describe, afterEach, beforeEach, expect, vi, test } from "vite-plus/test";
 import type { BrowserWindow } from "electron";
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { it } from "vitest";
 import {
   compileMacNativeHotkey,
@@ -14,6 +18,7 @@ import type {
 } from "../../shared/global-dictation";
 import { deliverGlobalDictation } from "../../renderer/features/dictation/global-dictation-delivery";
 import { GlobalDictationManager } from "./global-dictation-manager";
+import { acquireDesktopShortcutOwnership } from "./global-dictation-ownership-lock";
 import {
   type GlobalDictationWindowTerminalReason,
   configureGlobalDictationNativeWindow,
@@ -26,6 +31,45 @@ import {
   MacDictationHelperRequestError,
   type MacDictationHelperEvent,
 } from "./mac-dictation-native-helper-client";
+
+describe("desktop shortcut ownership", () => {
+  test.each(["abandoned record", "empty directory"])(
+    "recovers an abandoned shortcut owner with a recovery claim left as an %s",
+    (claimKind) => {
+      const home = mkdtempSync(join(tmpdir(), "nodex-shortcut-lock-"));
+      const lock = join(home, "shortcut.lock");
+      const claim = `${lock}.claim`;
+      const child = spawnSync(process.execPath, ["-e", ""], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      });
+      try {
+        expect(child.status).toBe(0);
+        mkdirSync(lock);
+        mkdirSync(claim);
+        writeFileSync(join(lock, "owner.json"), JSON.stringify({ pid: child.pid, token: "owner" }));
+        if (claimKind === "abandoned record") {
+          writeFileSync(
+            join(claim, "owner.json"),
+            JSON.stringify({ pid: child.pid, token: "claim" }),
+          );
+        } else {
+          // The old claimant may have crashed before writing its owner record.
+          vi.spyOn(Date, "now").mockReturnValue(Date.now() + 6_000);
+        }
+        const lease = acquireDesktopShortcutOwnership(lock, () => {});
+        try {
+          expect(lease?.isOwner()).toBe(true);
+          expect(acquireDesktopShortcutOwnership(lock, () => {})).toBeNull();
+        } finally {
+          lease?.dispose();
+        }
+      } finally {
+        vi.restoreAllMocks();
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+});
 
 describe("global-dictation-manager", () => {
   const fixtures: GlobalDictationManager[] = [];
@@ -372,10 +416,11 @@ describe("global-dictation-manager", () => {
       expect(fixture.manager.getSnapshot().kind).toBe("overlay-starting");
     });
 
-    it("accepts only the correlated focused-composer acknowledgement", async () => {
+    it("routes to the focused composer while another app is frontmost", async () => {
       const sent: unknown[] = [];
       const focusedWindow = {
         isDestroyed: () => false,
+        isVisible: () => true,
         webContents: Object.assign(new EventEmitter(), {
           id: 41,
           isDestroyed: () => false,
@@ -384,7 +429,7 @@ describe("global-dictation-manager", () => {
       } as unknown as BrowserWindow;
       const fixture = createFixture(focusedWindow);
       await activate(fixture);
-      doubleTap(fixture, { pid: process.pid, bundleIdentifier: "app.jyu.nodex" });
+      doubleTap(fixture);
       const snapshot = fixture.manager.getSnapshot();
       if (snapshot.kind !== "routing-in-app") throw new Error("Expected in-app route");
       const start = sent[0] as { requestId: string };
@@ -961,6 +1006,7 @@ describe("global-dictation-manager", () => {
       });
       const window = {
         isDestroyed: () => false,
+        isVisible: () => true,
         webContents: contents,
       } as unknown as BrowserWindow;
       const fixture = createFixture(window);

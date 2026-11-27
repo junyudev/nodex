@@ -9,7 +9,8 @@ import { useTipsState } from "@/features/tips/tips-state";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import { AppUpdateSettingRows } from "./app-update-settings-control";
 import { AppComponentsSettingsSection } from "@/features/app-components/app-components-settings-section";
-import { WindowsStartupSettingsRow } from "./windows-startup-settings-row";
+import { MiniVisibilitySettingRow } from "./mini-visibility-setting-row";
+import { OpenAtLoginSettingRow } from "./open-at-login-setting-row";
 import {
   DiagnosticsSettingRows,
   ThreadNotificationSettingControl,
@@ -45,7 +46,8 @@ export function GeneralSettingsPage({ onPathChange, open }: SettingsSectionPageP
           <WindowRestoreSettingControl />
         </SettingRow>
         <TerminalShellSettingRow />
-        <WindowsStartupSettingsRow open={open} />
+        <OpenAtLoginSettingRow open={open} />
+        {isRemoteSpace() ? null : <MiniVisibilitySettingRow />}
         <SettingRow
           label={intl.formatMessage(settingsMessages.generalShowTips)}
           description={intl.formatMessage(settingsMessages.generalShowTipsDescription)}

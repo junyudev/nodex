@@ -1,5 +1,6 @@
 #include <node_api.h>
 #include <cmath>
+#include <cstring>
 #include <vector>
 #import <AppKit/AppKit.h>
 
@@ -148,12 +149,57 @@ napi_value Update(napi_env env, napi_callback_info info) {
   }
 }
 
+// Electron exposes an NSView pointer. These calls only accept Main-owned panel handles.
+NSWindow *MiniPanel(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value arg;
+  void *bytes = nullptr;
+  size_t length = 0;
+  if (!NSThread.isMainThread ||
+      napi_get_cb_info(env, info, &argc, &arg, nullptr, nullptr) != napi_ok || argc != 1 ||
+      napi_get_buffer_info(env, arg, &bytes, &length) != napi_ok || length != sizeof(void *)) {
+    return nil;
+  }
+  void *handle = nullptr;
+  memcpy(&handle, bytes, sizeof(handle));
+  NSWindow *window = [(__bridge NSView *)handle window];
+  return (window.styleMask & NSWindowStyleMaskNonactivatingPanel) != 0 ? window : nil;
+}
+
+napi_value MakeMiniPanelKey(napi_env env, napi_callback_info info) {
+  NSWindow *window = MiniPanel(env, info);
+  if (!window) return Fail(env, "Expected a nonactivating window");
+  window.collectionBehavior |= NSWindowCollectionBehaviorIgnoresCycle;
+  [window makeKeyAndOrderFront:nil];
+  napi_value result;
+  NAPI_CHECK(napi_get_boolean(env, window.isKeyWindow, &result));
+  return result;
+}
+
+napi_value OrderMiniPanelOut(napi_env env, napi_callback_info info) {
+  NSWindow *window = MiniPanel(env, info);
+  if (!window) return Fail(env, "Expected a nonactivating window");
+  [window orderOut:nil];
+  napi_value result;
+  NAPI_CHECK(napi_get_undefined(env, &result));
+  return result;
+}
+
+napi_value IsPrimaryMouseDown(napi_env env, napi_callback_info) {
+  napi_value result;
+  NAPI_CHECK(napi_get_boolean(env, (NSEvent.pressedMouseButtons & 1) != 0, &result));
+  return result;
+}
+
 napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor properties[] = {
+    {"isPrimaryMouseDown", nullptr, IsPrimaryMouseDown, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"makeMiniPanelKey", nullptr, MakeMiniPanelKey, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"orderMiniPanelOut", nullptr, OrderMiniPanelOut, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"read", nullptr, Read, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"update", nullptr, Update, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
-  NAPI_CHECK(napi_define_properties(env, exports, 2, properties));
+  NAPI_CHECK(napi_define_properties(env, exports, sizeof(properties) / sizeof(*properties), properties));
   return exports;
 }
 } // namespace

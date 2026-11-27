@@ -63,11 +63,13 @@ export const live: Layer.Layer<
     const fileExports = yield* FileExportRuntime;
     const windows = yield* WindowRuntime;
     const { handlePlainCommand, handleQuery } = ipc;
-    const authorize = (event: IpcMainInvokeEvent) =>
+    const authorize = (event: IpcMainInvokeEvent, allowMini = false) =>
       Effect.try({
         try: () => {
           requireTrustedAppRendererSender(event, "Files", config.rendererUrl);
-          if (!windows.has(event.sender.id)) {
+          if (
+            !(allowMini ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id))
+          ) {
             throw new Error("File access requires an active Nodex window");
           }
         },
@@ -200,7 +202,7 @@ export const live: Layer.Layer<
     );
 
     yield* handlePlainCommand("files:prepare", (event, rawAccess, input) =>
-      authorize(event).pipe(
+      authorize(event, true).pipe(
         Effect.andThen(
           Effect.gen(function* () {
             const access = yield* Effect.try({
@@ -227,6 +229,12 @@ export const live: Layer.Layer<
               });
             }
 
+            if (windows.hasAuxiliaryRole(event.sender.id, "mini")) {
+              return yield* new FilesIpcError({
+                operation: "prepare",
+                cause: new Error("Mini file uploads require browser File bytes"),
+              });
+            }
             const localPath = input.source.path;
             const bytes = yield* run("read", () => readLocalFile(localPath));
             return yield* prepare(access, input.operationId, input.idempotencySlot ?? "single", {
@@ -240,7 +248,7 @@ export const live: Layer.Layer<
     );
 
     yield* handleQuery("files:read", (event, rawAccess, rawInput) =>
-      authorize(event).pipe(
+      authorize(event, true).pipe(
         Effect.andThen(
           Effect.gen(function* () {
             const { access, input } = yield* run("parse-file-read", () => ({

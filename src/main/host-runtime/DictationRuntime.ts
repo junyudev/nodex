@@ -265,8 +265,12 @@ export const live = (options: {
               "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
             ),
           getFocusedAppWindow: () =>
-            windows.all().find((window) => !window.isDestroyed() && window.isFocused()) ?? null,
-          getAppWindowByWebContentsId: (webContentsId: number) => windows.get(webContentsId),
+            windows.appRenderers().find((window) => !window.isDestroyed() && window.isFocused()) ??
+            null,
+          getAppWindowByWebContentsId: (webContentsId: number) =>
+            windows.hasAppRenderer(webContentsId)
+              ? windows.getRegisteredWindow(webContentsId)
+              : null,
           onRecoveryNeeded: () => {
             void runRecoveryCallback(Queue.offer(recoveryWake, undefined).pipe(Effect.asVoid));
           },

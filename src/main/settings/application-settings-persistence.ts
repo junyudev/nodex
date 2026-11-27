@@ -1,3 +1,9 @@
+import {
+  DEFAULT_MINI_VISIBILITY,
+  MINI_VISIBILITIES,
+  type MiniAnchor,
+  type MiniVisibility,
+} from "../../shared/mini";
 import { withAgentSecretChanges } from "./agent-environment-storage";
 import {
   hasLegacyAgentProfiles,
@@ -165,7 +171,20 @@ import {
 
 // ─── Profile-local TOML [server] settings ───
 
+export interface MiniPlacement {
+  readonly displayId: number;
+  readonly anchor: MiniAnchor;
+}
+
+export interface MiniPlacementSettings {
+  readonly lastDisplayId: number | null;
+  readonly anchors: Readonly<Record<string, MiniAnchor>>;
+}
+
 interface ServerTomlConfig {
+  mini_visibility?: MiniVisibility;
+  mini_last_display_id?: number;
+  mini_display_anchors?: Record<string, MiniAnchor>;
   home?: string;
   codex_home?: string;
   codex_executable?: string;
@@ -1666,6 +1685,58 @@ export function updateLanguagePreference(
   if (preference === null) delete document.locale;
   else document.locale = preference;
   writeTomlConfig(source.settingsPath, document);
+}
+
+export function getMiniVisibility(source: ApplicationSettingsDocumentSource): MiniVisibility {
+  const value = loadProfileServerTomlConfig(source).mini_visibility;
+  return value && MINI_VISIBILITIES.includes(value) ? value : DEFAULT_MINI_VISIBILITY;
+}
+
+export function getMiniPlacementSettings(
+  source: ApplicationSettingsDocumentSource,
+): MiniPlacementSettings {
+  const { mini_last_display_id, mini_display_anchors } = loadProfileServerTomlConfig(source);
+  const anchors: Record<string, MiniAnchor> = {};
+  for (const [id, anchor] of Object.entries(mini_display_anchors ?? {})) {
+    if (!/^-?\d+$/.test(id)) continue;
+    if (anchor?.vertical !== "top" && anchor?.vertical !== "bottom") continue;
+    if (
+      anchor.horizontal !== "left" &&
+      anchor.horizontal !== "center" &&
+      anchor.horizontal !== "right"
+    )
+      continue;
+    anchors[id] = { vertical: anchor.vertical, horizontal: anchor.horizontal };
+  }
+  return {
+    lastDisplayId:
+      typeof mini_last_display_id === "number" && Number.isSafeInteger(mini_last_display_id)
+        ? mini_last_display_id
+        : null,
+    anchors,
+  };
+}
+
+export function updateMiniVisibility(
+  visibility: MiniVisibility,
+  source: ApplicationSettingsDocumentSource,
+): void {
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    mini_visibility: visibility,
+  });
+}
+
+export function updateMiniPlacement(
+  { displayId, anchor }: MiniPlacement,
+  source: ApplicationSettingsDocumentSource,
+): void {
+  const { anchors } = getMiniPlacementSettings(source);
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    mini_last_display_id: displayId,
+    mini_display_anchors: { ...anchors, [displayId]: anchor },
+  });
 }
 
 export function getWindowRestoreSettings(

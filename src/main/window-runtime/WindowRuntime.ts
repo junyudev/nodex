@@ -189,6 +189,10 @@ export interface WindowRuntimeService {
   readonly getLastFocused: () => BrowserWindow | null;
   /** Resolves a typed-registry entry at the final Electron/native-handle seam. */
   readonly getRegisteredWindow: (webContentsId: number) => BrowserWindow | null;
+  readonly hasAppRenderer: (webContentsId: number) => boolean;
+  readonly hasAuxiliaryRole: (webContentsId: number, role: WindowRuntimeAuxiliaryRole) => boolean;
+  readonly appRenderers: () => readonly BrowserWindow[];
+  readonly createFreshSession: () => WindowSessionRecord;
   readonly has: (webContentsId: number) => boolean;
   readonly hasClosedSessionAvailable: () => boolean;
   readonly isRendererInitialized: (webContentsId: number) => boolean;
@@ -555,6 +559,21 @@ export const fromState = (
             },
             getRegisteredWindow: (webContentsId) =>
               registeredWindows.get(webContentsId)?.window ?? null,
+            appRenderers: () =>
+              [...registeredWindows.values()].flatMap((entry) =>
+                (entry.kind === "primary" || entry.role === "mini") && !entry.window.isDestroyed()
+                  ? [entry.window]
+                  : [],
+              ),
+            createFreshSession: () => sessions.createFreshSession(),
+            hasAppRenderer: (webContentsId) => {
+              const entry = registeredWindows.get(webContentsId);
+              return entry?.kind === "primary" || entry?.role === "mini";
+            },
+            hasAuxiliaryRole: (webContentsId, role) => {
+              const entry = registeredWindows.get(webContentsId);
+              return entry?.kind === "auxiliary" && entry.role === role;
+            },
             has: (webContentsId) => registeredWindows.get(webContentsId)?.kind === "primary",
             hasClosedSessionAvailable: () => sessions.hasClosedSessionAvailable(),
             isRendererInitialized: (webContentsId) => initializedRenderers.has(webContentsId),

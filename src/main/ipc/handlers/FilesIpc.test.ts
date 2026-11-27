@@ -135,7 +135,9 @@ describe("FilesIpc", () => {
                   },
                 } as unknown as ElectronDesktop["Service"]),
                 Layer.succeed(WindowRuntime, {
-                  has: () => true,
+                  has: (id: number) => id === 41,
+                  hasAppRenderer: (id: number) => id === 41 || id === 42,
+                  hasAuxiliaryRole: (id: number, role: string) => id === 42 && role === "mini",
                   get: () => undefined,
                 } as unknown as WindowRuntime["Service"]),
               ),
@@ -207,8 +209,19 @@ describe("FilesIpc", () => {
           dropped.files.map((file) => file.logicalPath),
           ["selected.txt"],
         );
+        const capture = { sender: { id: 42 } } as IpcMainInvokeEvent;
+        const prepare = handlers.get("files:prepare")!;
+        const localSource = {
+          operationId: "local-operation",
+          idempotencySlot: "selection:0",
+          source: { kind: "local_path", path: selected },
+        };
+        const denied = yield* Effect.exit(prepare(capture, access, localSource));
+        assert.isTrue(Exit.isFailure(denied));
+        assert.strictEqual(slots.length, 2);
+        yield* prepare(event, access, localSource);
         for (const slot of ["selection:0", "selection:1"])
-          yield* handlers.get("files:prepare")!(event, access, {
+          yield* prepare(capture, access, {
             operationId: "same-operation",
             idempotencySlot: slot,
             source: {
@@ -218,7 +231,13 @@ describe("FilesIpc", () => {
               bytes: new Uint8Array([1, 2]),
             },
           });
-        assert.deepStrictEqual(slots, ["selection:0", "selection:0", "selection:0", "selection:1"]);
+        assert.deepStrictEqual(slots, [
+          "selection:0",
+          "selection:0",
+          "selection:0",
+          "selection:0",
+          "selection:1",
+        ]);
       } finally {
         yield* Scope.close(scope, Exit.void);
         fs.rmSync(home, { recursive: true, force: true });
@@ -329,6 +348,7 @@ describe("WorkspaceFileIpc", () => {
               mainConfigLayer(),
               Layer.succeed(WindowRuntime, {
                 has: () => true,
+                hasAppRenderer: () => true,
               } as unknown as WindowRuntime["Service"]),
             ),
           ),

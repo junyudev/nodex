@@ -721,8 +721,11 @@ export interface RendererDiagnosticsLogInput {
   fields?: Record<string, unknown>;
 }
 
+import type { MiniCompanionEvent, MiniIpcApi, MiniPresentationEvent, MiniVisibility } from "./mini";
+
 export interface IpcApi
   extends
+    MiniIpcApi,
     AgentRuntimeIpcApi,
     AcpIpcApi,
     AgentAccountIpcApi,
@@ -759,13 +762,17 @@ export interface IpcApi
     args: [input: RemoteHostedPipTaskVisibilityInput];
     result: RemoteHostedPipTaskStateSnapshot;
   };
-  "windows-startup:status": { args: []; result: import("./windows-startup").WindowsStartupStatus };
-  "windows-startup:open-settings": { args: []; result: void };
+  "settings:open-at-login:get": { args: []; result: import("./open-at-login").OpenAtLoginStatus };
+  "settings:open-at-login:set": {
+    args: [enabled: boolean];
+    result: import("./open-at-login").OpenAtLoginResult;
+  };
+  "settings:open-at-login:open-system-settings": { args: []; result: void };
   "app:startup-failure-evidence": {
     args: [];
     result: import("./app-startup").AppStartupFailureEvidence | null;
   };
-  "app:await-initialization": { args: []; result: import("./app-startup").WindowBootstrap };
+  "app:await-initialization": { args: []; result: import("./app-startup").AppRendererBootstrap };
   "app:get-core-authority-status": {
     args: [];
     result: import("./core-authority-status").CoreAuthorityStatus;
@@ -1792,6 +1799,8 @@ export interface IpcApi
     args: [input: import("./terminal-shell-settings").TerminalShellSettings];
     result: import("./terminal-shell-settings").TerminalShellSettings;
   };
+  "settings:mini-visibility:get": { args: []; result: MiniVisibility };
+  "settings:mini-visibility:update": { args: [visibility: MiniVisibility]; result: MiniVisibility };
   "settings:window-restore:get": { args: []; result: WindowRestoreSettings };
   "settings:language:get": { args: []; result: import("./i18n/locales").LanguageSettings };
   "settings:language:update": {
@@ -3279,6 +3288,8 @@ export interface IpcApi
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents extends DeepLinkOpenEvents {
+  "mini:presentation": MiniPresentationEvent;
+  "mini:companion:event": MiniCompanionEvent;
   "settings:language:changed": import("./i18n/locales").LanguageSettings;
   "agent-plugins:app-event": PluginAppViewEvent;
   "skills:changed": SkillsChangedEvent;

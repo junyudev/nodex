@@ -89,6 +89,7 @@ export interface CommandKeymapEntry extends CommandRegistryEntry {
   customKeybindings: CommandKeybindingRecord[] | null;
   isCustom: boolean;
   hasDefault: boolean;
+  registrationIssue?: CommandKeybindingRejection;
 }
 
 export interface CommandKeymapState {
@@ -236,7 +237,8 @@ export type CommandKeybindingRejectionKind =
   | "unsupported-key"
   | "unsupported-sequence"
   | "permission-required"
-  | "runtime-degraded";
+  | "runtime-degraded"
+  | "shortcut-unavailable";
 
 export interface CommandKeybindingRejection {
   readonly kind: CommandKeybindingRejectionKind;
@@ -1314,13 +1316,13 @@ export const CODEX_COMMAND_REGISTRY = [
     ["Ctrl+Alt+M"],
   ),
   command(
-    "hotkeyWindow",
-    "Hotkey window",
-    "Show the global hotkey window",
+    "openMini",
+    "Open Mini",
+    "Show Mini over any app",
     310,
     "os-global",
     SURFACE_SHORTCUT,
-    [],
+    ["Shift+Alt+Space"],
     {
       available: false,
     },
@@ -1703,9 +1705,9 @@ const COMMAND_TITLE_MESSAGES = defineMessages({
     id: "command.openProcessManager.title",
     defaultMessage: "Open process manager",
   },
-  hotkeyWindow: {
-    id: "command.hotkeyWindow.title",
-    defaultMessage: "Hotkey window",
+  openMini: {
+    id: "command.openMini.title",
+    defaultMessage: "Open Mini",
   },
   globalDictationHold: {
     id: "command.globalDictationHold.title",
@@ -2018,9 +2020,9 @@ const COMMAND_DESCRIPTION_MESSAGES = defineMessages({
     id: "command.openProcessManager.description",
     defaultMessage: "Open the process manager",
   },
-  hotkeyWindow: {
-    id: "command.hotkeyWindow.description",
-    defaultMessage: "Show the global hotkey window",
+  openMini: {
+    id: "command.openMini.description",
+    defaultMessage: "Show Mini over any app",
   },
   globalDictationHold: {
     id: "command.globalDictationHold.description",
@@ -2063,20 +2065,15 @@ export function normalizeCommandKeybindingOverrides(
   return Object.entries(value as Record<string, unknown>).reduce<CommandKeybindingOverrides>(
     (acc, [commandId, rawKeys]) => {
       if (!Array.isArray(rawKeys)) return acc;
-      const isGlobalDictationCommand =
-        commandId === "globalDictationHold" || commandId === "globalDictationToggle";
+      const isGlobal = commandId === "openMini" || isGlobalDictationCommand(commandId);
       const normalized = rawKeys
         .filter((rawKey): rawKey is string => typeof rawKey === "string")
-        .map((rawKey) => normalizeCommandAccelerator(rawKey, isGlobalDictationCommand, platform))
+        .map((rawKey) =>
+          normalizeCommandAccelerator(rawKey, isGlobalDictationCommand(commandId), platform),
+        )
         .filter((key) => key.length > 0)
-        .filter(
-          (key) =>
-            (commandId !== "globalDictationHold" && commandId !== "globalDictationToggle") ||
-            validateGlobalDictationShortcutRejection(key, platform) === null,
-        );
-      if (isGlobalDictationCommand && rawKeys.length > 0 && normalized.length === 0) {
-        return acc;
-      }
+        .filter((key) => !isGlobal || validateOsGlobalShortcut(commandId, key, platform) === null);
+      if (isGlobal && rawKeys.length > 0 && normalized.length === 0) return acc;
       acc[commandId] = normalized;
       return acc;
     },
@@ -2098,7 +2095,7 @@ export function createCommandKeymapState(
         override === null
           ? null
           : override.map((key) => ({
-              key: normalizeCommandAccelerator(key, entry.shortcutScope === "os-global", platform),
+              key: normalizeCommandAccelerator(key, isGlobalDictationCommand(entry.id), platform),
             }));
       const keybindings = customKeybindings ?? entry.defaultKeybindings;
 
@@ -2107,7 +2104,7 @@ export function createCommandKeymapState(
         available:
           entry.available ||
           ((platform === "macOS" || platform === "windows") &&
-            (entry.id === "globalDictationHold" || entry.id === "globalDictationToggle")),
+            (entry.id === "openMini" || isGlobalDictationCommand(entry.id))),
         defaultKeybindings: entry.defaultKeybindings.map(cloneKeybinding),
         keybindings: keybindings.map(cloneKeybinding),
         customKeybindings: customKeybindings?.map(cloneKeybinding) ?? null,
@@ -2135,7 +2132,17 @@ export function applyCommandKeybindingUpdate(
     throw new Error(`Unknown command id: ${commandId}`);
   }
   if (update.type === "reset") {
-    return omitOverride(overrides, commandId);
+    const next = omitOverride(overrides, commandId);
+    if (entry.shortcutScope === "os-global") {
+      validateCommandKeybindings(
+        entry.defaultKeybindings.map(({ key }) => key).filter(isString),
+        entry,
+        next,
+        commandId,
+        platform,
+      );
+    }
+    return next;
   }
   if (entry.shortcutScope === "os-global" && update.type === "append") {
     throw new Error("OS-global command shortcuts cannot be appended");
@@ -2145,7 +2152,7 @@ export function applyCommandKeybindingUpdate(
     ? (overrides[commandId] ?? [])
     : entry.defaultKeybindings.map((binding) => binding.key).filter(isString);
   const nextKeys = resolveNextOverrideKeys(current, entry, update, (key) =>
-    normalizeCommandAccelerator(key, entry.shortcutScope === "os-global", platform),
+    normalizeCommandAccelerator(key, isGlobalDictationCommand(entry.id), platform),
   );
   validateCommandKeybindings(nextKeys, entry, overrides, commandId, platform);
 
@@ -2163,13 +2170,13 @@ export function validateCommandKeybindings(
   platform: RuntimePlatform = resolveRuntimePlatform(),
 ): void {
   const normalizedKeys = keys.map((key) =>
-    normalizeCommandAccelerator(key, entry.shortcutScope === "os-global", platform),
+    normalizeCommandAccelerator(key, isGlobalDictationCommand(entry.id), platform),
   );
   const seen = new Set<string>();
 
   normalizedKeys.forEach((key) => {
     if (entry.shortcutScope === "os-global") {
-      const rejection = validateGlobalDictationShortcutRejection(key, platform);
+      const rejection = validateOsGlobalShortcut(commandId, key, platform);
       if (rejection) throw new CommandKeybindingValidationError(rejection);
     }
     if (!isValidAccelerator(key, { allowsBareModifiers: entry.allowsBareModifiers === true })) {
@@ -2206,6 +2213,34 @@ export function validateCommandKeybindings(
       });
     }
   });
+}
+
+function isGlobalDictationCommand(id: string): boolean {
+  return id === "globalDictationHold" || id === "globalDictationToggle";
+}
+
+export function validateOsGlobalShortcut(
+  commandId: string,
+  accelerator: string,
+  platform: RuntimePlatform,
+): CommandKeybindingRejection | null {
+  if (isGlobalDictationCommand(commandId)) {
+    return validateGlobalDictationShortcutRejection(accelerator, platform);
+  }
+  const key = normalizeAccelerator(accelerator);
+  const chord = parseChord(key);
+  if (key.includes(" ")) {
+    return { kind: "unsupported-sequence", message: "Choose a single keyboard shortcut." };
+  }
+  if (!chord?.key || normalizeMacBareModifier(key)) {
+    return { kind: "non-modifier-required", message: "Shortcut must include a non-modifier key." };
+  }
+  if (!chord.modifiers.some((modifier) => GLOBAL_PRIMARY_MODIFIER_SET.has(modifier))) {
+    return { kind: "modifier-required", message: "Shortcut must include Cmd/Ctrl or Alt." };
+  }
+  return SUPPORTED_GLOBAL_SHORTCUT_KEYS.has(chord.key)
+    ? null
+    : { kind: "unsupported-key", message: "This shortcut key is not supported." };
 }
 
 /** Mirrors the native global-dictation admission rules used by the desktop host. */
@@ -2432,13 +2467,10 @@ export function findCommandKeybindingConflict(
     for (const binding of entry.keybindings) {
       const key = binding.key ? normalizeAccelerator(binding.key) : "";
       if (!key) continue;
-      const isGlobalDictationPair =
-        (commandId === "globalDictationHold" && entry.id === "globalDictationToggle") ||
-        (commandId === "globalDictationToggle" && entry.id === "globalDictationHold");
-      if (
-        isGlobalDictationPair &&
-        areGlobalDictationShortcutsEqual(normalized, key, state.platform)
-      ) {
+      const bothOsGlobal =
+        entry.shortcutScope === "os-global" &&
+        (commandId === "openMini" || isGlobalDictationCommand(commandId));
+      if (bothOsGlobal && areOsGlobalShortcutsEqual(normalized, key, state.platform)) {
         return { commandId: entry.id, commandTitle: entry.title, key };
       }
       if (key === normalized || isSequencePrefix(key.split(/\s+/), normalizedParts)) {
@@ -2454,7 +2486,7 @@ export function findCommandKeybindingConflict(
 }
 
 /** Compares global gesture shortcuts by canonical aliases and the platform's Cmd/Ctrl mapping. */
-export function areGlobalDictationShortcutsEqual(
+export function areOsGlobalShortcutsEqual(
   hold: string | null,
   toggle: string | null,
   platform: RuntimePlatform,

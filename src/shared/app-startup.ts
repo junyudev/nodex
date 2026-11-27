@@ -35,18 +35,27 @@ export type AppInitializationStep =
   | { phase: "failed" };
 
 /**
- * Everything one window's renderer needs to start, returned once global initialization and that
- * window's activation gate are both ready. A snapshot at reply time: the renderer binds its Space
- * and Window Session from it once, and later changes reach it through their own owners.
+ * Returned after global initialization and any Window Session activation gate. The renderer
+ * binds its Space and, for a primary window, its Window Session from this startup snapshot.
  */
-export interface WindowBootstrap {
+interface AppRendererBootstrapBase {
   /** The Space this renderer document belongs to for its whole lifetime. */
   readonly space: SpaceConnectionSummary;
-  readonly windowSession: WindowSessionRecord;
   readonly runtimeCapabilities: AppRuntimeCapabilities;
   /** Null when the Profile's diagnostics settings could not be read; diagnostics stay off. */
   readonly diagnostics: DiagnosticsSettings | null;
 }
+
+export interface WindowBootstrap extends AppRendererBootstrapBase {
+  readonly kind: "window-session";
+  readonly windowSession: WindowSessionRecord;
+}
+
+export interface MiniBootstrap extends AppRendererBootstrapBase {
+  readonly kind: "mini";
+}
+
+export type AppRendererBootstrap = WindowBootstrap | MiniBootstrap;
 
 /** Profile-local diagnostic locator; available before Core initialization. */
 export interface AppStartupFailureEvidence {

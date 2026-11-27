@@ -28,6 +28,7 @@ import {
   COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL,
   ComposerPredictionSettingsSchema,
 } from "../../../shared/composer-prediction-settings";
+import { MINI_VISIBILITIES } from "../../../shared/mini";
 import { APP_LOCALES } from "../../../shared/i18n/locales";
 import {
   activateElectronLanguagePreference,
@@ -46,6 +47,7 @@ import { CodexHomeSettingsUpdateSchema } from "../../../shared/codex-home-settin
 import {
   COMMAND_KEYBINDINGS_CHANGED_CHANNEL,
   CommandKeybindingValidationError,
+  getPrimaryCommandAccelerator,
   type CommandKeybindingMutationResult,
   type CommandKeybindingUpdate,
   type CommandKeymapState,
@@ -77,6 +79,7 @@ import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorizat
 import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
 import { DesktopNotificationRuntime } from "../../host-runtime/DesktopNotificationRuntime";
 import { shell } from "electron";
+import { MiniRuntime } from "../../mini/MiniRuntime";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { StoreAdministrationSchedulerRuntime } from "../../host-runtime/StoreAdministrationSchedulerRuntime";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
@@ -107,6 +110,7 @@ type SettingsReadChannel =
   | "settings:telemetry:get"
   | "settings:thread-notifications:get"
   | "settings:terminal-shell:get"
+  | "settings:mini-visibility:get"
   | "settings:window-restore:get"
   | "settings:link-opening:get"
   | "settings:model-policy:get"
@@ -189,6 +193,7 @@ export const live: Layer.Layer<
   | ApplicationSettings
   | AgentRuntimeProviderConfiguration
   | DictationRuntime
+  | MiniRuntime
   | DesktopNotificationRuntime
   | StoreAdministrationSchedulerRuntime
   | ElectronIpc
@@ -201,6 +206,7 @@ export const live: Layer.Layer<
     const runtimeProviders = yield* AgentRuntimeProviderConfiguration;
     const config = yield* MainConfig;
     const dictation = yield* DictationRuntime;
+    const mini = yield* MiniRuntime;
     const notifications = yield* DesktopNotificationRuntime;
     const ipc = yield* ElectronIpc;
     const menus = yield* ApplicationMenuRuntime;
@@ -262,13 +268,15 @@ export const live: Layer.Layer<
     const keybindingMutations = yield* Semaphore.make(1);
     const codexHomeMutations = yield* Semaphore.make(1);
     const languageMutations = yield* Semaphore.make(1);
-    const authorize = (event: IpcMainInvokeEvent, capability: string) =>
+    const authorize = (event: IpcMainInvokeEvent, capability: string, allowMini = false) =>
       Effect.try({
         try: () => {
           if (
             !isTrustedAppRendererIpcSender({
               developmentOrigin: config.rendererUrl,
-              hasOwnerWindow: windows.has(event.sender.id),
+              hasOwnerWindow: allowMini
+                ? windows.hasAppRenderer(event.sender.id)
+                : windows.has(event.sender.id),
               senderType: event.sender.getType(),
               senderUrl: event.senderFrame?.url ?? "",
               isMainFrame: event.senderFrame === event.sender.mainFrame,
@@ -311,47 +319,63 @@ export const live: Layer.Layer<
       select: (snapshot: ApplicationSettingsSnapshot) => IpcApi[Channel]["result"],
     ) =>
       ipc.handleQuery(channel, (event, ..._args: IpcApi[Channel]["args"]) =>
-        authorize(event, capability).pipe(Effect.andThen(read(`read-${channel}`, select))),
+        authorize(event, capability, channel === "codex-command-keymap-state").pipe(
+          Effect.andThen(read(`read-${channel}`, select)),
+        ),
       );
     const broadcastKeymap = (state: CommandKeymapState): void => {
       menus.refresh(state);
-      safeBroadcastToWindows(windows.all(), COMMAND_KEYBINDINGS_CHANGED_CHANNEL, [state]);
+      safeBroadcastToWindows(windows.appRenderers(), COMMAND_KEYBINDINGS_CHANGED_CHANNEL, [state]);
     };
     const commitKeymap = (
       mutation: PreparedCommandKeymapMutation,
-    ): Effect.Effect<CommandKeybindingMutationResult, ApplicationSettingsIpcError> =>
-      dictation.syncCommandKeymap(mutation.nextState).pipe(
-        Effect.flatMap((rejection) => {
-          if (rejection) {
-            return Effect.succeed<CommandKeybindingMutationResult>({
+    ): Effect.Effect<CommandKeybindingMutationResult, ApplicationSettingsIpcError> => {
+      const { nextState, previousState, command } = mutation;
+      const syncMini =
+        command.type === "reset-command-keybindings" ||
+        command.commandId === "openMini" ||
+        getPrimaryCommandAccelerator(previousState, "openMini") !==
+          getPrimaryCommandAccelerator(nextState, "openMini");
+      return Effect.gen(function* () {
+        const rejection = yield* dictation.syncCommandKeymap(nextState);
+        if (rejection)
+          return {
+            type: "rejected" as const,
+            state: mini.decorateKeymap(previousState),
+            reason: rejection,
+          };
+        if (syncMini) {
+          const reason = yield* mini.syncCommandKeymap(nextState);
+          if (reason) {
+            yield* dictation.restoreCommandKeymap(previousState);
+            return {
               type: "rejected" as const,
-              state: mutation.previousState,
-              reason: rejection,
-            });
+              state: mini.decorateKeymap(previousState),
+              reason,
+            };
           }
-          return applicationSettings
-            .update(mutation.command, { expectedRevision: mutation.expectedRevision })
-            .pipe(
-              Effect.map((snapshot) => snapshot.commandKeymap),
-              Effect.tap((state) => Effect.sync(() => broadcastKeymap(state))),
-              Effect.map(
-                (state) =>
-                  ({ type: "applied" as const, state }) satisfies CommandKeybindingMutationResult,
-              ),
-              Effect.mapError(settingsError("commit-command-keybindings")),
-            );
-        }),
+        }
+        const snapshot = yield* applicationSettings
+          .update(command, { expectedRevision: mutation.expectedRevision })
+          .pipe(Effect.mapError(settingsError("commit-command-keybindings")));
+        const state = mini.decorateKeymap(snapshot.commandKeymap);
+        yield* Effect.sync(() => broadcastKeymap(state));
+        return { type: "applied" as const, state };
+      }).pipe(
         Effect.catch((cause) =>
-          dictation
-            .restoreCommandKeymap(mutation.previousState)
-            .pipe(Effect.ignore, Effect.andThen(Effect.fail(cause))),
+          Effect.all([
+            dictation.restoreCommandKeymap(previousState).pipe(Effect.ignore),
+            syncMini ? mini.restoreCommandKeymap(previousState).pipe(Effect.ignore) : Effect.void,
+          ]).pipe(Effect.andThen(Effect.fail(cause))),
         ),
         Effect.mapError((cause) =>
           cause instanceof ApplicationSettingsIpcError
             ? cause
             : settingsError("synchronize-command-keybindings")(cause),
         ),
+        Effect.uninterruptible,
       );
+    };
     const prepareKeymap = (
       command: PreparedCommandKeymapMutation["command"],
     ): Effect.Effect<
@@ -380,7 +404,7 @@ export const live: Layer.Layer<
               type: "rejected" as const,
               result: {
                 type: "rejected" as const,
-                state: snapshot.commandKeymap,
+                state: mini.decorateKeymap(snapshot.commandKeymap),
                 reason: cause.rejection,
               },
             })),
@@ -708,6 +732,25 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleRead(
+      "settings:mini-visibility:get",
+      "Mini visibility",
+      (value) => value.miniVisibility,
+    );
+    yield* ipc.handlePlainCommand("settings:mini-visibility:update", (event, input: unknown) =>
+      authorize(event, "Mini visibility").pipe(
+        Effect.andThen(
+          parse("parse-mini-visibility", () => z.enum(MINI_VISIBILITIES).parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-mini-visibility",
+            { type: "update-mini-visibility", input: parsed },
+            (value) => value.miniVisibility,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
       "settings:window-restore:get",
       "Window restore settings",
       (value) => value.windowRestore,
@@ -828,7 +871,7 @@ export const live: Layer.Layer<
       ),
     );
     yield* ipc.handleQuery("settings:inbox:get", (event) =>
-      authorize(event, "Inbox settings").pipe(
+      authorize(event, "Inbox settings", true).pipe(
         Effect.andThen(
           Effect.gen(function* () {
             const value = (yield* applicationSettings.snapshot()).inbox;
@@ -879,10 +922,8 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handleRead(
-      "codex-command-keymap-state",
-      "Command keybindings",
-      (value) => value.commandKeymap,
+    yield* handleRead("codex-command-keymap-state", "Command keybindings", (value) =>
+      mini.decorateKeymap(value.commandKeymap),
     );
     yield* ipc.handlePlainCommand(
       "set-codex-command-keybinding",

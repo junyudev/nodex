@@ -436,6 +436,7 @@ describe("DictationStreamingIpc", () => {
               WindowRuntime,
               WindowRuntime.of({
                 has: (id: number) => id === 1,
+                hasAppRenderer: (id: number) => id === 1,
               } as unknown as WindowRuntime["Service"]),
             ),
           ),

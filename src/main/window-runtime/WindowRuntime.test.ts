@@ -446,12 +446,21 @@ describe("WindowRuntime", () => {
       const windowSession = sessions.createFreshSession();
       const primary = fakeWindow(66);
       const auxiliary = fakeWindow(77);
+      const capture = fakeWindow(88);
       const scope = yield* Scope.make();
       const context = yield* Layer.buildWithScope(fromState(sessions), scope);
       const runtime = Context.get(context, WindowRuntime);
       runtime.attach(primary.window, windowSession.id);
 
       runtime.registerAuxiliary(auxiliary.window, "avatar-overlay");
+      runtime.registerAuxiliary(capture.window, "mini");
+      assert.isTrue(runtime.hasAppRenderer(66));
+      assert.isFalse(runtime.hasAppRenderer(77));
+      assert.isTrue(runtime.hasAppRenderer(88));
+      assert.isTrue(runtime.hasAuxiliaryRole(88, "mini"));
+      assert.isFalse(runtime.has(88));
+      assert.isNull(runtime.resolveSessionId(88));
+      assert.deepEqual(runtime.appRenderers(), [primary.window, capture.window]);
       assert.strictEqual(runtime.count(), 1);
       assert.deepEqual(runtime.all(), [primary.window]);
       assert.isNull(runtime.get(77));
@@ -563,6 +572,7 @@ describe("application-window-coordinator", () => {
         create,
         focusedWindow: () => null,
         reportFailure: vi.fn(),
+        restoreInitial: () => null,
         windows: {
           acquireSessionForNewWindow: () => ({ kind: "new", session: session("recovery") }),
           getLastFocused: () => current,
@@ -590,30 +600,38 @@ describe("application-window-coordinator", () => {
       expect(coordinator.openDictationRecording("recording-c")).toBe(false);
     });
 
-    test("delegates a new-window request to an initialized renderer and stops ingress", () => {
-      const sent: string[] = [];
-      const source = browserWindow(7, sent);
-      const create = vi.fn();
-      const coordinator = createApplicationWindowCoordinator({
-        closeAll: () => Effect.succeed(cleanReport),
-        create,
-        focusedWindow: () => source,
-        reportFailure: vi.fn(),
-        windows: {
-          getLastFocused: () => source,
-          hasClosedSessionAvailable: () => false,
-          isRendererInitialized: () => true,
-        } as unknown as WindowRuntimeService,
-      });
+    test.each(["primary", "mini"] as const)(
+      "delegates a new-window request to an initialized primary renderer when %s has focus",
+      (focusedRole) => {
+        const sent: string[] = [];
+        const captureMessages: string[] = [];
+        const source = browserWindow(7, sent);
+        const capture = browserWindow(8, captureMessages);
+        const create = vi.fn();
+        const coordinator = createApplicationWindowCoordinator({
+          closeAll: () => Effect.succeed(cleanReport),
+          create,
+          focusedWindow: () => (focusedRole === "primary" ? source : capture),
+          reportFailure: vi.fn(),
+          restoreInitial: () => null,
+          windows: {
+            get: (id: number) => (id === source.webContents.id ? source : null),
+            getLastFocused: () => source,
+            hasClosedSessionAvailable: () => false,
+            isRendererInitialized: () => true,
+          } as unknown as WindowRuntimeService,
+        });
 
-      coordinator.requestNew();
-      expect(sent).toEqual(["request-new-window"]);
-      expect(create).not.toHaveBeenCalled();
+        coordinator.requestNew();
+        expect(sent).toEqual(["request-new-window"]);
+        expect(captureMessages).toEqual([]);
+        expect(create).not.toHaveBeenCalled();
 
-      coordinator.stop();
-      coordinator.requestNew();
-      expect(sent).toEqual(["request-new-window"]);
-    });
+        coordinator.stop();
+        coordinator.requestNew();
+        expect(sent).toEqual(["request-new-window"]);
+      },
+    );
 
     test("rolls back a reopened durable session when native window creation fails", () => {
       const reopened = session("window-reopened");
@@ -632,6 +650,7 @@ describe("application-window-coordinator", () => {
         },
         focusedWindow: () => null,
         reportFailure,
+        restoreInitial: () => null,
         windows: {
           acquireSessionForNewWindow: () => acquired,
           getLastFocused: () => null,
@@ -663,6 +682,7 @@ describe("application-window-coordinator", () => {
           create,
           focusedWindow: () => null,
           reportFailure: vi.fn(),
+          restoreInitial: () => null,
           windows: {
             acquireSessionForNewWindow,
             cloneSessionForWindow,
@@ -693,6 +713,7 @@ describe("application-window-coordinator", () => {
           create,
           focusedWindow: () => null,
           reportFailure: vi.fn(),
+          restoreInitial: () => null,
           windows: {
             all: () => all,
             beginApplicationQuit,

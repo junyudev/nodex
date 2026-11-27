@@ -28,15 +28,13 @@ export interface CodexThreadNotificationHandlerOptions {
   isAppForegrounded: () => boolean;
   /** The conversation is in front of the person, in a focused window or on a phone. */
   isConversationSeen: (hostId: string, conversation: CodexNotificationConversationFacts) => boolean;
-  resolveTargetClientId: (conversationId: string) => string | null;
   showNotification: (
     notification: DesktopNotificationPayload,
-    targetClientId: string,
-    onAction: (action: DesktopNotificationActionPayload) => void,
+    resolveAction: (
+      action: DesktopNotificationActionPayload,
+    ) => DesktopNotificationActionInvocation,
   ) => void;
   dismissNotification: (selector: DesktopNotificationHideSelector) => void;
-  dispatchAction: (targetClientId: string, action: DesktopNotificationActionInvocation) => boolean;
-  focusTargetClient: (targetClientId: string) => void;
   logger?: Pick<Console, "debug" | "warn">;
 }
 
@@ -81,15 +79,6 @@ function showNotification(
   >,
 ): void {
   const conversationId = event.conversation.conversationId;
-  const targetClientId = options.resolveTargetClientId(conversationId);
-  if (!targetClientId) {
-    options.logger?.warn("[desktop-notifications] dropped", {
-      conversationId,
-      reason: "no-live-target",
-      type: event.type,
-    });
-    return;
-  }
   const navigation = resolveNavigation(event);
   const notification: DesktopNotificationPayload = {
     ...copy,
@@ -105,40 +94,31 @@ function showNotification(
       : {}),
   };
 
-  options.showNotification(notification, targetClientId, (action) => {
-    if (action.actionType === "open") {
-      options.focusTargetClient(targetClientId);
-    }
-    const dispatched = options.dispatchAction(targetClientId, {
-      ...action,
-      ...(event.type === "async-question-requested"
-        ? { asyncQuestion: { turnId: event.turnId, questionId: event.questionId } }
-        : {}),
-      hostId: event.hostId,
-      conversationId,
-      navigationPath: navigation.navigationPath,
-      activateTabId: navigation.activateTabId,
-      requestId:
-        event.type === "user-input-requested" || event.type === "approval-requested"
-          ? event.requestId
-          : null,
-    });
-    if (!dispatched) {
-      options.dismissNotification(
-        notification.occurrenceId
-          ? { occurrenceId: notification.occurrenceId }
-          : { notificationId: notification.id },
-      );
-    }
-  });
+  options.showNotification(notification, (action) => ({
+    ...action,
+    ...(event.type === "async-question-requested"
+      ? { asyncQuestion: { turnId: event.turnId, questionId: event.questionId } }
+      : {}),
+    hostId: event.hostId,
+    conversationId,
+    navigationPath: navigation.navigationPath,
+    activateTabId: navigation.activateTabId,
+    requestId:
+      event.type === "user-input-requested" || event.type === "approval-requested"
+        ? event.requestId
+        : null,
+  }));
 }
 
 /** Pure notification policy; listener and action admission belong to the host runtime Scope. */
 export const makeCodexThreadNotificationHandler =
   (
     options: CodexThreadNotificationHandlerOptions,
-  ): ((event: CodexThreadNotificationEvent, facts?: { managed: boolean }) => void) =>
-  (event, facts = { managed: false }) => {
+  ): ((
+    event: CodexThreadNotificationEvent,
+    facts?: { managed?: boolean; coveredByMini?: boolean },
+  ) => void) =>
+  (event, facts = {}) => {
     if (event.type === "async-question-resolved") {
       options.dismissNotification({
         notificationId: buildCodexAsyncQuestionNotificationId(
@@ -192,11 +172,13 @@ export const makeCodexThreadNotificationHandler =
       });
       return;
     }
+    if (facts.coveredByMini) return;
     const intl = getMainIntl();
     const title = normalizeDesktopNotificationText(event.conversation.title);
+
     if (event.type === "turn-completed") {
       const decision = decideCodexTurnNotification(event, {
-        managed: facts.managed,
+        managed: facts.managed ?? false,
         turnMode: settings.turnMode,
         isAppForegrounded: options.isAppForegrounded(),
         isConversationSeen: options.isConversationSeen(event.hostId, event.conversation),

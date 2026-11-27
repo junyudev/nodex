@@ -92,11 +92,8 @@ const harness = (options: {
     }),
     isAppForegrounded: () => options.presented ?? false,
     isConversationSeen: () => options.presented ?? false,
-    resolveTargetClientId: () => "client",
     showNotification: (notification) => shown.push(notification),
     dismissNotification: (selector) => dismissed.push(selector),
-    dispatchAction: () => true,
-    focusTargetClient: () => {},
   });
   const deliver = (transitions: readonly Omit<AgentRuntimeActivityTransition, "connection">[]) =>
     run({

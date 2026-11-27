@@ -908,6 +908,69 @@ describe("catalog", () => {
     branch: null,
   } as unknown as Parameters<typeof projectChatRow>[1];
 
+  it.effect("companion chat rows and activity carry the same bounded progress", () =>
+    Effect.gen(function* () {
+      const opening = "I’ll check recent changes.\nThen I’ll run the tests.";
+      const finished = "The tests passed.\nThe board is updated.";
+      const active = {
+        sessionId: "chat",
+        threadId: "thread",
+        status: "running",
+        activeRunId: "run",
+        pendingRequestCount: 0,
+        backgroundTasks: [],
+        providerInstanceId: "codex",
+        model: "model",
+        updatedAt: "2026-11-04T12:00:00Z",
+        readback: { runId: "run", itemId: "opening", text: opening, startedByPerson: true },
+      } as const;
+
+      const catalog = yield* makeMobileCatalog.pipe(
+        Effect.provideService(AgentRuntimeApplication, {
+          sessionMetadata: () => Effect.succeed([metadata]),
+          replyPreviews: () => Effect.succeed([{ sessionId: "chat", text: finished }]),
+          catalog: () => Effect.succeed([provider]),
+        } as unknown as AgentRuntimeApplication["Service"]),
+        Effect.provideService(AgentRuntimeSessionActivity, {
+          read: Effect.succeed({ items: [], sequence: 0, complete: true }),
+          activityChanges: Stream.fromIterable([
+            { type: "upsert", sequence: 1, activity: active },
+            { type: "remove", sequence: 2, sessionId: "chat" },
+          ]),
+        } as unknown as AgentRuntimeSessionActivity["Service"]),
+        Effect.provideService(CoreModules, {
+          workspace: {
+            read: () =>
+              Effect.succeed({
+                value: { kind: "session_window", sessions: { items: [row], next_cursor: null } },
+              }),
+          },
+        } as unknown as CoreModules["Service"]),
+        Effect.provideService(ProjectWorkspace, {
+          getProjectSession: () => Effect.succeed({ id: "chat" }),
+        } as unknown as ProjectWorkspace["Service"]),
+        Effect.provideService(ApplicationSettings, {} as ApplicationSettings["Service"]),
+        Effect.provideService(InboxApplication, {} as InboxApplication["Service"]),
+        Effect.provideService(CodexGitProbe, {} as CodexGitProbe["Service"]),
+      );
+
+      const updates: { status: string; progress?: string | null }[] = [];
+      yield* catalog.observeActivity(({ status, progress }) =>
+        Effect.sync(() => {
+          updates.push({ status, progress });
+        }),
+      );
+      expect(updates).toEqual([
+        { status: "running", progress: "I’ll check recent changes. Then I’ll run the tests." },
+        { status: "idle", progress: "The tests passed. The board is updated." },
+      ]);
+      expect((yield* catalog.chats({})).items[0]?.progress).toBe(updates[1]?.progress);
+      expect(projectChatRow(row, metadata, undefined, [], "🌿".repeat(180)).progress).toBe(
+        "🌿".repeat(159) + "…",
+      );
+    }),
+  );
+
   it.effect(
     "uses the same default when starting and reads model names once per chat list, with catalog fallback",
     () =>
@@ -929,6 +992,7 @@ describe("catalog", () => {
                   : Effect.succeed([provider]);
               }),
             sessionMetadata: () => Effect.succeed([metadata]),
+            replyPreviews: () => Effect.succeed([]),
           } as unknown as AgentRuntimeApplication["Service"]),
           Effect.provideService(AgentRuntimeSessionActivity, {
             read: Effect.succeed({ items: [] }),

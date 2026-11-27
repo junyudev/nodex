@@ -44,7 +44,7 @@ export const live: Layer.Layer<
           const owner = personalStateKeySpace(event.key);
           safeBroadcastToWindows(
             windows
-              .all()
+              .appRenderers()
               .filter(
                 (window) =>
                   owner === null || senderSpace(window.webContents.getURL?.() ?? "") === owner,
@@ -57,11 +57,13 @@ export const live: Layer.Layer<
       (unsubscribe) => Effect.sync(unsubscribe),
     );
     const { handleControl, handleQuery, handleRevisionedCommand } = ipc;
-    const authorize = (event: IpcMainInvokeEvent) =>
+    const authorize = (event: IpcMainInvokeEvent, allowCapture = false) =>
       Effect.try({
         try: () => {
           requireTrustedAppRendererSender(event, "Application local state", config.rendererUrl);
-          if (!windows.has(event.sender.id)) {
+          if (
+            !(allowCapture ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id))
+          ) {
             throw new Error("Application local state requires an active Nodex window");
           }
         },
@@ -91,7 +93,7 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleQuery("persisted-atom:sync-request", (event) =>
-      authorize(event).pipe(
+      authorize(event, true).pipe(
         Effect.andThen(
           Effect.sync(() => {
             const snapshot = persistedAtoms.readSnapshot();
@@ -109,7 +111,7 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleRevisionedCommand("persisted-atom:update", (event, mutation) =>
-      authorize(event).pipe(
+      authorize(event, true).pipe(
         Effect.andThen(
           Effect.try({
             try: () => {
