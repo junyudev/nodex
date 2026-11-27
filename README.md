@@ -30,38 +30,32 @@
 </p>
 
 <picture>
-  <source srcset=".github/assets/readme/hero-dark.avif" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/hero-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/hero-light.avif" alt="Six messages dropped into the Nodex Inbox each get a suggestion, across Codex, Antigravity, DeepSeek, a running chat and Notes, one moved to Claude Opus by hand; the Claude chat hands its routes, tests and docs to GPT, Gemini and a free model, the reader watches the Gemini subagent finish, then steps back to the chat's Subagents map; a Gemini chat writes its findings into its Page, attaches an HTML report and marks the Page ready for review" width="100%">
+  <source srcset=".github/assets/readme/aerial-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/aerial-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/aerial-light.avif" alt="Aerial view of three chats at work: a Claude Code lead with Codex, Antigravity and OpenCode subagents, a Codex lead whose Claude reviewer reports back, and an Antigravity lead whose Codex subagent hands its screenshots to DeepSeek, each line in its harness's color" width="100%">
 </picture>
 
 Coding agents are good at the work. The part around it is still yours: turning ideas into prompts,
 picking a model for each, tracking which chat owns what, and filing the results. **Nodex does that
 part**, and everything stays on your computer.
 
-### One inbox that plans the work
-
-Drop in a burst of messages. Nodex suggests what to do with each: the Project, agent, model and
-effort for a new chat, or the chat that's already on it. Nothing runs until you confirm, unless you
-let Nodex start clear requests for you.
-
 ### Any agent can lead. Any agent can help.
 
-<picture>
-  <source srcset=".github/assets/readme/aerial-dark.avif" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/aerial-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/aerial-light.avif" alt="Aerial view of three chats at work: a Claude Code lead with Codex, Antigravity and OpenCode subagents, a Codex lead whose Claude reviewer reports back, and an Antigravity lead whose Codex subagent hands its screenshots to DeepSeek, each line in its harness's color" width="100%">
-</picture>
-
-Any chat can hand parts of its work to another provider: a Claude Code chat gives its tests to
-Gemini in Antigravity and its routes to GPT in Codex, while a Codex chat asks Claude to review.
-Aerial view shows every chat at work with its whole tree of subagents. Open a subagent beside its
-chat to follow along, and reply or stop it where its Agent allows.
+1. **Start a chat with whichever agent suits the job:** Claude Code, Codex, Antigravity, DeepSeek
+   or 40+ more.
+2. **It hands parts of the work to other agents.** A Claude Code chat gives its tests to Gemini in
+   Antigravity and its routes to GPT in Codex, while a Codex chat asks Claude to review. Each result
+   comes back to the chat that asked.
+3. **Follow every chat from above.** Aerial view shows each chat at work with its whole tree of
+   subagents. Open a subagent beside its chat to follow along, and reply or stop it where its Agent
+   allows.
 
 <details>
-<summary>Make Claude lead and Codex build by default</summary>
+<summary>Example: pick who leads and who builds</summary>
 
-Add this to `~/.claude/CLAUDE.md`. It only applies inside Nodex.
+This one makes Claude lead and Codex build, the way Nodex itself is built. Add it to
+`~/.claude/CLAUDE.md`; it only applies inside Nodex. For another lead, write the same kind of note
+in that agent's own instructions file.
 
 ```markdown
 ## Delegating to Codex in Nodex
@@ -86,19 +80,6 @@ yourself and spawning sparingly. Outside Nodex, ignore this section.
 
 </details>
 
-### Bring the plans you pay for. Add the free ones.
-
-<picture>
-  <source srcset=".github/assets/readme/agents-dark.avif" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/agents-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/agents-light.avif" alt="The Nodex model menu filtered to free OpenCode models, beside Claude, Codex, Antigravity and DeepSeek usage meters" width="100%">
-</picture>
-
-Claude Code, Codex and Antigravity are built in, DeepSeek, Kimi, GLM and MiniMax connect with your
-own API key, OpenCode and 40+ more agents install from the ACP Registry, and OpenCode's free models
-sit in the same menu. Usage meters show what's left of each plan and each key's balance, and the
-Inbox weighs it before it picks a model.
-
 ### The work lands in Pages you both edit
 
 <picture>
@@ -108,19 +89,32 @@ Inbox weighs it before it picks a model.
 </picture>
 
 Every Inbox message is a Page. Work you hand to a Project moves across its Board to Done, each card
-naming whose move it is. Agents read and write Pages through the `nodex` CLI and attach reports, screenshots and
-traces as files. When the work is ready, the Page waits In Review for you to accept it.
+naming whose move it is. Agents read and write Pages through the `nodex` CLI and attach reports,
+screenshots and traces as files. When the work is ready, the Page waits In Review for you to accept it.
 
-### Ask once. Watch the whole board sort itself out.
+### Bring the plans you pay for. Add the free ones.
 
 <picture>
-  <source srcset=".github/assets/readme/tidy-dark.avif" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/tidy-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/tidy-light.avif" alt="One plain request in the agent dock files a fifteen-task backlog: the agent reads every Page, applies thirteen edits in one batch, and the List regroups by status" width="100%">
+  <source srcset=".github/assets/readme/agents-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/agents-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/agents-light.avif" alt="The Nodex model menu filtered to free OpenCode models, beside Claude, Codex, Antigravity and DeepSeek usage meters" width="100%">
 </picture>
 
-Ask in plain words. The agent runs one read-only query over your backlog, then one atomic batch of
-edits that never overwrites newer changes. The View you have open regroups as it lands.
+Usage meters show what's left of each plan and each key's balance, and the Inbox weighs it before it
+picks a model. DeepSeek, Kimi, GLM and MiniMax connect with your own API key, OpenCode and 40+ more
+agents install from the ACP Registry, and OpenCode's free models sit in the same menu.
+
+### One inbox that plans the work
+
+<picture>
+  <source srcset=".github/assets/readme/hero-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/hero-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/hero-light.avif" alt="Six messages dropped into the Nodex Inbox each get a suggestion, across Codex, Antigravity, DeepSeek, a running chat and Notes, one moved to Claude Opus by hand; the Claude chat hands its routes, tests and docs to GPT, Gemini and a free model, the reader watches the Gemini subagent finish, then steps back to the chat's Subagents map; a Gemini chat writes its findings into its Page, attaches an HTML report and marks the Page ready for review" width="100%">
+</picture>
+
+Drop in a burst of messages. Nodex suggests what to do with each: the Project, agent, model and
+effort for a new chat, or the chat that's already on it. Nothing runs until you confirm, unless you
+let Nodex start clear requests for you.
 
 ### Leave your desk. Not your agents.
 
@@ -137,6 +131,10 @@ over your local network or Tailscale, encrypted end to end, with no Nodex server
 
 ## Everything around the agent
 
+- **Ask in plain words**: one read-only query over your backlog, then one atomic batch of edits
+  that never overwrites newer changes.
+- **Insights** shows what your agents did, including Claude Code and Codex history from before you
+  installed Nodex, and turns it into a card to share.
 - **Automations** start work on a schedule, a heartbeat or a GitHub event, or ask you first.
 - **GitHub** issues and PRs follow their Page; reviews and CI results come back to its chat.
 - **Worktrees and Environments** give each Page's work its own isolated checkout.
@@ -158,6 +156,19 @@ already have, add a DeepSeek API key, or start with OpenCode's free models.
   It isn't code-signed yet, so if SmartScreen appears, choose More info, then Run anyway.
 - **iPhone and Android**: [TestFlight beta](https://testflight.apple.com/join/Yz8Kpcty) or [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk). Nodex
   Mobile needs Nodex running on your computer.
+
+## Questions
+
+**How is this different from a terminal multiplexer?** A multiplexer shows every agent in one
+place. In Nodex they also hand work to each other, the Inbox sees what each plan has left, and the
+results land in Pages you review.
+
+**What does it cost?** Nodex is free and open source. Agents run on the subscriptions and API keys
+you already have, or on OpenCode's free models.
+
+**What leaves my computer?** Your code goes only to the model providers your agents use. Nodex
+shares anonymous usage and crash data, never prompts, code or files; turn it off in Settings →
+General → Privacy or with `DO_NOT_TRACK`.
 
 ## Community
 

@@ -30,35 +30,27 @@
 </p>
 
 <picture>
-  <source srcset=".github/assets/readme/hero-zh-dark.avif" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/hero-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/hero-zh-light.avif" alt="往 Nodex 收件箱里连发六条消息，每条都得到建议，分别去往 Codex、Antigravity、DeepSeek、正在运行的对话和笔记，其中一条被手动换成 Claude Opus；Claude 对话把路由、测试和文档分别交给 GPT、Gemini 和免费模型，看着 Gemini 子智能体完成后，再回到对话的子智能体协作图；Gemini 对话把分析结果写进 Page、附上 HTML 报告，并标记为待审查" width="100%">
-</picture>
-
-编程智能体已经很会干活了。活儿以外的部分还得你自己来：把想法整理成 prompt、给每件事挑模型、
-记住哪个对话在做哪件事、再把结果归档。**Nodex 负责的就是这部分**，而且所有数据都留在你的电脑上。
-
-### 一个会做规划的收件箱
-
-一口气丢进好几条消息。Nodex 为每一条给出建议：新对话该去哪个 Project、用哪个智能体、模型和推理强度，
-或者直接发给已经在做这件事的对话。你确认之前，什么都不会运行，除非你让 Nodex 替你开始明确的请求。
-
-### 谁都能带队，谁都能帮忙
-
-<picture>
   <source srcset=".github/assets/readme/aerial-zh-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/aerial-zh-light.avif" media="(prefers-color-scheme: light)">
   <img src=".github/assets/readme/aerial-zh-light.avif" alt="鸟瞰视图里三个正在工作的对话：Claude Code 带着 Codex、Antigravity 和 OpenCode 子智能体，Codex 请 Claude 审查后收到结果，Antigravity 的 Codex 子智能体又把截图交给 DeepSeek，每条连线都是对应服务商的颜色" width="100%">
 </picture>
 
-任何对话都可以把一部分工作交给另一家的模型：Claude Code 对话把测试交给 Antigravity 里的 Gemini，
-把路由交给 Codex 里的 GPT；Codex 对话也能请 Claude 审查。鸟瞰视图同时显示每个正在工作的对话和
-它的整棵子智能体树。在对话旁打开子智能体就能查看进展；智能体支持时，还能追问或叫停。
+编程智能体已经很会干活了。活儿以外的部分还得你自己来：把想法整理成 prompt、给每件事挑模型、
+记住哪个对话在做哪件事、再把结果归档。**Nodex 负责的就是这部分**，而且所有数据都留在你的电脑上。
+
+### 谁都能带队，谁都能帮忙
+
+1. **用最适合这件事的智能体开一个对话**：Claude Code、Codex、Antigravity、DeepSeek，或者另外 40 多个。
+2. **它把一部分工作交给别的智能体。** Claude Code 对话把测试交给 Antigravity 里的 Gemini，把路由交给
+   Codex 里的 GPT；Codex 对话也能请 Claude 审查。每份结果都会回到发起它的对话。
+3. **从鸟瞰视图看所有对话。** 鸟瞰视图同时显示每个正在工作的对话和它的整棵子智能体树。在对话旁打开
+   子智能体就能查看进展；智能体支持时，还能追问或叫停。
 
 <details>
-<summary>让 Claude 默认这样分工</summary>
+<summary>示例：决定谁带队、谁动手</summary>
 
-把下面这段加进 `~/.claude/CLAUDE.md`，它只在 Nodex 里生效。
+这段让 Claude 带队、Codex 动手，Nodex 自己就是这样开发的。把它加进 `~/.claude/CLAUDE.md`，它只在
+Nodex 里生效。想让别的智能体带队，就在它自己的指令文件里写一段类似的说明。
 
 ```markdown
 ## Delegating to Codex in Nodex
@@ -83,17 +75,6 @@ yourself and spawning sparingly. Outside Nodex, ignore this section.
 
 </details>
 
-### 已付费的订阅全用上，再加上免费模型
-
-<picture>
-  <source srcset=".github/assets/readme/agents-zh-dark.avif" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/agents-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/agents-zh-light.avif" alt="Nodex 模型菜单筛选出 OpenCode 免费模型，旁边是 Claude、Codex、Antigravity 和 DeepSeek 的用量表" width="100%">
-</picture>
-
-内置 Claude Code、Codex、Antigravity 和 OpenCode，DeepSeek、Kimi、GLM 和 MiniMax 用你自己的 API key 接入，
-还能从 ACP Registry 安装 40 多个智能体，OpenCode 的免费模型就在同一个菜单里。用量表显示每个订阅和每个 API key 还剩多少，收件箱挑模型时会把余量考虑进去。
-
 ### 工作成果落在你们共同编辑的 Pages 里
 
 <picture>
@@ -105,16 +86,28 @@ yourself and spawning sparingly. Outside Nodex, ignore this section.
 每条收件箱消息都是一个 Page。交给项目的工作会在它的看板上从待分流一路推进到已完成，每张卡片都写明下一步轮到谁。智能体通过
 `nodex` CLI 读写 Pages，把报告、截图和 trace 作为文件附上去。工作完成后，Page 会停在审查中，等你接受。
 
-### 说一句话，整个看板自己理好
+### 已付费的订阅全用上，再加上免费模型
 
 <picture>
-  <source srcset=".github/assets/readme/tidy-zh-dark.avif" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/tidy-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/tidy-zh-light.avif" alt="在智能体输入栏里说一句话，智能体读完 15 个 Page，一次批量应用 13 处修改，List 按状态重新分组" width="100%">
+  <source srcset=".github/assets/readme/agents-zh-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/agents-zh-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/agents-zh-light.avif" alt="Nodex 模型菜单筛选出 OpenCode 免费模型，旁边是 Claude、Codex、Antigravity 和 DeepSeek 的用量表" width="100%">
 </picture>
 
-用大白话提要求就行。智能体先用一条只读查询读完整个 backlog，再用一次原子批量编辑写回，
-不会覆盖更新的内容。你打开的视图会随之重新分组。
+用量表显示每个订阅和每个 API key 还剩多少，收件箱挑模型时会把余量考虑进去。DeepSeek、Kimi、GLM 和
+MiniMax 用你自己的 API key 接入，OpenCode 和另外 40 多个智能体可以从 ACP Registry 安装，OpenCode
+的免费模型就在同一个菜单里。
+
+### 一个会做规划的收件箱
+
+<picture>
+  <source srcset=".github/assets/readme/hero-zh-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/hero-zh-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/hero-zh-light.avif" alt="往 Nodex 收件箱里连发六条消息，每条都得到建议，分别去往 Codex、Antigravity、DeepSeek、正在运行的对话和笔记，其中一条被手动换成 Claude Opus；Claude 对话把路由、测试和文档分别交给 GPT、Gemini 和免费模型，看着 Gemini 子智能体完成后，再回到对话的子智能体协作图；Gemini 对话把分析结果写进 Page、附上 HTML 报告，并标记为待审查" width="100%">
+</picture>
+
+一口气丢进好几条消息。Nodex 为每一条给出建议：新对话该去哪个 Project、用哪个智能体、模型和推理强度，
+或者直接发给已经在做这件事的对话。你确认之前，什么都不会运行，除非你让 Nodex 替你开始明确的请求。
 
 ### 离开工位，不离开你的智能体
 
@@ -130,6 +123,8 @@ Nodex Mobile 能看到所有对话，需要你处理的排在最前。可以批�
 
 ## 智能体周边的一切
 
+- **用大白话提要求**：智能体先用一条只读查询读完整个 backlog，再用一次原子批量编辑写回，不会覆盖更新的内容。
+- **洞察**：统计你的智能体做了什么，连装 Nodex 之前的 Claude Code 和 Codex 历史也算在内，还能生成一张可以分享的卡片。
 - **自动化**：按计划、心跳或 GitHub 事件开始工作，也可以先问你。
 - **GitHub**：Issue 和 PR 跟着对应的 Page，审查意见和 CI 结果会回到它的对话。
 - **Worktree 和 Environment**：每个 Page 的工作都有自己隔离的 checkout。
@@ -151,6 +146,16 @@ Nodex 目前为 Beta。直接登录你已有的 Claude Code、Codex、Antigravit
   安装包尚未代码签名，如果出现 SmartScreen，点“更多信息”，再点“仍要运行”。
 - **iPhone 和 Android**：[TestFlight 公测](https://testflight.apple.com/join/Yz8Kpcty) 或 [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk)。
   Nodex Mobile 需要电脑上的 Nodex 保持运行。
+
+## 常见问题
+
+**和终端多路复用器有什么区别？** 多路复用器把所有智能体放在一个地方给你看。在 Nodex 里，它们还会互相
+交接工作，收件箱知道每个订阅还剩多少，结果落在等你审查的 Pages 里。
+
+**要钱吗？** Nodex 免费开源。智能体用的是你已有的订阅和 API key，也可以用 OpenCode 的免费模型。
+
+**什么会离开我的电脑？** 你的代码只会发给你的智能体所用的模型服务商。Nodex 会分享匿名的使用和崩溃数据，
+从不包含 prompt、代码或文件；可以在“设置 → 常规 → 隐私”里关掉，或者设置 `DO_NOT_TRACK`。
 
 ## 社区
 
