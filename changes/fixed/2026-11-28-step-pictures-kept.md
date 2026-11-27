@@ -1,0 +1,1 @@
+Screenshots that Antigravity's tools take, and pictures in imported Claude Code and Antigravity chats, now stay with the steps that made them instead of going missing or showing up as separate viewed images. An image Codex generates in a chat Nodex runs appears in the reply's gallery rather than as a picture it viewed.

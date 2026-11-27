@@ -432,7 +432,6 @@ describe("agent activity v2 type boundary", () => {
       "assistantMessage",
       "autoReviewInterruptionWarning",
       "contextCompaction",
-      "imageView",
       "multiAgentAction",
       "realtimeTranscript",
       "streamError",
@@ -477,11 +476,13 @@ describe("agent activity v2 type boundary", () => {
         )
         .every((visibility) => visibility === "hidden"),
     ).toBe(true);
-    expect(
-      resolveThreadAgentActivityVisibility(
-        classifyThreadAgentActivityItem(buildClassifiableBlock("reasoning")),
-      ),
-    ).toBe("groupable");
+    // Thoughts and viewed pictures are work like any other step.
+    for (const type of ["reasoning", "imageView"] as const)
+      expect(
+        resolveThreadAgentActivityVisibility(
+          classifyThreadAgentActivityItem(buildClassifiableBlock(type)),
+        ),
+      ).toBe("groupable");
   });
 
   test("classifies every automatic approval review status exactly", () => {

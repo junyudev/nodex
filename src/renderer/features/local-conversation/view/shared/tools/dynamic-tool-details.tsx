@@ -6,9 +6,7 @@ import {
 } from "../../../projection/tool-metadata/dynamic-tool-fallback-details";
 import { buildTextPreview, INLINE_TEXT_PREVIEW_MAX_CHARS } from "../../../../../lib/text-preview";
 import type { ToolComponentProps } from "./get-tool-component";
-import { ContentImageViewer } from "../content-image-viewer";
 import { ToolCallCodePanel } from "./tool-call-inspection";
-import { ToolOutputImage } from "./tool-output-image";
 import { useToolCallOutputDetail } from "./use-tool-call-output-detail";
 
 function DetailCodePanel({ text, title }: { text: string; title: string }) {
@@ -25,7 +23,8 @@ function DetailCodePanel({ text, title }: { text: string; title: string }) {
 
 /**
  * An opened row for a tool with no presentation of its own: what its caller wrote, such as a
- * script, and what it returned. The rest of the exact call stays behind the row's inspector.
+ * script, and what else it returned besides the pictures its row shows. The rest of the exact
+ * call stays behind the row's inspector.
  */
 export function DynamicToolDetails({ item }: { item: ToolComponentProps["item"] }) {
   const intl = useIntl();
@@ -57,17 +56,18 @@ export function DynamicToolDetails({ item }: { item: ToolComponentProps["item"] 
           })}
     </p>
   ) : (
-    (call.contentItems ?? []).map((content, index) => (
-      <Fragment key={index}>
-        {content.type === "inputImage" ? (
-          <ToolOutputImage source={content.imageUrl} />
-        ) : content.type === "inputAudio" ? (
-          <audio src={content.audioUrl} controls preload="metadata" />
-        ) : (
-          <DetailCodePanel text={formatToolOutputText(content.text)} title={outputTitle} />
-        )}
-      </Fragment>
-    ))
+    // Pictures show on the row itself, whether or not it is open.
+    (call.contentItems ?? []).map((content, index) =>
+      content.type === "inputImage" ? null : (
+        <Fragment key={index}>
+          {content.type === "inputAudio" ? (
+            <audio src={content.audioUrl} controls preload="metadata" />
+          ) : (
+            <DetailCodePanel text={formatToolOutputText(content.text)} title={outputTitle} />
+          )}
+        </Fragment>
+      ),
+    )
   );
 
   return (
@@ -75,7 +75,7 @@ export function DynamicToolDetails({ item }: { item: ToolComponentProps["item"] 
       {buildDynamicToolAuthoredPanels(call).map((panel, index) => (
         <DetailCodePanel key={index} text={panel.text} title={panel.title} />
       ))}
-      <ContentImageViewer>{output}</ContentImageViewer>
+      {output}
     </div>
   );
 }

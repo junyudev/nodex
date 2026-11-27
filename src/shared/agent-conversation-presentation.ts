@@ -13,6 +13,7 @@ import { readWebSearchSources } from "./codex-web-search";
 import { buildAgentHistoryImageSource } from "./agent-history-images";
 import { isAgentConversationTaskLiveInSnapshot } from "./agent-conversation";
 import { projectCodexMcpToolCallResult } from "./codex-mcp-tool-call";
+import { inspectedStepImage } from "./codex-step-images";
 import { resolveAgentReplyPhases } from "./agent-reply-phase";
 import type {
   CodexConversationItem,
@@ -347,7 +348,7 @@ function projectUpdate(
           kind: "toolCall",
           semanticKind: "imageView",
           status,
-          imageViewPaths: [...update.locations],
+          stepImages: update.locations.map((source) => inspectedStepImage(source)),
           markdownText: update.detail,
         },
       ];

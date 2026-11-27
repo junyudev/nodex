@@ -21620,7 +21620,7 @@ describe("local-conversation-store", () => {
       expect(
         revertItems
           .filter((item) => item.semanticKind === "imageView")
-          .map((item) => item.imageViewPaths),
+          .map((item) => item.stepImages?.map((image) => image.source)),
       ).toEqual([["/tmp/one.png", "/tmp/two.png"], ["/tmp/three.png"]]);
       expect(
         revertItems.find((item) => item.itemId === "generated-image")?.generatedImage?.src,

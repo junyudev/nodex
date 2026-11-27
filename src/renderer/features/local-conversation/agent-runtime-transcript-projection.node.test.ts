@@ -22,7 +22,6 @@ import {
 } from "./agent-runtime-transcript-projection";
 import { buildRendererItemStream } from "./projection/build-renderer-item-stream";
 import { bucketizeTurnItems } from "./projection/bucketize-turn-items";
-import { buildTurnViewModel } from "./projection/build-turn-view-model";
 import { resolveNativeAutomationUpdateRenderState } from "./projection/tool-metadata/native-automation-update";
 
 const at = "2026-10-15T00:00:00.000Z";
@@ -380,7 +379,7 @@ describe("Runtime application tool presentation", () => {
     });
   });
 
-  test("completed file inspections use their image path even when history omits tool output", () => {
+  test("completed file inspections show the kept copy by its file name even when history omits tool output", () => {
     const read = {
       ...tool("Read"),
       title: "Read /workspace/rail-states-light.png",
@@ -397,11 +396,6 @@ describe("Runtime application tool presentation", () => {
       },
     };
     for (const result of [{ output }, { output: undefined, outputOmitted: true }]) {
-      expect(projectAgentRuntimeItem({ ...read, ...result })).toEqual({
-        type: "imageView",
-        id: read.id,
-        path: read.viewedImagePath,
-      });
       // A kept copy of what the Agent saw is read from the chat, wherever the chat runs.
       const copy = {
         type: "image" as const,
@@ -413,6 +407,7 @@ describe("Runtime application tool presentation", () => {
       expect(projectAgentRuntimeItem({ ...read, ...result, attachments: [copy] })).toEqual({
         type: "imageView",
         id: read.id,
+        name: copy.name,
         path: buildAgentRuntimeAttachmentSource({
           sourceThreadId: read.threadId,
           itemId: read.id,
@@ -719,10 +714,10 @@ describe("Runtime imported images", () => {
   test.each([
     ["imageView", "copied"],
     ["imageView", "missing"],
-    ["imageGeneration", "copied"],
-    ["imageGeneration", "missing"],
+    ["Read", "copied"],
+    ["Read", "missing"],
   ] as const)(
-    "keeps an %s step's %s picture through completed-turn rendering when output is omitted",
+    "keeps a %s inspection's %s picture through completed-turn rendering when output is omitted",
     (toolName, availability) => {
       const unavailable = { name: "viewed.png", sourcePath: "/removed/viewed.png" };
       const itemId = `view:${availability}`;
@@ -741,6 +736,7 @@ describe("Runtime imported images", () => {
           runId: null,
           ordinal: 2,
           input: { path: unavailable.sourcePath },
+          ...(toolName === "Read" ? { viewedImagePath: unavailable.sourcePath } : {}),
           outputOmitted: true,
           ...(availability === "copied"
             ? { attachments: [image] }
@@ -765,10 +761,13 @@ describe("Runtime imported images", () => {
         turnStatus: "completed",
       });
       const inspection = items.find((item) => item.type === "imageView");
+      // The copy shows under the file's own name, never under its private address.
       const expected = {
         type: "imageView",
-        imageViewPaths: availability === "copied" ? [ownedSource] : [],
-        ...(availability === "missing" ? { unavailableImages: [unavailable] } : {}),
+        entry:
+          availability === "copied"
+            ? { stepImages: [{ source: ownedSource, name: image.name }] }
+            : { stepImages: [], unavailableImages: [unavailable] },
       };
       expect(inspection).toMatchObject(expected);
 
@@ -777,15 +776,120 @@ describe("Runtime imported images", () => {
         buckets.agentItems.map((item) => item.id),
         "bucketizer dropped the inspection",
       ).toContain(itemId);
-      const model = buildTurnViewModel({
-        turnId: turn.turnId,
-        turn,
-        buckets,
-        isLatestTurn: true,
-        isStreamingTurn: false,
-        isBlocked: false,
+    },
+  );
+
+  test("keeps a file read that recognized a picture path but kept no picture an ordinary read", () => {
+    const [canonical] = projectHistory([
+      {
+        ...base,
+        type: "dynamic_tool",
+        toolName: "Read",
+        input: { file_path: "/repo/diagram.png" },
+        viewedImagePath: "/repo/diagram.png",
+        output: "Error: file is too large",
+      },
+    ]).canonical;
+    expect(canonical).toMatchObject({ type: "dynamicToolCall", tool: "Read" });
+  });
+
+  test.each([
+    ["running", null, { type: "imageGeneration", status: "inProgress", src: null }],
+    ["completed", "copied", { type: "imageGeneration", status: "completed", src: "owned" }],
+    // Without a kept picture the step says what happened instead of joining the gallery.
+    ["completed", "missing", { type: "dynamicToolCall", tool: "imageGeneration" }],
+    ["failed", null, { type: "dynamicToolCall", tool: "imageGeneration", status: "failed" }],
+  ] as const)(
+    "projects a %s generation whose picture is %s into the turn's gallery or a tool step",
+    (status, availability, expected) => {
+      const ownedSource = buildAgentRuntimeAttachmentSource({
+        sourceThreadId: base.threadId,
+        itemId: base.id,
+        attachmentId: image.id,
       });
-      expect(model.blocks.find((block) => block.type === "imageView")).toMatchObject(expected);
+      const [canonical] = projectHistory([
+        {
+          ...base,
+          type: "dynamic_tool",
+          status,
+          toolName: "imageGeneration",
+          title: "Generate image",
+          input: { prompt: "A lighthouse at dusk" },
+          ...(availability === "copied" ? { attachments: [image] } : {}),
+          ...(availability === "missing"
+            ? {
+                unavailableImages: [
+                  { name: "lighthouse.png", sourcePath: "/gone.png", reason: "source_missing" },
+                ],
+              }
+            : {}),
+        },
+      ]).canonical;
+      expect(canonical).toMatchObject(
+        "src" in expected && expected.src === "owned"
+          ? { ...expected, src: ownedSource, revisedPrompt: "A lighthouse at dusk" }
+          : expected,
+      );
+    },
+  );
+
+  test("keeps a generation that names a saved path in the gallery rather than as a viewed picture", () => {
+    const [canonical] = projectHistory([
+      {
+        ...base,
+        type: "dynamic_tool",
+        toolName: "imageGeneration",
+        title: "Generate image",
+        input: { prompt: "A lighthouse at dusk" },
+        viewedImagePath: "/generated/lighthouse.png",
+        attachments: [image],
+      },
+    ]).canonical;
+    expect(canonical).toMatchObject({ type: "imageGeneration", status: "completed" });
+  });
+
+  test.each([
+    ["MCP", true],
+    ["dynamic", false],
+  ] as const)(
+    "names a %s tool's result pictures on its step while the result body is withheld",
+    (_kind, mcp) => {
+      const resultImages = [
+        { attachmentId: "tool-result:1", mimeType: "image/png" },
+        { attachmentId: "tool-result:3", mimeType: "image/jpeg" },
+      ];
+      const { entries } = projectHistory([
+        {
+          ...base,
+          type: "dynamic_tool",
+          toolName: mcp ? "mcp__node_repl__js" : "capture_screen",
+          input: { title: "Check the hover card" },
+          outputOmitted: true,
+          resultImages,
+          ...(mcp
+            ? {
+                mcpToolCall: {
+                  type: "mcpToolCall",
+                  id: "call",
+                  server: "node_repl",
+                  tool: "js",
+                  status: "completed",
+                  arguments: { title: "Check the hover card" },
+                  result: { content: [] },
+                },
+              }
+            : {}),
+        },
+      ]);
+      expect(entries[0]?.stepImages).toEqual(
+        resultImages.map(({ attachmentId }) => ({
+          source: buildAgentRuntimeAttachmentSource({
+            sourceThreadId: base.threadId,
+            itemId: base.id,
+            attachmentId,
+          }),
+        })),
+      );
     },
   );
 

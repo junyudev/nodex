@@ -513,23 +513,22 @@ function buildTranscriptBlock(
   }
 
   if (type === "imageView") {
-    const imageViewPaths = entry.imageViewPaths ?? [];
+    const stepImages = entry.stepImages ?? [];
     const unavailableImages = entry.unavailableImages ?? [];
-    if (imageViewPaths.length === 0 && unavailableImages.length === 0) return null;
+    if (stepImages.length === 0 && unavailableImages.length === 0) return null;
     return {
       id: entryId,
       turnId: entry.turnId,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
-      searchableText: [...imageViewPaths, ...unavailableImages.map((image) => image.name)].join(
-        "\n",
-      ),
+      searchableText: [
+        ...stepImages.flatMap((image) => image.name ?? []),
+        ...unavailableImages.map((image) => image.name),
+      ].join("\n"),
       type,
       entry,
       status: "completed",
       isTurnCancelled: turnStatus === "interrupted",
-      imageViewPaths,
-      ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
     };
   }
 

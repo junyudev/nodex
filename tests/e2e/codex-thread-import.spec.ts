@@ -80,12 +80,7 @@ const expectMissingImageRecords = async (page: Page, names: readonly string[]) =
   for (const toggle of await page.getByTestId("agent-activity-group-toggle").all()) {
     if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
   }
-  const inspected = page.getByRole("button", {
-    name: "Viewed an image · file missing",
-    exact: true,
-  });
-  await inspected.scrollIntoViewIfNeeded();
-  if ((await inspected.getAttribute("aria-expanded")) !== "true") await inspected.click();
+  // An inspection names its missing file on its own row, with nothing to open.
   for (const name of names) {
     const record = page.getByRole("img", { name: `${name}, file missing`, exact: true });
     await record.scrollIntoViewIfNeeded();

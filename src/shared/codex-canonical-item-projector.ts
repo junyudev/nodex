@@ -40,6 +40,7 @@ import {
 } from "./codex-user-attachment-projection";
 import { projectCodexParsedCommand } from "./codex-command-action-projection";
 import { projectCodexMcpToolCall } from "./codex-mcp-tool-call";
+import { inspectedStepImage, projectToolResultStepImages } from "./codex-step-images";
 import { readWebSearchSources } from "./codex-web-search";
 import { projectNativeAutomationUpdate } from "./nodex-app-tools/automation-projection";
 import { AutomationTriggerSchema } from "./schemas/automation";
@@ -66,6 +67,7 @@ import type {
   CodexFileChangeView,
   CodexItemStatus,
   CodexItemView,
+  CodexMcpToolCallView,
   CodexReviewDiffCommentAttachment,
   CodexSteeringRestoreMessage,
   CodexSteeringUserInput,
@@ -904,6 +906,12 @@ function projectDynamicToolCall(
     ...(item.outputOmitted ? { outputOmitted: true } : {}),
     completed: item.status === "completed" || item.status === "failed",
   };
+  const stepImages = projectToolResultStepImages(
+    item.resultImageSources,
+    (item.contentItems ?? []).flatMap((content) =>
+      content.type === "inputImage" ? [content.imageUrl] : [],
+    ),
+  );
   return [
     {
       ...buildBaseView(item, context),
@@ -911,6 +919,7 @@ function projectDynamicToolCall(
       semanticKind: "dynamicToolCall",
       status: item.status,
       dynamicToolCall,
+      ...(stepImages.length === 0 ? {} : { stepImages }),
     },
   ];
 }
@@ -1119,21 +1128,34 @@ function projectCanonicalItemViews(
       return projectCommandActions(item, context);
     case "fileChange":
       return projectFileChange(item, context);
-    case "mcpToolCall":
+    case "mcpToolCall": {
+      const mcpToolCall: CodexMcpToolCallView = {
+        ...projectCodexMcpToolCall(item, context.turnStatus),
+        callId: item.nativeCallId ?? item.id,
+        ...(item.outputOmitted ? { outputOmitted: true } : {}),
+      };
+      const stepImages = projectToolResultStepImages(
+        item.resultImageSources,
+        mcpToolCall.result?.type === "success"
+          ? mcpToolCall.result.content.flatMap((block) =>
+              block.type === "image"
+                ? [block.source ?? `data:${block.mimeType};base64,${block.data}`]
+                : [],
+            )
+          : [],
+      );
       return [
         {
           ...buildBaseView(item, context),
           normalizedKind: "toolCall",
           semanticKind: "mcpToolCall",
           status: item.status,
-          mcpToolCall: {
-            ...projectCodexMcpToolCall(item, context.turnStatus),
-            callId: item.nativeCallId ?? item.id,
-            ...(item.outputOmitted ? { outputOmitted: true } : {}),
-          },
+          mcpToolCall,
+          ...(stepImages.length === 0 ? {} : { stepImages }),
           automationUpdate: projectNativeAutomationUpdate(item),
         },
       ];
+    }
     case "dynamicToolCall":
       return projectDynamicToolCall(item, context);
     case "collabAgentToolCall":
@@ -1462,8 +1484,8 @@ function projectCanonicalItemViews(
           semanticKind: "imageView",
           status: "completed",
           ...(item.unavailableImages?.length
-            ? { imageViewPaths: [], unavailableImages: item.unavailableImages }
-            : { imageViewPaths: [item.path] }),
+            ? { stepImages: [], unavailableImages: item.unavailableImages }
+            : { stepImages: [inspectedStepImage(item.path, item.name)] }),
         },
       ];
     case "enteredReviewMode":
@@ -1507,7 +1529,7 @@ export function projectCodexCanonicalTurnItemViews(
       !previousRawItemWasImageView ||
       !previous ||
       previous.semanticKind !== "imageView" ||
-      !next?.imageViewPaths
+      !next?.stepImages
     ) {
       previousRawItemWasImageView = true;
       views.push(...projected);
@@ -1520,7 +1542,7 @@ export function projectCodexCanonicalTurnItemViews(
     ];
     views[views.length - 1] = {
       ...previous,
-      imageViewPaths: [...(previous.imageViewPaths ?? []), ...next.imageViewPaths],
+      stepImages: [...(previous.stepImages ?? []), ...next.stepImages],
       ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
       updatedAt: next.updatedAt,
     };

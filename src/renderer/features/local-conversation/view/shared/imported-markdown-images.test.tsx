@@ -1,5 +1,5 @@
-import { act, type ReactNode } from "react";
-import { cleanup, fireEvent } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { buildAgentRuntimeAttachmentSource } from "../../../../../shared/agent-runtime-attachments";
@@ -150,23 +150,20 @@ describe("imported conversation images", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  test("expands a missing inspected picture without requesting source bytes", async () => {
+  test("names a missing inspected picture without requesting source bytes", async () => {
     const invoke = vi.fn();
     const resolveRuntimeAttachment = vi.fn();
     installWindowApi({ invoke, on: () => () => {} });
     const view = render(
       withImages(
         <ImageViewSurface
-          imagePaths={[]}
+          images={[]}
           unavailableImages={[{ name: "viewed-image.png", sourcePath: "/gone/viewed-image.png" }]}
         />,
         resolveRuntimeAttachment,
       ),
     );
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Viewed an image · file missing" }));
-      await Promise.resolve();
-    });
+    expect(view.getByText("Viewed viewed-image.png · file missing")).toBeTruthy();
     await view.findByRole("img", { name: "viewed-image.png, file missing" });
     await settleAsyncRender();
     expect(view.container.querySelector("img")).toBeNull();

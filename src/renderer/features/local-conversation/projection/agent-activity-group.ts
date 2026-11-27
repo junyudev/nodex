@@ -2,6 +2,7 @@ import { getIntl } from "@/lib/i18n";
 import type {
   CodexCommandAction,
   CodexConversationItem,
+  CodexStepImage,
   ProtocolAppInfo,
 } from "../../../lib/types";
 import {
@@ -53,6 +54,7 @@ import type {
   ThreadAgentEntryModel,
   ThreadAgentItemModel,
   ThreadAgentRenderUnit,
+  ThreadBlockModel,
   ThreadTranscriptBlockModel,
 } from "../thread-stage-types";
 
@@ -64,6 +66,14 @@ type McpToolCallSummarySource = Omit<
   "count" | "runningCount"
 >;
 export type AgentActivityGroupSummaryFact = ThreadAgentActivitySummaryFact;
+
+const NO_STEP_IMAGES: readonly CodexStepImage[] = [];
+
+/** The pictures a block's steps brought back, in the order they came. */
+export function collectThreadBlockStepImages(block: ThreadBlockModel): readonly CodexStepImage[] {
+  if (block.type === "agentActivityGroup") return block.stepImages;
+  return "entry" in block ? (block.entry.stepImages ?? NO_STEP_IMAGES) : NO_STEP_IMAGES;
+}
 
 function isTranscriptBlock(
   block: ThreadAgentItemModel | ThreadAgentEntryModel,
@@ -811,6 +821,12 @@ export function buildAgentActivityGroupSummaryFact(
       ...(automaticApprovalReviewFailures.length > 0 ? { automaticApprovalReviewFailures } : {}),
     };
   }
+  if (entry.type === "imageView") {
+    return {
+      type: "imageView",
+      count: (entry.entry.stepImages?.length ?? 0) + (entry.entry.unavailableImages?.length ?? 0),
+    };
+  }
   if (entry.type === "webSearch") {
     return {
       type: "webSearch",
@@ -870,6 +886,8 @@ function selectCompletedHeaderIconItem(
     return entries.find((entry) => entry.type === "fileChange") ?? null;
   }
   if (firstPart.kind === "exploration") return entries.find(isExplorationCommandBlock) ?? null;
+  if (firstPart.kind === "viewedImages")
+    return entries.find((entry) => entry.type === "imageView") ?? null;
   if (firstPart.kind === "visualization") return entries.find(isVisualizationEntry) ?? null;
   if (firstPart.kind === "commands") return entries.find((entry) => entry.type === "exec") ?? null;
   if (firstPart.kind === "webSearch") return entries.find(isWebSearchEntry) ?? null;
@@ -986,6 +1004,7 @@ export function buildV2AgentActivityGroupBlock(
     type: "agentActivityGroup",
     entries,
     bodyEntries: options.bodyEntries ?? entries,
+    stepImages: entries.flatMap(collectThreadBlockStepImages),
     completedHeader,
     header,
     mcpApps: resolvedApps,

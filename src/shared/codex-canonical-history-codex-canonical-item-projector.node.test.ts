@@ -472,8 +472,11 @@ describe("codex canonical item projector", () => {
       const views = project([first, second, sleep, third]);
 
       expect(views.length).toBe(2);
-      expect(views[0]?.imageViewPaths?.join(",")).toBe("/tmp/1.png,/tmp/2.png");
-      expect(views[1]?.imageViewPaths?.join(",")).toBe("/tmp/3.png");
+      expect(views[0]?.stepImages).toEqual([
+        { source: "/tmp/1.png", name: "1.png" },
+        { source: "/tmp/2.png", name: "2.png" },
+      ]);
+      expect(views[1]?.stepImages).toEqual([{ source: "/tmp/3.png", name: "3.png" }]);
     });
 
     test("applies background-agent and hidden-item policies before creating fallback views", () => {

@@ -70,3 +70,17 @@ export function UnavailableImageTile({ image }: { image: CodexUnavailableImage }
     </div>
   );
 }
+
+/** Glyph-sized form for a step row's pictures. */
+export function UnavailableImageGlyph({ image }: { image: CodexUnavailableImage }) {
+  const intl = useIntl();
+  return (
+    <span
+      role="img"
+      {...describe(intl, image)}
+      className="flex size-5 shrink-0 items-center justify-center rounded-[3px] border border-dashed border-token-border-heavy text-token-description-foreground"
+    >
+      <ImageIcon className="size-3" aria-hidden="true" />
+    </span>
+  );
+}

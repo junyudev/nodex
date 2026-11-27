@@ -197,6 +197,7 @@ export function ThreadActivityDisclosureHeader({
   disclosure,
   inspector,
   labelId,
+  media,
   testId,
   toggleTestId,
 }: {
@@ -209,6 +210,8 @@ export function ThreadActivityDisclosureHeader({
   inspector?: ReactNode;
   /** The element that names the toggle when there is no accessible label. */
   labelId?: string;
+  /** Controls of their own that follow the label, above the row's toggle. */
+  media?: ReactNode;
   testId?: string;
   toggleTestId?: string;
 }) {
@@ -242,6 +245,7 @@ export function ThreadActivityDisclosureHeader({
       >
         {children}
       </ThreadActivityHeaderContent>
+      {media ? <span className="relative flex shrink-0 items-center">{media}</span> : null}
       {accessory}
       {disclosure ? (
         <span className="pointer-events-none relative flex">
@@ -260,6 +264,7 @@ export function ThreadRichActivityHeader({
   disclosure,
   icon,
   inspector,
+  media,
   summary,
   summaryClassName,
   testId,
@@ -271,6 +276,8 @@ export function ThreadRichActivityHeader({
   icon: ReactNode;
   /** A control at the row's end, above its disclosure target and revealed by the row's hover. */
   inspector?: ReactNode;
+  /** What the step brought back, such as its pictures, right after its summary. */
+  media?: ReactNode;
   summary: ReactNode;
   summaryClassName?: string;
   testId?: string;
@@ -297,6 +304,7 @@ export function ThreadRichActivityHeader({
       disclosure={disclosure}
       inspector={inspector}
       labelId={summaryId}
+      media={media}
       testId={testId}
     >
       {content}
@@ -448,6 +456,8 @@ export interface ThreadActivityDisclosureProps {
   headerClassName?: string;
   headerTestId?: string;
   icon?: ReactNode;
+  /** What the step brought back, such as its pictures, right after its summary. */
+  media?: ReactNode;
   onExpand?: () => void;
   revealForSearch?: boolean;
   /** Live content shown under the header while the body is collapsed. */
@@ -516,6 +526,7 @@ export function ThreadActivityDisclosure({
   headerTestId,
   icon,
   inspector,
+  media,
   onExpand,
   revealForSearch = false,
   preview,
@@ -553,6 +564,7 @@ export function ThreadActivityDisclosure({
         disclosure={disclosure}
         icon={icon}
         inspector={inspector}
+        media={media}
         summary={summaryNode}
         summaryClassName={summaryClassName}
         testId={headerTestId}

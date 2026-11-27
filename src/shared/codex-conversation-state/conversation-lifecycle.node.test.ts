@@ -1211,8 +1211,8 @@ describe("codex lifecycle projection diff", () => {
 
       expect(result.changedRawOwnerIds).toEqual(["sleep-between-images"]);
       expect(result.views).toHaveLength(2);
-      expect(result.views[0]?.imageViewPaths?.join(",")).toBe("/tmp/1.png");
-      expect(result.views[1]?.imageViewPaths?.join(",")).toBe("/tmp/2.png");
+      expect(result.views[0]?.stepImages?.map((image) => image.source)).toEqual(["/tmp/1.png"]);
+      expect(result.views[1]?.stepImages?.map((image) => image.source)).toEqual(["/tmp/2.png"]);
     });
 
     test("reprojects the unchanged former last-work row when a new work item is appended", () => {

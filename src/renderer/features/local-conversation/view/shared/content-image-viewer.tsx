@@ -79,6 +79,8 @@ interface ViewerImage {
   readonly downloadSrc?: string;
   readonly alt: string;
   readonly isCurrent: () => boolean;
+  /** Where focus returns for an image its surface keeps out of sight. */
+  readonly returnFocusTo?: () => HTMLElement | null;
 }
 
 interface ViewerGroup {
@@ -147,7 +149,9 @@ export function ContentImageViewer({ children }: { readonly children: ReactNode 
           isCurrent={active.isCurrent}
           onPreviousImage={previousKey ? () => setOpenKey(previousKey) : undefined}
           onNextImage={nextKey ? () => setOpenKey(nextKey) : undefined}
-          finalFocus={() => (active.trigger.isConnected ? active.trigger : false)}
+          finalFocus={() =>
+            active.returnFocusTo?.() ?? (active.trigger.isConnected ? active.trigger : false)
+          }
         />
       ) : null}
     </ViewerGroupContext>
@@ -177,7 +181,11 @@ function shownImage(asset: ContentImage, undecodable: string | null): string | n
  * An image read where its content lives, viewable in the `ContentImageViewer` around it, with the
  * image actions every chat image has. The viewer shows the same bytes the image already read.
  */
-export function useViewableContentImage(source: string, alt: string): ViewableContentImage {
+export function useViewableContentImage(
+  source: string,
+  alt: string,
+  options: { readonly returnFocusTo?: () => HTMLElement | null } = {},
+): ViewableContentImage {
   const group = useContext(ViewerGroupContext);
   const scope = useContentImageScope();
   // A chat replaces its scope object on ordinary renders, as while its Agent works. The image
@@ -193,6 +201,7 @@ export function useViewableContentImage(source: string, alt: string): ViewableCo
   const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
   const src = shownImage(asset, undecodable);
   const downloadSrc = asset.downloadSrc ?? undefined;
+  const { returnFocusTo } = options;
   useEffect(() => {
     if (!group || !trigger || !src) return;
     let shown = true;
@@ -202,12 +211,13 @@ export function useViewableContentImage(source: string, alt: string): ViewableCo
       downloadSrc,
       alt,
       isCurrent: () => shown && trigger.isConnected && currentScope.current.isCurrent(),
+      ...(returnFocusTo ? { returnFocusTo } : {}),
     });
     return () => {
       shown = false;
       release();
     };
-  }, [alt, downloadSrc, group, key, src, trigger]);
+  }, [alt, downloadSrc, group, key, returnFocusTo, src, trigger]);
   const onContextMenu = useContentImageMenu(source, src, alt);
   return {
     src,

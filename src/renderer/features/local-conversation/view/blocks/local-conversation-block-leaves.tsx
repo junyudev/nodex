@@ -31,6 +31,8 @@ import {
 } from "../shared/transcript-divider";
 import { ContextCompactionSurface } from "../shared/context-compaction-surface";
 import { ImageViewSurface } from "../shared/image-view-surface";
+import { NO_STEP_IMAGES, StepImageStrip } from "../shared/step-images";
+import { NO_UNAVAILABLE_IMAGES } from "../shared/unavailable-image";
 import { ImportedMarkdownImagesProvider } from "../shared/imported-markdown-images";
 import { GeneratedImageGallery } from "../shared/generated-image-gallery";
 import { CompletedRequestActivitySurface } from "../shared/completed-request-activity-surface";
@@ -426,6 +428,8 @@ function renderCollapsedActivityEntry({
     );
   if (entry.type === "reasoning")
     return <ThreadThoughtRowBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />;
+  if (entry.type === "imageView")
+    return <ThreadImageViewBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />;
   if (
     entry.type === "exec" ||
     entry.type === "fileChange" ||
@@ -663,6 +667,18 @@ function AgentActivityGroup({
     isRunning: false,
     revealForSearch: true,
   });
+  const { settings } = useCodexThreadSettings();
+  const detailLevel = resolveCodexThreadDetailLevel(settings.detailLevel);
+  // Folded, the group shows every step's pictures; opened, each shown step shows its own, and the
+  // group keeps those of steps it does not show, so no picture leaves view.
+  const shownIds = new Set(block.bodyEntries.map((entry) => entry.id));
+  const headerImages = expanded
+    ? block.entries.flatMap((entry) =>
+        !shownIds.has(entry.id) || isToolRowOmitted(entry.entry, detailLevel)
+          ? (entry.entry.stepImages ?? [])
+          : [],
+      )
+    : block.stepImages;
   const latestThought = block.entries.findLast((entry) => entry.type === "reasoning") ?? null;
   const openingLabel = useActivityOpeningLabel();
   const label = (
@@ -681,6 +697,7 @@ function AgentActivityGroup({
       header={
         <ThreadActivityDisclosureHeader
           disclosure={disclosure}
+          media={<StepImageStrip images={headerImages} />}
           toggleTestId="agent-activity-group-toggle"
         >
           {label}
@@ -732,6 +749,15 @@ function AgentActivityGroup({
   );
 }
 
+/** Prose-only detail leaves ordinary MCP calls out of an opened group; their group speaks for them. */
+function isToolRowOmitted(item: CodexConversationItem, detailLevel: string): boolean {
+  return (
+    item.semanticKind === "mcpToolCall" &&
+    detailLevel === "STEPS_PROSE" &&
+    !isNativeAutomationUpdate(item)
+  );
+}
+
 /** Keep each renderer's component identity static while sharing the tool routing policy. */
 function ToolSurface(props: ToolComponentProps) {
   const component = getToolComponent(props.item);
@@ -761,13 +787,7 @@ export function ThreadToolSurfaceBlock({
   const { settings } = useCodexThreadSettings();
   const item = block.entry;
   const threadDetailLevel = resolveCodexThreadDetailLevel(settings.detailLevel);
-  if (
-    item.semanticKind === "mcpToolCall" &&
-    threadDetailLevel === "STEPS_PROSE" &&
-    !isNativeAutomationUpdate(item)
-  ) {
-    return null;
-  }
+  if (isToolRowOmitted(item, threadDetailLevel)) return null;
 
   if (!getToolComponent(item)) return null;
 
@@ -1723,8 +1743,8 @@ export function ThreadImageViewBlock({ block }: ThreadLeafBlockProps) {
   if (block.type !== "imageView") return null;
   return (
     <ImageViewSurface
-      imagePaths={block.imageViewPaths ?? []}
-      unavailableImages={block.unavailableImages ?? []}
+      images={block.entry.stepImages ?? NO_STEP_IMAGES}
+      unavailableImages={block.entry.unavailableImages ?? NO_UNAVAILABLE_IMAGES}
     />
   );
 }

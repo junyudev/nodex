@@ -37,8 +37,7 @@ import { useThreadMcpApps } from "./mcp-apps-context";
 import { ToolCallCodePanel } from "./tool-call-inspection";
 import { inspectMcpToolCall, ToolCallInspector } from "./tool-call-inspector";
 import { WebMcpToolActivity } from "./webmcp-tool-activity";
-import { ToolOutputImage } from "./tool-output-image";
-import { ContentImageViewer } from "../content-image-viewer";
+import { NO_STEP_IMAGES, StepImageStrip } from "../step-images";
 import {
   buildMcpAppSidePanelInput,
   isMcpAppHtmlTooLarge,
@@ -90,10 +89,12 @@ function mcpContentBlockText(block: CodexMcpToolCallContentBlock): string | null
     return fields.join("\n");
   }
 
-  if (block.type === "image" || block.type === "audio") {
+  if (block.type === "audio") {
     const annotations = formatAnnotations(block.annotations);
     return annotations ? `Annotations: ${annotations}` : null;
   }
+  // Pictures show on the row, never as text.
+  if (block.type === "image") return null;
 
   return stringifyMcpValue(block.raw, 2);
 }
@@ -115,7 +116,7 @@ function budgetMcpContentBlocks(blocks: readonly CodexMcpToolCallContentBlock[])
 
     if (remainingCharacters < MCP_MINIMUM_USEFUL_TEXT_PREVIEW_CHARS) {
       omittedCharacters += textValue.length;
-      if (block.type === "image" || block.type === "audio") {
+      if (block.type === "audio") {
         result.push({ block });
       }
       continue;
@@ -318,35 +319,6 @@ function McpContentBlock({
     );
   }
 
-  if (block.type === "image") {
-    const annotations = formatAnnotations(block.annotations);
-
-    return (
-      <div className="flex flex-col gap-0.5">
-        <ToolOutputImage source={block.source ?? `data:${block.mimeType};base64,${block.data}`} />
-        {textValue && textPreview?.kind === "omitted" ? (
-          <ToolCallCodePanel
-            title={intl.formatMessage({
-              id: "conversation.mcpToolCall.annotationsPanel",
-              defaultMessage: "annotations",
-            })}
-            preview={textPreview}
-            getCopyText={() => textValue}
-            getFullText={() => textValue}
-          />
-        ) : annotations ? (
-          <p className="text-size-chat whitespace-pre-wrap text-token-description-foreground/80">
-            {intl.formatMessage({
-              id: "conversation.mcpToolCall.annotationHeading",
-              defaultMessage: "Annotations:",
-            })}{" "}
-            {annotations}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
   if (block.type === "audio") {
     const annotations = formatAnnotations(block.annotations);
 
@@ -466,8 +438,10 @@ function McpResultBody({
     () =>
       successResult
         ? resolveMcpExpandedSuccessDisplay({
+            // Pictures show on the row itself, whether or not it is open.
             content: successResult.content.filter(
-              (block) => !shouldHideDuplicateMcpTextContent(block, resource),
+              (block) =>
+                block.type !== "image" && !shouldHideDuplicateMcpTextContent(block, resource),
             ),
             structuredContentJson,
             isExpanded: true,
@@ -561,15 +535,13 @@ function McpResultBody({
       {hasMcpAppBranch ? appBody : null}
       {!hasMcpAppBranch && displayContent.length > 0 ? (
         <div className="[&_*]:text-token-foreground/50 flex flex-col gap-0.5">
-          <ContentImageViewer>
-            {budgetedDisplayContent.blocks.map((entry, index) => (
-              <McpContentBlock
-                key={index}
-                actions={index === textActionsIndex ? inspectionActions : null}
-                {...entry}
-              />
-            ))}
-          </ContentImageViewer>
+          {budgetedDisplayContent.blocks.map((entry, index) => (
+            <McpContentBlock
+              key={index}
+              actions={index === textActionsIndex ? inspectionActions : null}
+              {...entry}
+            />
+          ))}
           {budgetedDisplayContent.omittedCharacters > 0 ? (
             <div className="px-2 py-1 text-xs text-token-description-foreground">
               {intl.formatMessage(
@@ -584,7 +556,9 @@ function McpResultBody({
         </div>
       ) : !hasMcpAppBranch && errorText ? (
         <ToolErrorDetail error={errorText} showLabel={false} />
-      ) : !hasMcpAppBranch && !displayStructuredContentJson ? (
+      ) : !hasMcpAppBranch &&
+        !displayStructuredContentJson &&
+        !successResult?.content.some((block) => block.type === "image") ? (
         <p className="text-token-description-foreground/80">
           {intl.formatMessage({
             id: "conversation.mcpToolCall.noContent",
@@ -606,6 +580,22 @@ function McpResultBody({
         <div className="mt-1 flex w-fit items-center gap-1">{inspectionActions}</div>
       ) : null}
     </>
+  );
+}
+
+/** A result that is only pictures has nothing more to open: its row already shows them. */
+function isPictureOnlyMcpResult(
+  payload: CodexMcpToolCallView,
+  resourceUri: string | null,
+): boolean {
+  const result = payload.result;
+  return (
+    !payload.outputOmitted &&
+    resourceUri === null &&
+    result?.type === "success" &&
+    result.structuredContent == null &&
+    result.content.length > 0 &&
+    result.content.every((block) => block.type === "image")
   );
 }
 
@@ -689,12 +679,15 @@ export function McpToolCall({
 
   if (!payload) return null;
 
-  const canExpand = payload.completed || payload.result !== null;
+  const canExpand =
+    (payload.completed || payload.result !== null) &&
+    (hasApprovalReviews || !isPictureOnlyMcpResult(payload, resourceUri));
   const isBodyExpanded = canExpand && isExpanded;
   const header = (
     <ThreadRichActivityHeader
       accessory={hasApprovalReviews ? <AutomaticApprovalReviewShield /> : null}
       icon={<ToolActivityIcon descriptor={resolveMcpSourceIcon(item, mcpApps)} />}
+      media={<StepImageStrip images={item.stepImages ?? NO_STEP_IMAGES} />}
       inspector={
         <ToolCallInspector
           item={item}

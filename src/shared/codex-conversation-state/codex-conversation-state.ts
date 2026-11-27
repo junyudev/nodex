@@ -503,6 +503,8 @@ export type CodexCanonicalAgentMessageItem = Extract<ThreadItem, { type: "agentM
 
 /** An imported inspection of a missing picture keeps `path` as history only and never loads it. */
 export type CodexCanonicalImageViewItem = Extract<ThreadItem, { type: "imageView" }> & {
+  /** The inspected file's name, when `path` reads from a copy rather than the file. */
+  readonly name?: string;
   readonly unavailableImages?: readonly CodexUnavailableImage[];
 };
 
@@ -606,17 +608,27 @@ export type CodexCanonicalCollabAgentToolCallItem = Extract<
   readonly receiverThreads: readonly CodexCanonicalCollabReceiverThread[];
 };
 
-export type CodexCanonicalDynamicToolCallItem = Extract<ThreadItem, { type: "dynamicToolCall" }> & {
-  /** An execution owner may supply a semantic label independently of the tool identity. */
-  readonly displayTitle?: string | null;
-  readonly outputOmitted?: boolean;
-};
+/**
+ * The pictures an execution owner names for a tool's result, read by their own sources; they
+ * remain known while the result body itself is withheld.
+ */
+interface CodexCanonicalToolResultImages {
+  readonly resultImageSources?: readonly string[];
+}
 
-export type CodexCanonicalMcpToolCallItem = Extract<ThreadItem, { type: "mcpToolCall" }> & {
-  /** Runtime row identity is separate from the provider call used to authorize MCP resources. */
-  readonly nativeCallId?: string;
-  readonly outputOmitted?: boolean;
-};
+export type CodexCanonicalDynamicToolCallItem = Extract<ThreadItem, { type: "dynamicToolCall" }> &
+  CodexCanonicalToolResultImages & {
+    /** An execution owner may supply a semantic label independently of the tool identity. */
+    readonly displayTitle?: string | null;
+    readonly outputOmitted?: boolean;
+  };
+
+export type CodexCanonicalMcpToolCallItem = Extract<ThreadItem, { type: "mcpToolCall" }> &
+  CodexCanonicalToolResultImages & {
+    /** Runtime row identity is separate from the provider call used to authorize MCP resources. */
+    readonly nativeCallId?: string;
+    readonly outputOmitted?: boolean;
+  };
 
 /**
  * An execution owner such as Agent Runtime may report the lines it measured from the complete

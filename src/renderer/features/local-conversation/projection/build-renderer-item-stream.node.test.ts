@@ -242,7 +242,7 @@ describe("buildRendererItemStream", () => {
           itemId: "image_view_1",
           kind: "systemEvent",
           semanticKind: "systemEvent",
-          imageViewPaths: ["/tmp/reference.png"],
+          stepImages: [{ source: "/tmp/reference.png", name: "reference.png" }],
           rawItem: { id: "image_view_1", type: "imageView", path: "/tmp/reference.png" },
         }),
         buildEntry({
@@ -268,7 +268,7 @@ describe("buildRendererItemStream", () => {
           itemId: "image_1",
           kind: "systemEvent",
           semanticKind: "imageView",
-          imageViewPaths: ["/tmp/one.png", "/tmp/adjacent.png"],
+          stepImages: [{ source: "/tmp/one.png" }, { source: "/tmp/adjacent.png" }],
           rawItem: { id: "image_1", type: "imageView", path: "/tmp/one.png" },
         }),
         buildEntry({
@@ -279,7 +279,7 @@ describe("buildRendererItemStream", () => {
           itemId: "image_2",
           kind: "systemEvent",
           semanticKind: "imageView",
-          imageViewPaths: ["/tmp/two.png"],
+          stepImages: [{ source: "/tmp/two.png" }],
           rawItem: { id: "image_2", type: "imageView", path: "/tmp/two.png" },
           updatedAt: 3,
         }),
@@ -291,12 +291,14 @@ describe("buildRendererItemStream", () => {
     expect(items.map((item) => item.type).join(",")).toBe("imageView,assistantMessage,imageView");
     const imageView = items[0];
     expect(imageView?.id).toBe("image_1");
-    expect(imageView?.type === "imageView" ? imageView.imageViewPaths?.join(",") : "").toBe(
-      "/tmp/one.png,/tmp/adjacent.png",
-    );
     const laterImageView = items[2];
-    expect(laterImageView?.type === "imageView" ? laterImageView.imageViewPaths : []).toEqual([
-      "/tmp/two.png",
+    expect(
+      imageView?.type === "imageView"
+        ? imageView.entry.stepImages?.map(({ source }) => source)
+        : [],
+    ).toEqual(["/tmp/one.png", "/tmp/adjacent.png"]);
+    expect(laterImageView?.type === "imageView" ? laterImageView.entry.stepImages : []).toEqual([
+      { source: "/tmp/two.png" },
     ]);
   });
 

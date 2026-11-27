@@ -11,7 +11,11 @@ import {
 import { AutomaticApprovalReviewIcon, ChevronRightIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
-import type { CodexConversationChildMembership, ProtocolAppInfo } from "../../../lib/types";
+import type {
+  CodexConversationChildMembership,
+  CodexStepImage,
+  ProtocolAppInfo,
+} from "../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import { cn } from "../../../lib/utils";
 import type {
@@ -26,6 +30,8 @@ import type {
 import { resolveCodexThreadAgentBodyMotion } from "./shared/thread-motion";
 import { useWorkedForLabelText } from "./shared/use-worked-for-label";
 import { CodexShimmerText } from "./shared/codex-shimmer-text";
+import { StepImageStrip } from "./shared/step-images";
+import { collectThreadBlockStepImages } from "../projection/agent-activity-group";
 import { ThreadBlockRenderer } from "./blocks/local-conversation-block-renderer";
 import { ThreadMcpAppsProvider } from "./shared/tools/mcp-apps-context";
 import { ActivityOpeningLabelProvider } from "./shared/tools/activity-group-header-label";
@@ -111,12 +117,15 @@ function AgentBodyToggleRow({
   deniedActionCount,
   workedForLabel,
   collapsed,
+  stepImages,
   onToggle,
 }: {
   collapsedMessageCount: number;
   deniedActionCount: number;
   workedForLabel: string | null;
   collapsed: boolean;
+  /** Pictures the folded work brought back, kept in view while it is folded. */
+  stepImages: readonly CodexStepImage[];
   onToggle: (revealDeniedAction: boolean) => void;
 }) {
   const intl = useIntl();
@@ -150,6 +159,7 @@ function AgentBodyToggleRow({
             )}
           />
         </button>
+        {collapsed ? <StepImageStrip images={stepImages} /> : null}
         {deniedActionCount > 0 ? (
           <NodexTooltip
             tooltipContent={intl.formatMessage({
@@ -511,6 +521,9 @@ function ThreadTurnBody({
                   deniedActionCount={turn.deniedActionCount}
                   workedForLabel={workedForLabel}
                   collapsed={effectiveAgentBodyCollapsed}
+                  stepImages={bodyUnits.flatMap(({ unit, persistent }) =>
+                    persistent ? [] : collectThreadBlockStepImages(unit.block),
+                  )}
                   onToggle={toggleAgentBody}
                 />
               ) : null}

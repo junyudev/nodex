@@ -4,6 +4,7 @@ import { useLayoutEffect } from "react";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type { CodexConversationItem } from "../../../../lib/types";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../components/ui/tooltip";
+import { ContentImageScopeProvider, THIS_COMPUTER_IMAGE_SCOPE } from "@/lib/content-image";
 import { installMeasuredResizeObserver, installWindowApi } from "../../../../test/browser-globals";
 import { renderWithMaitai } from "../../../../test/thread-maitai";
 import { textContent } from "../../../../test/dom";
@@ -130,6 +131,7 @@ function buildAgentActivityGroupBlock(
     header: overrides.header ?? { kind: "summary" },
     status: overrides.status ?? "completed",
     ...overrides,
+    stepImages: overrides.stepImages ?? entries.flatMap((entry) => entry.entry.stepImages ?? []),
   };
 }
 
@@ -1074,105 +1076,92 @@ describe("image-view and completed elicitation leaves", () => {
     installMeasuredResizeObserver({ blockSize: 72, inlineSize: 320 });
   });
 
-  test("projects completed runtime image reads into a collapsed gallery with navigable previews", async () => {
+  test("shows completed runtime image reads on one row by the kept copies of their files", async () => {
     const paths = ["/workspace/rail-states-light.png", "/workspace/rail-states-dark.png"];
-    const readImage = vi.fn(async (_channel: string, input: { path: string }) => ({
-      contentsBase64: input.path === paths[0] ? "Zmlyc3Q=" : "c2Vjb25k",
-      mimeType: "image/png",
-    }));
-    installWindowApi({ invoke: readImage, on: () => () => {} });
-    const sources = ["data:image/png;base64,Zmlyc3Q=", "data:image/png;base64,c2Vjb25k"];
     const at = "2026-10-23T00:00:00.000Z";
-    const items = paths.map((path, ordinal) =>
-      projectAgentRuntimeItem({
-        id: `read-${ordinal}`,
-        threadId: "thread-1",
-        runId: "turn-1",
-        nodeId: null,
-        providerThreadId: null,
-        providerTurnId: null,
-        nativeItemRef: null,
-        parentItemId: null,
-        ordinal,
-        status: "completed",
-        title: `Read ${path}`,
-        startedAt: at,
-        completedAt: at,
-        updatedAt: at,
-        type: "dynamic_tool",
-        toolName: "Read",
-        viewedImagePath: path,
-        input: { file_path: path },
-        output: { type: "image", file: { type: "image/png", sizeBytes: 128 } },
-      } satisfies AgentTurnItem),
-    );
-    const views = projectCodexCanonicalTurnItemViews({
+    const read = (path: string, ordinal: number, kept: boolean): AgentTurnItem => ({
+      id: `read-${ordinal}`,
       threadId: "thread-1",
-      turnId: "turn-1",
-      items: items.flatMap((item) => item ?? []),
-      observedAtMs: 1,
-      turnStatus: "completed",
+      runId: "turn-1",
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal,
+      status: "completed",
+      title: `Read ${path}`,
+      startedAt: at,
+      completedAt: at,
+      updatedAt: at,
+      type: "dynamic_tool",
+      toolName: "Read",
+      viewedImagePath: path,
+      input: { file_path: path },
+      output: { type: "image", file: { type: "image/png", sizeBytes: 128 } },
+      ...(kept
+        ? {
+            attachments: [
+              {
+                type: "image" as const,
+                id: `copy-${ordinal}`,
+                name: path.split("/").at(-1)!,
+                mimeType: "image/png",
+                sizeBytes: 128,
+              },
+            ],
+          }
+        : {}),
     });
-    const blocks = buildRendererItemStream({
-      entries: views.map((view, index) =>
-        projectCodexItemViewToTranscriptEntry(view, "replay", index),
-      ),
-      requests: [],
-      turnStatus: "completed",
-    });
+    const project = (items: readonly AgentTurnItem[]) =>
+      buildRendererItemStream({
+        entries: projectCodexCanonicalTurnItemViews({
+          threadId: "thread-1",
+          turnId: "turn-1",
+          items: items.flatMap((item) => projectAgentRuntimeItem(item) ?? []),
+          observedAtMs: 1,
+          turnStatus: "completed",
+        }).map((view, index) => projectCodexItemViewToTranscriptEntry(view, "replay", index)),
+        requests: [],
+        turnStatus: "completed",
+      });
+
+    // A read whose picture was never kept stays the file read it was.
+    expect(project([read(paths[0]!, 0, false)]).map((block) => block.type)).toEqual([
+      "dynamicToolCall",
+    ]);
+
+    const blocks = project(paths.map((path, ordinal) => read(path, ordinal, true)));
     expect(blocks).toHaveLength(1);
     const block = blocks[0];
-    if (block?.type !== "imageView")
-      throw new Error("Expected completed reads to form an image gallery");
+    if (block?.type !== "imageView") throw new Error("Expected completed reads to form one row");
+    const resolveRuntimeAttachment = vi.fn(async () => "data:image/png;base64,Zmlyc3Q=");
     const view = render(
       <TestQueryProvider>
-        <ThreadBlockRenderer block={block} isLatestTurn isStreamingTurn={false} />
+        <TooltipProvider>
+          <ContentImageScopeProvider
+            scope={{
+              ...THIS_COMPUTER_IMAGE_SCOPE,
+              conversationId: "thread-1",
+              hostId: "local",
+              resolveRuntimeAttachment,
+            }}
+          >
+            <ThreadBlockRenderer block={block} isLatestTurn isStreamingTurn={false} />
+          </ContentImageScopeProvider>
+        </TooltipProvider>
       </TestQueryProvider>,
     );
 
-    expect(view.queryAllByRole("button", { name: "Inspected image" })).toHaveLength(0);
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Viewed 2 images" }));
-      await Promise.resolve();
-    });
-    const thumbnails = await view.findAllByRole("button", { name: "Inspected image" });
-    expect(thumbnails).toHaveLength(2);
-    expect(
-      thumbnails.map((thumbnail) => within(thumbnail).getByRole("img").getAttribute("src")),
-    ).toEqual(sources);
-    expect(readImage).toHaveBeenCalledTimes(2);
-
-    await act(async () => {
-      fireEvent.click(thumbnails[0]!);
-      await Promise.resolve();
-    });
-    const preview = await view.findByRole("dialog", { name: "Image preview" });
-    expect(within(preview).getByRole("img", { name: "Inspected image" }).getAttribute("src")).toBe(
-      sources[0],
-    );
-    await act(async () => {
-      fireEvent.click(within(preview).getByRole("button", { name: "Next image" }));
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(view.getByRole("dialog", { name: "Image preview" })).toBe(preview);
-      expect(
-        within(view.getByRole("dialog", { name: "Image preview" }))
-          .getByRole("img", { name: "Inspected image" })
-          .getAttribute("src"),
-      ).toBe(sources[1]);
-    });
-    await act(async () => {
-      fireEvent.click(
-        within(view.getByRole("dialog", { name: "Image preview" })).getByRole("button", {
-          name: "Close image preview",
-        }),
-      );
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(view.queryByRole("dialog", { name: "Image preview" })).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(thumbnails[1]));
-    expect(readImage).toHaveBeenCalledTimes(2);
+    // The pictures are on the row already; there is nothing to open.
+    expect(view.getByText("Viewed 2 images")).toBeTruthy();
+    expect(view.getByTestId("image-view-activity").querySelector("[aria-expanded]")).toBeNull();
+    const thumbnails = await view.findAllByRole("button", { name: /^Open rail-states-/ });
+    expect(thumbnails.map((thumbnail) => thumbnail.getAttribute("aria-label"))).toEqual([
+      "Open rail-states-light.png",
+      "Open rail-states-dark.png",
+    ]);
+    expect(resolveRuntimeAttachment).toHaveBeenCalledTimes(2);
   });
 
   test("refetches a failed generated-image preview at most twice for its resolved source", async ({

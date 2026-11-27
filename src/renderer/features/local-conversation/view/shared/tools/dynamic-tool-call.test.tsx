@@ -221,35 +221,41 @@ describe("DynamicToolCall", () => {
     expect(view.getByText("ready")).toBeTruthy();
   });
 
-  test("script activities keep their title and reveal code and typed media only when opened", async () => {
+  test("script activities show their pictures on the row and reveal code and other media when opened", async () => {
     const imageUrl = "data:image/png;base64,aW1hZ2U=";
     const audioUrl = "data:audio/wav;base64,YXVkaW8=";
     const view = renderWithQueryClient(
       <TooltipProvider>
         <DynamicToolCall
-          item={buildDynamicEntry({
-            namespace: "node_repl",
-            tool: "js",
-            arguments: { title: "  Inspect\n package metadata ", code: "console.log('ready')" },
-            contentItems: [
-              { type: "inputText", text: "ready" },
-              { type: "inputImage", imageUrl },
-              { type: "inputAudio", audioUrl },
-            ],
-          })}
+          item={{
+            ...buildDynamicEntry({
+              namespace: "node_repl",
+              tool: "js",
+              arguments: { title: "  Inspect\n package metadata ", code: "console.log('ready')" },
+              contentItems: [
+                { type: "inputText", text: "ready" },
+                { type: "inputImage", imageUrl },
+                { type: "inputAudio", audioUrl },
+              ],
+            }),
+            stepImages: [{ source: imageUrl }],
+          }}
         />
       </TooltipProvider>,
     );
     const toggle = view.getByRole("button", { name: "Inspect package metadata" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(view.queryByRole("img", { name: "Tool output" })).toBeNull();
+    // The picture is on the row before it opens, and opening it does not repeat the picture.
+    const picture = await view.findByRole("img", { name: "Tool output" });
+    expect(picture.getAttribute("src")).toBe(imageUrl);
+    expect(view.container.querySelector("audio")).toBeNull();
     await act(async () => {
       fireEvent.click(toggle);
       await Promise.resolve();
     });
     expect(view.getByText("console.log('ready')")).toBeTruthy();
     expect(view.getByText("ready")).toBeTruthy();
-    expect(view.getByRole("img", { name: "Tool output" }).getAttribute("src")).toBe(imageUrl);
+    expect(view.getAllByRole("img", { name: "Tool output" })).toEqual([picture]);
     expect(view.container.querySelector("audio")?.getAttribute("src")).toBe(audioUrl);
     expect(view.getByRole("button", { name: "Inspect tool call" })).toBeTruthy();
   });
