@@ -262,6 +262,7 @@ type QueryEndpointPolicy =
   | "inbox:summary"
   | "inbox:counts"
   | "inbox:window"
+  | "inbox:session-follow-ups"
   | "inbox:activity"
   | "inbox:prepare-confirmation"
   | "inbox:skill-availability"

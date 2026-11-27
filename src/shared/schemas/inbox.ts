@@ -30,6 +30,7 @@ import type {
   InboxSetKindInput,
   InboxSummaryInput,
   InboxWindowInput,
+  SessionFollowUpsInput,
 } from "../inbox";
 import { isBoundedOperationId } from "../operation-identity";
 import { AgentRuntimeModelSelectionSchema } from "./agent-runtime-api";
@@ -169,6 +170,14 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
       skills: InboxSuggestedSkillsSchema.default([]),
     })
     .strict(),
+  z.strictObject({
+    type: z.literal("fork_chat"),
+    sessionId: id,
+    newWorktree: z.boolean().nullable().optional(),
+    prompt,
+    additions,
+    skills: InboxSuggestedSkillsSchema.default([]),
+  }),
   z.object({ type: z.literal("move_to_project"), projectId: id }).strict(),
 ]) satisfies z.ZodType<InboxDispatchAction>;
 
@@ -200,6 +209,10 @@ export const InboxExecutionSelectionSchema = z
 export const InboxSummaryInputSchema = z
   .object({ scope: InboxScopeSchema })
   .strict() satisfies z.ZodType<InboxSummaryInput>;
+
+export const SessionFollowUpsInputSchema = z
+  .object({ sessionId: id })
+  .strict() satisfies z.ZodType<SessionFollowUpsInput>;
 
 export const InboxChatTargetsInputSchema = z
   .object({

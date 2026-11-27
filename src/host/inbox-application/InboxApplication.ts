@@ -52,6 +52,8 @@ import type {
   InboxSummaryInput,
   InboxWindow,
   InboxWindowInput,
+  SessionFollowUps,
+  SessionFollowUpsInput,
 } from "../../shared/inbox";
 import {
   InboxChatTargetsInputSchema,
@@ -70,6 +72,7 @@ import {
   InboxSuggestionStopInputSchema,
   InboxSummaryInputSchema,
   InboxWindowInputSchema,
+  SessionFollowUpsInputSchema,
 } from "../../shared/schemas/inbox";
 import { writeInlineMarkdown } from "../../shared/nodex-markdown";
 import { createUuidV7 } from "../../shared/uuid-v7";
@@ -83,6 +86,7 @@ import {
   inboxDispatchActionToCore,
   activityWindowFromCore,
   inboxItemFromCore,
+  sessionFollowUpsFromCore,
   inboxScopeToCore,
   inboxStopSuggestionToCore,
   inboxSummaryFromCore,
@@ -166,6 +170,7 @@ export class InboxApplication extends Context.Service<
     /** Messages waiting in the Library Inbox and in each Project's Inbox. */
     readonly counts: InboxEffect<InboxCounts>;
     readonly window: (input: InboxWindowInput) => InboxEffect<InboxWindow>;
+    readonly sessionFollowUps: (input: SessionFollowUpsInput) => InboxEffect<SessionFollowUps>;
     readonly message: (
       pageId: string,
     ) => InboxEffect<{ readonly item: InboxWindow["items"][number]; readonly storeEpoch: string }>;
@@ -425,6 +430,24 @@ export const make = Effect.gen(function* () {
         storeEpoch: snapshot.store_epoch,
       } satisfies InboxWindow;
     });
+  });
+
+  const sessionFollowUps = Effect.fn("InboxApplication.sessionFollowUps")(function* (
+    input: SessionFollowUpsInput,
+  ) {
+    const parsed = yield* parse("session-follow-ups", () =>
+      SessionFollowUpsInputSchema.parse(input),
+    );
+    const snapshot = yield* read("session-follow-ups", {
+      kind: "session_follow_ups",
+      session_id: parsed.sessionId,
+    });
+    return yield* parse("session-follow-ups", () =>
+      sessionFollowUpsFromCore(
+        expectVariant(snapshot, "session_follow_ups").items,
+        snapshot.store_epoch,
+      ),
+    );
   });
 
   const message = Effect.fn("InboxApplication.message")(function* (pageId: string) {
@@ -753,7 +776,11 @@ export const make = Effect.gen(function* () {
       return yield* fail("prepare-confirmation")(
         new Error("A skill was not part of this suggestion"),
       );
-    if (action.type === "new_chat" || action.type === "send_to_chat") {
+    if (
+      action.type === "new_chat" ||
+      action.type === "send_to_chat" ||
+      action.type === "fork_chat"
+    ) {
       const required = new Set(inboxSkillTokens(action.prompt, "$"));
       action = {
         ...action,
@@ -1442,6 +1469,7 @@ export const make = Effect.gen(function* () {
     chatTargets,
     counts,
     window,
+    sessionFollowUps,
     message,
     send,
     replyDestination,

@@ -196,6 +196,24 @@ pub(super) fn create_session(
         )
         .optional()?
         .is_some();
+    // Inbox confirmation owns this Session. An interrupted delivery must not recreate it
+    // after deletion or attach a fork after the reviewed dispatch has been withdrawn.
+    if launch_request_id.starts_with(super::inbox::reliable::FORK_LAUNCH_PREFIX) {
+        let confirmed = existing && connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM inbox_handoffs handoff JOIN inbox_proposals proposal USING(proposal_id)
+              WHERE handoff.launch_id=?1 AND proposal.dispatch_session_id=?2 AND proposal.state='dispatching'
+                AND json_extract(proposal.action_json,'$.type')='fork_chat')",
+            params![launch_request_id, session_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !confirmed {
+            return Err(StoreError::new(
+                StoreErrorCode::Conflict,
+                "The Inbox fork is no longer available",
+                false,
+            ));
+        }
+    }
     if existing && pending_historical_run_id.is_some() {
         return Err(StoreError::new(
             StoreErrorCode::Conflict,

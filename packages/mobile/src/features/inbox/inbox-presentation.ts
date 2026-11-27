@@ -20,6 +20,8 @@ export const proposalAction = (
   switch (action.type) {
     case "new_chat":
       return { label: "Start chat", icon: "chat" };
+    case "fork_chat":
+      return { label: "Fork chat", icon: "chat" };
     case "send_to_chat":
       return { label: "Send to chat", icon: "sendToChat" };
     case "move_to_project":
@@ -46,6 +48,7 @@ export const proposalDestination = (action: InboxProposalAction): string | null 
     case "new_chat":
       return action.projectName ?? "Library";
     case "send_to_chat":
+    case "fork_chat":
       return action.chatTitle;
     case "move_to_project":
       return action.projectName;
@@ -65,6 +68,8 @@ export const proposalHeadline = (action: InboxProposalAction, now = new Date()):
   switch (action.type) {
     case "new_chat":
       return action.projectName ? `Start a chat in ${action.projectName}` : "Start a chat";
+    case "fork_chat":
+      return action.chatTitle ? `Fork “${action.chatTitle}”` : "Fork chat";
     case "send_to_chat":
       return action.chatTitle ? `Send to ${action.chatTitle}` : "Send to a chat";
     case "move_to_project":
@@ -93,7 +98,9 @@ export const proposalAttribution = ({
 
 /** The decision that authorizes a suggestion exactly as it was shown, and how it is confirmed. */
 export const proposalSkills = (proposal: InboxProposal) =>
-  proposal.action.type === "new_chat" || proposal.action.type === "send_to_chat"
+  proposal.action.type === "new_chat" ||
+  proposal.action.type === "send_to_chat" ||
+  proposal.action.type === "fork_chat"
     ? (proposal.action.skills ?? [])
     : [];
 
@@ -175,7 +182,8 @@ export function outcomeLabel(message: InboxEntry): string | null {
   if (message.rowKind !== "intake" || message.waiting) return null;
   const action = message.proposal?.action.type;
   if (message.proposal?.state === "completed") {
-    if (action === "new_chat" || action === "send_to_chat") return "Sent to chat";
+    if (action === "new_chat" || action === "send_to_chat" || action === "fork_chat")
+      return "Sent to chat";
     if (action === "move_to_project") return "Moved";
     if (action === "keep") return "Added to Todo";
     if (action === "save_to_notes") return "Saved to Notes";

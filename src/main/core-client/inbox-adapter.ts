@@ -21,6 +21,7 @@ import type {
   InboxThreadStatus,
   InboxPageBasis,
   InboxExecutionSelection,
+  SessionFollowUps,
 } from "../../shared/inbox";
 import { InboxExecutionSelectionSchema } from "../../shared/schemas/inbox";
 import type { ProjectWorkspaceApplyResult } from "./types";
@@ -98,6 +99,15 @@ export const inboxDispatchActionFromCore = (
         additions: action.additions ?? [],
         skills: action.skills ?? [],
       };
+    case "fork_chat":
+      return {
+        type: action.type,
+        sessionId: action.session_id,
+        newWorktree: action.new_worktree ?? null,
+        prompt: action.prompt,
+        additions: action.additions ?? [],
+        skills: action.skills ?? [],
+      };
     case "move_to_project":
       return { type: "move_to_project", projectId: action.project_id };
   }
@@ -163,6 +173,15 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
       return {
         type: "send_to_chat",
         session_id: action.sessionId,
+        prompt: action.prompt,
+        additions: [...action.additions],
+        skills: [...(action.skills ?? [])],
+      };
+    case "fork_chat":
+      return {
+        type: action.type,
+        session_id: action.sessionId,
+        new_worktree: action.newWorktree ?? null,
         prompt: action.prompt,
         additions: [...action.additions],
         skills: [...(action.skills ?? [])],
@@ -382,6 +401,23 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
     : null,
   revision: item.revision,
   basis: inboxPageBasisFromCore(item.basis),
+});
+
+export const sessionFollowUpsFromCore = (
+  items: readonly Schemas["SessionFollowUp"][],
+  storeEpoch: string,
+): SessionFollowUps => ({
+  storeEpoch,
+  items: items.map((item) => ({
+    pageId: item.pageId,
+    pageKey: item.pageKey ?? null,
+    title: item.title,
+    runId: item.runId ?? null,
+    submittedAt: item.submittedAt,
+    status: item.status ?? null,
+    state: item.state,
+    basis: inboxPageBasisFromCore(item.basis),
+  })),
 });
 
 /** One Activity window; a message fact's message reads as the Inbox reads its messages. */

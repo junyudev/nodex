@@ -231,7 +231,10 @@ const SuggestionDetail = ({
   const { catalog } = useAgentCatalog();
   const { projects } = useProjects();
   const { action } = proposal;
-  const chatAction = action.type === "new_chat" || action.type === "send_to_chat" ? action : null;
+  const chatAction =
+    action.type === "new_chat" || action.type === "send_to_chat" || action.type === "fork_chat"
+      ? action
+      : null;
   return (
     <View className="gap-4">
       <View className="gap-1.5">

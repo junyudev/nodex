@@ -43,6 +43,7 @@ interface CompactToolOutput {
   isError?: true;
   sessionId?: string;
   threadId?: string;
+  pageId?: string;
   messageId?: string;
   taskId?: string;
   scheduledTaskId?: string;
@@ -204,6 +205,8 @@ export function compactDynamicToolOutput(
     for (const key of [
       "sessionId",
       "threadId",
+      // A Page a call created outside a content result, such as an Inbox message.
+      "pageId",
       "messageId",
       "taskId",
       "scheduledTaskId",

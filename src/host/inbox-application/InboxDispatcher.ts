@@ -34,7 +34,7 @@ import {
 } from "./inbox-suggestions";
 import { InboxRuntimeError } from "./InboxRuntimeError";
 import { inboxPromptImages, makeInboxImageLoader } from "./inbox-images";
-import { make as makeRoutingContext } from "./InboxRoutingContext";
+import { make as makeRoutingContext, makeOriginChats } from "./InboxRoutingContext";
 
 const SETTLE_DELAY_MS = 1_500;
 const SAFETY_POLL = "60 seconds";
@@ -46,6 +46,7 @@ export const make = Effect.gen(function* () {
   const decisions = yield* DecisionRuns;
   const skillInventory = yield* makeInboxSkills;
   const prepareContext = yield* makeRoutingContext;
+  const originChats = yield* makeOriginChats;
   const loadImages = yield* makeInboxImageLoader;
   const logger = getLogger({ component: "inbox-dispatcher" });
   const admission = yield* Semaphore.make(1);
@@ -190,10 +191,12 @@ export const make = Effect.gen(function* () {
           const loaded = yield* loadImages(
             request.context.entries.flatMap((entry) => entry.images),
           );
+          const origins = yield* originChats(request.context);
           const text = yield* Effect.try({
             try: () =>
               renderInboxRoutingRequest({
                 context: request.context,
+                originChats: origins,
                 instructions: current.instructions,
                 request: {
                   requestId: request.request_id,

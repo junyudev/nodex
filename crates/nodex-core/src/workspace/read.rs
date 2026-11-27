@@ -319,6 +319,16 @@ pub(super) fn read(
                 &window,
             )?,
         }),
+        ProjectWorkspaceRead::SessionFollowUps { session_id } => {
+            Ok(ProjectWorkspaceReadValue::SessionFollowUps {
+                items: super::inbox_read::read_session_follow_ups(
+                    connection,
+                    library_id,
+                    &member,
+                    &session_id,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::InboxPendingSuggestions { limit } => {
             Ok(ProjectWorkspaceReadValue::InboxPendingSuggestions {
                 entries: super::inbox_read::read_pending_suggestions(

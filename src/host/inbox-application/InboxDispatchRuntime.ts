@@ -1,6 +1,8 @@
 import { makeInboxSkills } from "./inbox-skills";
 import { deliverChatLaunch } from "../work-application/chat-launch-delivery";
 import { createHash } from "node:crypto";
+import { relative, resolve } from "node:path";
+import { isExecutionWorkspacePathWithinRoot } from "../../main/codex/codex-execution-workspace-roots";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -163,7 +165,7 @@ export const make = Effect.gen(function* () {
   ) {
     if (yield* inbox.executionHeld({ pageIds: work.page_ids, sessionId: work.session_id })) return;
     const action = inboxDispatchActionFromCore(work.action);
-    if (action.type !== "new_chat" && action.type !== "send_to_chat")
+    if (action.type !== "new_chat" && action.type !== "send_to_chat" && action.type !== "fork_chat")
       return yield* inbox.failDispatch(
         work,
         "This decision does not send a chat message",
@@ -208,23 +210,39 @@ export const make = Effect.gen(function* () {
       if (!location.available)
         return yield* inbox.failDispatch(work, location.reason, "unavailable");
     }
+    const fork =
+      action.type === "fork_chat"
+        ? yield* runtime.fork({
+            source: { sessionId: action.sessionId },
+            sessionId: work.session_id,
+            requestId: work.launch_id,
+            acceptedAt: Date.parse(work.confirmed_at),
+            environment: "same-directory",
+            inbox: { newWorktree: action.newWorktree ?? null },
+          })
+        : null;
     const frozenSkills = work.skill_invocations ?? [];
     const currentSkills = yield* skillInventory.resolve(
-      action,
+      fork ? { type: "send_to_chat", sessionId: fork.sessionId } : action,
       work.execution_selection?.model_selection.instanceId,
       frozenSkills.map(({ name }) => name),
     );
-    const skills = frozenSkills.filter((skill) =>
-      currentSkills.some(
-        (candidate) =>
-          candidate.name === skill.name &&
-          candidate.path === skill.path &&
-          candidate.cwd === skill.cwd &&
-          candidate.instanceId === skill.instanceId,
-      ),
+    const matches = frozenSkills.map((skill) =>
+      currentSkills.find((candidate) => {
+        if (candidate.name !== skill.name || candidate.instanceId !== skill.instanceId)
+          return false;
+        if (candidate.path === skill.path && (fork || candidate.cwd === skill.cwd)) return true;
+        // A fork's new worktree uses the corresponding copy of a workspace-local skill.
+        return (
+          fork !== null &&
+          isExecutionWorkspacePathWithinRoot(skill.path, skill.cwd) &&
+          candidate.path === resolve(candidate.cwd, relative(skill.cwd, skill.path))
+        );
+      }),
     );
+    const skills = matches.filter((skill) => skill !== undefined);
     const unavailableSkills = frozenSkills
-      .filter((skill) => !skills.includes(skill))
+      .filter((_, index) => !matches[index])
       .map(({ name }) => name);
     const message = yield* prepareMessage({ ...work, skill_invocations: skills }, work.final_text);
     if (action.type === "new_chat") {
@@ -265,11 +283,12 @@ export const make = Effect.gen(function* () {
       });
       return yield* inbox.completeDispatch(work, threadId, unavailableSkills);
     }
-    if (session.executionRef) {
+    const runtimeThreadId = fork?.threadId ?? session.executionRef?.threadId;
+    if (runtimeThreadId) {
       if (
         work.target_execution_ref &&
-        (session.executionRef.runtimeId !== work.target_execution_ref.runtime_id ||
-          session.executionRef.threadId !== work.target_execution_ref.thread_id)
+        (session.executionRef?.runtimeId !== work.target_execution_ref.runtime_id ||
+          runtimeThreadId !== work.target_execution_ref.thread_id)
       )
         return yield* inbox.failDispatch(
           work,
@@ -278,12 +297,12 @@ export const make = Effect.gen(function* () {
         );
       yield* runtime.sendMessage({
         sessionId: work.session_id,
-        threadId: session.executionRef.threadId,
+        threadId: runtimeThreadId,
         mode: "queue",
         messageFingerprint: inboxDispatchFingerprint(work),
         message,
       });
-      return yield* inbox.completeDispatch(work, session.executionRef.threadId, unavailableSkills);
+      return yield* inbox.completeDispatch(work, runtimeThreadId, unavailableSkills);
     }
     const thread = session.thread;
     if (
@@ -332,7 +351,15 @@ export const make = Effect.gen(function* () {
             error.admissionRejected
               ? reconcile(work).pipe(
                   Effect.flatMap((settled) =>
-                    settled ? Effect.void : inbox.failDispatch(work, error.message, "rejected"),
+                    settled
+                      ? Effect.void
+                      : inbox.failDispatch(
+                          work,
+                          error.message,
+                          work.action.type === "fork_chat" && error.operation === "fork"
+                            ? "unavailable"
+                            : "rejected",
+                        ),
                   ),
                 )
               : work.question_response && error.questionReason

@@ -84,6 +84,15 @@ export type InboxDispatchAction =
       readonly additions: readonly string[];
       readonly skills?: readonly InboxSuggestedSkill[];
     }
+  | {
+      readonly type: "fork_chat";
+      readonly sessionId: string;
+      /** Use a new managed worktree when Git is available if unset. */
+      readonly newWorktree?: boolean | null;
+      readonly prompt: string;
+      readonly additions: readonly string[];
+      readonly skills?: readonly InboxSuggestedSkill[];
+    }
   | { readonly type: "move_to_project"; readonly projectId: string }
   | {
       /** Admit a frozen decision using the message’s reviewed instructions. */
@@ -121,6 +130,9 @@ export interface InboxSuggestedSkill {
   readonly reason: string;
 }
 
+/** Distinguishes a bound Inbox fork from a launch whose empty root can be repaired. */
+export const INBOX_FORK_LAUNCH_PREFIX = "inbox-fork:";
+
 export interface InboxSkillInvocation {
   readonly name: string;
   readonly path: string;
@@ -149,7 +161,9 @@ export interface InboxSkillAvailability {
 }
 
 export const inboxActionSkills = (action: InboxDispatchAction | null | undefined) =>
-  action?.type === "new_chat" || action?.type === "send_to_chat" ? (action.skills ?? []) : [];
+  action?.type === "new_chat" || action?.type === "send_to_chat" || action?.type === "fork_chat"
+    ? (action.skills ?? [])
+    : [];
 
 /** Most additions one chat decision carries, and the longest each may be. */
 export const MAX_INBOX_ADDITIONS = 12;
@@ -359,6 +373,27 @@ export interface InboxItem {
 export interface InboxPageBasis {
   readonly pageId: string;
   readonly contentHash: string;
+}
+
+export interface SessionFollowUpsInput {
+  readonly sessionId: string;
+}
+
+export type SessionFollowUpState = components["schemas"]["SessionFollowUpState"];
+
+export type SessionFollowUp = Readonly<
+  Omit<components["schemas"]["SessionFollowUp"], "pageKey" | "runId" | "status" | "basis"> & {
+    pageKey: string | null;
+    runId: string | null;
+    status: InboxPageStatus | null;
+    basis: InboxPageBasis;
+  }
+>;
+
+export interface SessionFollowUps {
+  readonly storeEpoch: string;
+  /** Up to 50 Agent messages, newest first. */
+  readonly items: readonly SessionFollowUp[];
 }
 
 export interface InboxChatTargetsInput {

@@ -5516,6 +5516,8 @@ CREATE INDEX idx_inbox_entries_suggestion ON inbox_entries(library_id, suggestio
 CREATE INDEX idx_inbox_entries_source_budget ON inbox_entries(library_id, source_budget_key)
   WHERE source_budget_key IS NOT NULL;
 CREATE INDEX idx_inbox_entries_scope ON inbox_entries(library_id, scope_project_id, seq);
+CREATE INDEX idx_inbox_entries_source_session ON inbox_entries(library_id, source_session_id, seq)
+  WHERE source_kind = 'agent';
 CREATE INDEX idx_inbox_proposals_state ON inbox_proposals(library_id, state, confirmed_at);
 CREATE INDEX idx_inbox_proposals_dispatch_session ON inbox_proposals(dispatch_session_id)
   WHERE dispatch_session_id IS NOT NULL;
@@ -5663,7 +5665,7 @@ END;
 CREATE TRIGGER automation_decisions_name_immutable BEFORE UPDATE OF automation_name ON automation_decisions WHEN OLD.automation_name<>'' AND NEW.automation_name IS NOT OLD.automation_name BEGIN SELECT RAISE(ABORT,'Automation decision names are immutable'); END;
 CREATE TRIGGER intake_disposition_confirmed AFTER UPDATE OF confirmed_at ON inbox_proposals
 WHEN NEW.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at
- AND json_extract(NEW.action_json,'$.type') IN ('move_to_project','keep','save_to_notes','plan','new_chat','send_to_chat','execute_decision')
+ AND json_extract(NEW.action_json,'$.type') IN ('move_to_project','keep','save_to_notes','plan','new_chat','send_to_chat','fork_chat','execute_decision')
 BEGIN
   INSERT INTO intake_dispositions(library_id,page_id,project_id,disposition,proposal_id,at)
   SELECT entry.library_id,entry.page_id,COALESCE(note.origin_project_id,scope.project_id),
@@ -6096,4 +6098,4 @@ CREATE TABLE inbox_start_requests (
   CHECK (consent_basis IS NULL OR proposal_id IS NULL)
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version=224;
+PRAGMA user_version=225;

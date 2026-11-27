@@ -598,6 +598,205 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
 }
 
 #[test]
+fn inbox_fork_confirm_creates_the_destination_once_and_freezes_the_handoff() {
+    use nodex_core_contracts::inbox::{InboxConfirmedBy, ProjectWorkspaceInboxSuggestedDispatch};
+    use nodex_core_contracts::library::AgentWorkSelection;
+    for project_id in [Some(PROJECT), None] {
+        let w = seeded_workspace();
+        let m = &w.module;
+        let agent = AgentWorkSelection {
+            instance_id: "agent:source".into(),
+            model: "model:source".into(),
+            effort: Some("high".into()),
+        };
+        apply_host(
+            m,
+            "fork:source",
+            ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                pending_historical_run_id: None,
+                decision_run: None,
+                session_id: "session:source".into(),
+                project_id: project_id.map(str::to_owned),
+                title: "Original chat".into(),
+                initial_page_ids: vec![],
+                agent_selection: Some(agent.clone()),
+                side_chat_source_session_id: None,
+                runtime_id: "runtime:inbox".into(),
+                runtime_thread_id: "thread:source".into(),
+                launch_request_id: "launch:source".into(),
+            },
+        );
+        for (id, title, body) in [
+            ("first", "Follow-up work", "Original first message."),
+            ("second", "More context", "Original second message."),
+        ] {
+            apply_host(
+                m,
+                &format!("capture:{id}"),
+                ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
+                    reply_to_page_id: None,
+                    expected_store_epoch: None,
+                    page_id: format!("page:{id}"),
+                    document_id: format!("document:{id}"),
+                    body: body.into(),
+                    title: Some(title.into()),
+                    project_id: project_id.map(str::to_owned),
+                },
+            );
+        }
+        apply_host(
+            m,
+            "fork:consent",
+            ProjectWorkspaceIntent::SetInboxRoutingConsent {
+                start_my_requests: true,
+                initialize_only: false,
+            },
+        );
+        let pages = vec!["page:first".into(), "page:second".into()];
+        grouped_request(m, "request:fork", pages.clone());
+        let action = ProjectWorkspaceInboxDispatchAction::ForkChat {
+            session_id: "session:source".into(),
+            new_worktree: None,
+            prompt: "Follow up in the original context".into(),
+            additions: vec!["Check both reports.".into()],
+            skills: vec![],
+        };
+        let advice = |explicit_request| ProjectWorkspaceIntent::SettleInboxSuggestion {
+            decision_session_id: None,
+            request_id: "request:fork".into(),
+            generation: 1,
+            titles: vec![],
+            suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
+                proposal_id: "proposal:fork".into(),
+                page_ids: pages.clone(),
+                action: action.clone(),
+                entry_kind: None,
+                summary: "Fork the source".into(),
+                rationale: None,
+                explicit_request,
+            }],
+            produced_by: None,
+            error: None,
+            automatic_dispatch: true,
+        };
+        assert_eq!(
+            apply_host_error(m, "fork:explicit", advice(true)),
+            CoreErrorCode::InvalidInput,
+        );
+        apply_host(m, "fork:advice", advice(false));
+        let scope = project_id
+            .map(|id| ProjectWorkspaceInboxScope::Project {
+                project_id: id.into(),
+            })
+            .unwrap_or(ProjectWorkspaceInboxScope::Library);
+        let reviewed = window_in(m, scope.clone(), ProjectWorkspaceInboxWindowFilter::Inbox)
+            .into_iter()
+            .find(|entry| entry.page_id == "page:first")
+            .and_then(|entry| entry.proposal)
+            .expect("open fork suggestion");
+        assert_eq!(reviewed.chat.unwrap().session_id, "session:source");
+        let confirm =
+            |confirmed_by, expected_revision| ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                skill_invocations: vec![],
+                confirmed_by,
+                expected_store_epoch: "epoch-1".into(),
+                basis: reviewed.basis.clone(),
+                execution_selection: None,
+                proposal_id: "proposal:fork".into(),
+                expected_revision,
+                action: Some(action.clone()),
+                session_id: Some("session:destination".into()),
+            };
+        assert!(
+            m.apply(
+                &host(),
+                request(
+                    "fork:auto",
+                    confirm(InboxConfirmedBy::Nodex, reviewed.revision)
+                )
+            )
+            .is_err()
+        );
+        assert_eq!(
+            apply_host_error(
+                m,
+                "fork:stale",
+                confirm(InboxConfirmedBy::User, reviewed.revision + 1)
+            ),
+            CoreErrorCode::RevisionConflict,
+        );
+        assert!(outbox(m).is_empty());
+        let confirm = confirm(InboxConfirmedBy::User, reviewed.revision);
+        m.apply(&host(), request("fork:confirm", confirm.clone()))
+            .unwrap();
+        assert!(
+            m.apply(&host(), request("fork:confirm", confirm))
+                .unwrap()
+                .committed
+                .receipt
+                .mutation
+                .duplicate
+        );
+        let work = outbox(m);
+        assert_eq!(work.len(), 1);
+        let work = &work[0];
+        assert_eq!(work.action, action);
+        assert_eq!(work.session_id, "session:destination");
+        assert_eq!(work.project_id.as_deref(), project_id);
+        assert_eq!(work.page_ids, pages);
+        assert!(
+            work.launch_id
+                .starts_with(super::inbox::reliable::FORK_LAUNCH_PREFIX)
+        );
+        let text = work.final_text.as_deref().unwrap();
+        assert!(text.starts_with("Follow up in the original context\n\nCheck both reports."));
+        assert!(text.contains("> Original first message."));
+        assert!(text.contains("> Original second message."));
+        assert_eq!(
+            count(
+                &w,
+                "SELECT count(*) FROM inbox_handoffs WHERE proposal_id='proposal:fork'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(
+                &w,
+                "SELECT count(*) FROM project_session_pages WHERE session_id='session:destination'"
+            ),
+            2
+        );
+        let processed = window_in(m, scope, ProjectWorkspaceInboxWindowFilter::Processed);
+        for page in &pages {
+            assert_eq!(status_of(&w, page).as_deref(), Some("doing"));
+            let assigned = w.kernel.readers().read_default(|c| {
+                let work: String = c.query_row("SELECT value_json FROM block_properties WHERE block_id=?1 AND property_key='work'", [page], |r| r.get(0))?;
+                Ok(serde_json::from_str::<serde_json::Value>(&work).unwrap())
+            }).unwrap();
+            assert_eq!(assigned["assignee"]["instance_id"], agent.instance_id);
+            assert_eq!(assigned["assignee"]["model"], agent.model);
+            assert_eq!(assigned["assignee"]["effort"], "high");
+            assert_eq!(assigned["auto_start"], false);
+            let destination = processed
+                .iter()
+                .find(|entry| entry.page_id == *page)
+                .and_then(|entry| entry.proposal.as_ref())
+                .and_then(|proposal| proposal.chat.as_ref())
+                .expect("processed message links its destination");
+            assert_eq!(destination.session_id, "session:destination");
+            assert_eq!(destination.display_title, "Follow-up work");
+        }
+        assert!(
+            super::test_support::activity_rows(m)
+                .iter()
+                .any(|row| row.page_id.as_deref() == Some("page:first")
+                    && row.description.ends_with("forked chat “Follow-up work”"))
+        );
+    }
+}
+
+#[test]
 fn chat_suggestions_freeze_only_the_confirmed_additions_and_skills() {
     use nodex_core_contracts::inbox::{
         InboxSkillInvocation, InboxSuggestedSkill, ProjectWorkspaceInboxChatAgent,
@@ -1869,6 +2068,260 @@ fn native_connection_capture_keeps_unknown_run_empty_with_its_own_budget() {
         ProjectWorkspaceAgentRuntimeTurnKind::NativeConnection,
     );
     agent_send(module, &next_connection, "native-next").expect("a new connection has its own cap");
+}
+
+#[test]
+fn session_follow_ups_track_the_agents_messages_after_routing() {
+    use nodex_core_contracts::inbox::{ProjectWorkspaceInboxFailureKind, SessionFollowUpState::*};
+    use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeTurnKind::Run;
+
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let origin = "session:runtime-source";
+    runtime_session(module);
+    let provenance = runtime_provenance("thread:runtime-root", "run:follow-ups", Run);
+    for id in ["erase", "done", "notes", "held", "continue"] {
+        agent_send(module, &provenance, id).unwrap();
+    }
+    send_to(module, "user", "User message", Some(PROJECT));
+    module
+        .apply(
+            &BoundModuleContext {
+                adapter: AdapterKind::NativeCli,
+                ..context()
+            },
+            request(
+                "cli:follow-ups",
+                ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
+                    reply_to_page_id: None,
+                    expected_store_epoch: None,
+                    page_id: "page:cli".into(),
+                    document_id: "document:cli".into(),
+                    body: "Command line message".into(),
+                    title: None,
+                    project_id: None,
+                },
+            ),
+        )
+        .unwrap();
+    apply_host(
+        module,
+        "other:follow-ups",
+        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            pending_historical_run_id: None,
+            agent_selection: None,
+            decision_run: None,
+            side_chat_source_session_id: None,
+            session_id: "session:other".into(),
+            project_id: Some(PROJECT.into()),
+            title: "Another chat".into(),
+            initial_page_ids: vec![],
+            runtime_id: "runtime:inbox".into(),
+            runtime_thread_id: "thread:other".into(),
+            launch_request_id: "launch:other".into(),
+        },
+    );
+    let mut other = runtime_provenance("thread:other", "run:other", Run);
+    other.authority.root_thread_id = "thread:other".into();
+    other.authority.runtime.as_mut().unwrap().session_id = "session:other".into();
+    agent_send(module, &other, "other").unwrap();
+
+    let follow_ups = |reader: &BoundModuleContext, session_id: &str| {
+        let snapshot = module
+            .read(
+                reader,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::SessionFollowUps {
+                        session_id: session_id.into(),
+                    },
+                },
+            )
+            .expect("Session follow-ups");
+        assert_eq!(snapshot.store_epoch, StoreEpoch("epoch-1".into()));
+        let ProjectWorkspaceReadValue::SessionFollowUps { items } = snapshot.value else {
+            panic!("Session follow-ups");
+        };
+        items
+    };
+    let current = || follow_ups(&host(), origin);
+    let initial = current();
+    assert_eq!(
+        initial
+            .iter()
+            .map(|item| item.page_id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "page:continue",
+            "page:held",
+            "page:notes",
+            "page:done",
+            "page:erase"
+        ]
+    );
+    assert!(initial.iter().all(|item| item.state == Waiting));
+    assert_eq!(
+        follow_ups(&host(), "session:other")[0].page_id,
+        "page:other"
+    );
+    let remote = enroll_remote_member(&workspace, "Another Member");
+    assert!(follow_ups(&remote, origin).is_empty());
+
+    let first = &initial[0];
+    let inbox = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
+    )
+    .into_iter()
+    .find(|item| item.page_id == first.page_id)
+    .expect("The message is waiting in its Project Inbox");
+    assert_eq!(first.run_id.as_deref(), Some("run:follow-ups"));
+    assert_eq!(first.page_key, inbox.page_key);
+    assert_eq!(first.title, inbox.title);
+    assert_eq!(first.submitted_at, inbox.submitted_at);
+    assert_eq!(first.status, inbox.page_status);
+    assert_eq!(first.basis, inbox.basis);
+
+    let until = "2099-01-01T00:00:00.000Z";
+    apply_host(
+        module,
+        "snooze:follow-up",
+        ProjectWorkspaceIntent::SetInboxSnooze {
+            page_ids: vec![first.page_id.clone()],
+            until: until.into(),
+        },
+    );
+    assert_eq!(
+        current()[0].state,
+        Snoozed {
+            until: until.into()
+        }
+    );
+    apply_host(
+        module,
+        "wake:follow-up",
+        ProjectWorkspaceIntent::WakeInboxEntries {
+            page_ids: vec![first.page_id.clone()],
+        },
+    );
+    assert_eq!(current()[0].state, Waiting);
+
+    let proposal_id = "proposal:continue";
+    apply_host(
+        module,
+        "continue:here",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            basis: vec![first.basis.clone()],
+            execution_selection: Some(selection()),
+            proposal_id: proposal_id.into(),
+            page_ids: vec![first.page_id.clone()],
+            action: ProjectWorkspaceInboxDispatchAction::SendToChat {
+                skills: vec![],
+                additions: vec![],
+                session_id: origin.into(),
+                prompt: "Continue here".into(),
+            },
+            session_id: None,
+        },
+    );
+    let delivering = Delivering {
+        session_id: origin.into(),
+    };
+    assert_eq!(current()[0].state, delivering);
+    let work = outbox(module).remove(0);
+    apply_host(
+        module,
+        "fail:continue",
+        ProjectWorkspaceIntent::FailInboxDispatch {
+            proposal_id: proposal_id.into(),
+            expected_revision: work.revision,
+            message_id: work.message_id,
+            failure_kind: ProjectWorkspaceInboxFailureKind::Unavailable,
+            message: "Chat is busy".into(),
+        },
+    );
+    assert_eq!(
+        current()[0].state,
+        Failed {
+            message: "Chat is busy".into()
+        }
+    );
+    apply_host(
+        module,
+        "retry:continue",
+        ProjectWorkspaceIntent::RetryInboxDispatch {
+            proposal_id: proposal_id.into(),
+        },
+    );
+    assert_eq!(current()[0].state, delivering);
+    let work = outbox(module).remove(0);
+    apply_host(
+        module,
+        "accept:continue",
+        ProjectWorkspaceIntent::CompleteInboxDispatch {
+            proposal_id: proposal_id.into(),
+            expected_revision: work.revision,
+            message_id: work.message_id,
+            dispatched_thread_id: work.thread_id,
+            unavailable_skill_names: vec![],
+        },
+    );
+
+    keep(module, "page:held");
+    apply_host(
+        module,
+        "notes:follow-up",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            basis: vec![initial[2].basis.clone()],
+            execution_selection: None,
+            proposal_id: "proposal:notes".into(),
+            page_ids: vec!["page:notes".into()],
+            action: ProjectWorkspaceInboxDispatchAction::SaveToNotes {
+                parent_page_id: None,
+            },
+            session_id: None,
+        },
+    );
+    apply_host(
+        module,
+        "done:follow-up",
+        ProjectWorkspaceIntent::MarkInboxMessagesDone {
+            page_ids: vec!["page:done".into()],
+        },
+    );
+    apply_host(
+        module,
+        "erase:follow-up",
+        ProjectWorkspaceIntent::DeleteInboxMessages {
+            page_ids: vec!["page:erase".into()],
+        },
+    );
+    let routed = current();
+    assert_eq!(
+        routed
+            .iter()
+            .map(|item| (item.page_id.as_str(), &item.state))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "page:continue",
+                &InChat {
+                    session_id: origin.into()
+                }
+            ),
+            ("page:held", &Held),
+            ("page:notes", &Notes),
+            ("page:done", &Done),
+        ]
+    );
+    let todo = routed[1].status.as_ref().unwrap();
+    assert_eq!((todo.id.as_str(), todo.label.as_str()), ("plan", "Todo"));
+    assert_eq!(routed[2].status, None);
+    assert_eq!(routed[3].status.as_ref().unwrap().id, "done");
 }
 
 #[test]

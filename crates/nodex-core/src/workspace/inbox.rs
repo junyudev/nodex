@@ -1505,6 +1505,7 @@ fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
             "Send to an existing chat".to_owned()
         }
+        ProjectWorkspaceInboxDispatchAction::ForkChat { .. } => "Fork chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::MoveToProject { .. } => "File in a Project".to_owned(),
     }
 }
@@ -1615,55 +1616,32 @@ fn apply_confirmation(
             // not open again in the Project it was filed into.
             Ok(simple_effects("inbox_confirm_move", now))
         }
-        ProjectWorkspaceInboxDispatchAction::NewChat { project_id, .. } => {
-            let session_id = session_id.ok_or_else(|| {
-                invalid("Starting a new chat requires a preallocated Session identity")
-            })?;
-            validate_id("session_id", session_id)?;
-            let title = session_title(connection, page_ids)?;
-            super::session_lifecycle::insert_session_records(
+        ProjectWorkspaceInboxDispatchAction::NewChat { project_id, .. } => start_new_dispatch(
+            connection,
+            library_id,
+            proposal_id,
+            page_ids,
+            session_id,
+            project_id.as_deref(),
+            &encoded_action,
+            now,
+            "inbox_confirm_new_chat",
+        ),
+        ProjectWorkspaceInboxDispatchAction::ForkChat {
+            session_id: source, ..
+        } => {
+            let source = super::session_mutation::require_session(connection, library_id, source)?;
+            start_new_dispatch(
                 connection,
-                session_id,
-                project_id.as_deref(),
-                &title,
-                false,
-            )?;
-            // The messages become the new chat's Linked Pages, so each Page shows the work it
-            // started for as long as the chat exists.
-            super::page_chat::insert_initial_page_links(connection, session_id, page_ids, now)?;
-            if let Some(member) = page_ids
-                .first()
-                .map(|page| {
-                    connection.query_row(
-                        "SELECT author_member_id FROM inbox_entries WHERE page_id=?1",
-                        [page],
-                        |r| r.get::<_, Option<String>>(0),
-                    )
-                })
-                .transpose()?
-                .flatten()
-            {
-                // The person whose message asked for the work owns the chat it starts.
-                super::chat_stewardship::record_owner(connection, session_id, &member, now)?;
-                connection.execute("INSERT OR IGNORE INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4)",params![session_id,proposal_id,member,now])?;
-            }
-            super::page_chat::set_active_chats(connection, session_id, page_ids, now)?;
-            super::thread_follows::origin_on_dispatch(connection, library_id, page_ids, now)?;
-            start_dispatch(
-                connection,
+                library_id,
                 proposal_id,
-                &encoded_action,
+                page_ids,
                 session_id,
-                None,
+                source.project_id.as_deref(),
+                &encoded_action,
                 now,
-            )?;
-            let mut effects = simple_effects("inbox_confirm_new_chat", now);
-            effects.project_ids = project_id.iter().cloned().collect();
-            effects.change_project_id = project_id.clone();
-            effects.session_ids = vec![session_id.to_owned()];
-            effects.session_summary_scopes = vec![project_session_scope(project_id.as_deref())];
-            effects.session_detail_ids = vec![session_id.to_owned()];
-            Ok(effects)
+                "inbox_confirm_fork_chat",
+            )
         }
         ProjectWorkspaceInboxDispatchAction::SendToChat {
             session_id: target, ..
@@ -1692,6 +1670,63 @@ fn apply_confirmation(
             Ok(effects)
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn start_new_dispatch(
+    connection: &Connection,
+    library_id: &str,
+    proposal_id: &str,
+    page_ids: &[String],
+    session_id: Option<&str>,
+    project_id: Option<&str>,
+    encoded_action: &str,
+    now: &str,
+    effect_kind: &'static str,
+) -> Result<WorkspaceMutationEffects, StoreError> {
+    let session_id = session_id
+        .ok_or_else(|| invalid("Starting a new chat requires a preallocated Session identity"))?;
+    validate_id("session_id", session_id)?;
+    let title = session_title(connection, page_ids)?;
+    super::session_lifecycle::insert_session_records(
+        connection, session_id, project_id, &title, false,
+    )?;
+    // The messages become the new chat's Linked Pages, so each Page shows the work it
+    // started for as long as the chat exists.
+    super::page_chat::insert_initial_page_links(connection, session_id, page_ids, now)?;
+    if let Some(member) = page_ids
+        .first()
+        .map(|page| {
+            connection.query_row(
+                "SELECT author_member_id FROM inbox_entries WHERE page_id=?1",
+                [page],
+                |r| r.get::<_, Option<String>>(0),
+            )
+        })
+        .transpose()?
+        .flatten()
+    {
+        // The person whose message asked for the work owns the chat it starts.
+        super::chat_stewardship::record_owner(connection, session_id, &member, now)?;
+        connection.execute("INSERT OR IGNORE INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4)",params![session_id,proposal_id,member,now])?;
+    }
+    super::page_chat::set_active_chats(connection, session_id, page_ids, now)?;
+    super::thread_follows::origin_on_dispatch(connection, library_id, page_ids, now)?;
+    start_dispatch(
+        connection,
+        proposal_id,
+        encoded_action,
+        session_id,
+        None,
+        now,
+    )?;
+    let mut effects = simple_effects(effect_kind, now);
+    effects.project_ids = project_id.into_iter().map(str::to_owned).collect();
+    effects.change_project_id = project_id.map(str::to_owned);
+    effects.session_ids = vec![session_id.to_owned()];
+    effects.session_summary_scopes = vec![project_session_scope(project_id)];
+    effects.session_detail_ids = vec![session_id.to_owned()];
+    Ok(effects)
 }
 
 fn finish_proposal(
@@ -2358,7 +2393,7 @@ pub(super) fn chat_start_effects(
     let session: Option<String> = connection
         .query_row(
             "SELECT dispatch_session_id FROM inbox_proposals WHERE proposal_id=?1 \
-             AND json_extract(action_json,'$.type')='new_chat'",
+             AND json_extract(action_json,'$.type') IN ('new_chat','fork_chat')",
             [proposal_id],
             |row| row.get(0),
         )
@@ -2381,7 +2416,7 @@ pub(super) fn session_start(
         .query_row(
             "SELECT proposal_id, state, failure_kind, failure_message FROM inbox_proposals \
              WHERE dispatch_session_id=?1 AND library_id=?2 \
-               AND json_extract(action_json,'$.type')='new_chat' \
+               AND json_extract(action_json,'$.type') IN ('new_chat','fork_chat') \
              ORDER BY updated_at DESC, proposal_id DESC LIMIT 1",
             params![session_id, library_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
@@ -2767,6 +2802,29 @@ fn normalize_action(
             }
             Ok(ProjectWorkspaceInboxDispatchAction::SendToChat {
                 session_id: session_id.clone(),
+                prompt: normalize_prompt(prompt)?,
+                additions: normalize_additions(additions)?,
+                skills: normalize_skills(skills)?,
+            })
+        }
+        ProjectWorkspaceInboxDispatchAction::ForkChat {
+            session_id,
+            new_worktree,
+            prompt,
+            additions,
+            skills,
+        } => {
+            validate_id("session_id", session_id)?;
+            let source =
+                super::session_mutation::require_session(connection, library_id, session_id)?;
+            if scope.is_some() && source.project_id.as_deref() != scope {
+                return Err(invalid(
+                    "A Project's Inbox can only fork that Project's chats",
+                ));
+            }
+            Ok(ProjectWorkspaceInboxDispatchAction::ForkChat {
+                session_id: session_id.clone(),
+                new_worktree: *new_worktree,
                 prompt: normalize_prompt(prompt)?,
                 additions: normalize_additions(additions)?,
                 skills: normalize_skills(skills)?,

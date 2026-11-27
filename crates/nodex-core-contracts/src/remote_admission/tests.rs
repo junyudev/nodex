@@ -298,6 +298,7 @@ fn remote_inbox_admission_keeps_person_actions_separate_from_host_and_agent_comm
                     json!({"kind":"inbox_window","scope":{"kind":"library"},"filter":"inbox","window":{}}),
                 ),
                 decode(json!({"kind":"inbox_entry","page_id":"page"})),
+                decode(json!({"kind":"session_follow_ups","session_id":"session"})),
                 decode(json!({"kind":"inbox_message","page_id":"page"})),
                 decode(json!({"kind":"inbox_dispatch_context","page_ids":["page"]})),
                 decode(json!({"kind":"inbox_summary","scope":{"kind":"library"}})),

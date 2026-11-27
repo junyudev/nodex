@@ -538,6 +538,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 224,
         apply: migrate_v223_to_v224,
     },
+    MigrationStep {
+        from_revision: 224,
+        to_revision: 225,
+        apply: migrate_v224_to_v225,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2932,6 +2937,21 @@ fn migrate_v219_to_v220(
     Ok(())
 }
 
+fn migrate_v224_to_v225(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v224_to_v225.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_fork_chat_disposition":true,"inbox_follow_ups_index":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v223_to_v224(
     connection: &Connection,
     context: &MigrationContext,
@@ -4568,7 +4588,14 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_inbox_follow_ups_to_v224(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../tests/fixtures/rewind-v225-to-v224.sql"))?;
+    Ok(())
+}
+
+#[cfg(test)]
 pub(crate) fn rewind_inbox_start_to_v223(connection: &Connection) -> Result<(), StoreError> {
+    rewind_inbox_follow_ups_to_v224(connection)?;
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v224-to-v223.sql"))?;
     Ok(())
 }
@@ -9585,7 +9612,7 @@ mod tests {
     }
 
     #[test]
-    fn inbox_start_migration_upgrades_v223_in_one_step() {
+    fn inbox_start_migration_upgrades_v223_through_each_published_revision() {
         let profile = tempdir().expect("Profile");
         let mut connection = open_writer(&profile.path().join("nodex.db")).expect("Store");
         prepare_profile_store(&mut connection, profile.path()).expect("prepare fresh Store");
@@ -9596,16 +9623,16 @@ mod tests {
         let prepared =
             prepare_profile_store(&mut connection, profile.path()).expect("upgrade Capture schema");
         assert_eq!(prepared.migrated_from_version, Some(223));
-        assert_eq!(prepared.schema_version, 224);
-        validate_schema_identity(&connection, 224).expect("published v224 Store");
+        assert_eq!(prepared.schema_version, CURRENT_STORE_REVISION);
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).expect("current Store");
         let history = connection
-            .prepare("SELECT source_revision, target_revision FROM core_store_migration_history")
+            .prepare("SELECT source_revision, target_revision FROM core_store_migration_history ORDER BY source_revision")
             .unwrap()
             .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
             .unwrap()
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(history, [(223, 224)]);
+        assert_eq!(history, [(223, 224), (224, 225)]);
     }
 
     #[test]

@@ -14,6 +14,8 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 
+pub(in crate::workspace) const FORK_LAUNCH_PREFIX: &str = "inbox-fork:";
+
 pub(in crate::workspace) fn handoff_identity(
     proposal_id: &str,
     role: &str,
@@ -905,12 +907,17 @@ fn decide(
     {
         return Err(invalid("A new chat requires its resolved Agent selection"));
     }
+    if matches!(action, ProjectWorkspaceInboxDispatchAction::ForkChat { .. }) && selection.is_some()
+    {
+        return Err(invalid("A fork uses the source chat's Agent selection"));
+    }
     let relocation_project = match action {
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
             Some(project_id.clone())
         }
         ProjectWorkspaceInboxDispatchAction::NewChat { project_id, .. } => project_id.clone(),
-        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } => {
+        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. }
+        | ProjectWorkspaceInboxDispatchAction::ForkChat { session_id, .. } => {
             super::super::session_mutation::require_session(connection, library_id, session_id)?
                 .project_id
         }
@@ -919,6 +926,7 @@ fn decide(
     let only_library_inbox = matches!(
         action,
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. }
+            | ProjectWorkspaceInboxDispatchAction::ForkChat { .. }
     );
     let library_home = if only_library_inbox {
         read_registry(connection, library_id)?.map(|home| home.data_source_id)
@@ -1036,7 +1044,8 @@ fn decide(
                 .model_selection
                 .agent_selection(),
         ),
-        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } => {
+        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. }
+        | ProjectWorkspaceInboxDispatchAction::ForkChat { session_id, .. } => {
             super::super::page_chat::session_agent_selection(connection, session_id)?
         }
         _ => None,
@@ -1061,6 +1070,9 @@ fn decide(
             prompt, additions, ..
         }
         | ProjectWorkspaceInboxDispatchAction::SendToChat {
+            prompt, additions, ..
+        }
+        | ProjectWorkspaceInboxDispatchAction::ForkChat {
             prompt, additions, ..
         } => {
             require_decision_authority(context)?;
@@ -1123,7 +1135,13 @@ fn decide(
                 })
                 .map(|skill| &skill.name)
                 .collect::<Vec<_>>();
-            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,images_json,skill_invocations_json,unavailable_skills_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![proposal_id,scope.store_epoch(),text,handoff_identity(proposal_id,"launch",scope.store_epoch()),handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?,encode(&skill_invocations)?,encode(&unavailable)?])?;
+            let launch = handoff_identity(proposal_id, "launch", scope.store_epoch());
+            let launch = if matches!(action, ProjectWorkspaceInboxDispatchAction::ForkChat { .. }) {
+                format!("{FORK_LAUNCH_PREFIX}{launch}")
+            } else {
+                launch
+            };
+            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,images_json,skill_invocations_json,unavailable_skills_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![proposal_id,scope.store_epoch(),text,launch,handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?,encode(&skill_invocations)?,encode(&unavailable)?])?;
         }
         _ => {}
     }
@@ -1162,7 +1180,8 @@ fn decide(
             &mut effects,
         )?,
         ProjectWorkspaceInboxDispatchAction::NewChat { .. }
-        | ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
+        | ProjectWorkspaceInboxDispatchAction::SendToChat { .. }
+        | ProjectWorkspaceInboxDispatchAction::ForkChat { .. } => {
             let fences = pages.iter().map(|page| {
                 connection.query_row("SELECT link.status_fence FROM page_active_chats active
                     JOIN project_session_pages link ON link.page_id=active.page_id AND link.session_id=active.session_id
@@ -1709,6 +1728,14 @@ fn settle_request(
         {
             return Err(invalid("A plan always requires user confirmation"));
         }
+        if suggestion.explicit_request
+            && matches!(
+                suggestion.action,
+                ProjectWorkspaceInboxDispatchAction::ForkChat { .. }
+            )
+        {
+            return Err(invalid("Forking a chat always requires user confirmation"));
+        }
         let action = normalize_action(
             connection,
             library_id,
@@ -2138,7 +2165,8 @@ fn action_skills(
 ) -> &[nodex_core_contracts::inbox::InboxSuggestedSkill] {
     match action {
         ProjectWorkspaceInboxDispatchAction::NewChat { skills, .. }
-        | ProjectWorkspaceInboxDispatchAction::SendToChat { skills, .. } => skills,
+        | ProjectWorkspaceInboxDispatchAction::SendToChat { skills, .. }
+        | ProjectWorkspaceInboxDispatchAction::ForkChat { skills, .. } => skills,
         _ => &[],
     }
 }

@@ -27,7 +27,8 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
     ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
     ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
-    ProjectWorkspaceInboxWaiting, ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxWaiting, ProjectWorkspaceInboxWindowFilter, SessionFollowUp,
+    SessionFollowUpState,
 };
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSessionExecutionRef,
@@ -54,6 +55,9 @@ const MAX_CONTEXT_DESCRIPTION_CHARS: usize = 400;
 const MAX_BATCH: u32 = 16;
 const MAX_COUNTED_PROJECTS: i64 = 200;
 const MAX_SUMMARY_IMPORTANT: i64 = 20;
+const MAX_SESSION_FOLLOW_UPS: usize = 50;
+const DELIVERING_SQL: &str =
+    "proposal.state = 'dispatching' AND proposal.failure_kind IS NOT 'unknown'";
 
 /// The Project an Inbox scope names, validated, or None for the Library Inbox.
 fn scope_project(scope: &ProjectWorkspaceInboxScope) -> Result<Option<&str>, StoreError> {
@@ -965,7 +969,8 @@ fn read_proposal(
         dispatch_session_id
     };
     let chat_session_id = dispatch_session_id.or_else(|| match &action {
-        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } => {
+        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. }
+        | ProjectWorkspaceInboxDispatchAction::ForkChat { session_id, .. } => {
             Some(session_id.clone())
         }
         _ => None,
@@ -1504,6 +1509,100 @@ pub(super) fn dispatch_context_for_inputs(
     })
 }
 
+/// The Session supplies capture provenance. The Member's Inbox supplies visibility
+/// in the Page's current scope, even after the Page leaves triage or moves Project.
+pub(super) fn read_session_follow_ups(
+    connection: &Connection,
+    library_id: &str,
+    member_id: &str,
+    session_id: &str,
+) -> Result<Vec<SessionFollowUp>, StoreError> {
+    super::session_mutation::validate_id("session_id", session_id)?;
+    let now = super::inbox::snooze::now(connection)?;
+    let mut candidates = connection.prepare(
+        "SELECT page_id FROM inbox_entries
+         WHERE library_id=?1 AND source_session_id=?2 AND source_kind='agent'
+         ORDER BY seq DESC",
+    )?;
+    // Bind each Page directly so SQLite can seek through the Member Inbox view
+    // without materializing the Library's Inbox rows.
+    let deferred = deferred_sql("?4");
+    let mut disposition = connection.prepare(&format!(
+        "SELECT intake.stage, member_row.in_inbox,
+                CASE WHEN member_row.in_inbox AND intake.recovery THEN proposal.failure_message END,
+                CASE WHEN {DELIVERING_SQL} THEN proposal.dispatch_session_id END,
+                active.session_id, note.page_id IS NOT NULL,
+                (SELECT deferral.until_at FROM inbox_member_rows rows {DEFERRAL_JOIN}
+                 WHERE rows.page_id=?1 AND rows.library_id=?2 AND rows.member_id=?3
+                   AND rows.row_kind IN ('intake','turn') AND {deferred} LIMIT 1)
+         FROM inbox_member_rows member_row
+         JOIN inbox_intake intake ON intake.page_id=?1
+         JOIN inbox_entries entry ON entry.page_id=?1
+         LEFT JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id
+         LEFT JOIN page_active_chats active ON active.page_id=?1
+         LEFT JOIN inbox_note_saves note ON note.page_id=?1
+         WHERE member_row.page_id=?1 AND member_row.library_id=?2 AND member_row.member_id=?3
+           AND member_row.row_kind='intake'"
+    ))?;
+
+    let mut items = Vec::new();
+    for page_id in candidates.query_map(params![library_id, session_id], |row| {
+        row.get::<_, String>(0)
+    })? {
+        let page_id = page_id?;
+        let Some((stage, waiting, failure, delivering, active, note_saved, snoozed)) = disposition
+            .query_row(params![page_id, library_id, member_id, now], |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, bool>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, bool>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                ))
+            })
+            .optional()?
+        else {
+            continue;
+        };
+        // Share the Inbox title and Status projection without loading the preview body.
+        let entry = read_entry(connection, &page_id, 0)?;
+        use SessionFollowUpState::*;
+        let state = match (
+            stage.as_deref(),
+            snoozed,
+            failure,
+            waiting,
+            delivering,
+            active,
+        ) {
+            (Some("done" | "canceled"), ..) => Done,
+            (_, Some(until), ..) => Snoozed { until },
+            (_, _, Some(message), ..) => Failed { message },
+            (_, _, _, true, ..) => Waiting,
+            (_, _, _, _, Some(session_id), _) => Delivering { session_id },
+            (_, _, _, _, _, Some(session_id)) => InChat { session_id },
+            _ if note_saved && entry.parent_kind != "data_source" => Notes,
+            _ => Held,
+        };
+        items.push(SessionFollowUp {
+            page_key: crate::database::current_page_key_for_page(connection, library_id, &page_id)?,
+            basis: message_basis(connection, &page_id)?,
+            title: truncate_chars(&entry.title, 512),
+            run_id: entry.source_run_id,
+            submitted_at: entry.submitted_at,
+            status: entry.page_status,
+            state,
+            page_id,
+        });
+        if items.len() == MAX_SESSION_FOLLOW_UPS {
+            break;
+        }
+    }
+    Ok(items)
+}
+
 /// Confirmed chat dispatches awaiting host delivery, oldest confirmation first.
 pub(super) fn read_dispatch_outbox(
     connection: &Connection,
@@ -1513,7 +1612,7 @@ pub(super) fn read_dispatch_outbox(
 ) -> Result<Vec<ProjectWorkspaceInboxDispatchWork>, StoreError> {
     let limit = i64::from(limit.clamp(1, MAX_BATCH));
     let rows = connection
-        .prepare(
+        .prepare(&format!(
             "SELECT proposal.proposal_id, proposal.revision, proposal.action_json, \
                proposal.dispatch_session_id, session.project_id, \
                COALESCE(proposal.dispatch_thread_id,binding.runtime_thread_id,link.thread_id), proposal.attempt, \
@@ -1525,9 +1624,9 @@ pub(super) fn read_dispatch_outbox(
              LEFT JOIN project_session_threads link ON link.session_id = proposal.dispatch_session_id \
              LEFT JOIN codex_threads thread \
                ON thread.thread_id = COALESCE(link.thread_id, proposal.dispatch_thread_id) \
-             WHERE proposal.library_id = ?1 AND proposal.state = 'dispatching' AND COALESCE(proposal.failure_kind,'') <> 'unknown' \
-             ORDER BY proposal.confirmed_at, proposal.proposal_id LIMIT ?2",
-        )?
+             WHERE proposal.library_id = ?1 AND {DELIVERING_SQL} \
+             ORDER BY proposal.confirmed_at, proposal.proposal_id LIMIT ?2"
+        ))?
         .query_map(params![library_id, limit], |row| {
             Ok((
                 row.get::<_, String>(0)?,

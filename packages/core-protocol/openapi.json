@@ -44500,6 +44500,25 @@
               },
               {
                 "type": "object",
+                "description": "The newest 50 active Agent messages from this Session that the requesting Member can see.",
+                "required": [
+                  "session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "session_follow_ups"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "Entries the suggestion Agent should consider, oldest first. One read never\nmixes Inboxes: it returns the oldest waiting entry's Inbox only.",
                 "required": [
                   "scope",
@@ -48268,6 +48287,48 @@
                 "type": "string",
                 "enum": [
                   "send_to_chat"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Fork the source chat before sending a follow-up as the destination's first message.",
+            "required": [
+              "session_id",
+              "prompt",
+              "type"
+            ],
+            "properties": {
+              "additions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "new_worktree": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "When absent, use a new managed worktree if the source directory has Git."
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "skills": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InboxSuggestedSkill"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "fork_chat"
                 ]
               }
             }
@@ -64593,6 +64654,28 @@
                       },
                       {
                         "type": "object",
+                        "description": "Newest first, using the Store epoch of the enclosing read snapshot.",
+                        "required": [
+                          "items",
+                          "kind"
+                        ],
+                        "properties": {
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/SessionFollowUp"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "session_follow_ups"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
                         "required": [
                           "window",
                           "kind"
@@ -65515,6 +65598,191 @@
           "completed",
           "failed",
           "interrupted"
+        ]
+      },
+      "SessionFollowUp": {
+        "type": "object",
+        "description": "A message the Session's Agent sent to the Inbox, as its Page stands now.",
+        "required": [
+          "pageId",
+          "title",
+          "submittedAt",
+          "state",
+          "basis"
+        ],
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis",
+            "description": "The current message content fence for a direct dispatch."
+          },
+          "pageId": {
+            "type": "string"
+          },
+          "pageKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The sending Run, when the Agent's provider proved it."
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionFollowUpState"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxPageStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "submittedAt": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The current Page title, bounded to 512 characters for this list."
+          }
+        }
+      },
+      "SessionFollowUpState": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "waiting"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "until",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "snoozed"
+                ]
+              },
+              "until": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sessionId",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delivering"
+                ]
+              },
+              "sessionId": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sessionId",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inChat"
+                ]
+              },
+              "sessionId": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "held"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "notes"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "done"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "failed"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
         ]
       },
       "SessionMemberActions": {

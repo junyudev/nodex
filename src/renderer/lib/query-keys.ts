@@ -221,6 +221,8 @@ export const queryKeys = {
   inbox: {
     all: () => spaceQueryKey(["inbox"] as const),
     summary: (scope: string) => spaceQueryKey(["inbox", "summary", scope] as const),
+    sessionFollowUps: (sessionId: string | null) =>
+      spaceQueryKey(["inbox", "session-follow-ups", sessionId] as const),
     counts: () => spaceQueryKey(["inbox", "counts"] as const),
     window: (scope: string) => spaceQueryKey(["inbox", "window", scope] as const),
     snoozed: (scope: string) => spaceQueryKey(["inbox", "snoozed", scope] as const),

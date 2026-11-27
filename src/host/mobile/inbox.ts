@@ -71,8 +71,10 @@ const projectAction = (
             }
           : null,
       };
+    case "fork_chat":
     case "send_to_chat":
       return {
+        ...(action.type === "fork_chat" ? { newWorktree: action.newWorktree } : {}),
         type: action.type,
         sessionId: action.sessionId,
         chatTitle: chat?.displayTitle ?? null,
@@ -440,7 +442,7 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
         return {
           undoToken: receipt.value.undoToken,
           sessionId:
-            action?.type === "new_chat"
+            action?.type === "new_chat" || action?.type === "fork_chat"
               ? frozen.sessionId
               : action?.type === "send_to_chat"
                 ? action.sessionId

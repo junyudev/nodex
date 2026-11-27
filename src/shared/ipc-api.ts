@@ -1089,6 +1089,10 @@ export interface IpcApi
     args: [input: import("./inbox").RetryProblemInput];
     result: import("./core-result").CoreLocalCommitResult<void>;
   };
+  "inbox:session-follow-ups": {
+    args: [input: import("./inbox").SessionFollowUpsInput];
+    result: import("./inbox").SessionFollowUps;
+  };
   "inbox:window": {
     args: [input: import("./inbox").InboxStreamInput];
     result: import("./inbox").InboxWindow;

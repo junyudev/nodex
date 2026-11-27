@@ -77,6 +77,10 @@ const RawSuggestion = z.discriminatedUnion("action", [
     action: z.literal("save_to_notes"),
     parent_page_id: z.string().min(1).max(512).nullable(),
   }),
+  SuggestionFields.extend({
+    action: z.literal("fork_chat"),
+    new_worktree: z.boolean().nullish(),
+  }),
   SuggestionFields.extend({ action: z.literal("snooze"), snoozed_until: InboxSnoozedUntilSchema }),
 ]);
 export const InboxSuggestionOutput = z
@@ -150,7 +154,7 @@ export const decisionRunToolCatalog: readonly Tool[] = [
   {
     name: "inbox_suggest",
     description:
-      "Routing decision runs only. Submit the complete Routing request response, echoing request_id and generation. Cover every member exactly once; grouped/refine requests need one action. explicit_request says the person clearly asked for work now. A chat prompt is a routing note of at most 30 words, since the chat receives the messages unchanged. Only new_chat or plan steps choose a model; plans require explicit_request false and 2–8 acyclic steps; unused targets/model fields are null, non-chat additions and skills are empty. Validation errors leave the request pending: correct them and resubmit.",
+      "Routing decision runs only. Submit the complete Routing request response, echoing request_id and generation. Cover every member exactly once; grouped/refine requests need one action. explicit_request says the person clearly asked for work now. A chat prompt is a routing note of at most 30 words, since the chat receives the messages unchanged. Only new_chat or plan steps choose a model; forks and plans require explicit_request false; plans have 2–8 acyclic steps; unused targets/model fields are null, non-chat additions and skills are empty. Validation errors leave the request pending: correct them and resubmit.",
     inputSchema: toolInputSchema(InboxSuggestionOutput),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
