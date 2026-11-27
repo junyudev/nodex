@@ -1,7 +1,9 @@
 import type { ChatItem, ChatState } from "@nodex/mobile-protocol";
 
 import { plainMarkdownText } from "../../markdown/parse";
+import type { GalleryImage } from "../../navigation/types";
 import type { ChatOutboxEntry } from "../../runtime";
+import { chatGallery } from "./chat-images";
 
 type WorkItem = Extract<ChatItem, { kind: "activity" | "thinking" }>;
 
@@ -27,6 +29,7 @@ export type TranscriptRow =
       readonly type: "work";
       readonly id: string;
       readonly items: readonly WorkItem[];
+      readonly images: readonly GalleryImage[];
       readonly running: boolean;
       readonly failedCount: number;
       readonly title: string;
@@ -74,9 +77,6 @@ export const stepTitle = (item: WorkItem): string =>
     : (thoughtHeading(item.text) ??
       (plainMarkdownText(item.text.slice(0, THOUGHT_EXCERPT_SOURCE)) || "Thought"));
 
-const countSteps = (items: readonly WorkItem[]): number =>
-  items.filter((item) => item.kind === "activity").length;
-
 /** One line for a run of work: what it is doing now, or how much it did. */
 export const workTitle = (items: readonly WorkItem[], live = true): string => {
   const running = live ? items.findLast(isItemRunning) : undefined;
@@ -84,9 +84,16 @@ export const workTitle = (items: readonly WorkItem[], live = true): string => {
     return running.kind === "activity"
       ? running.title
       : (thoughtHeading(running.text) ?? "Thinking");
-  const steps = countSteps(items);
-  if (steps === 0) return "Thought";
-  return steps === 1 ? "1 step" : `${steps} steps`;
+  const steps = items.filter((item) => item.kind === "activity");
+  if (steps.length === 0) return "Thought";
+  const viewed = steps.filter((item) => item.imageAction === "view").length;
+  const other = steps.length - viewed;
+  return [
+    viewed > 0 ? `Viewed ${viewed} ${viewed === 1 ? "image" : "images"}` : null,
+    other > 0 ? `${other} ${other === 1 ? "step" : "steps"}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 };
 
 /**
@@ -110,6 +117,7 @@ export const transcriptRows = (
       type: "work",
       id: `work:${first.id}`,
       items: work,
+      images: chatGallery(work),
       running: live && work.some(isItemRunning),
       failedCount: work.filter((item) => item.kind === "activity" && item.status === "failed")
         .length,

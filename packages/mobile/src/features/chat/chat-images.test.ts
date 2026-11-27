@@ -8,6 +8,7 @@ import {
   replyImages,
   viewerPosition,
   withItem,
+  workImagePreview,
 } from "./chat-images";
 
 const file = (ref: string, mimeType: string | null): FileRef => ({
@@ -37,6 +38,19 @@ describe("chat pictures", () => {
     expect(viewerPosition(7, 3).index).toBe(2);
     expect(viewerPosition(-1, 3).index).toBe(0);
     expect(viewerPosition(1.6, 3).index).toBe(2);
+  });
+
+  it("previews up to three work pictures, with the rest reachable in the same gallery", () => {
+    const sequence = ["a", "b", "c", "d", "e"].map((ref) => ({ ref, name: ref.toUpperCase() }));
+    expect(workImagePreview([])).toEqual({ thumbnails: [], remaining: 0 });
+    expect(workImagePreview(sequence.slice(0, 3))).toEqual({
+      thumbnails: sequence.slice(0, 3),
+      remaining: 0,
+    });
+    const { thumbnails, remaining } = workImagePreview(sequence);
+    expect(thumbnails).toEqual(sequence.slice(0, 3));
+    expect(remaining).toBe(2);
+    expect(galleryAt(sequence, thumbnails[2]!)).toEqual({ images: sequence, index: 2 });
   });
 });
 

@@ -43,12 +43,14 @@ export const ChatGallery = ({
   return <ChatGalleryContext value={open}>{children}</ChatGalleryContext>;
 };
 
-/** Opens a picture in its chat's gallery, or outside a chat among the pictures beside it. */
-export const useOpenPicture = () => {
+/** Opens a picture in a supplied sequence, its chat's gallery or among the pictures beside it. */
+export const useOpenPicture = (sequence?: readonly GalleryImage[]) => {
   const navigation = useRootNavigation();
   const inChat = use(ChatGalleryContext);
   return (image: GalleryImage, beside: readonly GalleryImage[] = [image]) =>
-    inChat ? inChat(image) : navigation.navigate("Images", galleryAt(beside, image));
+    inChat && sequence === undefined
+      ? inChat(image)
+      : navigation.navigate("Images", galleryAt(sequence ?? beside, image));
 };
 
 /** One picture as a square, downloaded once it is shown. */
@@ -68,6 +70,7 @@ const Thumbnail = ({
       accessibilityLabel={image.name}
       accessibilityRole="imagebutton"
       className="items-center justify-center overflow-hidden bg-surface-3"
+      hitSlop={THUMBNAIL_GAP / 2}
       onPress={onPress}
       style={{ width: size, height: size, borderRadius: radius }}
     >
@@ -85,19 +88,21 @@ const Thumbnail = ({
   );
 };
 
-/** A message's or step's pictures; each opens the viewer at itself. */
+/** A strip of pictures, each opening the viewer at itself. */
 export const ImageStrip = ({
   images,
   size,
   className,
   style,
+  sequence,
 }: {
   readonly images: readonly GalleryImage[];
   readonly size: number;
   readonly className?: string;
   readonly style?: ViewStyle;
+  readonly sequence?: readonly GalleryImage[];
 }) => {
-  const open = useOpenPicture();
+  const open = useOpenPicture(sequence);
   if (images.length === 0) return null;
   return (
     <View className={cn("flex-row flex-wrap", className)} style={[{ gap: THUMBNAIL_GAP }, style]}>

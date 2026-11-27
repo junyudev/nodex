@@ -226,10 +226,10 @@ Member attention changes invalidate the same Core-projected stream.
 - If the desktop restarts during a Run, the phone reconnects on its own and the chat shows that the
   turn resumed, followed by what the Agent writes from there.
 - The transcript follows the Run live. Tool steps and reasoning collapse to one line per stretch of
-  work, which names the step in progress or counts the steps done. A thought reads there as on its
-  desktop: by its latest heading, or else the start of its words, as plain text without Markdown
-  marks. Opening a step shows its full output. A command still running shows the end of what it has written so far, as its desktop
-  does, and keeps following it while open until it ends.
+  work. The line names the step in progress or counts the images viewed and any other steps. A
+  thought reads by its latest heading or the start of its words, without Markdown marks. Opening a
+  step shows its full output. A command still running shows the end of what it has written so far
+  and keeps following it while open until it ends.
 - Approvals and questions are pinned above the Composer, so they cannot scroll out of reach. An
   approval shows exactly what is being approved and the choices that Run offers; a long one scrolls
   and can be opened further. Answering from a
@@ -251,18 +251,23 @@ Member attention changes invalidate the same Core-projected stream.
   “Restore this chat to continue it.” in place of the Composer, with `Restore` for those who may.
 - A connected conversation only its desktop owner can continue is readable, and says so in place of
   the Composer. A question that asks for a secret is answered on the desktop, and the chat says so.
-- Every picture the desktop shows in a chat shows on the phone too: photos in a message, pictures in
-  a reply, the picture an Agent viewed or generated and the pictures a tool returned. A step shows
-  the copy of a picture the Agent viewed or generated, or else the pictures its tool returned: up to
-  four beneath the step in an opened stretch of work, and all of them in the opened step. A step
-  whose picture's file was already gone, and an imported reply's picture whose file was gone at
-  import, name that picture with the reason. An imported conversation's replies show their pictures
-  from the copies kept at import. A reply's pictures sit in its text, whole and at their own shape:
+- Every picture the desktop shows in a chat shows on the phone too, up to eight per step, including
+  photos in messages, pictures in replies and pictures Agents view, generate or receive from tools. An inspection
+  step shows a photo icon and names the image the Agent viewed. A generation step reads
+  `Generating image`, `Generated image` or `Couldn't generate image`.
+  Other tool steps keep their own titles and show the pictures they returned.
+- A collapsed stretch of work shows its first three available pictures in the header and a count
+  of any more. Tapping a picture opens it full screen, where a swipe moves through the pictures the
+  stretch shows, up to four per step. When the group opens, its pictures appear beneath their
+  steps, up to four per step. Opening a step shows up to eight of its pictures.
+- An unavailable picture is named with the reason on its step or beneath its reply. An imported
+  conversation's replies show their pictures from the copies kept at import. A reply's pictures
+  sit in its text, whole and at their own shape:
   one on a line of its own spans the reply's width, no taller than keeps the reply around it in view,
   and holds its place until it loads so the reply moves only once. A message's photos and a step's
-  pictures are thumbnails that download only once shown. Tapping any of them opens the chat's
-  pictures full screen at that one, oldest first, where a swipe moves through the rest of the chat's
-  pictures. There a pinch zooms about the fingers and a double tap zooms in where it lands or back
+  pictures are thumbnails that download only once shown. A thumbnail in a message or on a step
+  opens the chat's pictures full screen at that one, oldest first, where a swipe moves through the rest.
+  In the viewer, a pinch zooms about the fingers and a double tap zooms in where it lands or back
   out, the same on iPhone and Android; a zoomed picture pans to its edges instead of moving to the
   next. A picture never travels inside a step's output.
 - A chat's photos, files and pictures download from its host the way a team desktop reads them, as

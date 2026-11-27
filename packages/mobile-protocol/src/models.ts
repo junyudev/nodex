@@ -477,7 +477,18 @@ export const ChatItemSchema = z.discriminatedUnion("kind", [
     kind: z.literal("activity"),
     id: z.string(),
     at: isoTime,
-    category: z.enum(["command", "file", "search", "web", "tool", "agent", "plan", "other"]),
+    category: z.enum([
+      "command",
+      "file",
+      "image",
+      "search",
+      "web",
+      "tool",
+      "agent",
+      "plan",
+      "other",
+    ]),
+    imageAction: z.enum(["view", "generate"]).optional(),
     title: z.string(),
     detail: z.string().nullable(),
     status: z.enum(["running", "done", "failed", "declined"]),
@@ -485,9 +496,9 @@ export const ChatItemSchema = z.discriminatedUnion("kind", [
     output: z.string().nullable(),
     outputTruncated: z.boolean(),
     /**
-     * Pictures the step showed, read through `files.read`: the copy of a picture an Agent viewed,
-     * or else the pictures a tool returned. A transcript window names up to four; `chat.item`
-     * names them all.
+     * Pictures the step showed, read through `files.read`: the copy of a picture an Agent viewed
+     * or generated, or the pictures a tool returned. A transcript window names up to four;
+     * `chat.item` names them all.
      */
     images: z.array(FileRefSchema).default([]),
     unavailableImages: z.array(UnavailablePictureSchema).default([]),
