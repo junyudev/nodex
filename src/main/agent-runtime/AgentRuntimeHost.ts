@@ -1,3 +1,4 @@
+import { PAGE_ASK_MESSAGE_PREFIX } from "../../shared/page-ask";
 import { NODEX_FAILURE_CODES } from "@nodex/agent-runtime/failure-cause";
 import { makePluginSessions } from "../../host/agent-plugins/PluginSessions";
 import { PluginSessionPreparationError } from "../../host/agent-plugins/PluginSessionPreparationError";
@@ -344,7 +345,10 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     yield* core.workspace.recordAgentRun({
       session_id: sessionId,
       run_id: proof.runId,
-      ...(inputMessage?.id === proof.userMessageId && inputMessage.createdBy === "user"
+      ...(inputMessage?.id === proof.userMessageId &&
+      (inputMessage.createdBy === "user" ||
+        (inputMessage.createdBy === "system" &&
+          inputMessage.id.startsWith(PAGE_ASK_MESSAGE_PREFIX)))
         ? { message_id: proof.userMessageId }
         : {}),
       driver,
