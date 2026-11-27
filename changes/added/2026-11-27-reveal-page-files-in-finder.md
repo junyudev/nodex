@@ -7,5 +7,5 @@ media:
 
 Page Files and inline attachments can now be revealed in Finder, ready to drag into another app or
 open with one. **Reveal in Finder** (**Open in Explorer** on Windows) shows a read-only copy of the File
-under its own name, so editing it never changes the Page's File; use **Save…** for a copy to edit.
+under its own name. Use **Save a copy** to make an editable copy.
 The File menus also show an icon beside each action.

@@ -1986,7 +1986,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page.getByRole("button", { name: "Page actions" }).waitFor();
 
       await page.getByRole("button", { name: "Actions for Untitled" }).last().click();
-      await page.getByRole("menuitem", { name: "Open in Project…" }).click();
+      await page.getByRole("menuitem", { name: "Open in Project" }).click();
       const openInProject = page.getByRole("dialog", { name: "Open in Project" });
       await openInProject.getByLabel("Project").selectOption({ label: "Canvas workflow" });
       await openInProject.getByRole("button", { name: "Open", exact: true }).click();

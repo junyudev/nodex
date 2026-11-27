@@ -16,6 +16,7 @@ import {
   NodexContextMenuRoot,
   NodexContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { NodexDropdownSeparator } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { LibraryFileViewerDialog } from "@/features/page-files/library-file-viewer-dialog";
@@ -178,6 +179,7 @@ function LibraryFileMenu({
   runtime,
   source,
   name,
+  previewsInPlace,
   open,
   onOpenChange,
 }: {
@@ -186,6 +188,7 @@ function LibraryFileMenu({
   readonly runtime: FilePlacementRuntime | null;
   readonly source: string;
   readonly name: string;
+  readonly previewsInPlace: boolean;
   readonly open: (mode: OpenMode) => void;
   readonly onOpenChange: (open: boolean) => void;
 }) {
@@ -213,7 +216,11 @@ function LibraryFileMenu({
             leftSlot={<NativeMenuIcon iconKey="openIn" />}
             onSelect={() => open("preview")}
           >
-            <FormattedMessage id="editor.attachmentChip.open" defaultMessage="Open" />
+            {previewsInPlace ? (
+              <FormattedMessage id="board.pageFileTreeView.preview" defaultMessage="Preview" />
+            ) : (
+              <FormattedMessage id="board.pageFileTreeView.open" defaultMessage="Open" />
+            )}
           </NodexContextMenuItem>
           {destination.kind === "page-file" ? (
             <NodexContextMenuItem
@@ -226,13 +233,15 @@ function LibraryFileMenu({
               />
             </NodexContextMenuItem>
           ) : null}
-          <div role="separator" className="my-1 h-px bg-border" />
-          <NodexContextMenuItem
-            leftSlot={<DownloadIcon className="icon-xs" />}
-            onSelect={() => void save()}
-          >
-            <FormattedMessage id="editor.attachmentChip.save" defaultMessage="Save…" />
-          </NodexContextMenuItem>
+          <NodexDropdownSeparator />
+          {runtime ? (
+            <NodexContextMenuItem
+              leftSlot={<DownloadIcon className="icon-xs" />}
+              onSelect={() => void save()}
+            >
+              <FormattedMessage id="board.pageFileTreeView.save" defaultMessage="Save a copy" />
+            </NodexContextMenuItem>
+          ) : null}
           <NodexContextMenuItem
             leftSlot={<CopyIcon />}
             onSelect={() => void writeTextToClipboard(source)}
@@ -373,6 +382,7 @@ export function AttachmentInlineContent({
         runtime={fileRuntime}
         source={resolvedProps.source}
         name={summary.title}
+        previewsInPlace={previewsInPlace}
         open={open}
         onOpenChange={setMenuOpen}
       />

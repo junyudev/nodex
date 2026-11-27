@@ -1,11 +1,16 @@
 import { getIntl } from "@/lib/i18n";
 import type { NativeMenuTarget } from "@/lib/file-reference-open-targets";
-import type { NativeContextMenuItem } from "../../../../shared/native-context-menu";
+import {
+  joinNativeContextMenuGroups,
+  type NativeContextMenuItem,
+} from "../../../../shared/native-context-menu";
 
 export interface ReviewFileContextMenuInput {
   readonly canOpenFile: boolean;
   readonly canOpenInNewTab: boolean;
   readonly selectedText: string;
+  readonly canRequestChanges: boolean;
+  readonly wrap: boolean;
   readonly relativePath: string | null;
   readonly githubUrl: string | null;
   readonly primary: NativeMenuTarget | null;
@@ -30,112 +35,125 @@ export function reviewFileTargetPreferredOpener(target: NativeMenuTarget) {
   return opener;
 }
 
+export function reviewWordWrapLabel(wrap: boolean): string {
+  const intl = getIntl();
+  return wrap
+    ? intl.formatMessage({
+        id: "workbench.reviewDiffPanel.disableWrap",
+        defaultMessage: "Disable word wrap",
+      })
+    : intl.formatMessage({
+        id: "workbench.reviewDiffPanel.enableWrap",
+        defaultMessage: "Enable word wrap",
+      });
+}
+
 /** The file menu keeps text selection actions alongside the file's own commands. */
 export function buildReviewFileContextMenu(
   input: ReviewFileContextMenuInput,
 ): NativeContextMenuItem[] {
+  const intl = getIntl();
   const primary = input.canOpenFile ? input.primary : null;
-  const canOpenInNewTab = input.canOpenFile && input.canOpenInNewTab;
-  const openItems: NativeContextMenuItem[] = [
-    ...(primary
-      ? [
-          {
-            id: "open-primary",
-            label: getIntl().formatMessage(
-              { id: "review.reviewFileContextMenu.openIn", defaultMessage: "Open in {app}" },
-              { app: primary.label },
-            ),
-            iconUrl: primary.iconUrl,
-          },
-        ]
-      : []),
-    ...(primary || canOpenInNewTab
-      ? [
-          {
-            id: "open-with",
-            label: getIntl().formatMessage({
-              id: "review.reviewFileContextMenu.openWith",
-              defaultMessage: "Open with",
-            }),
-            type: "submenu" as const,
-            submenu: [
-              ...(canOpenInNewTab
-                ? [
-                    {
-                      id: "open-in-new-tab",
-                      label: getIntl().formatMessage({
-                        id: "review.reviewFileContextMenu.newTab",
-                        defaultMessage: "New tab",
-                      }),
-                    },
-                  ]
-                : []),
-              ...input.alternatives.map((target) => ({
-                id: reviewFileOpenTargetActionId(target),
-                label: target.label,
-                iconUrl: target.iconUrl,
-              })),
-            ],
-          },
-        ]
-      : []),
-    ...(input.githubUrl
-      ? [
-          {
-            id: "open-in-github",
-            label: getIntl().formatMessage({
-              id: "review.reviewFileContextMenu.openGitHub",
-              defaultMessage: "Open in GitHub",
-            }),
-          },
-        ]
-      : []),
-  ];
-  return [
-    {
-      id: "request-changes",
-      label: getIntl().formatMessage({
-        id: "review.reviewFileContextMenu.requestChanges",
-        defaultMessage: "Request changes",
+  const openItems: NativeContextMenuItem[] = [];
+  if (input.canOpenFile && input.canOpenInNewTab) {
+    openItems.push({
+      id: "open-in-new-tab",
+      label: intl.formatMessage({
+        id: "review.reviewFileContextMenu.newTab",
+        defaultMessage: "Open in new tab",
       }),
-    },
-    ...openItems,
-    ...(openItems.length > 0 ? [{ type: "separator" as const }] : []),
-    {
+      iconKey: "newTab",
+    });
+  }
+  if (primary) {
+    openItems.push({
+      id: "open-primary",
+      label: intl.formatMessage(
+        { id: "review.reviewFileContextMenu.openIn", defaultMessage: "Open in {app}" },
+        { app: primary.label },
+      ),
+      iconKey: "openIn",
+      iconUrl: primary.iconUrl,
+    });
+  }
+  if (input.canOpenFile && input.alternatives.length > 0) {
+    openItems.push({
+      id: "open-with",
+      label: intl.formatMessage({
+        id: "review.reviewFileContextMenu.openWith",
+        defaultMessage: "Open with",
+      }),
+      type: "submenu",
+      iconKey: "window",
+      submenu: input.alternatives.map((target) => ({
+        id: reviewFileOpenTargetActionId(target),
+        label: target.label,
+        iconKey: "openIn",
+        iconUrl: target.iconUrl,
+      })),
+    });
+  }
+  if (input.githubUrl) {
+    openItems.push({
+      id: "open-in-github",
+      label: intl.formatMessage({
+        id: "review.reviewFileContextMenu.openGitHub",
+        defaultMessage: "Open in GitHub",
+      }),
+      iconKey: "openIn",
+    });
+  }
+  const copyItems: NativeContextMenuItem[] = [];
+  if (input.selectedText)
+    copyItems.push({
       id: "copy-selection",
-      label: getIntl().formatMessage({
+      label: intl.formatMessage({
         id: "review.reviewFileContextMenu.copySelection",
         defaultMessage: "Copy selection",
       }),
-      enabled: input.selectedText.length > 0,
-    },
-    {
+      iconKey: "copy",
+    });
+  if (input.canOpenFile)
+    copyItems.push({
       id: "copy-path",
-      label: getIntl().formatMessage({
+      label: intl.formatMessage({
         id: "review.reviewFileContextMenu.copyPath",
         defaultMessage: "Copy path",
       }),
-      enabled: input.canOpenFile,
-    },
-    ...(input.relativePath !== null
+      iconKey: "copy",
+    });
+  if (input.relativePath)
+    copyItems.push({
+      id: "copy-relative-path",
+      label: intl.formatMessage({
+        id: "review.reviewFileContextMenu.copyRelativePath",
+        defaultMessage: "Copy relative path",
+      }),
+      iconKey: "copy",
+    });
+  return joinNativeContextMenuGroups(
+    openItems,
+    input.canRequestChanges
       ? [
           {
-            id: "copy-relative-path",
-            label: getIntl().formatMessage({
-              id: "review.reviewFileContextMenu.copyRelativePath",
-              defaultMessage: "Copy relative path",
+            id: "request-changes",
+            label: intl.formatMessage({
+              id: "review.reviewFileContextMenu.requestChanges",
+              defaultMessage: "Request changes",
             }),
+            iconKey: "edit",
           },
         ]
-      : []),
-    {
-      id: "toggle-wrap",
-      label: getIntl().formatMessage({
-        id: "review.reviewFileContextMenu.toggleWrap",
-        defaultMessage: "Toggle line wrap",
-      }),
-    },
-  ];
+      : [],
+    copyItems,
+    [
+      {
+        id: "toggle-wrap",
+        label: reviewWordWrapLabel(input.wrap),
+        iconKey: input.wrap ? "noWordWrap" : "wordWrap",
+      },
+    ],
+  );
 }
 
 /** Context clicks inside Pierre's Shadow DOM retain their exact source line. */

@@ -1,5 +1,5 @@
 import { defineMessage, defineMessages, getIntl, useIntl } from "@/lib/i18n";
-import { CopyIcon, OpenExternalIcon, SlashFeedbackIcon } from "@/components/shared/icons";
+import { OpenExternalIcon, SlashFeedbackIcon } from "@/components/shared/icons";
 import { DiscordMarkIcon, QqMarkIcon } from "@/components/shared/icons/community-icons";
 import {
   NodexDropdownFlyoutSubmenuItem,
@@ -21,7 +21,10 @@ export const NODEX_QQ_GROUP_NUMBER = "1126214921";
 
 const MESSAGES = defineMessages({
   title: { id: "account.communityMenu.title", defaultMessage: "Feedback & community" },
-  qqGroup: { id: "account.communityMenu.qqGroup", defaultMessage: "QQ group" },
+  copyQqGroup: {
+    id: "account.communityMenu.copyQqGroupLabel",
+    defaultMessage: "Copy QQ group number",
+  },
   qqGroupCopied: {
     id: "account.communityMenu.qqGroupCopied",
     defaultMessage: "Copied QQ group number",
@@ -92,14 +95,13 @@ export function CommunityMenu({
         aria-label={intl.formatMessage(COPY_QQ_GROUP, { number: NODEX_QQ_GROUP_NUMBER })}
         leftSlot={<QqMarkIcon />}
         rightSlot={
-          <span className="ml-3 flex items-center gap-1.5 text-xs text-token-description-foreground">
-            <span className="tabular-nums">{NODEX_QQ_GROUP_NUMBER}</span>
-            <CopyIcon className="icon-2xs" />
+          <span className="ml-3 text-xs tabular-nums text-token-description-foreground">
+            {NODEX_QQ_GROUP_NUMBER}
           </span>
         }
         onSelect={() => void copyQqGroupNumber()}
       >
-        {intl.formatMessage(MESSAGES.qqGroup)}
+        {intl.formatMessage(MESSAGES.copyQqGroup)}
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<DiscordMarkIcon />}

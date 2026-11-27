@@ -136,6 +136,7 @@ describe("native-image-context-menu", () => {
       cut: () => cut,
       copy: () => copy,
       paste: () => paste,
+      selectAll: () => ({}),
       copyImage: () => ({ id: "copyImage" }),
       saveImageAs: () => ({ id: "saveImageAs" }),
     } as unknown as Actions;
@@ -143,17 +144,19 @@ describe("native-image-context-menu", () => {
     const window = { webContents: { mainFrame } } as unknown as BrowserWindow;
     const params = {
       mediaType: "image",
+      hasImageContents: true,
       srcURL: "app://fs/@fs/tmp/chart.png",
       frame: mainFrame,
     } as ContextMenuParams;
     const reveal = vi.fn();
     const items = nativeImageContextMenuItems(actions, params, window, "darwin", reveal);
     expect(items.map(({ id, label }) => id ?? label)).toEqual([
-      "Reveal in Finder",
       "copyImage",
+      undefined,
+      "Reveal in Finder",
       "saveImageAs",
     ]);
-    items[0]!.click?.({} as never, window, {} as never);
+    items[2]!.click?.({} as never, window, {} as never);
     expect(reveal).toHaveBeenCalledExactlyOnceWith("/tmp/chart.png");
     expect([cut.accelerator, copy.accelerator, paste.accelerator]).toEqual([
       "CmdOrCtrl+X",
@@ -168,7 +171,7 @@ describe("native-image-context-menu", () => {
         "darwin",
         reveal,
       ).map(({ id, label }) => id ?? label),
-    ).toEqual(["Reveal in Finder", "copyImage"]);
+    ).toEqual(["copyImage", undefined, "Reveal in Finder"]);
     expect(
       nativeImageContextMenuItems(
         actions,

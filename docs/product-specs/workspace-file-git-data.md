@@ -74,7 +74,7 @@ when the menu opens. Undo, Redo and Select all return focus to the text editor. 
 the complete editable document.
 
 The native menu appends the file's available desktop applications, GitHub destination at the
-clicked line, Save as…, Copy path and Copy file contents after a divider. Local files also offer
+clicked line. Save a copy, Copy path and Copy file contents for eligible text follow after a divider. Local files also offer
 the platform's file-manager action. Remote files retain their execution host for reads and save
 a copy on the desktop without offering local application targets. File actions share the same
 destination resolver as transcript references; an editor menu does not reopen its own Files tab.

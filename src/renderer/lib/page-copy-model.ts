@@ -62,7 +62,7 @@ export function listPageCopyActions(
       id: "copy-deeplink",
       label: intl.formatMessage({
         id: "lib.pageCopyModel.copyDeeplink",
-        defaultMessage: "Copy deeplink",
+        defaultMessage: "Copy link",
       }),
       keywords: ["link", "url", "reference"],
       disabled: false,
@@ -125,11 +125,11 @@ export function resolvePageCopyRequest(input: {
       value: buildPageDeepLink({ pageId: page.pageId }),
       successMessage: getIntl().formatMessage({
         id: "lib.pageCopyModel.copiedDeeplink",
-        defaultMessage: "Copied deeplink",
+        defaultMessage: "Copied link",
       }),
       failureMessage: getIntl().formatMessage({
         id: "lib.pageCopyModel.copyDeeplinkFailed",
-        defaultMessage: "Failed to copy deeplink",
+        defaultMessage: "Failed to copy link",
       }),
     };
   }

@@ -1,4 +1,5 @@
 import { getIntl } from "@/lib/i18n";
+import { FILE_LINK_OPENER_ICON_URLS } from "./file-link-opener-icons";
 import type { FileLinkOpenerId, FileLinkTarget } from "../../shared/file-link-openers";
 import {
   FILE_LINK_OPENER_LABEL_MESSAGES,
@@ -36,9 +37,8 @@ export async function readFileReferenceOpenTargets(path: string): Promise<{
     listAvailableFileLinkOpeners().catch((): FileLinkOpenerId[] => []),
   ]);
   const intl = getIntl();
-  const fileManagerMessage = getFileManagerNameMessage(
-    typeof navigator === "undefined" ? "" : navigator.platform,
-  );
+  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
+  const fileManagerMessage = getFileManagerNameMessage(platform);
   const fileManagerName = fileManagerMessage ? intl.formatMessage(fileManagerMessage) : "Finder";
   const nativeApps = native
     ? [native.defaultApplication, ...native.applications].filter((app) => app !== null)
@@ -51,7 +51,8 @@ export async function readFileReferenceOpenTargets(path: string): Promise<{
       isSystemDefault: app.isSystemDefault,
       ...(app.iconDataUrl ? { iconUrl: app.iconDataUrl } : {}),
     }));
-    return { primary: alternatives[0] ?? null, alternatives };
+    const primary = alternatives[0] ?? null;
+    return { primary, alternatives: alternatives.filter((target) => target.id !== primary?.id) };
   }
   if (nativeMode) {
     const fileManager = FILE_LINK_OPENER_OPTIONS.find((option) => option.id === "fileManager")!;
@@ -66,13 +67,7 @@ export async function readFileReferenceOpenTargets(path: string): Promise<{
       },
       { id: fileManager.id, label: fileManagerName, opener: fileManager.id },
     ];
-    return {
-      primary:
-        alternatives.find((target) => target.opener === readFileLinkOpener()) ??
-        alternatives[0] ??
-        null,
-      alternatives,
-    };
+    return selectPrimaryOpener(alternatives);
   }
   const alternatives = FILE_LINK_OPENER_OPTIONS.filter((option) =>
     available.includes(option.id),
@@ -87,13 +82,19 @@ export async function readFileReferenceOpenTargets(path: string): Promise<{
             ? intl.formatMessage(message)
             : option.label,
       opener: option.id,
+      iconUrl:
+        option.id === "fileManager" && !platform.toLowerCase().includes("mac")
+          ? undefined
+          : FILE_LINK_OPENER_ICON_URLS[option.id],
     };
   });
+  return selectPrimaryOpener(alternatives);
+}
+
+function selectPrimaryOpener(targets: NativeMenuTarget[]) {
   const preferred = readFileLinkOpener();
-  return {
-    primary: alternatives.find((option) => option.opener === preferred) ?? alternatives[0] ?? null,
-    alternatives,
-  };
+  const primary = targets.find((target) => target.opener === preferred) ?? targets[0] ?? null;
+  return { primary, alternatives: targets.filter((target) => target.id !== primary?.id) };
 }
 
 export async function openFileReferenceTarget(

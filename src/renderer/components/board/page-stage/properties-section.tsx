@@ -242,14 +242,13 @@ function RelatedChatAddControl({
         </NodexDropdown.Item>
       ) : null}
       {onCreateRelatedChat && onLinkRelatedChat ? <NodexDropdown.Separator /> : null}
-      {onLinkRelatedChat ? (
+      {onLinkRelatedChat && hasLinkableChats ? (
         <NodexDropdown.FlyoutSubmenuItem
           label={intl.formatMessage({
             id: "board.propertiesSection.linkToChat",
-            defaultMessage: "Link to chat…",
+            defaultMessage: "Link to chat",
           })}
           leftSlot={<ChatIcon className="icon-xs shrink-0" />}
-          disabled={!hasLinkableChats}
           contentClassName="w-[280px] p-1"
         >
           <NodexDropdown.SearchInput
@@ -318,6 +317,14 @@ function RelatedChatAddControl({
             )}
           </NodexDropdown.ScrollList>
         </NodexDropdown.FlyoutSubmenuItem>
+      ) : null}
+      {onLinkRelatedChat && !hasLinkableChats ? (
+        <NodexDropdown.Message compact>
+          {intl.formatMessage({
+            id: "board.propertiesSection.noChats",
+            defaultMessage: "No chats available",
+          })}
+        </NodexDropdown.Message>
       ) : null}
     </NodexDropdown.Menu>
   );

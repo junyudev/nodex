@@ -62,7 +62,7 @@ describe("content issues control", () => {
   }
   async function openClearConfirmation(view: ReturnType<typeof renderWithAppMaitai>) {
     await click(view, /^More actions for /);
-    await click(view, "Clear undo history…", "menuitem");
+    await click(view, "Clear undo history", "menuitem");
   }
   function recoveringHistory(retryGate?: Promise<void>) {
     const requests: number[] = [];
@@ -280,9 +280,9 @@ describe("content issues control", () => {
     try {
       await click(view, "Content issues");
       expect(view.queryByRole("button", { name: /Retry|Check again/ })).toBeNull();
-      expect(view.queryByRole("menuitem", { name: "Clear undo history…" })).toBeNull();
+      expect(view.queryByRole("menuitem", { name: "Clear undo history" })).toBeNull();
       await click(view, /^More actions for /);
-      expect(view.getByRole("menuitem", { name: "Clear undo history…" })).toBeTruthy();
+      expect(view.getByRole("menuitem", { name: "Clear undo history" })).toBeTruthy();
       await act(async () => {
         expect((await history.request("undo").result).status).toBe("blocked");
       });

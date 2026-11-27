@@ -3,6 +3,8 @@ import { AGENT_APPROVAL_OPTION_LABEL_MESSAGES } from "../../../../../shared/agen
 import { useState, type ComponentType } from "react";
 import {
   AppActivityIcon,
+  CheckmarkIcon,
+  CloseIcon,
   EditFilesIcon,
   MoreActionsIcon,
   PermissionAskForApprovalIcon,
@@ -11,7 +13,11 @@ import {
   TerminalActivityIcon,
 } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useClockAt } from "@/lib/use-clock-at";
 import { cn } from "@/lib/utils";
@@ -85,6 +91,13 @@ const KIND_PRESENTATION: Record<
   },
 };
 
+const APPROVAL_OPTION_ICONS = {
+  accept: CheckmarkIcon,
+  acceptForSession: PermissionAskForApprovalIcon,
+  decline: CloseIcon,
+  cancel: CloseIcon,
+} satisfies Record<AgentApprovalOption["decision"], ComponentType<{ className?: string }>>;
+
 export interface PendingApprovalRowProps {
   approval: AgentPendingApproval;
   /** A response for this request is in flight. */
@@ -108,6 +121,13 @@ export function PendingApprovalRow({
   const presentation = KIND_PRESENTATION[approval.kind];
   const KindIcon = presentation.icon;
   const { primary, more } = splitAgentApprovalOptions(approval.options);
+  const allowances = more.filter(
+    (option) => option.decision === "accept" || option.decision === "acceptForSession",
+  );
+  const refusals = [
+    ...more.filter((option) => option.decision === "decline"),
+    ...more.filter((option) => option.decision === "cancel"),
+  ];
   const inert = disabled || responding || !approval.live;
   const [now, setNow] = useState(Date.now);
   const waiting = agentApprovalWaitingStatus(approval.autoDeclineAt, now, intl);
@@ -118,6 +138,20 @@ export function PendingApprovalRow({
     return option.decision === "acceptForSession" && option.label !== message.defaultMessage
       ? option.label
       : intl.formatMessage(message);
+  };
+  const renderMoreOption = (option: AgentApprovalOption) => {
+    const Icon = APPROVAL_OPTION_ICONS[option.decision];
+    return (
+      <NodexDropdownItem
+        key={agentApprovalOptionKey(option)}
+        leftSlot={<Icon className="icon-xs" />}
+        onSelect={() => respond(option)}
+        tooltipText={option.warning}
+        tone={option.decision === "cancel" ? "danger" : undefined}
+      >
+        {optionLabel(option)}
+      </NodexDropdownItem>
+    );
   };
   const reason =
     approval.reason && approval.reason.trim() !== approval.detail.trim() ? approval.reason : null;
@@ -215,15 +249,9 @@ export function PendingApprovalRow({
               </NodexButton>
             }
           >
-            {more.map((option) => (
-              <NodexDropdownItem
-                key={agentApprovalOptionKey(option)}
-                onSelect={() => respond(option)}
-                tooltipText={option.warning}
-              >
-                {optionLabel(option)}
-              </NodexDropdownItem>
-            ))}
+            {allowances.map(renderMoreOption)}
+            {allowances.length > 0 && refusals.length > 0 ? <NodexDropdownSeparator /> : null}
+            {refusals.map(renderMoreOption)}
           </NodexDropdownMenu>
         ) : null}
         {primary.map((option) => (

@@ -15,7 +15,6 @@ test("conditions browser destinations on the owning surface's capabilities", () 
   const ids = (items: ReturnType<typeof buildWebLinkContextMenu>) =>
     items.map((item) => item.id).filter(Boolean);
   expect(ids(buildWebLinkContextMenu({}))).toEqual([
-    "open-in-label",
     "open-in-external-browser",
     "copy-link",
     "save-link-as",
@@ -25,7 +24,6 @@ test("conditions browser destinations on the owning surface's capabilities", () 
       buildWebLinkContextMenu({ navigation: { openTab, openWindow }, selectedText: "selection" }),
     ),
   ).toEqual([
-    "open-in-label",
     "open-in-new-tab",
     "open-in-new-window",
     "open-in-external-browser",
@@ -95,4 +93,20 @@ test("routes an explicit default-browser choice through the semantic link owner"
     openTarget: "external-browser",
   });
   expect(ports.external).not.toHaveBeenCalled();
+});
+
+test("opens a new window when the surface only supplies a window opener", async () => {
+  const openWindow = vi.fn(async () => true);
+  ports.menu.mockResolvedValue("open-in-new-window");
+  await openWebLinkContextMenu({
+    url: "https://example.test",
+    navigation: { openWindow },
+    x: 1,
+    y: 2,
+    isCurrent: () => true,
+  });
+  expect(ports.menu.mock.calls[0]?.[0]).toContainEqual(
+    expect.objectContaining({ id: "open-in-new-window" }),
+  );
+  expect(openWindow).toHaveBeenCalledWith("https://example.test");
 });

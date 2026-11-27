@@ -1,16 +1,8 @@
 import { FormattedMessage, getIntl } from "@/lib/i18n";
 import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-runtime";
 import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
-import {
-  type ComponentPropsWithoutRef,
-  type MouseEvent,
-  type ReactNode,
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { NodexDropdownSeparator, NodexDropdownSurface } from "@/components/ui/dropdown";
+import { type MouseEvent, type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { NodexDropdownSeparator } from "@/components/ui/dropdown";
 import {
   NodexContextMenuContent,
   NodexContextMenuItem,
@@ -20,6 +12,9 @@ import {
   type NodexContextMenuItemProps,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
+import { CopyIcon, NfmSideMenuTurnIntoIcon, PageMenuCopyLinkIcon } from "@/components/shared/icons";
+import { Clipboard, Scissors } from "@/components/shared/icons/generic-icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { toast } from "@/components/ui/toast";
 import { useBlockReferenceHostRuntime } from "../../block-documents/block-reference-runtime-context";
 import { usePageTargetReadModel } from "@/lib/block-reference-queries";
@@ -110,6 +105,7 @@ function NfmPageMentionContextMenuItems({
     <>
       {page && host?.openPage ? (
         <NfmEditorContextMenuItem
+          leftSlot={<NativeMenuIcon iconKey="openIn" />}
           onSelect={() => {
             void host.openPage?.({
               pageId: page.pageId,
@@ -121,7 +117,7 @@ function NfmPageMentionContextMenuItems({
         </NfmEditorContextMenuItem>
       ) : null}
       {canEmbed ? (
-        <NfmEditorContextMenuItem onSelect={onTurnIntoEmbed}>
+        <NfmEditorContextMenuItem leftSlot={<NfmSideMenuTurnIntoIcon />} onSelect={onTurnIntoEmbed}>
           <FormattedMessage
             id="editor.nfmEditorContextMenu.turnIntoEmbed"
             defaultMessage="Turn into embed"
@@ -129,6 +125,7 @@ function NfmPageMentionContextMenuItems({
         </NfmEditorContextMenuItem>
       ) : null}
       <NfmEditorContextMenuItem
+        leftSlot={<PageMenuCopyLinkIcon />}
         onSelect={() => {
           const request = resolvePageCopyRequest({
             actionId: "copy-deeplink",
@@ -139,7 +136,7 @@ function NfmPageMentionContextMenuItems({
           void copyTextWithFeedback(request.value, request.successMessage, request.failureMessage);
         }}
       >
-        <FormattedMessage id="lib.pageCopyModel.copyDeeplink" defaultMessage="Copy deeplink" />
+        <FormattedMessage id="lib.pageCopyModel.copyDeeplink" defaultMessage="Copy link" />
       </NfmEditorContextMenuItem>
       <NodexDropdownSeparator />
     </>
@@ -363,7 +360,7 @@ function getSelectionEmpty(editor: NfmEditorCommandEditor): boolean {
   return editor.prosemirrorView?.state?.selection?.empty !== false;
 }
 
-export function NfmEditorContextMenuContent({
+function NfmEditorContextMenuContent({
   selectionEmpty,
   editable,
   onCommand,
@@ -372,6 +369,7 @@ export function NfmEditorContextMenuContent({
     <>
       <NfmEditorContextMenuItem
         disabled={!editable || selectionEmpty}
+        leftSlot={<Scissors />}
         onSelect={() => onCommand("cut")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+X", resolveCodexRendererCommandPlatform())}
       >
@@ -379,6 +377,7 @@ export function NfmEditorContextMenuContent({
       </NfmEditorContextMenuItem>
       <NfmEditorContextMenuItem
         disabled={selectionEmpty}
+        leftSlot={<CopyIcon />}
         onSelect={() => onCommand("copy")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+C", resolveCodexRendererCommandPlatform())}
       >
@@ -386,44 +385,13 @@ export function NfmEditorContextMenuContent({
       </NfmEditorContextMenuItem>
       <NfmEditorContextMenuItem
         disabled={!editable}
+        leftSlot={<Clipboard />}
         onSelect={() => onCommand("paste")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+V", resolveCodexRendererCommandPlatform())}
       >
         <FormattedMessage id="editor.nfmEditorContextMenu.paste" defaultMessage="Paste" />
       </NfmEditorContextMenuItem>
     </>
-  );
-}
-
-export function NfmEditorContextMenuPreview({
-  selectionEmpty,
-  editable,
-  onCommand,
-}: NfmEditorContextMenuContentProps) {
-  return (
-    <NodexDropdownSurface className="min-w-36 p-1">
-      <NfmEditorContextMenuPreviewItem
-        disabled={!editable || selectionEmpty}
-        onClick={() => onCommand("cut")}
-        shortcut={formatAcceleratorLabel("CmdOrCtrl+X", resolveCodexRendererCommandPlatform())}
-      >
-        <FormattedMessage id="editor.nfmEditorContextMenu.cut" defaultMessage="Cut" />
-      </NfmEditorContextMenuPreviewItem>
-      <NfmEditorContextMenuPreviewItem
-        disabled={selectionEmpty}
-        onClick={() => onCommand("copy")}
-        shortcut={formatAcceleratorLabel("CmdOrCtrl+C", resolveCodexRendererCommandPlatform())}
-      >
-        <FormattedMessage id="editor.nfmEditorContextMenu.copy" defaultMessage="Copy" />
-      </NfmEditorContextMenuPreviewItem>
-      <NfmEditorContextMenuPreviewItem
-        disabled={!editable}
-        onClick={() => onCommand("paste")}
-        shortcut={formatAcceleratorLabel("CmdOrCtrl+V", resolveCodexRendererCommandPlatform())}
-      >
-        <FormattedMessage id="editor.nfmEditorContextMenu.paste" defaultMessage="Paste" />
-      </NfmEditorContextMenuPreviewItem>
-    </NodexDropdownSurface>
   );
 }
 
@@ -443,32 +411,6 @@ function NfmEditorContextMenuItem({
     >
       {children}
     </NodexContextMenuItem>
-  );
-}
-
-function NfmEditorContextMenuPreviewItem({
-  children,
-  shortcut,
-  className,
-  disabled,
-  ...props
-}: ComponentPropsWithoutRef<"button"> & {
-  shortcut: string;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={cn(
-        MENU_ITEM_CLASS_NAME,
-        "flex w-full items-center gap-6 text-left disabled:pointer-events-none disabled:opacity-40",
-        className,
-      )}
-      {...props}
-    >
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      <span className={SHORTCUT_CLASS_NAME}>{shortcut}</span>
-    </button>
   );
 }
 

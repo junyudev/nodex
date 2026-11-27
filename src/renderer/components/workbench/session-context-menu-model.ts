@@ -1,6 +1,9 @@
 import { getIntl } from "@/lib/i18n";
 import { commandTitleMessage } from "../../../shared/command-keybindings";
-import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
+import {
+  joinNativeContextMenuGroups,
+  type NativeContextMenuItem,
+} from "../../../shared/native-context-menu";
 import {
   codexSidebarProjectThreadContainerId,
   type CodexSidebarThreadContainerId,
@@ -35,6 +38,7 @@ export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   markUnread: "session.markUnread",
   toggleSettled: "session.toggleSettled",
   wake: "session.wake",
+  copySessionId: "session.copySessionId",
   copyWorkingDirectory: "session.copyWorkingDirectory",
   copyDeeplink: "session.copyDeeplink",
   copyConversationMarkdown: "session.copyConversationMarkdown",
@@ -102,7 +106,7 @@ export function readSessionSnoozedUntilActionId(actionId: string): string | null
   return snoozedUntil && Number.isFinite(Date.parse(snoozedUntil)) ? snoozedUntil : null;
 }
 
-/** intl.formatMessage({ id: "workbench.sessionContextMenuModel.snooze", defaultMessage: "Snooze" }) offers the presets; a pending snooze first says when, with Wake beside it, as every Snooze menu does. */
+/** A pending snooze shows its return time and Wake before the presets. */
 function buildSessionSnoozeSubmenu(snoozedUntil: string | null, now: Date): NativeContextMenuItem {
   const intl = getIntl();
   const presets: NativeContextMenuItem[] = chatSnoozePresets(now).map((preset) => ({
@@ -118,6 +122,7 @@ function buildSessionSnoozeSubmenu(snoozedUntil: string | null, now: Date): Nati
       defaultMessage: "Snooze",
     }),
     iconKey: "snooze",
+    commandId: "snoozeThread",
     submenu: snoozedUntil
       ? [
           {
@@ -131,7 +136,7 @@ function buildSessionSnoozeSubmenu(snoozedUntil: string | null, now: Date): Nati
               id: "workbench.sessionContextMenuModel.wake",
               defaultMessage: "Wake",
             }),
-            enabled: true,
+            iconKey: "play",
           },
           { type: "separator" },
           ...presets,
@@ -177,40 +182,17 @@ export function buildSessionContextMenuItems(
   const execution = resolveSessionExecution(session);
   const canMoveProject = resolveSessionProjectMove(session) !== null;
   const markdownExport = resolveSessionMarkdownExport(execution);
-  // Native non-Codex history exports from its open conversation, not from the Session menu.
-  const offersMarkdownExport = execution.kind !== "native" || markdownExport !== null;
   const location =
     input.location === undefined
       ? resolveSessionExecutionLocation(execution, null)
       : input.location;
   const cwd = location?.cwd ?? null;
-  const forkItems: NativeContextMenuItem[] = resolveSessionForkAvailability(execution).available
-    ? [
-        {
-          id: "session.forkMenu",
-          type: "submenu",
-          label: intl.formatMessage({
-            id: "workbench.sessionContextMenuModel.fork",
-            defaultMessage: "Fork",
-          }),
-          iconKey: "fork",
-          submenu: (
-            input.forkDestinations ??
-            sessionForkDestinations({
-              isWorktree: Boolean(location?.managedWorktreePath),
-              canCreateWorktree: false,
-            })
-          ).map((destination) => ({
-            id:
-              destination.target === "newWorktree"
-                ? SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree
-                : SESSION_CONTEXT_MENU_ACTION_IDS.fork,
-            label: destination.label,
-            enabled: true,
-            iconKey: destination.iconKey,
-          })),
-        },
-      ]
+  const forkDestinations = resolveSessionForkAvailability(execution).available
+    ? (input.forkDestinations ??
+      sessionForkDestinations({
+        isWorktree: Boolean(location?.managedWorktreePath),
+        canCreateWorktree: false,
+      }))
     : [];
   const currentProject = input.projects?.find((project) => project.id === session.projectId);
   const projectMoveItems: NativeContextMenuItem[] = canMoveProject
@@ -243,11 +225,27 @@ export function buildSessionContextMenuItems(
                   defaultMessage: "Remove from project",
                 }),
             enabled: true,
-            iconKey: "folder" as const,
+            iconKey: "remove" as const,
           },
         ]
       : []),
   ];
+
+  const sectionName = (section: SidebarSectionSummary) =>
+    section.name ??
+    intl.formatMessage({
+      id: "workbench.sessionContextMenuModel.untitledSection",
+      defaultMessage: "Untitled section",
+    });
+  const sections = input.sections ?? [];
+  const currentSection = sections.find((section) => section.sectionId === input.directSectionId);
+  const sectionDestinations: NativeContextMenuItem[] = sections
+    .filter((section) => section !== currentSection)
+    .map((section) => ({
+      id: sessionMoveToSectionActionId(section.sectionId),
+      label: sectionName(section),
+      iconKey: "section",
+    }));
 
   const organizationItems: NativeContextMenuItem[] = [
     ...(projectSubmenuItems.length > 0
@@ -275,60 +273,36 @@ export function buildSessionContextMenuItems(
               defaultMessage: "Section",
             }),
             iconKey: "section" as const,
-            submenu: [
-              ...(input.sections ?? []).map((section) => ({
-                id:
-                  input.directSectionId === section.sectionId
-                    ? SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection
-                    : sessionMoveToSectionActionId(section.sectionId),
-                label: `${input.directSectionId === section.sectionId ? "✓ " : ""}${section.name ?? intl.formatMessage({ id: "workbench.sessionContextMenuModel.untitledSection", defaultMessage: "Untitled section" })}`,
-                enabled: true,
-              })),
-              ...((input.sections?.length ?? 0) > 0 ? [{ type: "separator" as const }] : []),
-              {
-                id: SESSION_CONTEXT_MENU_ACTION_IDS.newSection,
-                label: intl.formatMessage({
-                  id: "workbench.sessionContextMenuModel.newSection",
-                  defaultMessage: "New section…",
-                }),
-                enabled: true,
-              },
-            ],
+            submenu: joinNativeContextMenuGroups(
+              sectionDestinations,
+              [
+                {
+                  id: SESSION_CONTEXT_MENU_ACTION_IDS.newSection,
+                  label: intl.formatMessage({
+                    id: "workbench.sessionContextMenuModel.newSection",
+                    defaultMessage: "New section",
+                  }),
+                  iconKey: "newTab",
+                },
+              ],
+              currentSection
+                ? [
+                    {
+                      id: SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection,
+                      label: intl.formatMessage(
+                        {
+                          id: "workbench.sessionContextMenuModel.removeFromSection",
+                          defaultMessage: "Remove from {section}",
+                        },
+                        { section: sectionName(currentSection) },
+                      ),
+                      iconKey: "remove",
+                    },
+                  ]
+                : [],
+            ),
           },
         ]),
-  ];
-
-  const copyItems: NativeContextMenuItem[] = [
-    {
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory,
-      label: intl.formatMessage({
-        id: "workbench.sessionContextMenuModel.copyWorkingDirectory",
-        defaultMessage: "Copy working directory",
-      }),
-      enabled: cwd !== null,
-      iconKey: "copy",
-    },
-    {
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink,
-      label: intl.formatMessage({
-        id: "workbench.sessionContextMenuModel.copyDeeplink",
-        defaultMessage: "Copy deeplink",
-      }),
-      enabled: true,
-      iconKey: "copy",
-    },
-    ...(offersMarkdownExport
-      ? [
-          {
-            id: SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown,
-            label: intl.formatMessage(
-              commandTitleMessage({ id: "copyConversationMarkdown", title: "Copy as Markdown" }),
-            ),
-            enabled: markdownExport !== null,
-            iconKey: "copy" as const,
-          },
-        ]
-      : []),
   ];
 
   const windowItems: NativeContextMenuItem[] = [
@@ -342,46 +316,77 @@ export function buildSessionContextMenuItems(
               defaultMessage: "Open in",
             }),
             iconKey: "openIn" as const,
-            submenu: (input.openInTargets ?? []).map((target) => ({
+            submenu: (input.openInTargets ?? []).map<NativeContextMenuItem>((target) => ({
               id: sessionOpenInActionId(target.id),
               label: target.label,
               iconUrl: target.iconUrl,
+              iconKey: "openIn",
             })),
           },
         ]
       : []),
-    {
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow,
-      label: intl.formatMessage({
-        id: "workbench.sessionContextMenuModel.openInNewWindow",
-        defaultMessage: "Open in new window",
-      }),
-      enabled: true,
-      iconKey: "window",
-    },
   ];
 
-  const markUnread: NativeContextMenuItem = {
-    id: SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
-    label: session.unread
-      ? intl.formatMessage({
-          id: "workbench.sessionContextMenuModel.markRead",
-          defaultMessage: "Mark as read",
-        })
-      : intl.formatMessage({
-          id: "workbench.sessionContextMenuModel.markUnread",
-          defaultMessage: "Mark as unread",
-        }),
-    enabled: true,
-    iconKey: "unread",
-    accelerator: "Shift+CommandOrControl+U",
-  };
-  // Pins and snoozes are each Member's own. The chat's owner or a Space Owner renames and
-  // archives a chat every Member shares; Nodex management stays out of a team Space's chats.
-  const lifecycleItems: NativeContextMenuItem[] = [
-    {
+  return joinNativeContextMenuGroups(
+    ...buildChatActionGroups({
+      canRename: session.canManage,
+      pinned: session.pinned,
+      unread: session.unread,
+      settled: session.archived ? undefined : session.settledAt != null,
+      canSnooze: true,
+      snoozedUntil: session.snoozedUntil,
+      now: input.now ?? new Date(),
+      forkDestinations,
+      organizationItems,
+      canCopyWorkingDirectory: Boolean(cwd),
+      canCopyLink: true,
+      canCopyMarkdown: markdownExport !== null,
+      windowItems,
+      canOpenInNewWindow: true,
+      canArchive: session.canManage,
+    }),
+  );
+}
+
+interface ChatActionGroupsInput {
+  readonly canRename: boolean;
+  readonly pinned?: boolean;
+  readonly unread?: boolean;
+  readonly settled?: boolean;
+  readonly canSnooze: boolean;
+  readonly snoozedUntil?: string | null;
+  readonly now: Date;
+  readonly forkDestinations: readonly SessionForkDestination[];
+  readonly newSideChat?: NativeContextMenuItem;
+  readonly clearContext?: NativeContextMenuItem;
+  readonly organizationItems?: readonly NativeContextMenuItem[];
+  readonly canCopyWorkingDirectory: boolean;
+  readonly canCopySessionId?: boolean;
+  readonly canCopyLink: boolean;
+  readonly canCopyMarkdown: boolean;
+  readonly windowItems?: readonly NativeContextMenuItem[];
+  readonly canOpenInNewWindow?: boolean;
+  readonly canArchive: boolean;
+}
+
+/** The sidebar and chat header project the same ordered actions for the capabilities they have. */
+export function buildChatActionGroups(input: ChatActionGroupsInput) {
+  const intl = getIntl();
+  const identity: NativeContextMenuItem[] = [];
+  if (input.canRename)
+    identity.push({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.rename,
+      label: intl.formatMessage({
+        id: "workbench.sessionContextMenuModel.rename",
+        defaultMessage: "Rename",
+      }),
+      iconKey: "rename",
+      commandId: "renameThread",
+    });
+  if (input.pinned !== undefined)
+    identity.push({
       id: SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
-      label: session.pinned
+      label: input.pinned
         ? intl.formatMessage({
             id: "workbench.sessionContextMenuModel.unpin",
             defaultMessage: "Unpin",
@@ -390,79 +395,142 @@ export function buildSessionContextMenuItems(
             id: "workbench.sessionContextMenuModel.pin",
             defaultMessage: "Pin",
           }),
-      enabled: true,
-      iconKey: session.pinned ? "unpin" : "pin",
-      accelerator: "Alt+CommandOrControl+P",
-    },
-    ...(session.canManage
-      ? [
-          {
-            id: SESSION_CONTEXT_MENU_ACTION_IDS.rename,
-            label: intl.formatMessage({
-              id: "workbench.sessionContextMenuModel.rename",
-              defaultMessage: "Rename",
-            }),
-            enabled: true,
-            iconKey: "rename" as const,
-            accelerator: "Alt+CommandOrControl+R",
-          },
-        ]
-      : []),
-    markUnread,
-    // Settlement is each Member's own, like their pins: it tidies their lists and changes no one else's.
-    ...(session.archived
-      ? []
-      : [
-          {
-            id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleSettled,
-            label:
-              session.settledAt != null
-                ? intl.formatMessage({
-                    id: "workbench.sessionContextMenuModel.reopen",
-                    defaultMessage: "Reopen",
-                  })
-                : intl.formatMessage({
-                    id: "workbench.sessionContextMenuModel.settle",
-                    defaultMessage: "Settle",
-                  }),
-            enabled: true,
-            iconKey: "markRead" as const,
-            accelerator: "Alt+CommandOrControl+E",
-          },
-        ]),
-    buildSessionSnoozeSubmenu(session.snoozedUntil, input.now ?? new Date()),
-    ...(session.canManage
-      ? [
-          {
-            id: SESSION_CONTEXT_MENU_ACTION_IDS.archive,
-            label: intl.formatMessage({
-              id: "workbench.sessionContextMenuModel.archive",
-              defaultMessage: "Archive",
-            }),
-            enabled: true,
-            iconKey: "archive" as const,
-            accelerator: "Shift+CommandOrControl+A",
-          },
-        ]
-      : []),
-  ];
+      iconKey: input.pinned ? "unpin" : "pin",
+      commandId: "toggleThreadPin",
+    });
+  if (input.unread !== undefined)
+    identity.push({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
+      label: input.unread
+        ? intl.formatMessage({
+            id: "workbench.sessionContextMenuModel.markRead",
+            defaultMessage: "Mark as read",
+          })
+        : intl.formatMessage({
+            id: "workbench.sessionContextMenuModel.markUnread",
+            defaultMessage: "Mark as unread",
+          }),
+      iconKey: input.unread ? "markRead" : "unread",
+      commandId: "toggleThreadUnread",
+    });
+  if (input.settled !== undefined)
+    identity.push({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleSettled,
+      label: input.settled
+        ? intl.formatMessage({
+            id: "workbench.sessionContextMenuModel.reopen",
+            defaultMessage: "Reopen",
+          })
+        : intl.formatMessage({
+            id: "workbench.sessionContextMenuModel.settle",
+            defaultMessage: "Settle",
+          }),
+      iconKey: input.settled ? "undo" : "markRead",
+      commandId: "settleThread",
+    });
+  if (input.canSnooze)
+    identity.push(buildSessionSnoozeSubmenu(input.snoozedUntil ?? null, input.now));
 
-  return [
-    ...lifecycleItems,
-    ...(forkItems.length > 0 ? [{ type: "separator" as const }, ...forkItems] : []),
-    ...(organizationItems.length > 0 ? [{ type: "separator" as const }, ...organizationItems] : []),
-    { type: "separator" },
-    {
-      id: "session.copy",
+  const newWork: NativeContextMenuItem[] = [];
+  if (input.newSideChat) newWork.push(input.newSideChat);
+  if (input.forkDestinations.length > 0)
+    newWork.push({
+      id: "session.forkMenu",
       type: "submenu",
       label: intl.formatMessage({
-        id: "workbench.sessionContextMenuModel.copy",
-        defaultMessage: "Copy",
+        id: "workbench.sessionContextMenuModel.fork",
+        defaultMessage: "Fork",
+      }),
+      iconKey: "fork",
+      submenu: input.forkDestinations.map((destination) => ({
+        id:
+          destination.target === "newWorktree"
+            ? SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree
+            : SESSION_CONTEXT_MENU_ACTION_IDS.fork,
+        label: destination.label,
+        iconKey: destination.iconKey,
+      })),
+    });
+  if (input.clearContext) newWork.push(input.clearContext);
+
+  const copyItems: NativeContextMenuItem[] = [];
+  if (input.canCopyWorkingDirectory)
+    copyItems.push({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory,
+      label: intl.formatMessage({
+        id: "workbench.sessionContextMenuModel.copyWorkingDirectory",
+        defaultMessage: "Copy working directory",
       }),
       iconKey: "copy",
-      submenu: copyItems,
-    },
-    { type: "separator" },
-    ...windowItems,
-  ];
+    });
+  if (input.canCopySessionId)
+    copyItems.push({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.copySessionId,
+      label: intl.formatMessage({
+        id: "conversation.stageHeader.copySessionId",
+        defaultMessage: "Copy session ID",
+      }),
+      iconKey: "copy",
+    });
+  if (input.canCopyLink)
+    copyItems.push({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink,
+      label: intl.formatMessage({
+        id: "workbench.sessionContextMenuModel.copyDeeplink",
+        defaultMessage: "Copy link",
+      }),
+      iconKey: "link",
+    });
+  if (input.canCopyMarkdown)
+    copyItems.push({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown,
+      label: intl.formatMessage(
+        commandTitleMessage({ id: "copyConversationMarkdown", title: "Copy as Markdown" }),
+      ),
+      iconKey: "copy",
+      commandId: "copyConversationMarkdown",
+    });
+
+  const copy: NativeContextMenuItem[] =
+    copyItems.length > 0
+      ? [
+          {
+            id: "session.copy",
+            type: "submenu",
+            label: intl.formatMessage({
+              id: "workbench.sessionContextMenuModel.copy",
+              defaultMessage: "Copy",
+            }),
+            iconKey: "copy",
+            submenu: copyItems,
+          },
+        ]
+      : [];
+  const windows = [...(input.windowItems ?? [])];
+  if (input.canOpenInNewWindow) {
+    windows.push({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow,
+      label: intl.formatMessage({
+        id: "workbench.sessionContextMenuModel.openInNewWindow",
+        defaultMessage: "Open in new window",
+      }),
+      iconKey: "window",
+      commandId: "openThreadInNewWindow",
+    });
+  }
+  const archive: NativeContextMenuItem[] = input.canArchive
+    ? [
+        {
+          id: SESSION_CONTEXT_MENU_ACTION_IDS.archive,
+          label: intl.formatMessage({
+            id: "workbench.sessionContextMenuModel.archive",
+            defaultMessage: "Archive",
+          }),
+          iconKey: "archive",
+          commandId: "archiveThread",
+        },
+      ]
+    : [];
+
+  return [identity, newWork, input.organizationItems ?? [], copy, windows, archive] as const;
 }

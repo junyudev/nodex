@@ -14,7 +14,7 @@ const FEATURED_ROLE_RANK: Readonly<Partial<Record<string, number>>> = {
 export interface PagePropertyContextMenuModel {
   /** Root entries. With a query, this is the complete matching Property set. */
   readonly visible: readonly DataSourcePagePropertyMenuDescriptor[];
-  /** Non-featured Properties shown below `More properties…` when not searching. */
+  /** Non-featured Properties shown below `More properties` when not searching. */
   readonly overflow: readonly DataSourcePagePropertyMenuDescriptor[];
   readonly searching: boolean;
   readonly hasMatches: boolean;

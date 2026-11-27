@@ -5,6 +5,20 @@ import {
   CLOSE_TAB_PATHS,
   DUPLICATE_PATHS,
   LAPTOP_PATH,
+  MENU_DOWNLOAD_PATHS,
+  MENU_LINK_PATHS,
+  MENU_ATTACH_PATHS,
+  MENU_PAUSE_PATHS,
+  MENU_PLAY_PATHS,
+  MENU_UNDO_PATHS,
+  MENU_REDO_PATHS,
+  MENU_WORD_WRAP_PATHS,
+  MENU_NO_WORD_WRAP_PATHS,
+  MENU_ANNOTATE_PATHS,
+  MENU_INSPECT_PATHS,
+  MENU_CUT_GLYPH,
+  MENU_PASTE_GLYPH,
+  MENU_SELECT_ALL_GLYPH,
   MOVE_TO_BOTTOM_PANE_PATHS,
   MOVE_TO_LEFT_PANE_PATH,
   MOVE_TO_RIGHT_PANE_PATH,
@@ -44,7 +58,11 @@ interface GlyphPath {
 /** Draws filled glyph paths on their square grid: 16 units for pane glyphs, 20 for the house set. */
 function glyphSvg(
   paths: readonly GlyphPath[],
-  { grid = 16, extra = "" }: { readonly grid?: 16 | 20; readonly extra?: string } = {},
+  {
+    grid = 16,
+    extra = "",
+    transform,
+  }: { readonly grid?: 16 | 20; readonly extra?: string; readonly transform?: string } = {},
 ): string {
   const body = paths
     .map(
@@ -52,7 +70,11 @@ function glyphSvg(
         `<path d="${d}"${fillRule ? ` fill-rule="${fillRule}"` : ""}${clipRule ? ` clip-rule="${clipRule}"` : ""} fill="currentColor"/>`,
     )
     .join("");
-  return `<svg width="${grid}" height="${grid}" viewBox="0 0 ${grid} ${grid}" fill="none" xmlns="http://www.w3.org/2000/svg">${body}${extra}</svg>`;
+  return `<svg width="${grid}" height="${grid}" viewBox="0 0 ${grid} ${grid}" fill="none" xmlns="http://www.w3.org/2000/svg">${transform ? `<g transform="${transform}">${body}</g>` : body}${extra}</svg>`;
+}
+
+function strokedGlyphSvg(body: string): string {
+  return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 }
 
 /** A pane outline with the half a split opens on filled in. */
@@ -106,6 +128,22 @@ export const SESSION_CONTEXT_MENU_ICON_SVG_BY_KEY: Record<NativeContextMenuIconK
   reload: glyphSvg(RELOAD_PATHS),
   duplicate: glyphSvg(DUPLICATE_PATHS),
   trash: glyphSvg(TRASH_PATHS),
+  download: glyphSvg(MENU_DOWNLOAD_PATHS),
+  link: glyphSvg(MENU_LINK_PATHS),
+  attach: glyphSvg(MENU_ATTACH_PATHS),
+  pause: glyphSvg(MENU_PAUSE_PATHS),
+  play: glyphSvg(MENU_PLAY_PATHS),
+  undo: glyphSvg(MENU_UNDO_PATHS),
+  redo: glyphSvg(MENU_REDO_PATHS, { grid: 20 }),
+  wordWrap: glyphSvg(MENU_WORD_WRAP_PATHS),
+  noWordWrap: glyphSvg(MENU_NO_WORD_WRAP_PATHS, { grid: 20 }),
+  annotate: glyphSvg(MENU_ANNOTATE_PATHS),
+  inspect: glyphSvg(MENU_INSPECT_PATHS, { grid: 20 }),
+  back: glyphSvg([{ d: MOVE_TO_LEFT_PANE_PATH }]),
+  forward: glyphSvg([{ d: MOVE_TO_LEFT_PANE_PATH }], { transform: "translate(16 0) scale(-1 1)" }),
+  cut: strokedGlyphSvg(MENU_CUT_GLYPH),
+  paste: strokedGlyphSvg(MENU_PASTE_GLYPH),
+  selectAll: strokedGlyphSvg(MENU_SELECT_ALL_GLYPH),
   splitLeft: splitIconSvg("left"),
   splitRight: splitIconSvg("right"),
   splitUp: splitIconSvg("up"),
@@ -114,8 +152,4 @@ export const SESSION_CONTEXT_MENU_ICON_SVG_BY_KEY: Record<NativeContextMenuIconK
 
 export function getNativeContextMenuIconSvg(iconKey: NativeContextMenuIconKey): string {
   return SESSION_CONTEXT_MENU_ICON_SVG_BY_KEY[iconKey];
-}
-
-export function buildSessionContextMenuIconSvg(iconKey: NativeContextMenuIconKey): string {
-  return getNativeContextMenuIconSvg(iconKey).replaceAll("currentColor", "black");
 }

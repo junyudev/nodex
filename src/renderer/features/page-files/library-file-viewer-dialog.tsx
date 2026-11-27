@@ -147,8 +147,8 @@ function LibraryFileViewer({
         <NodexIconButton
           icon={DownloadIcon}
           ariaLabel={intl.formatMessage({
-            id: "pageFiles.libraryFileViewerDialog.save",
-            defaultMessage: "Save…",
+            id: "board.pageFileTreeView.save",
+            defaultMessage: "Save a copy",
           })}
           size="sm"
           disabled={!metadata}

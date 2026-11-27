@@ -33,11 +33,7 @@ import {
   DragHandleDotsIcon,
   MinimizeIcon,
 } from "@/components/shared/icons";
-import {
-  NodexDropdownItem,
-  NodexDropdownMenu,
-  NodexDropdownSeparator,
-} from "@/components/ui/dropdown";
+import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   RIGHT_PANEL_COMPOSER_OVERLAY_HEIGHT_PX,
@@ -106,7 +102,7 @@ export interface FloatingComposerPlacement {
   readonly reserveContent?: boolean;
   /** Header title; a chat picker in the context rail stands in for it. */
   readonly title?: string;
-  /** Placement actions offered by the move handle's menu, before `Minimize composer`. */
+  /** Placement actions offered by the move handle's menu. */
   readonly menuItems?: readonly FloatingComposerMenuItem[];
   /** Dropping the composer on a pane edge returns the chat beside the content, on that side. */
   readonly onDropBesideContent?: (side: "left" | "right") => void;
@@ -551,6 +547,8 @@ export function FloatingComposer({
   const [resizing, setResizing] = useState(false);
   const startPointerDrag = usePointerDrag();
   const [menuOpen, setMenuOpen] = useState(false);
+  const hasPlacementCommands = menuItems.length > 0;
+  if (!hasPlacementCommands && menuOpen) setMenuOpen(false);
   const [paneDropSide, setPaneDropSide] = useState<"left" | "right" | null>(null);
   const [dockApproach, setDockApproach] = useState<DockApproach>(NO_DOCK_APPROACH);
   const [liveSize, setLiveSize] = useState<{ width?: number; height?: number } | null>(null);
@@ -1099,71 +1097,72 @@ export function FloatingComposer({
           />
         </div>
         {/* Events from the portaled menu bubble through here in React; only the handle's own count. */}
-        <span
-          className="contents"
-          onPointerDownCapture={(event) => {
-            if (event.button !== 0 || !isEventWithinCurrentTarget(event)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            draggedRef.current = false;
-            startFrameDrag(event);
-          }}
-          onClickCapture={(event) => {
-            if (!isEventWithinCurrentTarget(event)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (draggedRef.current) {
+        {!narrow || hasPlacementCommands ? (
+          <span
+            className="contents"
+            onPointerDownCapture={(event) => {
+              if (event.button !== 0 || !isEventWithinCurrentTarget(event)) return;
+              event.preventDefault();
+              event.stopPropagation();
               draggedRef.current = false;
-              return;
-            }
-            setMenuOpen((open) => !open);
-          }}
-        >
-          <NodexDropdownMenu
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-            align="end"
-            side={dockedTop ? "bottom" : "top"}
-            contentWidth="menu"
-            triggerTooltipContent={
-              menuOpen || dragging
-                ? undefined
-                : narrow
-                  ? intl.formatMessage({
-                      id: "floatingComposer.floatingComposer.options",
-                      defaultMessage: "Composer options",
-                    })
-                  : intl.formatMessage({
-                      id: "floatingComposer.floatingComposer.moveHint",
-                      defaultMessage: "Drag to move · Click for options",
-                    })
-            }
-            triggerButton={
-              <HeaderIconButton
-                label={intl.formatMessage({
-                  id: "floatingComposer.floatingComposer.move",
-                  defaultMessage: "Move composer",
-                })}
-                className={narrow ? undefined : "cursor-grab active:cursor-grabbing"}
-              >
-                <DragHandleDotsIcon className="icon-sm" />
-              </HeaderIconButton>
-            }
+              startFrameDrag(event);
+            }}
+            onClickCapture={(event) => {
+              if (!isEventWithinCurrentTarget(event)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              if (draggedRef.current) {
+                draggedRef.current = false;
+                return;
+              }
+              if (hasPlacementCommands) setMenuOpen((open) => !open);
+            }}
           >
-            {menuItems.map((item) => (
-              <NodexDropdownItem key={item.id} leftSlot={item.icon} onSelect={item.onSelect}>
-                {item.label}
-              </NodexDropdownItem>
-            ))}
-            {menuItems.length > 0 ? <NodexDropdownSeparator /> : null}
-            <NodexDropdownItem leftSlot={<MinimizeIcon />} onSelect={() => minimize()}>
-              {intl.formatMessage({
-                id: "floatingComposer.floatingComposer.minimizeComposer",
-                defaultMessage: "Minimize composer",
-              })}
-            </NodexDropdownItem>
-          </NodexDropdownMenu>
-        </span>
+            {hasPlacementCommands ? (
+              <NodexDropdownMenu
+                open={menuOpen}
+                onOpenChange={setMenuOpen}
+                align="end"
+                side={dockedTop ? "bottom" : "top"}
+                contentWidth="menu"
+                triggerTooltipContent={
+                  menuOpen || dragging
+                    ? undefined
+                    : narrow
+                      ? intl.formatMessage({
+                          id: "floatingComposer.floatingComposer.options",
+                          defaultMessage: "Composer options",
+                        })
+                      : intl.formatMessage({
+                          id: "floatingComposer.floatingComposer.moveHint",
+                          defaultMessage: "Drag to move · Click for options",
+                        })
+                }
+                triggerButton={
+                  <HeaderIconButton
+                    label={intl.formatMessage({
+                      id: "floatingComposer.floatingComposer.move",
+                      defaultMessage: "Move composer",
+                    })}
+                    className={narrow ? undefined : "cursor-grab active:cursor-grabbing"}
+                  >
+                    <DragHandleDotsIcon className="icon-sm" />
+                  </HeaderIconButton>
+                }
+              >
+                {menuItems.map((item) => (
+                  <NodexDropdownItem key={item.id} leftSlot={item.icon} onSelect={item.onSelect}>
+                    {item.label}
+                  </NodexDropdownItem>
+                ))}
+              </NodexDropdownMenu>
+            ) : (
+              <span className="inline-flex h-7 w-7 cursor-grab items-center justify-center text-token-text-tertiary active:cursor-grabbing">
+                <DragHandleDotsIcon className="icon-sm" />
+              </span>
+            )}
+          </span>
+        ) : null}
       </div>
     </motion.header>
   );

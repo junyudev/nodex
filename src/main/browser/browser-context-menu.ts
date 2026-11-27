@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from "electron";
+import { getNativeMenuIcon } from "../native-menu-icons";
 import { getMainIntl } from "../i18n/main-intl";
 import { isExternallyOpenableUrl, isHttpUrl } from "../../shared/browser-url-policy";
 
@@ -53,12 +54,7 @@ function isPlainPageContext(params: BrowserContextMenuParams): boolean {
 }
 
 function canAttachImage(params: BrowserContextMenuParams): boolean {
-  return (
-    params.mediaType === "image" &&
-    params.hasImageContents &&
-    params.linkURL.length === 0 &&
-    params.srcURL.length > 0
-  );
+  return params.mediaType === "image" && params.hasImageContents && params.srcURL.length > 0;
 }
 
 function hasCopyableSelection(params: BrowserContextMenuParams): boolean {
@@ -80,40 +76,8 @@ export function buildBrowserContextMenuTemplate({
 }: BuildBrowserContextMenuInput): MenuItemConstructorOptions[] {
   const template: MenuItemConstructorOptions[] = [];
 
-  if (canAnnotate) {
-    template.push(
-      {
-        label: getMainIntl().formatMessage({
-          id: "main.contextMenu.quickAnnotate",
-          defaultMessage: "Quick annotate",
-        }),
-        click: () => actions.annotate("quick-annotate"),
-      },
-      {
-        label: getMainIntl().formatMessage({
-          id: "main.contextMenu.annotate",
-          defaultMessage: "Annotate",
-        }),
-        click: () => actions.annotate("annotate"),
-      },
-    );
-    pushSeparator(template);
-  }
-
-  if (canAttachImage(params)) {
-    template.push({
-      label: getMainIntl().formatMessage({
-        id: "main.contextMenu.attachImage",
-        defaultMessage: "Attach image to chat",
-      }),
-      click: () => actions.attachImage(params.srcURL),
-    });
-    pushSeparator(template);
-  }
-
   const hasLink = params.linkURL.length > 0;
   if (hasLink) {
-    const itemCountBeforeLinkActions = template.length;
     if (isHttpUrl(params.linkURL)) {
       template.push(
         {
@@ -121,6 +85,7 @@ export function buildBrowserContextMenuTemplate({
             id: "main.contextMenu.openInTab",
             defaultMessage: "Open in new tab",
           }),
+          icon: getNativeMenuIcon("newTab"),
           click: () => actions.openLink(params.linkURL),
         },
         {
@@ -128,6 +93,7 @@ export function buildBrowserContextMenuTemplate({
             id: "main.contextMenu.openInWindow",
             defaultMessage: "Open in new window",
           }),
+          icon: getNativeMenuIcon("window"),
           click: () => actions.openWindow(params.linkURL),
         },
       );
@@ -136,81 +102,107 @@ export function buildBrowserContextMenuTemplate({
       template.push({
         label: getMainIntl().formatMessage({
           id: "main.contextMenu.openExternal",
-          defaultMessage: "Open in external browser",
+          defaultMessage: "Open in default browser",
         }),
+        icon: getNativeMenuIcon("openIn"),
         click: () => actions.openExternal(params.linkURL),
       });
     }
-    if (template.length > itemCountBeforeLinkActions) pushSeparator(template);
   }
 
-  const hasSelection = hasCopyableSelection(params);
-  if (hasLink || params.isEditable || hasSelection) {
-    if (hasLink) {
-      template.push({
-        label: getMainIntl().formatMessage({
-          id: "main.contextMenu.copyLink",
-          defaultMessage: "Copy link address",
-        }),
-        click: () => actions.copyLink(params.linkURL),
-      });
-    }
-    if (params.isEditable) {
-      template.push(
-        {
-          role: "cut",
-          enabled: params.editFlags.canCut,
-        },
-        {
-          role: "copy",
-          enabled: params.editFlags.canCopy,
-        },
-        {
-          role: "paste",
-          enabled: params.editFlags.canPaste,
-        },
-      );
-    } else if (hasSelection) {
-      template.push({
-        role: "copy",
-        enabled: params.editFlags.canCopy,
-      });
-    }
+  const edits: MenuItemConstructorOptions[] = [];
+  if (hasLink) {
+    edits.push({
+      label: getMainIntl().formatMessage({
+        id: "main.contextMenu.copyLink",
+        defaultMessage: "Copy link",
+      }),
+      icon: getNativeMenuIcon("link"),
+      click: () => actions.copyLink(params.linkURL),
+    });
+  }
+  if (params.isEditable && params.editFlags.canCut) {
+    edits.push({ role: "cut", icon: getNativeMenuIcon("cut") });
+  }
+  if ((params.isEditable || hasCopyableSelection(params)) && params.editFlags.canCopy) {
+    edits.push({ role: "copy", icon: getNativeMenuIcon("copy") });
+  }
+  if (params.isEditable && params.editFlags.canPaste) {
+    edits.push({ role: "paste", icon: getNativeMenuIcon("paste") });
+  }
+  if (edits.length > 0) {
     pushSeparator(template);
+    template.push(...edits);
   }
 
   if (isPlainPageContext(params)) {
-    template.push(
-      {
+    if (canGoBack)
+      template.push({
         label: getMainIntl().formatMessage({ id: "main.contextMenu.back", defaultMessage: "Back" }),
-        enabled: canGoBack,
+        icon: getNativeMenuIcon("back"),
         click: actions.back,
-      },
-      {
+      });
+    if (canGoForward)
+      template.push({
         label: getMainIntl().formatMessage({
           id: "main.contextMenu.forward",
           defaultMessage: "Forward",
         }),
-        enabled: canGoForward,
+        icon: getNativeMenuIcon("forward"),
         click: actions.forward,
-      },
-      {
+      });
+    if (canReload)
+      template.push({
         label: getMainIntl().formatMessage({
           id: "main.contextMenu.reload",
           defaultMessage: "Reload",
         }),
-        enabled: canReload,
+        icon: getNativeMenuIcon("reload"),
         click: actions.reload,
-      },
-    );
-    pushSeparator(template);
+      });
   }
 
+  if (canAnnotate) {
+    pushSeparator(template);
+    template.push(
+      {
+        label: getMainIntl().formatMessage({
+          id: "main.contextMenu.quickAnnotate",
+          defaultMessage: "Quick annotate",
+        }),
+        icon: getNativeMenuIcon("annotate"),
+        click: () => actions.annotate("quick-annotate"),
+      },
+      {
+        label: getMainIntl().formatMessage({
+          id: "main.contextMenu.annotate",
+          defaultMessage: "Annotate",
+        }),
+        icon: getNativeMenuIcon("annotate"),
+        click: () => actions.annotate("annotate"),
+      },
+    );
+  }
+
+  if (canAttachImage(params)) {
+    pushSeparator(template);
+    template.push({
+      label: getMainIntl().formatMessage({
+        id: "main.contextMenu.attachImage",
+        defaultMessage: "Add to chat",
+      }),
+      icon: getNativeMenuIcon("attach"),
+      click: () => actions.attachImage(params.srcURL),
+    });
+  }
+
+  pushSeparator(template);
   template.push({
     label: getMainIntl().formatMessage({
       id: "main.contextMenu.inspect",
       defaultMessage: "Inspect",
     }),
+    icon: getNativeMenuIcon("inspect"),
     click: () => actions.inspect({ x: params.x, y: params.y }),
   });
   return template;

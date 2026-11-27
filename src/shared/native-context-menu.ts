@@ -1,3 +1,5 @@
+import type { CommandId } from "./command-keybindings";
+
 export type NativeContextMenuIconKey =
   | "pin"
   | "unpin"
@@ -30,7 +32,23 @@ export type NativeContextMenuIconKey =
   | "splitLeft"
   | "splitRight"
   | "splitUp"
-  | "splitDown";
+  | "splitDown"
+  | "download"
+  | "link"
+  | "attach"
+  | "pause"
+  | "play"
+  | "undo"
+  | "redo"
+  | "wordWrap"
+  | "noWordWrap"
+  | "annotate"
+  | "inspect"
+  | "back"
+  | "forward"
+  | "cut"
+  | "paste"
+  | "selectAll";
 
 export interface NativeContextMenuBaseItem {
   id: string;
@@ -38,6 +56,7 @@ export interface NativeContextMenuBaseItem {
   enabled?: boolean;
   tooltip?: string;
   accelerator?: string;
+  commandId?: CommandId;
   iconKey?: NativeContextMenuIconKey;
   iconUrl?: string;
   nativeRole?: "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll";
@@ -70,4 +89,13 @@ export interface NativeContextMenuOptions {
   x?: number;
   y?: number;
   positioningItem?: number;
+}
+
+/** Joins non-empty action groups with a single separator. */
+export function joinNativeContextMenuGroups(
+  ...groups: readonly (readonly NativeContextMenuItem[])[]
+): NativeContextMenuItem[] {
+  return groups
+    .filter((group) => group.length > 0)
+    .flatMap((group, index) => (index === 0 ? group : [{ type: "separator" }, ...group]));
 }

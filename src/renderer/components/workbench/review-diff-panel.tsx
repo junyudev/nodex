@@ -43,8 +43,7 @@ import {
   ReviewCreatePrIcon,
   ReviewDisableRichPreviewIcon,
   ReviewDisableWordDiffsIcon,
-  DisableWordWrapIcon,
-  EnableWordWrapIcon,
+  CopyIcon,
   ReviewFileToggleChevronIcon,
   ReviewExpandAllDiffsIcon,
   ReviewHideWhitespaceIcon,
@@ -57,6 +56,7 @@ import {
   ReviewWordDiffsIcon,
   MoreActionsIcon,
 } from "../shared/icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { FileTypeIcon, FileTypeIconSprite } from "@/components/shared/icons";
 import { ReviewCommitMenuItems } from "@/features/review/view/review-commit-menu-items";
 import {
@@ -150,6 +150,7 @@ import { useLinkOpening } from "@/lib/web-link-navigation";
 import { readWorkspaceFileGitHubUrl } from "@/lib/workspace-file-operations";
 import {
   buildReviewFileContextMenu,
+  reviewWordWrapLabel,
   readReviewContextMenuLine,
   reviewFileOpenTargetActionId,
 } from "@/features/review/model/review-file-context-menu";
@@ -2055,6 +2056,8 @@ const ReviewFileRow = memo(function ReviewFileRow({
           const selectedId = await showNativeContextMenu(
             buildReviewFileContextMenu({
               canOpenFile: file !== null,
+              canRequestChanges,
+              wrap,
               canOpenInNewTab: entry.gitStatus !== "deleted",
               selectedText,
               relativePath,
@@ -2134,6 +2137,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
       links,
       onToggleWrap,
       workspaceRoot,
+      wrap,
     ],
   );
 
@@ -3898,15 +3902,6 @@ export function ReviewDiffPanel({
   const canUseThreadGitActions = Boolean(
     reviewConversation.threadId && snapshot.isGitRepository && reviewCwd,
   );
-  const reviewOptionsWordWrapLabel = wrap
-    ? intl.formatMessage({
-        id: "workbench.reviewDiffPanel.disableWrap",
-        defaultMessage: "Disable word wrap",
-      })
-    : intl.formatMessage({
-        id: "workbench.reviewDiffPanel.enableWrap",
-        defaultMessage: "Enable word wrap",
-      });
   const reviewOptionsExpandLabel = allDiffsExpanded
     ? intl.formatMessage({
         id: "workbench.reviewDiffPanel.collapseDiffs",
@@ -4319,31 +4314,31 @@ export function ReviewDiffPanel({
               sideOffset={8}
               contentWidth="menu"
             >
-              {isGitReviewSource(source) ? (
-                <NodexDropdownItem
-                  onSelect={() => void refreshGitSnapshot()}
-                  disabled={gitLoading}
-                  leftSlot={<ReviewRefreshIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />}
-                >
-                  <FormattedMessage
-                    id="workbench.reviewDiffPanel.refresh"
-                    defaultMessage={"Refresh"}
-                  />
-                </NodexDropdownItem>
+              {isGitReviewSource(source) && !gitLoading ? (
+                <>
+                  <NodexDropdownItem
+                    onSelect={() => void refreshGitSnapshot()}
+                    leftSlot={<ReviewRefreshIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />}
+                  >
+                    <FormattedMessage
+                      id="workbench.reviewDiffPanel.refresh"
+                      defaultMessage="Refresh"
+                    />
+                  </NodexDropdownItem>
+                  <NodexDropdownSeparator />
+                </>
               ) : null}
               <NodexDropdownItem
                 onSelect={() => setWrap((current) => !current)}
                 leftSlot={
-                  wrap ? (
-                    <DisableWordWrapIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />
-                  ) : (
-                    <EnableWordWrapIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />
-                  )
+                  <NativeMenuIcon
+                    iconKey={wrap ? "noWordWrap" : "wordWrap"}
+                    className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME}
+                  />
                 }
               >
-                {reviewOptionsWordWrapLabel}
+                {reviewWordWrapLabel(wrap)}
               </NodexDropdownItem>
-              <NodexDropdownSeparator />
               <NodexDropdownItem
                 onSelect={() => setLoadFullFilesEnabled((current) => !current)}
                 leftSlot={<FileIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />}
@@ -4374,25 +4369,30 @@ export function ReviewDiffPanel({
               >
                 {reviewOptionsWordDiffsLabel}
               </NodexDropdownItem>
-              <NodexDropdownItem
-                onSelect={() => setHideWhitespace((current) => !current)}
-                disabled={!isGitReviewSource(source)}
-                leftSlot={
-                  <ReviewHideWhitespaceIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />
-                }
-              >
-                {reviewOptionsWhitespaceLabel}
-              </NodexDropdownItem>
-              <NodexDropdownItem
-                onSelect={() => void handleCopyGitApplyCommand()}
-                disabled={!canCopyGitApplyCommand}
-                leftSlot={<FileIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />}
-              >
-                <FormattedMessage
-                  id="workbench.reviewDiffPanel.copyGitApply"
-                  defaultMessage={"Copy git apply command"}
-                />
-              </NodexDropdownItem>
+              {isGitReviewSource(source) ? (
+                <NodexDropdownItem
+                  onSelect={() => setHideWhitespace((current) => !current)}
+                  leftSlot={
+                    <ReviewHideWhitespaceIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />
+                  }
+                >
+                  {reviewOptionsWhitespaceLabel}
+                </NodexDropdownItem>
+              ) : null}
+              {canCopyGitApplyCommand ? (
+                <>
+                  <NodexDropdownSeparator />
+                  <NodexDropdownItem
+                    onSelect={() => void handleCopyGitApplyCommand()}
+                    leftSlot={<CopyIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />}
+                  >
+                    <FormattedMessage
+                      id="workbench.reviewDiffPanel.copyGitApply"
+                      defaultMessage="Copy git apply command"
+                    />
+                  </NodexDropdownItem>
+                </>
+              ) : null}
             </NodexDropdownMenu>
             <NodexTooltip tooltipContent={reviewOptionsExpandLabel}>
               <button

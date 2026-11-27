@@ -48,7 +48,6 @@ import {
   Photo20Glyph,
   Code20Glyph,
   Drag16Glyph,
-  Clipboard16Glyph,
   ArrowUpLineHorizontal16Glyph,
   ArrowUpMd16Glyph,
   ArrowDownMd16Glyph,
@@ -4792,10 +4791,6 @@ function DatabaseViewPageMenuIcon({
       <IconSilhouette>{children}</IconSilhouette>
     </svg>
   );
-}
-
-export function PageMenuCopyIcon(props: DatabaseViewPageMenuIconProps) {
-  return <Clipboard16Glyph className="icon-xs" {...props} />;
 }
 
 export function PageMenuCopyIdIcon(props: DatabaseViewPageMenuIconProps) {

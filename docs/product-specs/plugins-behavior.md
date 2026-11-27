@@ -51,8 +51,7 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
   personal skill has a switch. A plugin row opens its settings. An installed local skill row
   opens its page in Customize. The skills listed are personal skills that aren't recommended ones.
   Browse directory returns to the Customize page for the selected tab. Add offers Create
-  plugin and Record a skill when their helpers exist, Plugin from folder, Add a marketplace,
-  and Add MCP server.
+  plugin and Record a skill when available, Add a marketplace, and Add MCP server.
 - **Apps.** The apps you have connected each have a switch; one controlled by an administrator
   or another configuration layer stays locked and says why. A row opens the app's tools, split
   into tools that change things and tools that only read, with the app's switch and Try now,
@@ -77,8 +76,8 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
 
 ## Plugins in every Agent
 
-- **From a folder.** Add › Plugin from folder picks a folder that holds a plugin, in the
-  Agent Plugins layout or the Codex layout. Nodex copies the folder, then shows what the copy
+- **From a folder.** In the Plugins directory, **Add** › **Add plugin from folder** picks
+  a folder in the Agent Plugins layout or the Codex layout. Nodex copies the folder, then shows what the copy
   contains before anything is installed: its name, version and developer, its skills, the
   command or address each MCP server runs, how many hooks and connected apps it has, and
   which Agents can use it. Install installs exactly the reviewed copy; closing the dialog

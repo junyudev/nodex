@@ -12,7 +12,7 @@ import {
 import {
   ChevronDownIcon,
   DownloadIcon,
-  FolderOpenIcon,
+  FolderIcon,
   ImageEditorTabIcon,
   ImageCommentIcon,
   ImageEraseIcon,
@@ -31,6 +31,7 @@ import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { openFileLink, openPathWithDefaultApplication } from "@/lib/file-system-operations";
 import { cn } from "@/lib/utils";
+import { getFileManagerRevealMessage } from "../../../../shared/file-link-openers";
 import {
   trackImageToolOpen,
   createImageDownloadFilename,
@@ -195,13 +196,10 @@ function LocalImageOpenControl({
         }
       >
         <NodexDropdownItem
-          leftSlot={<FolderOpenIcon aria-hidden="true" className="icon-sm" />}
+          leftSlot={<FolderIcon aria-hidden="true" className="icon-sm" />}
           onSelect={() => void openPath("fileManager")}
         >
-          {intl.formatMessage({
-            id: "imageEditor.singleImageEditor.openFolder",
-            defaultMessage: "Open in folder",
-          })}
+          {intl.formatMessage(getFileManagerRevealMessage(navigator.platform))}
         </NodexDropdownItem>
         <NodexDropdownItem
           disabled={isDownloading}
@@ -220,8 +218,8 @@ function LocalImageOpenControl({
                 defaultMessage: "Saving…",
               })
             : intl.formatMessage({
-                id: "imageEditor.singleImageEditor.saveAs",
-                defaultMessage: "Save as…",
+                id: "imageEditor.singleImageEditor.saveCopy",
+                defaultMessage: "Save a copy",
               })}
         </NodexDropdownItem>
       </NodexDropdownMenu>

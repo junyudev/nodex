@@ -5,6 +5,7 @@ import {
   BranchStatusIcon,
   CheckmarkIcon,
   PlusIcon,
+  RetryIcon,
   ActivitySpinnerIcon,
 } from "@/components/shared/icons";
 import {
@@ -216,9 +217,20 @@ export function BranchSelectorPopover({
         id: "conversation.branchSelectorPopover.noBranches",
         defaultMessage: "No branches found",
       });
-  const canCreateBranch = Boolean(
-    onCreate && cwd && !busy && hasRepositoryState && !loading && !error,
-  );
+  const createBranchUnavailable = (() => {
+    if (!cwd) return emptyBranchMessage;
+    if (busy || loading)
+      return intl.formatMessage({
+        id: "conversation.branchSelectorPopover.waitForGit",
+        defaultMessage: "Wait for the current Git operation",
+      });
+    if (error)
+      return intl.formatMessage({
+        id: "conversation.branchSelectorPopover.loadFailed",
+        defaultMessage: "Unable to load branches",
+      });
+    return hasRepositoryState ? undefined : emptyBranchMessage;
+  })();
   const triggerTitle = cwd
     ? intl.formatMessage({
         id: "conversation.branchSelectorPopover.switch",
@@ -334,7 +346,8 @@ export function BranchSelectorPopover({
             <NodexDropdownSeparator />
             <NodexDropdownItem
               className={COMPOSER_PICKER_ITEM_CLASS_NAME}
-              disabled={!canCreateBranch}
+              disabled={createBranchUnavailable !== undefined}
+              subText={createBranchUnavailable}
               onSelect={handleOpenCreateDialog}
               leftSlot={<PlusIcon className="size-4 shrink-0" />}
             >
@@ -502,6 +515,7 @@ function NodexDropdownScrollBranchList({
           </NodexDropdownSectionLabel>
           <NodexDropdownItem
             className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+            leftSlot={<RetryIcon className="size-4 shrink-0" />}
             onSelect={() => void onRetry()}
           >
             <FormattedMessage

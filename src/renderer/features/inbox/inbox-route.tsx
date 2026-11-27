@@ -1,4 +1,5 @@
 import { FormattedMessage, useIntl, type MessageDescriptor, defineMessage } from "@/lib/i18n";
+import { useExecutionHold } from "@/lib/execution-holds-runtime";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
 import { InboxProblemRow } from "./inbox-problem-row";
@@ -50,7 +51,11 @@ import {
 } from "@/components/shared/icons";
 import { useApplicationPending } from "@/bootstrap/application-surface";
 import { NodexButton } from "@/components/ui/button";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   SURFACE_TOOLBAR_ROW_CLASS,
@@ -234,6 +239,7 @@ function InboxHeader({
       open: onOpenNotes,
     },
   ];
+  const { paused } = useExecutionHold({ kind: "space" });
   const moreLabel = intl.formatMessage({
     id: "inbox.inboxRoute.moreActions",
     defaultMessage: "More actions",
@@ -325,12 +331,17 @@ function InboxHeader({
             </button>
           }
         >
-          <SpaceExecutionPause item />
           {tools.map(({ id, label, Icon, open }) => (
             <NodexDropdownItem key={id} leftSlot={<Icon className="icon-xs" />} onSelect={open}>
               {label}
             </NodexDropdownItem>
           ))}
+          {!paused ? (
+            <>
+              <NodexDropdownSeparator />
+              <SpaceExecutionPause item />
+            </>
+          ) : null}
         </NodexDropdownMenu>
         {!isRemoteSpace() ? (
           <InboxAgentsPopover agents={agents} onOpenSettings={onOpenSettings} />

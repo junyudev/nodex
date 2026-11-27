@@ -19,6 +19,7 @@ import {
   NodexDropdownItem,
   NodexDropdownMenu,
   NodexDropdownSelectedIcon,
+  NodexDropdownSeparator,
   NodexSettingsDropdownTrigger,
 } from "@/components/ui/dropdown";
 import { HotkeySettingControl } from "@/components/ui/hotkey-setting-control";
@@ -1098,45 +1099,51 @@ export function VoiceSettingsPage({
                       })}
                     </NodexButton>
                   ) : null}
-                  <NodexDropdownMenu
-                    align="end"
-                    disabled={historyAction !== null}
-                    triggerButton={
-                      <NodexButton
-                        aria-label={intl.formatMessage({
-                          id: "dictation.voiceSettingsPage.recordingActions",
-                          defaultMessage: "Recording actions",
-                        })}
-                        size="icon-xs"
-                        variant="ghost"
-                      >
-                        <MoreActionsIcon className="icon-2xs" />
-                      </NodexButton>
-                    }
-                  >
-                    {recording.sizeBytes > 0 ? (
-                      <NodexDropdownItem
-                        leftSlot={<DownloadIcon className="icon-xs" />}
-                        onSelect={() => void downloadRecording(recording.id)}
-                      >
-                        {intl.formatMessage({
-                          id: "dictation.voiceSettingsPage.downloadRecording",
-                          defaultMessage: "Download recording",
-                        })}
-                      </NodexDropdownItem>
-                    ) : null}
-                    <NodexDropdownItem
-                      className="text-token-error-foreground"
-                      disabled={recording.status === "recording"}
-                      leftSlot={<DeleteIcon className="icon-xs" />}
-                      onSelect={() => void removeRecording(recording.id)}
+                  {recording.sizeBytes > 0 || recording.status !== "recording" ? (
+                    <NodexDropdownMenu
+                      align="end"
+                      disabled={historyAction !== null}
+                      triggerButton={
+                        <NodexButton
+                          aria-label={intl.formatMessage({
+                            id: "dictation.voiceSettingsPage.recordingActions",
+                            defaultMessage: "Recording actions",
+                          })}
+                          size="icon-xs"
+                          variant="ghost"
+                        >
+                          <MoreActionsIcon className="icon-2xs" />
+                        </NodexButton>
+                      }
                     >
-                      {intl.formatMessage({
-                        id: "dictation.voiceSettingsPage.deleteRecording",
-                        defaultMessage: "Delete recording",
-                      })}
-                    </NodexDropdownItem>
-                  </NodexDropdownMenu>
+                      {recording.sizeBytes > 0 ? (
+                        <NodexDropdownItem
+                          leftSlot={<DownloadIcon className="icon-xs" />}
+                          onSelect={() => void downloadRecording(recording.id)}
+                        >
+                          {intl.formatMessage({
+                            id: "dictation.voiceSettingsPage.downloadRecording",
+                            defaultMessage: "Download recording",
+                          })}
+                        </NodexDropdownItem>
+                      ) : null}
+                      {recording.status !== "recording" ? (
+                        <>
+                          {recording.sizeBytes > 0 ? <NodexDropdownSeparator /> : null}
+                          <NodexDropdownItem
+                            tone="danger"
+                            leftSlot={<DeleteIcon className="icon-xs" />}
+                            onSelect={() => void removeRecording(recording.id)}
+                          >
+                            {intl.formatMessage({
+                              id: "dictation.voiceSettingsPage.deleteRecording",
+                              defaultMessage: "Delete recording",
+                            })}
+                          </NodexDropdownItem>
+                        </>
+                      ) : null}
+                    </NodexDropdownMenu>
+                  ) : null}
                 </NodexSettingsRow>
                 <DictationPerformanceDetails diagnostics={recording.diagnostics} />
               </div>

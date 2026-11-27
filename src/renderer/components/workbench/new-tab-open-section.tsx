@@ -26,6 +26,7 @@ import {
 import {
   ChatActionsIcon,
   DragHandleDotsIcon,
+  ResetIcon,
   SelectedCircleIcon,
   ToolPinIcon,
   ToolPinnedIcon,
@@ -419,7 +420,7 @@ function ShortcutMenu({
         })}
       </MenuCommand>
       {canReset ? (
-        <MenuCommand onClick={onReset}>
+        <MenuCommand icon={<ResetIcon />} onClick={onReset}>
           {intl.formatMessage({
             id: "workbench.newTabOpenSection.reset",
             defaultMessage: "Reset to default",

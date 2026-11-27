@@ -149,6 +149,7 @@ describe("ordinary message targets keep their mounted source", () => {
     async (hostId) => {
       const native = fixture("`@src/a%20b.ts:7`", hostId);
       invoke.mockImplementation(async (channel) => {
+        if (channel === "read-file-metadata") return { contentKind: "text" };
         if (channel === "read-file") return { contents: `${hostId} contents` };
         if (channel === "shell:open-file-link") return true;
         if (channel === "shell:file-link-openers:list-available") return ["vscode", "fileManager"];
@@ -182,7 +183,7 @@ describe("ordinary message targets keep their mounted source", () => {
           await Promise.resolve();
         });
         await waitFor(() => expect(menu.copy).toHaveBeenCalledWith("/source/src/a%20b.ts"));
-        menu.show.mockResolvedValue("file-reference:open-with:vscode");
+        menu.show.mockResolvedValue("file-reference:preferred");
         await act(async () => {
           fireEvent.contextMenu(button);
           await Promise.resolve();
@@ -283,6 +284,7 @@ describe("ordinary message targets keep their mounted source", () => {
       try {
         const read = deferred<unknown>();
         invoke.mockImplementation(async (channel) => {
+          if (channel === "read-file-metadata") return { contentKind: "text" };
           if (channel === "read-file") return read.promise;
           throw new Error("Unsupported fixture request");
         });

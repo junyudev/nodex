@@ -103,7 +103,7 @@ describe("session context menu model", () => {
     const fork = items.find((item) => item.type === "submenu" && item.label === "Fork");
     expect(fork).toMatchObject({ type: "submenu", label: "Fork" });
     expect(fork?.type === "submenu" ? fork.submenu : []).toContainEqual(
-      expect.objectContaining({ label: "Fork chat", enabled: true }),
+      expect.objectContaining({ label: "Fork chat" }),
     );
   });
 
@@ -119,11 +119,10 @@ describe("session context menu model", () => {
     });
     const fork = items.find((item) => item.type === "submenu" && item.label === "Fork");
     expect(fork?.type === "submenu" ? fork.submenu : []).toMatchObject([
-      { id: "session.fork", label: "Fork chat in same worktree", enabled: true, iconKey: "fork" },
+      { id: "session.fork", label: "Fork chat in same worktree", iconKey: "fork" },
       {
         id: "session.forkInNewWorktree",
         label: "Fork chat in new worktree",
-        enabled: true,
         iconKey: "worktree",
       },
     ]);
@@ -141,15 +140,14 @@ describe("session context menu model", () => {
     });
 
     expect(flattenActionIds(items)).toEqual([
-      SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
       SESSION_CONTEXT_MENU_ACTION_IDS.rename,
+      SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
       SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
       SESSION_CONTEXT_MENU_ACTION_IDS.toggleSettled,
       "session.snooze",
       ...chatSnoozePresets(MENU_OPENED_AT).map((preset) =>
         sessionSnoozedUntilActionId(preset.snoozedUntil),
       ),
-      SESSION_CONTEXT_MENU_ACTION_IDS.archive,
       "separator",
       "session.moveToProject",
       sessionMoveToProjectActionId("project-2"),
@@ -167,6 +165,8 @@ describe("session context menu model", () => {
       "session.openIn:vscode",
       "session.openIn:fileManager",
       SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow,
+      "separator",
+      SESSION_CONTEXT_MENU_ACTION_IDS.archive,
     ]);
     expect(flattenActionIds(items)).not.toContain("session.reveal");
     expect(flattenActionIds(items)).not.toContain("session.fork");
@@ -177,30 +177,15 @@ describe("session context menu model", () => {
     });
   });
 
-  test("shows the exact command accelerators without registering global shortcuts", () => {
+  test("omits copy actions that have no current value", () => {
     const items = buildSessionContextMenuItems({ session: makeSession() });
-    const accelerators = items
-      .slice(0, 6)
-      .map((item) => (item.type === "separator" ? null : item.accelerator));
-    expect(accelerators).toEqual([
-      "Alt+CommandOrControl+P",
-      "Alt+CommandOrControl+R",
-      "Shift+CommandOrControl+U",
-      "Alt+CommandOrControl+E",
-      undefined,
-      "Shift+CommandOrControl+A",
-    ]);
-    const copy = items.find((item) => item.type === "submenu" && item.id === "session.copy");
-    expect(copy?.type).toBe("submenu");
-    if (copy?.type !== "submenu") return;
-    expect(copy.submenu).toMatchObject([
-      { enabled: false, iconKey: "copy", label: "Copy working directory" },
-      { enabled: true, iconKey: "copy", label: "Copy deeplink" },
-      { enabled: false, iconKey: "copy", label: "Copy as Markdown" },
-    ]);
+    const ids = flattenActionIds(items);
+    expect(ids).toContain(SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink);
+    expect(ids).not.toContain(SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory);
+    expect(ids).not.toContain(SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown);
   });
 
-  test("marks the current Section in-label and separates New section", () => {
+  test("offers removal from the current Section in a final group", () => {
     const items = buildSessionContextMenuItems({
       session: makeSession(),
       directSectionId: "section-alpha",
@@ -223,12 +208,11 @@ describe("session context menu model", () => {
     const section = items.find((item) => item.type === "submenu" && item.id === "session.section");
     expect(section?.type).toBe("submenu");
     if (section?.type !== "submenu") return;
-    expect(
-      section.submenu.map((item) => (item.type === "separator" ? "separator" : item.label)),
-    ).toEqual(["✓ Alpha", "separator", "New section…"]);
-    expect(section.submenu[0]?.type === "separator" ? null : section.submenu[0]?.id).toBe(
+    expect(flattenActionIds(section.submenu)).toEqual([
+      SESSION_CONTEXT_MENU_ACTION_IDS.newSection,
+      "separator",
       SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection,
-    );
+    ]);
   });
 
   test("keeps Remove from Project inside the Project submenu", () => {
@@ -248,11 +232,8 @@ describe("session context menu model", () => {
     expect(
       destination?.type === "separator" ? null : readSessionMoveToProjectActionId(destination.id),
     ).toBe("project-2");
-    expect(destination?.type === "separator" ? null : destination?.iconKey).toBe("folder");
     const removeFromProject = project.submenu.at(-1);
-    expect(removeFromProject?.type === "separator" ? null : removeFromProject?.iconKey).toBe(
-      "folder",
-    );
+    expect(removeFromProject?.id).toBe(SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject);
   });
 
   test("omits Codex-only movement and transcript export for ACP sessions", () => {
@@ -291,9 +272,9 @@ describe("session context menu model", () => {
     expect(ids).toContain("session.openIn:vscode");
     const copy = located.find((item) => item.type === "submenu" && item.id === "session.copy");
     expect(copy?.type === "submenu" ? copy.submenu : []).toMatchObject([
-      { label: "Copy working directory", enabled: true },
-      { label: "Copy deeplink", enabled: true },
-      { label: "Copy as Markdown", enabled: true },
+      { label: "Copy working directory" },
+      { label: "Copy link" },
+      { label: "Copy as Markdown" },
     ]);
 
     // An unknown Runtime location never borrows another source's working directory.
@@ -307,10 +288,12 @@ describe("session context menu model", () => {
     const unlocatedCopy = unlocated.find(
       (item) => item.type === "submenu" && item.id === "session.copy",
     );
-    expect(unlocatedCopy?.type === "submenu" ? unlocatedCopy.submenu[0] : null).toMatchObject({
-      label: "Copy working directory",
-      enabled: false,
-    });
+    expect(
+      unlocatedCopy?.type === "submenu" &&
+        unlocatedCopy.submenu.some(
+          (item) => item.id === SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory,
+        ),
+    ).toBe(false);
   });
 
   test("parses Open in targets and preserves pin state across Project moves", () => {
@@ -339,7 +322,7 @@ describe("session context menu model", () => {
     const items = buildSessionContextMenuItems({
       session: makeSession({ pinned: true, pinnedOrder: 0, unread: true }),
     });
-    expect(items[0]?.type === "separator" ? null : items[0]?.label).toBe("Unpin");
+    expect(items[1]?.type === "separator" ? null : items[1]?.label).toBe("Unpin");
     expect(items[2]?.type === "separator" ? null : items[2]?.label).toBe("Mark as read");
   });
 

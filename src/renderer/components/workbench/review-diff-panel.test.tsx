@@ -1506,11 +1506,9 @@ describe("review diff panel", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(clipboardWrites).toEqual(["const selected = true;"]));
-    expect(menuPorts.showMenu.mock.calls[0]?.[0]).toContainEqual({
-      id: "copy-selection",
-      label: "Copy selection",
-      enabled: true,
-    });
+    expect(menuPorts.showMenu.mock.calls[0]?.[0]).toContainEqual(
+      expect.objectContaining({ id: "copy-selection" }),
+    );
   });
 
   test.each([

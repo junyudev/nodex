@@ -1,12 +1,27 @@
 import { useIntl } from "@/lib/i18n";
-import { ChevronDownIcon, CloseIcon } from "@/components/shared/icons";
+import {
+  ChevronDownIcon,
+  CloseIcon,
+  PageMenuMoveBottomIcon,
+  PageMenuMoveDownIcon,
+  PageMenuMoveTopIcon,
+  PageMenuMoveUpIcon,
+} from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import { NodexDropdown } from "@/components/ui/dropdown";
 import {
   buildDatabaseListSelectionCommands,
   databaseListMoveDirection,
+  type DatabaseListCommandId,
   type DatabaseListMoveDirection,
 } from "./database-list-commands";
+
+const reorderIcons = {
+  "move-top": PageMenuMoveTopIcon,
+  "move-up": PageMenuMoveUpIcon,
+  "move-down": PageMenuMoveDownIcon,
+  "move-bottom": PageMenuMoveBottomIcon,
+} satisfies Record<DatabaseListCommandId, typeof PageMenuMoveTopIcon>;
 
 export function DatabaseListSelectionActionBar({
   count,
@@ -66,18 +81,22 @@ export function DatabaseListSelectionActionBar({
           </NodexButton>
         }
       >
-        {commands.map((command) => (
-          <NodexDropdown.Item
-            key={command.id}
-            disabled={command.disabled}
-            onSelect={() => {
-              const direction = databaseListMoveDirection(command.id);
-              if (direction) onMove(direction);
-            }}
-          >
-            {command.label}
-          </NodexDropdown.Item>
-        ))}
+        {commands.map((command) => {
+          const Icon = reorderIcons[command.id];
+          return (
+            <NodexDropdown.Item
+              key={command.id}
+              disabled={command.disabled}
+              leftSlot={<Icon />}
+              onSelect={() => {
+                const direction = databaseListMoveDirection(command.id);
+                if (direction) onMove(direction);
+              }}
+            >
+              {command.label}
+            </NodexDropdown.Item>
+          );
+        })}
       </NodexDropdown.Menu>
       <NodexIconButton
         icon={CloseIcon}

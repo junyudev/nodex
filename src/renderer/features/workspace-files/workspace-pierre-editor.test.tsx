@@ -177,7 +177,7 @@ describe("WorkspacePierreEditor", () => {
     document.getSelection()?.removeAllRanges();
     await act(async () => {
       resolveMenu({
-        items: [{ id: "file-reference:save", label: "Save as…" }],
+        items: [{ id: "file-reference:save", label: "Save a copy" }],
         select: vi.fn(async () => undefined),
       });
       await Promise.resolve();
@@ -221,7 +221,7 @@ describe("WorkspacePierreEditor", () => {
     view.rerender(component("ssh:new"));
     await act(async () => {
       resolveMenu({
-        items: [{ id: "file-reference:save", label: "Save as…" }],
+        items: [{ id: "file-reference:save", label: "Save a copy" }],
         select: vi.fn(async () => undefined),
       });
       await Promise.resolve();

@@ -7,6 +7,8 @@ const ports = vi.hoisted(() => ({
   github: vi.fn(),
   save: vi.fn(),
   read: vi.fn(),
+  metadata: vi.fn(),
+  reportError: vi.fn(),
   copy: vi.fn(),
   external: vi.fn(),
 }));
@@ -18,15 +20,18 @@ vi.mock("./workspace-file-operations", () => ({
   readWorkspaceFileGitHubUrl: ports.github,
   saveWorkspaceFileCopy: ports.save,
   readWorkspaceFileText: ports.read,
+  readWorkspaceFileMetadata: ports.metadata,
 }));
+vi.mock("@/components/ui/toast", () => ({ toast: { danger: ports.reportError } }));
 vi.mock("./clipboard", () => ({ writeTextToClipboard: ports.copy }));
 vi.mock("./link-opening", () => ({ openLink: ports.external }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ports.metadata.mockResolvedValue({ contentKind: "text" });
   ports.targets.mockResolvedValue({
     primary: { id: "cursor", label: "Cursor", opener: "cursor" },
-    alternatives: [{ id: "cursor", label: "Cursor", opener: "cursor" }],
+    alternatives: [{ id: "vscode", label: "VS Code", opener: "vscode" }],
   });
   ports.github.mockResolvedValue("https://github.com/team/project/blob/main/file.ts#L7");
 });
@@ -50,9 +55,9 @@ test("editor file actions retain the real destinations and clicked GitHub line w
     "file-reference:reveal",
   ]);
   expect(ports.github).toHaveBeenCalledExactlyOnceWith({ hostId: "local", ...target });
-  await menu.select("file-reference:open-with:cursor");
+  await menu.select("file-reference:open-with:vscode");
   expect(ports.openTarget).toHaveBeenCalledExactlyOnceWith(
-    { id: "cursor", label: "Cursor", opener: "cursor" },
+    { id: "vscode", label: "VS Code", opener: "vscode" },
     target,
   );
   expect(open).not.toHaveBeenCalled();
@@ -99,7 +104,7 @@ test("captured file choices stop after their editor source retires", async () =>
   expect(ports.openTarget).not.toHaveBeenCalled();
 });
 
-test("Open file alone does not introduce an empty destination separator", async () => {
+test("separates the sole open action from the file commands", async () => {
   ports.targets.mockResolvedValue({ primary: null, alternatives: [] });
   ports.github.mockResolvedValue(null);
   const menu = await buildFileReferenceContextMenu({
@@ -108,7 +113,7 @@ test("Open file alone does not introduce an empty destination separator", async 
     open: vi.fn(),
   });
   expect(menu.items[0]).toMatchObject({ id: "file-reference:open", label: "Open file" });
-  expect(menu.items.some((item) => item.type === "separator")).toBe(false);
+  expect(menu.items[1]?.type).toBe("separator");
 });
 
 test.each([true, false])("HTML menu keeps the caller's side-panel intent %s", async (sidePanel) => {
@@ -138,4 +143,16 @@ test("remote HTML never advertises a local browser", async () => {
     browserAvailable: true,
   });
   expect(menu.items.some((item) => item.id === "file-reference:browser")).toBe(false);
+});
+
+test("offers file contents only for text and reports a failed copy read", async () => {
+  const input = { target: { path: "/repo/file" }, label: "file", open: vi.fn() };
+  ports.metadata.mockResolvedValueOnce({ contentKind: "binary" });
+  const binary = await buildFileReferenceContextMenu(input);
+  expect(binary.items.some((item) => item.id === "file-reference:copy-contents")).toBe(false);
+  const text = await buildFileReferenceContextMenu(input);
+  ports.read.mockRejectedValueOnce(new Error("File disappeared"));
+  await text.select("file-reference:copy-contents");
+  expect(ports.reportError).toHaveBeenCalledOnce();
+  expect(ports.copy).not.toHaveBeenCalled();
 });

@@ -1,3 +1,11 @@
+import { commandKeymapStateQueryOptions } from "@/lib/query-options";
+import { QueryClientContext } from "@tanstack/react-query";
+import {
+  createCommandKeymapState,
+  formatCommandShortcutLabel,
+  type CommandId,
+} from "../../../shared/command-keybindings";
+import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import {
   defineMessages,
@@ -314,6 +322,7 @@ export interface AppShellTabContextMenuActionItem {
   label: string;
   /** Shown beside the label, natively on the desktop and in the page menu elsewhere. */
   iconKey?: NativeContextMenuIconKey;
+  commandId?: CommandId;
   disabled?: boolean;
   tone?: "default" | "destructive";
   /** Asked before `onSelect` runs, for an action that cannot be undone. */
@@ -1135,7 +1144,7 @@ function AppShellTab({
   );
   const hasClosableTabsToRight =
     tabIndex !== -1 && tabs.slice(tabIndex + 1).some((candidate) => candidate.closable === true);
-  const canCloseAllTabs = tabs.length > 1 && tabs.some((candidate) => candidate.closable === true);
+  const canCloseAllTabs = hasOtherClosableTabs;
   const flexSizing = buildAppShellTabFlexSizing(lockedWidthPx);
 
   useEffect(() => {
@@ -1336,6 +1345,7 @@ function AppShellTab({
           }),
       };
     }),
+    showCloseShortcut: isActive,
     canCloseOtherTabs: hasOtherClosableTabs,
     canCloseTabsToRight: hasClosableTabsToRight,
     canCloseAllTabs,
@@ -1455,6 +1465,7 @@ function toNativeContextMenuItem(item: AppShellTabContextMenuItem): NativeContex
     id: item.id,
     label: item.label,
     enabled: item.disabled !== true,
+    commandId: item.commandId,
     ...(item.iconKey ? { iconKey: item.iconKey } : {}),
   };
 }
@@ -1472,6 +1483,8 @@ function AppShellTabContextMenu({
   onOpen: () => void;
   children: ReactElement;
 }) {
+  const queryClient = useContext(QueryClientContext);
+  const [closeShortcut, setCloseShortcut] = useState<string>();
   if (items.length === 0) return children;
   if (canShowNativeContextMenu()) {
     const openNativeMenu = async () => {
@@ -1508,7 +1521,22 @@ function AppShellTabContextMenu({
   return (
     <NodexContextMenuRoot
       onOpenChange={(open) => {
-        if (open) onOpen();
+        if (!open) return;
+        onOpen();
+        if (!items.some((item) => item.type !== "separator" && item.commandId === "closeTab"))
+          return;
+        const keymapQuery = commandKeymapStateQueryOptions();
+        const cached = queryClient?.getQueryData(keymapQuery.queryKey);
+        setCloseShortcut(
+          formatCommandShortcutLabel(
+            cached ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform()),
+            "closeTab",
+          ),
+        );
+        void queryClient
+          ?.fetchQuery(keymapQuery)
+          .then((keymap) => setCloseShortcut(formatCommandShortcutLabel(keymap, "closeTab")))
+          .catch(() => undefined);
       }}
     >
       <NodexContextMenuTrigger>{children}</NodexContextMenuTrigger>
@@ -1524,12 +1552,13 @@ function AppShellTabContextMenu({
                 className={cn(
                   APP_SHELL_TAB_CONTEXT_MENU_ITEM_CLASS,
                   "flex items-center gap-2",
-                  item.tone === "destructive" && "text-token-error-foreground",
                   item.disabled && "cursor-default opacity-50",
                 )}
+                tone={item.tone === "destructive" ? "danger" : undefined}
+                rightSlot={item.commandId === "closeTab" ? closeShortcut : undefined}
+                leftSlot={item.iconKey ? <NativeMenuIcon iconKey={item.iconKey} /> : undefined}
                 onSelect={item.disabled ? undefined : item.onSelect}
               >
-                {item.iconKey ? <NativeMenuIcon iconKey={item.iconKey} /> : null}
                 {item.label}
               </NodexContextMenuItem>
             ),
@@ -1660,6 +1689,7 @@ function AppShellLeadingTabChrome({
 function buildAppShellTabContextMenuItems({
   intl,
   customItems,
+  showCloseShortcut,
   canCloseOtherTabs,
   canCloseTabsToRight,
   canCloseAllTabs,
@@ -1678,6 +1708,7 @@ function buildAppShellTabContextMenuItems({
 }: {
   intl: IntlShape;
   customItems: AppShellTabContextMenuItem[] | undefined;
+  showCloseShortcut: boolean;
   canCloseOtherTabs: boolean;
   canCloseTabsToRight: boolean;
   canCloseAllTabs: boolean;
@@ -1694,8 +1725,12 @@ function buildAppShellTabContextMenuItems({
   onMove: () => void;
   onSplit: (side: AppShellTabSplitSide) => void;
 }): AppShellTabContextMenuItem[] {
-  // Codex order: the tab's own actions, where the tab goes, then closing.
-  const items: AppShellTabContextMenuItem[] = [...(customItems ?? [])];
+  const destructiveItems = (customItems ?? []).filter(
+    (item) => item.type !== "separator" && item.tone === "destructive" && !item.disabled,
+  );
+  const items = (customItems ?? []).filter(
+    (item) => item.type === "separator" || (item.tone !== "destructive" && !item.disabled),
+  );
   const placementItems: AppShellTabContextMenuItem[] = [];
   if (canPinTab) {
     placementItems.push({
@@ -1737,44 +1772,43 @@ function buildAppShellTabContextMenuItems({
   if (items.length > 0) {
     items.push({ id: "close-tab-separator", type: "separator" });
   }
-  items.push(
-    {
-      id: "close-tab",
-      label: intl.formatMessage({ id: "workbench.appShellTabs.close", defaultMessage: "Close" }),
-      iconKey: "close",
-      onSelect: onClose,
-    },
-    {
+  items.push({
+    id: "close-tab",
+    commandId: showCloseShortcut ? "closeTab" : undefined,
+    label: intl.formatMessage({ id: "workbench.appShellTabs.close", defaultMessage: "Close" }),
+    iconKey: "close",
+    onSelect: onClose,
+  });
+  if (canCloseOtherTabs)
+    items.push({
       id: "close-other-tabs",
       label: intl.formatMessage({
         id: "workbench.appShellTabs.closeOtherTabs",
         defaultMessage: "Close other tabs",
       }),
       iconKey: "close",
-      disabled: !canCloseOtherTabs,
       onSelect: onCloseOtherTabs,
-    },
-    {
+    });
+  if (canCloseTabsToRight)
+    items.push({
       id: "close-tabs-to-the-right",
       label: intl.formatMessage({
         id: "workbench.appShellTabs.closeTabsToRight",
         defaultMessage: "Close tabs to the right",
       }),
       iconKey: "close",
-      disabled: !canCloseTabsToRight,
       onSelect: onCloseTabsToRight,
-    },
-    {
+    });
+  if (canCloseAllTabs)
+    items.push({
       id: "close-all-tabs",
       label: intl.formatMessage({
         id: "workbench.appShellTabs.closeAllTabs",
         defaultMessage: "Close all tabs",
       }),
       iconKey: "close",
-      disabled: !canCloseAllTabs,
       onSelect: onCloseAllTabs,
-    },
-  );
+    });
   if (canSplitTab) {
     items.push({ id: "split-tab-separator", type: "separator" });
     for (const action of APP_SHELL_SPLIT_ACTIONS) {
@@ -1792,6 +1826,9 @@ function buildAppShellTabContextMenuItems({
         onSelect: () => onSplit(action.side),
       });
     }
+  }
+  if (destructiveItems.length > 0) {
+    items.push({ id: "destructive-tab-actions", type: "separator" }, ...destructiveItems);
   }
   return items;
 }

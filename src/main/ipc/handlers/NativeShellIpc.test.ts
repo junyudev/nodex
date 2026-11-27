@@ -1,3 +1,4 @@
+import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { describe, afterEach, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -73,6 +74,7 @@ describe("NativeShellIpc", () => {
               Layer.provide(
                 Layer.mergeAll(
                   Layer.succeed(ElectronIpc, ipc),
+                  Layer.succeed(ApplicationSettings, {} as ApplicationSettings["Service"]),
                   mainConfigLayer(),
                   Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
                   Layer.succeed(WindowRuntime, {
@@ -154,6 +156,7 @@ describe("NativeShellIpc", () => {
               Layer.provide(
                 Layer.mergeAll(
                   Layer.succeed(ElectronIpc, ipc),
+                  Layer.succeed(ApplicationSettings, {} as ApplicationSettings["Service"]),
                   mainConfigLayer(),
                   Layer.succeed(ElectronDesktop, {
                     shell: { openPath: shellOpen },

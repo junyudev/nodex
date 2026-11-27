@@ -33,17 +33,17 @@ describe("Database View Page menu model", () => {
         .find((action) => action.id === "reorder")
         ?.children?.map((action) => [action.label, action.disabled]),
     ).toEqual([
-      ["Reorder to top", true],
-      ["Reorder up", true],
-      ["Reorder down", false],
-      ["Reorder to bottom", false],
+      ["Move to top", true],
+      ["Move up", true],
+      ["Move down", false],
+      ["Move to bottom", false],
     ]);
     expect(
       actions.find((action) => action.id === "copy")?.children?.map((action) => action.label),
-    ).toEqual(["Copy ID", "Copy deeplink", "Copy title", "Copy content as Markdown"]);
+    ).toEqual(["Copy ID", "Copy link", "Copy title", "Copy content as Markdown"]);
     expect(
       actions.find((action) => action.id === "open-in")?.children?.map((action) => action.label),
-    ).toEqual(["Open in new chat", "Send to chat…"]);
+    ).toEqual(["Open in new chat", "Send to chat"]);
   });
 
   test("hides rank controls when the startup capability is disabled", () => {

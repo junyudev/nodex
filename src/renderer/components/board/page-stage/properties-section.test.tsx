@@ -330,7 +330,7 @@ describe("PageStagePropertiesSection", () => {
       fireEvent.click(trigger);
       await Promise.resolve();
     });
-    const linkExisting = view.getByRole("menuitem", { name: "Link to chat…" });
+    const linkExisting = view.getByRole("menuitem", { name: "Link to chat" });
     await act(async () => {
       fireEvent.click(linkExisting);
       await Promise.resolve();

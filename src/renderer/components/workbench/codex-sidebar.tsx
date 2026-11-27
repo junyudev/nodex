@@ -1,5 +1,5 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
-import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { useExecutionHold } from "@/lib/execution-holds-runtime";
@@ -34,25 +34,29 @@ import {
   CheckmarkIcon,
   ArchiveIcon,
   ClockIcon,
-  CloseIcon,
   EditIcon,
   NewPageIcon,
   PageIcon,
-  PinOffIcon,
   ProjectFolderIcon,
   ProjectFolderOpenIcon,
   ProjectActionsIcon,
   RemoteStatusIcon,
   SessionPinFilledIcon,
   SessionPinIcon,
-  SettingsGeneralIcon,
   ChevronDownIcon,
   UndoIcon,
   WorktreeStatusIcon,
 } from "@/components/shared/icons";
 import { SemanticSelectPropertyEditor } from "@/components/database/semantic-property-editors";
 import type { DataSourcePropertyOptionRegistryState } from "@/components/database/data-source-property-editor-binding";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownFlyoutSubmenuItem,
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
+import { getFileManagerRevealMessage } from "../../../shared/file-link-openers";
 import { NodexHoverCard } from "@/components/ui/hover-card";
 import type { NodexPopoverOpenChangeDetails } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -422,24 +426,6 @@ export function CodexSidebarSection({
   );
 }
 
-function revealInFileManagerLabel(intl: IntlShape): string {
-  if (isMacPlatform())
-    return intl.formatMessage({
-      id: "workbench.codexSidebar.revealInFinder",
-      defaultMessage: "Reveal in Finder",
-    });
-  const platform = typeof navigator === "undefined" ? "" : navigator.platform.toUpperCase();
-  return platform.includes("WIN")
-    ? intl.formatMessage({
-        id: "workbench.codexSidebar.openInExplorer",
-        defaultMessage: "Open in Explorer",
-      })
-    : intl.formatMessage({
-        id: "workbench.codexSidebar.openInFileManager",
-        defaultMessage: "Open in File Manager",
-      });
-}
-
 const PROJECT_NOT_FOUND = {
   id: "workbench.codexSidebar.projectNotFound",
   defaultMessage: "Project {id} not found",
@@ -466,7 +452,6 @@ interface CodexProjectActionsMenuProps {
   onMarkThreadItemRead?: (item: CodexSidebarThreadItem) => Promise<void>;
   onThreadsChanged?: () => Promise<unknown> | void;
   onOpenChange?: (open: boolean) => void;
-  sectionActions?: ReactNode;
   sectionCatalog?: SidebarSectionsCatalog;
   currentSectionId?: string | null;
 }
@@ -489,7 +474,6 @@ export const CodexProjectActionsMenu = forwardRef<
     onMarkThreadItemRead,
     onThreadsChanged,
     onOpenChange,
-    sectionActions,
     sectionCatalog,
     currentSectionId = null,
   }: CodexProjectActionsMenuProps,
@@ -503,7 +487,7 @@ export const CodexProjectActionsMenu = forwardRef<
   const [archiveChatsOpen, setArchiveChatsOpen] = useState(false);
   const [createStableWorktreeOpen, setCreateStableWorktreeOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
-  const openEditAfterMenuCloseRef = useRef(false);
+  const pendingMenuAction = useRef<string | null>(null);
   const nativeMenuOpenRef = useRef(false);
   const primaryWorkspaceRoot = normalizePrimaryWorkspaceRoot(project);
   const sourceRoots = normalizeProjectSources(project);
@@ -579,30 +563,55 @@ export const CodexProjectActionsMenu = forwardRef<
 
   const sectionItems: NativeContextMenuItem[] | undefined = sectionCatalog
     ? [
-        ...sectionCatalog.sections.map((section) => ({
-          id: projectMoveToSectionActionId(section.sectionId),
-          label: `${currentSectionId === section.sectionId ? "✓ " : ""}${section.name ?? intl.formatMessage({ id: "workbench.codexSidebar.untitledSection", defaultMessage: "Untitled section" })}`,
-        })),
-        ...(sectionCatalog.sections.length > 0 ? [{ type: "separator" as const }] : []),
-        {
-          id: PROJECT_CONTEXT_MENU_ACTION_IDS.newSection,
-          label: intl.formatMessage({
-            id: "workbench.codexSidebar.newSectionMenu",
-            defaultMessage: "New section…",
-          }),
-        },
+        ...(project.pinned || currentSectionId
+          ? [
+              {
+                id: PROJECT_CONTEXT_MENU_ACTION_IDS.moveToProjects,
+                label: intl.formatMessage({
+                  id: "workbench.sidebarCustomSections.projects",
+                  defaultMessage: "Projects",
+                }),
+                iconKey: "project" as const,
+              },
+            ]
+          : []),
+        ...sectionCatalog.sections
+          .filter((section) => currentSectionId !== section.sectionId || project.pinned)
+          .map((section) => ({
+            id: projectMoveToSectionActionId(section.sectionId),
+            label:
+              section.name ??
+              intl.formatMessage({
+                id: "workbench.codexSidebar.untitledSection",
+                defaultMessage: "Untitled section",
+              }),
+            iconKey: "section" as const,
+          })),
       ]
     : undefined;
+  if (sectionItems && sectionItems.length > 0) sectionItems.push({ type: "separator" });
+  sectionItems?.push({
+    id: PROJECT_CONTEXT_MENU_ACTION_IDS.newSection,
+    label: intl.formatMessage({
+      id: "workbench.codexSidebar.newSection",
+      defaultMessage: "New section",
+    }),
+    iconKey: "newTab",
+  });
 
   const executionHold = useExecutionHold({ kind: "project", project_id: project.id });
-  const handleNativeMenuAction = async (actionId: string) => {
+  const handleMenuAction = async (actionId: string) => {
     if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.togglePause) {
       await executionHold.setPaused(!executionHold.paused);
       return;
     }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.moveToProjects) {
+      await moveProjectToSection(null);
+      return;
+    }
     const targetSectionId = readProjectMoveToSectionActionId(actionId);
     if (targetSectionId) {
-      await moveProjectToSection(currentSectionId === targetSectionId ? null : targetSectionId);
+      await moveProjectToSection(targetSectionId);
       return;
     }
     if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.newSection) {
@@ -654,31 +663,32 @@ export const CodexProjectActionsMenu = forwardRef<
     if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.remove) setRemoveOpen(true);
   };
 
+  const items = buildProjectContextMenuItems({
+    paused: executionHold.paused,
+    pinned: project.pinned,
+    showPinAction: Boolean(onSetProjectPinned),
+    sectionItems,
+    revealLabel:
+      primaryWorkspaceRoot && sourceRoots.length === 1
+        ? intl.formatMessage(getFileManagerRevealMessage(navigator.platform))
+        : undefined,
+    canCreateStableWorktree: Boolean(
+      primaryWorkspaceRoot && onCreateStableWorktree && canCreateStableWorktree,
+    ),
+    canMarkAllRead: Boolean(onMarkThreadItemRead && unreadItems.length > 0),
+    canArchiveChats: Boolean(onArchiveThreadItem && archiveableItems.length > 0),
+  });
+
   const openNativeMenu = async (options?: NativeContextMenuOptions): Promise<boolean> => {
     if (!canShowNativeContextMenu()) return false;
     if (nativeMenuOpenRef.current) return true;
-    const items = buildProjectContextMenuItems({
-      paused: executionHold.paused,
-      pinned: project.pinned,
-      showPinAction: Boolean(onSetProjectPinned),
-      sectionItems,
-      revealLabel:
-        primaryWorkspaceRoot && sourceRoots.length === 1
-          ? revealInFileManagerLabel(getIntl())
-          : undefined,
-      canCreateStableWorktree: Boolean(
-        primaryWorkspaceRoot && onCreateStableWorktree && canCreateStableWorktree,
-      ),
-      canMarkAllRead: Boolean(onMarkThreadItemRead && unreadItems.length > 0),
-      canArchiveChats: Boolean(onArchiveThreadItem && archiveableItems.length > 0),
-    });
 
     nativeMenuOpenRef.current = true;
     setMenuOpen(true);
     return runWithCleanup<boolean>(
       async () => {
         const actionId = await showNativeContextMenu(items, options);
-        if (actionId) await handleNativeMenuAction(actionId);
+        if (actionId) await handleMenuAction(actionId);
         return true;
       },
       {
@@ -746,138 +756,37 @@ export const CodexProjectActionsMenu = forwardRef<
           open={open}
           onOpenChange={setMenuOpen}
           finalFocus={() => {
-            if (!openEditAfterMenuCloseRef.current) return true;
-            openEditAfterMenuCloseRef.current = false;
-            void openProjectEditor();
-            return false;
+            const action = pendingMenuAction.current;
+            if (!action) return true;
+            pendingMenuAction.current = null;
+            void handleMenuAction(action).catch((error: unknown) => {
+              toast.danger(
+                getIntl().formatMessage({
+                  id: "workbench.codexSidebar.projectActionFailed",
+                  defaultMessage: "Could not update project",
+                }),
+                { description: error instanceof Error ? error.message : undefined },
+              );
+            });
+            return (
+              action !== PROJECT_CONTEXT_MENU_ACTION_IDS.edit &&
+              action !== PROJECT_CONTEXT_MENU_ACTION_IDS.newSection &&
+              action !== PROJECT_CONTEXT_MENU_ACTION_IDS.createStableWorktree &&
+              action !== PROJECT_CONTEXT_MENU_ACTION_IDS.archiveChats &&
+              action !== PROJECT_CONTEXT_MENU_ACTION_IDS.remove
+            );
           }}
           side="bottom"
           align="start"
           contentWidth="xs"
           triggerButton={triggerButton}
         >
-          {onSetProjectPinned ? (
-            <NodexDropdownItem
-              leftSlot={
-                project.pinned ? (
-                  <PinOffIcon className="icon-xs" />
-                ) : (
-                  <SessionPinIcon className="icon-xs" />
-                )
-              }
-              onSelect={() => {
-                void onSetProjectPinned(project.id, { pinned: !project.pinned });
-              }}
-            >
-              {project.pinned
-                ? intl.formatMessage({
-                    id: "workbench.codexSidebar.unpinProject",
-                    defaultMessage: "Unpin project",
-                  })
-                : intl.formatMessage({
-                    id: "workbench.codexSidebar.pinProject",
-                    defaultMessage: "Pin project",
-                  })}
-            </NodexDropdownItem>
-          ) : null}
-          {sectionActions}
-          {primaryWorkspaceRoot && sourceRoots.length === 1 ? (
-            <NodexDropdownItem
-              leftSlot={<ProjectFolderOpenIcon className="icon-xs" />}
-              onSelect={() => {
-                void openProjectFolder();
-              }}
-            >
-              {revealInFileManagerLabel(intl)}
-            </NodexDropdownItem>
-          ) : null}
-          {primaryWorkspaceRoot && onCreateStableWorktree && canCreateStableWorktree ? (
-            <NodexDropdownItem
-              leftSlot={<WorktreeStatusIcon className="icon-xs" />}
-              onSelect={() => {
-                setMenuOpen(false);
-                setCreateStableWorktreeOpen(true);
-              }}
-            >
-              <FormattedMessage
-                id="workbench.codexSidebar.createPermanentWorktree"
-                defaultMessage={"Create permanent worktree"}
-              />
-            </NodexDropdownItem>
-          ) : null}
-          <NodexDropdownItem
-            onSelect={() => {
-              setMenuOpen(false);
-              void executionHold.setPaused(!executionHold.paused).catch((error) =>
-                toast.danger(
-                  getIntl().formatMessage({
-                    id: "workbench.codexSidebar.workPauseFailed",
-                    defaultMessage: "Work pause could not be updated",
-                  }),
-                  {
-                    description: error instanceof Error ? error.message : undefined,
-                  },
-                ),
-              );
+          <ProjectMenuItems
+            items={items}
+            onSelect={(id) => {
+              pendingMenuAction.current = id;
             }}
-          >
-            {executionHold.paused
-              ? intl.formatMessage({
-                  id: "workbench.codexSidebar.resumeAllWork",
-                  defaultMessage: "Resume all work",
-                })
-              : intl.formatMessage({
-                  id: "workbench.codexSidebar.pauseAllWork",
-                  defaultMessage: "Pause all work",
-                })}
-          </NodexDropdownItem>
-          <NodexDropdownItem
-            leftSlot={<SettingsGeneralIcon className="icon-xs" />}
-            onSelect={() => {
-              openEditAfterMenuCloseRef.current = true;
-            }}
-          >
-            <FormattedMessage
-              id="workbench.codexSidebar.editProject"
-              defaultMessage={"Edit project"}
-            />
-          </NodexDropdownItem>
-          {onMarkThreadItemRead && unreadItems.length > 0 ? (
-            <NodexDropdownItem
-              leftSlot={<CheckmarkIcon className="icon-xs" />}
-              onSelect={() => {
-                setMenuOpen(false);
-                void markAllThreadsRead();
-              }}
-            >
-              <FormattedMessage
-                id="workbench.codexSidebar.markAllAsRead"
-                defaultMessage={"Mark all as read"}
-              />
-            </NodexDropdownItem>
-          ) : null}
-          <NodexDropdownItem
-            leftSlot={<ArchiveIcon className="icon-xs" />}
-            disabled={!onArchiveThreadItem || archiveableItems.length === 0}
-            onSelect={() => {
-              setMenuOpen(false);
-              setArchiveChatsOpen(true);
-            }}
-          >
-            <FormattedMessage
-              id="workbench.codexSidebar.archiveChats"
-              defaultMessage={"Archive chats"}
-            />
-          </NodexDropdownItem>
-          <NodexDropdownItem
-            leftSlot={<CloseIcon className="icon-xs" />}
-            onSelect={() => {
-              setMenuOpen(false);
-              setRemoveOpen(true);
-            }}
-          >
-            <FormattedMessage id="workbench.codexSidebar.remove" defaultMessage={"Remove"} />
-          </NodexDropdownItem>
+          />
         </NodexDropdownMenu>
       )}
       {archiveChatsOpen && onArchiveThreadItem ? (
@@ -914,6 +823,36 @@ export const CodexProjectActionsMenu = forwardRef<
 });
 
 /** One dot or spinner for a collapsed Project: chats to read or answer outrank work in progress. */
+function ProjectMenuItems({
+  items,
+  onSelect,
+}: {
+  readonly items: readonly NativeContextMenuItem[];
+  readonly onSelect: (id: string) => void;
+}): ReactNode {
+  return items.map((item, index) => {
+    if (item.type === "separator") return <NodexDropdownSeparator key={index} />;
+    const leftSlot = item.iconKey ? <NativeMenuIcon iconKey={item.iconKey} /> : undefined;
+    if (item.type === "submenu") {
+      return (
+        <NodexDropdownFlyoutSubmenuItem key={item.id} label={item.label} leftSlot={leftSlot}>
+          <ProjectMenuItems items={item.submenu} onSelect={onSelect} />
+        </NodexDropdownFlyoutSubmenuItem>
+      );
+    }
+    return (
+      <NodexDropdownItem
+        key={item.id}
+        leftSlot={leftSlot}
+        tone={item.id === PROJECT_CONTEXT_MENU_ACTION_IDS.remove ? "danger" : undefined}
+        onSelect={() => onSelect(item.id)}
+      >
+        {item.label}
+      </NodexDropdownItem>
+    );
+  });
+}
+
 function CollapsedProjectStatus({
   activity,
 }: {
@@ -1034,7 +973,11 @@ function CodexProjectHoverCardContent({
         toast.danger(
           getIntl().formatMessage(
             { id: "workbench.codexSidebar.revealFailed", defaultMessage: "Could not {action}" },
-            { action: revealInFileManagerLabel(getIntl()).toLowerCase() },
+            {
+              action: getIntl()
+                .formatMessage(getFileManagerRevealMessage(navigator.platform))
+                .toLowerCase(),
+            },
           ),
           {
             description: error instanceof Error ? error.message : undefined,
@@ -1134,7 +1077,6 @@ export function CodexProjectRow({
   onThreadsChanged,
   hoverCardOpen,
   onHoverCardOpenChange,
-  sectionActions,
   sectionCatalog,
   currentSectionId = null,
   inboxCount = 0,
@@ -1479,7 +1421,6 @@ export function CodexProjectRow({
                     onArchiveThreadItem={onArchiveThreadItem}
                     onMarkThreadItemRead={onMarkThreadItemRead}
                     onThreadsChanged={onThreadsChanged}
-                    sectionActions={sectionActions}
                     sectionCatalog={sectionCatalog}
                     currentSectionId={currentSectionId}
                     onOpenChange={(open) => {

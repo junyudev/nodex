@@ -391,10 +391,10 @@ Turn still defers it.
 - `Snooze`, the clock in a message's action row, in a Turn row's actions and in the selection
   bar, opens one menu: `In 1 hour`, `In 3 hours`, the next 9:00 AM at least three hours away,
   and Monday 9:00 AM of the following week, each with the time it brings the item back beside
-  its name, then `Custom…` for any later date and time. They are the times chat Snooze offers,
+  its name, then `Custom` for any later date and time. They are the times chat Snooze offers,
   counted from when the menu opens. A message still waiting for advice can be set aside at once. An
   Automation's waiting run offers no Snooze. Answers and Problems also keep their own actions.
-- `Custom…` opens `Snooze until`, in the Member's own time zone. They type a time such as
+- `Custom` opens `Snooze until`, in the Member's own time zone. They type a time such as
   `fri 3pm`, `in 2 hours` or `明天下午3点`, or choose a day on its calendar and a time from the
   half-hour list beside it; whichever they used last decides. A typed day without a time keeps
   the time the list shows, which starts at the next 9:00 AM, and a bare hour from 1 to 6 means the

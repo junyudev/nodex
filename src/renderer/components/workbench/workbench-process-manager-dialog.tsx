@@ -189,11 +189,11 @@ function ProcessManagerActionMenu({
           defaultMessage: "Restart",
         });
   const resumeIcon = busy ? (
-    <ActivitySpinnerIcon className="size-3.5" />
+    <ActivitySpinnerIcon className="icon-xs" />
   ) : row.status === "not-found" ? (
-    <PlayIcon className="size-3.5" />
+    <PlayIcon className="icon-xs" />
   ) : (
-    <RefreshIcon className="size-3.5" />
+    <RefreshIcon className="icon-xs" />
   );
   const resumeTooltip =
     row.command.trim().length === 0
@@ -240,7 +240,7 @@ function ProcessManagerActionMenu({
       }
     >
       <NodexDropdownItem
-        leftSlot={<OpenInIcon className="size-3.5" />}
+        leftSlot={<OpenInIcon className="icon-xs" />}
         onSelect={() => onOpenOutput(row)}
       >
         {intl.formatMessage({
@@ -251,7 +251,7 @@ function ProcessManagerActionMenu({
       <NodexDropdownSeparator />
       <NodexDropdownItem
         leftSlot={
-          busy ? <ActivitySpinnerIcon className="size-3.5" /> : <StopIcon className="size-3.5" />
+          busy ? <ActivitySpinnerIcon className="icon-xs" /> : <StopIcon className="icon-xs" />
         }
         disabled={!canStop}
         tooltipText={stopTooltip}

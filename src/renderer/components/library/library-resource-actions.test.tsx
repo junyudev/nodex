@@ -187,7 +187,7 @@ describe("Library resource actions", () => {
     renderActions({ onOpenInProject });
 
     await openActions();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Open in Project…" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open in Project" }));
     const openButton = await screen.findByRole("button", { name: "Open" });
     await act(async () => {
       fireEvent.click(openButton);
@@ -201,7 +201,7 @@ describe("Library resource actions", () => {
     );
   });
 
-  test.each([["Open in Project…", "Open in Project"]])(
+  test.each([["Open in Project", "Open in Project"]])(
     "keeps the %s modal outside the draggable Page row",
     async (menuLabel, title) => {
       const onPageRowPointerDown = vi.fn();

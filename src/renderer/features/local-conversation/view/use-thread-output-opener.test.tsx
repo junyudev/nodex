@@ -94,7 +94,7 @@ test("remote output menu exposes only the in-app viewer", async () => {
   });
   await view.findByRole("button", { name: "Nodex" });
   expect(ports.targets).not.toHaveBeenCalled();
-  expect(view.queryByRole("button", { name: "Download a copy" })).toBeNull();
+  expect(view.queryByRole("button", { name: "Save a copy" })).toBeNull();
 });
 test("a promoted file viewer does not inherit the OS association's default marker", async () => {
   ports.targets.mockResolvedValue({
@@ -129,7 +129,7 @@ test("website menus retain the default-browser fallback when the OS handler is u
     fireEvent.click(view.getByRole("button", { name: "Load" }));
     await Promise.resolve();
   });
-  const browser = await view.findByRole("button", { name: "Default browser (Default)" });
+  const browser = await view.findByRole("button", { name: "Open in default browser" });
   expect(ports.query).toHaveBeenCalledExactlyOnceWith("shell:default-browser:get");
   await act(async () => {
     fireEvent.click(browser);

@@ -2,9 +2,11 @@ import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import {
   ChevronDownIcon,
-  CopyIcon,
   DownloadIcon,
+  FolderIcon,
   NodexLogoMarkIcon,
+  OpenInIcon,
+  PageMenuCopyLinkIcon,
 } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import {
@@ -14,7 +16,6 @@ import {
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
-import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
 import {
   describeThreadOutput,
   type ThreadOutputPresentation,
@@ -60,9 +61,13 @@ function ThreadOutputDetail({ presentation }: { readonly presentation: ThreadOut
 function OpenInItemIcon({ item }: { readonly item: ThreadOutputOpenInItem }): ReactNode {
   if (item.kind === "preview") return <NodexLogoMarkIcon className="icon-sm" />;
   if (item.kind === "download") return <DownloadIcon className="icon-sm" />;
-  if (item.kind === "copy") return <CopyIcon className="icon-sm" />;
-  const src = item.kind === "reveal" ? FILE_LINK_OPENER_ICON_URLS.fileManager : item.iconUrl;
-  return src ? <img src={src} alt="" className="icon-sm object-contain" aria-hidden /> : null;
+  if (item.kind === "copy") return <PageMenuCopyLinkIcon className="icon-sm" />;
+  if (item.kind === "reveal") return <FolderIcon className="icon-sm" />;
+  return item.iconUrl ? (
+    <img src={item.iconUrl} alt="" className="icon-sm object-contain" aria-hidden />
+  ) : (
+    <OpenInIcon className="icon-sm" />
+  );
 }
 
 /** Every place this output can open, listed when the menu opens; choosing one saves nothing. */

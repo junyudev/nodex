@@ -1,6 +1,11 @@
 import { useIntl } from "@/lib/i18n";
-import { BoardIcon, ChevronRightIcon, MoreActionsIcon } from "@/components/shared/icons";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import { BoardIcon, ChevronRightIcon, MoreActionsIcon, PageIcon } from "@/components/shared/icons";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownMessage,
+} from "@/components/ui/dropdown";
+import { NodexMenuRowContent } from "@/components/ui/menu-row";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { ViewerCapsule } from "@/components/ui/viewer-header";
 import { presentLocationSegment } from "@/lib/resource-location-presentation";
@@ -147,17 +152,23 @@ export function PageStageBreadcrumb({
                 {overflow.map((entry) => {
                   const label = presentLocationSegment(entry.segment, intl);
                   const open = openerFor(entry.segment, label);
+                  const Icon = entry.segment.kind === "database" ? BoardIcon : PageIcon;
+                  const icon = <Icon aria-hidden className="icon-xs shrink-0" />;
+                  if (!open) {
+                    return (
+                      <NodexDropdownMessage key={segmentKey(entry)} compact>
+                        <NodexMenuRowContent leading={icon} highlight={false}>
+                          {label}
+                        </NodexMenuRowContent>
+                      </NodexDropdownMessage>
+                    );
+                  }
                   return (
                     <NodexDropdownItem
                       key={segmentKey(entry)}
                       tooltipText={label}
-                      disabled={!open}
-                      leftSlot={
-                        entry.segment.kind === "database" ? (
-                          <BoardIcon aria-hidden className="icon-xs shrink-0" />
-                        ) : undefined
-                      }
-                      onSelect={() => open?.()}
+                      leftSlot={icon}
+                      onSelect={open}
                     >
                       {label}
                     </NodexDropdownItem>

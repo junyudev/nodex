@@ -170,11 +170,13 @@ uses file opening instead.
 
 Open in choices offer an explicit in-app preview, actual native destinations,
 and their system-default designation when known. Local files additionally offer
-Show in Finder, Show in File Explorer or Show in File Manager, and Download a
-copy. Website choices offer explicit Nodex Browser opening, available native
-browsers and Copy link. Native choices do not change the preferred opener.
+**Reveal in Finder**, **Open in Explorer** or **Open in File Manager**, and
+**Save a copy**. Website choices offer explicit Nodex Browser opening, the
+system browser, and **Copy link**. When the browser name is unavailable, its
+action reads **Open in default browser**. Native choices leave the preferred
+opener unchanged.
 Destination discovery has a loading state. Context-click and Shift+F10 retain
-the same file and URL context-menu actions used by message links.
+the same file and URL context-menu actions used by message links, including Save a copy for files and Download linked file for HTTP(S) links.
 
 Sources is an icon-only accessible list. It does not add a duplicate text-pill
 representation of the same integrations, and it shows `No sources yet` when no

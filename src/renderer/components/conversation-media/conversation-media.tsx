@@ -15,10 +15,12 @@ import {
 import { useQuery, type QueryFunctionContext } from "@tanstack/react-query";
 import type { Components } from "streamdown";
 import {
+  CopyIcon,
   DownloadIcon,
   ImageIcon,
   LoadingIcon,
   MoreActionsIcon,
+  PageMenuCopyLinkIcon,
   PauseIcon,
   PlayIcon,
 } from "@/components/shared/icons";
@@ -804,6 +806,8 @@ export function ConversationAudio({
         intl.formatMessage({ id: "components.conversationMedia.audio", defaultMessage: "Audio" })
       : conversationMediaFilename(raw));
   const ready = resource.status === "ready" && !current.failed;
+  const canCopySource = raw.length > 0 && !/^data:/iu.test(raw);
+  const sourceIsLink = /^https?:/iu.test(raw);
   const format = /\.([a-z0-9]+)$/iu.exec(name)?.[1]?.toUpperCase();
   const { save, current: download } = useMediaDownload(resource, raw);
   useLayoutEffect(
@@ -891,51 +895,60 @@ export function ConversationAudio({
             {current.playing ? <PauseIcon className="icon-sm" /> : <PlayIcon className="icon-sm" />}
           </button>
         ) : null}
-        <NodexDropdownMenu
-          align="end"
-          contentWidth="xs"
-          triggerButton={
-            <button
-              type="button"
-              aria-label={intl.formatMessage(
-                {
-                  id: "components.conversationMedia.moreOptions",
-                  defaultMessage: "More options for {name}",
-                },
-                { name },
-              )}
-              className="rounded-md p-1.5"
-            >
-              <MoreActionsIcon className="icon-sm" />
-            </button>
-          }
-        >
-          {!raw.startsWith("data:") ? (
-            <NodexDropdownItem
-              onSelect={() => {
-                if (resource.isCurrent()) void writeTextToClipboard(raw);
-              }}
-            >
-              {intl.formatMessage({
-                id: "components.conversationMedia.copyPath",
-                defaultMessage: "Copy path",
-              })}
-            </NodexDropdownItem>
-          ) : null}
-          {ready ? (
-            <NodexDropdownItem
-              disabled={download?.pending}
-              onSelect={() => {
-                void save();
-              }}
-            >
-              {intl.formatMessage({
-                id: "components.conversationMedia.saveCopy",
-                defaultMessage: "Save a copy…",
-              })}
-            </NodexDropdownItem>
-          ) : null}
-        </NodexDropdownMenu>
+        {canCopySource || ready ? (
+          <NodexDropdownMenu
+            align="end"
+            contentWidth="xs"
+            triggerButton={
+              <button
+                type="button"
+                aria-label={intl.formatMessage(
+                  {
+                    id: "components.conversationMedia.moreOptions",
+                    defaultMessage: "More options for {name}",
+                  },
+                  { name },
+                )}
+                className="rounded-md p-1.5"
+              >
+                <MoreActionsIcon className="icon-sm" />
+              </button>
+            }
+          >
+            {canCopySource ? (
+              <NodexDropdownItem
+                leftSlot={sourceIsLink ? <PageMenuCopyLinkIcon /> : <CopyIcon />}
+                onSelect={() => {
+                  if (resource.isCurrent()) void writeTextToClipboard(raw);
+                }}
+              >
+                {sourceIsLink
+                  ? intl.formatMessage({
+                      id: "lib.pageCopyModel.copyDeeplink",
+                      defaultMessage: "Copy link",
+                    })
+                  : intl.formatMessage({
+                      id: "components.conversationMedia.copyPath",
+                      defaultMessage: "Copy path",
+                    })}
+              </NodexDropdownItem>
+            ) : null}
+            {ready ? (
+              <NodexDropdownItem
+                leftSlot={<DownloadIcon />}
+                disabled={download?.pending}
+                onSelect={() => {
+                  void save();
+                }}
+              >
+                {intl.formatMessage({
+                  id: "components.conversationMedia.saveCopy",
+                  defaultMessage: "Save a copy",
+                })}
+              </NodexDropdownItem>
+            ) : null}
+          </NodexDropdownMenu>
+        ) : null}
       </span>
       {ready ? (
         <>

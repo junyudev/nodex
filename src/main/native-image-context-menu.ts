@@ -1,5 +1,7 @@
 import type { BrowserWindow, ContextMenuParams, MenuItemConstructorOptions } from "electron";
 import type { Actions, Labels } from "electron-context-menu";
+import { getNativeMenuIcon } from "./native-menu-icons";
+import { isHttpUrl } from "../shared/browser-url-policy";
 import { getMainIntl } from "./i18n/main-intl";
 import { getFileManagerRevealMessage } from "../shared/file-link-openers";
 import {
@@ -51,7 +53,7 @@ export function nativeEditorContextMenuLabels(params: ContextMenuParams): Labels
     }),
     saveImageAs: getMainIntl().formatMessage({
       id: "main.editorContextMenu.saveImageAs",
-      defaultMessage: "Sa&ve Image As…",
+      defaultMessage: "Save a copy",
     }),
     copyLink: getMainIntl().formatMessage({
       id: "main.editorContextMenu.copyLink",
@@ -59,7 +61,7 @@ export function nativeEditorContextMenuLabels(params: ContextMenuParams): Labels
     }),
     copyImage: getMainIntl().formatMessage({
       id: "main.editorContextMenu.copyImage",
-      defaultMessage: "Cop&y Image",
+      defaultMessage: "Copy image",
     }),
     inspect: getMainIntl().formatMessage({
       id: "main.editorContextMenu.inspect",
@@ -87,19 +89,44 @@ export function nativeImageContextMenuItems(
   platform: string,
   reveal: (path: string) => void,
 ): MenuItemConstructorOptions[] {
-  actions.cut({}).accelerator = "CmdOrCtrl+X";
-  actions.copy({}).accelerator = "CmdOrCtrl+C";
-  actions.paste({}).accelerator = "CmdOrCtrl+V";
+  Object.assign(actions.cut({}), { accelerator: "CmdOrCtrl+X", icon: getNativeMenuIcon("cut") });
+  Object.assign(actions.copy({}), { accelerator: "CmdOrCtrl+C", icon: getNativeMenuIcon("copy") });
+  Object.assign(actions.paste({}), {
+    accelerator: "CmdOrCtrl+V",
+    icon: getNativeMenuIcon("paste"),
+  });
+  Object.assign(actions.selectAll({}), { icon: getNativeMenuIcon("selectAll") });
   if (params.mediaType !== "image") return [];
-  const items: MenuItemConstructorOptions[] = [];
+
+  const clipboardItems: MenuItemConstructorOptions[] = [];
+  if (params.hasImageContents) {
+    clipboardItems.push({ ...actions.copyImage({}), icon: getNativeMenuIcon("copy") });
+  }
+  if (isHttpUrl(params.srcURL)) {
+    clipboardItems.push({
+      ...actions.copyImageAddress({}),
+      label: getMainIntl().formatMessage({
+        id: "main.editorContextMenu.copyImageLink",
+        defaultMessage: "Copy image link",
+      }),
+      icon: getNativeMenuIcon("link"),
+    });
+  }
+  const fileItems: MenuItemConstructorOptions[] = [];
   const path = nativeContextImagePath(params.srcURL);
-  if (path)
-    items.push({
+  if (path) {
+    fileItems.push({
       label: getMainIntl().formatMessage(getFileManagerRevealMessage(platform)),
+      icon: getNativeMenuIcon("folder"),
       click: () => reveal(path),
     });
-  items.push(actions.copyImage({}));
-  if (params.frame == null || params.frame === window.webContents.mainFrame)
-    items.push(actions.saveImageAs({}));
-  return items;
+  }
+  if (params.srcURL && (params.frame == null || params.frame === window.webContents.mainFrame)) {
+    fileItems.push({ ...actions.saveImageAs({}), icon: getNativeMenuIcon("download") });
+  }
+  return [
+    ...clipboardItems,
+    ...(clipboardItems.length && fileItems.length ? [{ type: "separator" as const }] : []),
+    ...fileItems,
+  ];
 }

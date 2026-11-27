@@ -82,6 +82,12 @@ export function InboxMessageMenu({
   const intl = useIntl();
   if (item.source.kind === "nodex") return null;
   const kind = inboxEntryKind(item);
+  const suggestAgain =
+    item.waiting && !rowOffers.suggest && !item.automationDecision ? handlers.onSuggestAgain : null;
+  const holds = inboxMenuHolds(item, rowOffers);
+  const canMarkDone = item.waiting && !rowOffers.done;
+  const hasHandlingActions =
+    !rowOffers.handleManually || suggestAgain || holds.length > 0 || canMarkDone;
   return (
     <NodexDropdownMenu
       align="end"
@@ -112,15 +118,12 @@ export function InboxMessageMenu({
         </NodexDropdownItem>
       )}
       {/* A held Automation decision carries its frozen action, never routing advice. */}
-      {item.waiting && !rowOffers.suggest && !item.automationDecision && handlers.onSuggestAgain ? (
-        <NodexDropdownItem
-          leftSlot={<RefreshIcon className="icon-xs" />}
-          onSelect={handlers.onSuggestAgain}
-        >
+      {suggestAgain ? (
+        <NodexDropdownItem leftSlot={<RefreshIcon className="icon-xs" />} onSelect={suggestAgain}>
           <FormattedMessage id="inbox.inboxMessage.suggestAgain" defaultMessage="Suggest again" />
         </NodexDropdownItem>
       ) : null}
-      {inboxMenuHolds(item, rowOffers).map((hold) => (
+      {holds.map((hold) => (
         <NodexDropdownItem
           key={hold}
           leftSlot={
@@ -131,7 +134,7 @@ export function InboxMessageMenu({
           {intl.formatMessage(INBOX_HOLD_LABELS[hold])}
         </NodexDropdownItem>
       ))}
-      {item.waiting && !rowOffers.done ? (
+      {canMarkDone ? (
         <NodexDropdownItem
           leftSlot={<CheckmarkIcon className="icon-xs" />}
           onSelect={() => handlers.onSetDone(true)}
@@ -139,6 +142,7 @@ export function InboxMessageMenu({
           <FormattedMessage id="inbox.inboxMessage.markDone" defaultMessage="Mark done" />
         </NodexDropdownItem>
       ) : null}
+      {hasHandlingActions ? <NodexDropdownSeparator /> : null}
       {item.waiting ? (
         <NodexDropdownItem
           leftSlot={
@@ -187,7 +191,7 @@ export function InboxMessageMenu({
       </NodexDropdownSummarySubmenuItem>
       <NodexDropdownSeparator />
       <NodexDropdownItem
-        className="text-token-error-foreground"
+        tone="danger"
         leftSlot={<DeleteIcon className="icon-xs" />}
         onSelect={handlers.onDelete}
       >

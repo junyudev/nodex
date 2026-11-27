@@ -33,16 +33,19 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { SideMenuExtension } from "@blocknote/core/extensions";
 import {
   blockTypeSelectItems,
   DragHandleMenu,
   FormattingToolbar,
   FormattingToolbarController,
   getFormattingToolbarItems,
-  RemoveBlockItem,
   SideMenu,
   SideMenuController,
+  useBlockNoteEditor,
+  useComponentsContext,
   useDictionary,
+  useExtensionState,
   type LinkToolbarProps,
   type SideMenuProps,
 } from "@blocknote/react";
@@ -62,6 +65,8 @@ import { NfmFormattingToolbarController } from "./nfm-formatting-toolbar-control
 import { NfmTextActionMenuRuntimeProvider } from "./nfm-text-action-menu-runtime";
 import { NfmLinkToolbar } from "./nfm-link-toolbar";
 import { NfmLinkToolbarController } from "./nfm-link-toolbar-controller";
+import { NfmSideMenuDeleteIcon } from "@/components/shared/icons";
+import { NodexMenuRowContent } from "@/components/ui/menu-row";
 import { toast } from "@/components/ui/toast";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { applyLibraryModule } from "@/lib/api";
@@ -408,11 +413,42 @@ function NfmFileFormattingToolbar() {
   );
 }
 
-function NfmFileDragMenu() {
+function NfmFileDeleteItem() {
   const { drag_handle } = useDictionary();
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+  if (!block) return null;
+
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => {
+        const selectedBlocks = editor.getSelection()?.blocks;
+        const blocksToRemove = selectedBlocks?.some((selected) => selected.id === block.id)
+          ? selectedBlocks
+          : [block];
+        editor.removeBlocks(blocksToRemove);
+      }}
+    >
+      <NodexMenuRowContent
+        leading={<NfmSideMenuDeleteIcon />}
+        tone="danger"
+        labelClassName="text-token-error-foreground"
+      >
+        {drag_handle.delete_menuitem}
+      </NodexMenuRowContent>
+    </Components.Generic.Menu.Item>
+  );
+}
+
+function NfmFileDragMenu() {
   return (
     <DragHandleMenu>
-      <RemoveBlockItem>{drag_handle.delete_menuitem}</RemoveBlockItem>
+      <NfmFileDeleteItem />
     </DragHandleMenu>
   );
 }

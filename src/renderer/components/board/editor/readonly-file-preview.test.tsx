@@ -70,7 +70,7 @@ test("a historical attachment opens its captured version in a viewer, including 
   expect(await within(viewer).findByRole("heading", { name: "Captured notes" })).toBeDefined();
   expect(within(viewer).getByText("Markdown · 16 B")).toBeDefined();
   await act(async () => {
-    fireEvent.click(within(viewer).getByRole("button", { name: "Save…" }));
+    fireEvent.click(within(viewer).getByRole("button", { name: "Save a copy" }));
     await Promise.resolve();
   });
   expect(reads.save).toHaveBeenCalledWith(

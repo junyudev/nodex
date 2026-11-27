@@ -2,7 +2,11 @@ import type { ComposerFocusTransfer } from "@/lib/composer-draft-intents";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { AsyncQuestionComposer } from "./async-question-surface";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
 import {
   closestCenter,
   DndContext,
@@ -526,6 +530,7 @@ function QueuedFollowUpRow({
                 })}
               </NodexDropdownItem>
             ) : null}
+            <NodexDropdownSeparator />
             <NodexDropdownItem
               onSelect={() => {
                 actions.onQueueingEnabledChange(!isQueueingEnabled);

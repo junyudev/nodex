@@ -53,7 +53,7 @@ One resolver handles data URLs, managed assets, Agent image pointers, remote/dir
 
 Packaged and development conversation images use the app-local media transport instead of `file:`. The production renderer policy admits that transport for images and media while continuing to reject direct filesystem URLs. A failed managed-path resolution renders a recoverable unavailable state rather than emitting an invalid image request.
 
-Trusted local images replace the standalone download icon with an `Open` split control. Its primary action opens the image in the operating system's default app; the menu offers `Open in folder` and `Save as…`.
+Trusted local images replace the standalone download icon with an `Open` split control. Its primary action opens the image in the operating system's default app. The menu offers the platform’s reveal action and `Save a copy`.
 
 Image actions read HTTP(S) bytes through the desktop network stack. Data URLs and app-owned resources retain their existing source-specific readers; an unavailable blob URL can be recovered from its loaded image. Downloads choose a local destination through the native Save dialog, preserve the image bytes, and sanitize the proposed filename without splitting Unicode characters or losing its extension. Canceling the dialog writes nothing.
 

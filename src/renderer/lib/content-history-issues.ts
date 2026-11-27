@@ -51,9 +51,10 @@ export function createContentHistoryIssueSource(
                     }),
             run: () => history.recover(issue).result,
           });
-        if (issue.canReset)
-          actions.push({
+        if (issue.canReset) {
+          const clearHistory: ContentEditIssueAction = {
             kind: "run",
+            destructive: true,
             label: getIntl().formatMessage({
               id: "lib.contentHistoryIssues.clear",
               defaultMessage: "Clear undo history",
@@ -89,7 +90,9 @@ export function createContentHistoryIssueSource(
                 );
               history.reset();
             },
-          });
+          };
+          actions.push(clearHistory);
+        }
         return {
           kind: "history",
           id: [

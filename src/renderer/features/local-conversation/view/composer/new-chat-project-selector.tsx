@@ -403,11 +403,11 @@ function ProjectSelectorMenuContent({
               {chosenFolder
                 ? intl.formatMessage({
                     id: "conversation.newChatProjectSelector.chooseAnotherFolder",
-                    defaultMessage: "Choose another folder…",
+                    defaultMessage: "Choose another folder",
                   })
                 : intl.formatMessage({
                     id: "conversation.newChatProjectSelector.chooseFolder",
-                    defaultMessage: "Choose folder…",
+                    defaultMessage: "Choose folder",
                   })}
             </NodexDropdownItem>
           </NodexDropdownSection>

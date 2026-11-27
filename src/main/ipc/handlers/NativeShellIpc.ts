@@ -1,3 +1,9 @@
+import {
+  getPrimaryCommandAccelerator,
+  toElectronAccelerator,
+  type CommandKeymapState,
+} from "../../../shared/command-keybindings";
+import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -14,9 +20,10 @@ import { isAbsolute, sep } from "node:path";
 import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
 import { readSystemDefaultBrowser } from "../../platform/electron/SystemDefaultBrowser";
 import {
-  buildSessionContextMenuIconSvg,
-  getNativeContextMenuIconSvg,
-} from "../../../shared/session-context-menu-icons";
+  createRasterizedMenuIcon,
+  getNativeMenuIcon,
+  prepareNativeMenuIcons,
+} from "../../native-menu-icons";
 import { MainConfig } from "../../app/MainConfig";
 import { parseExternalNavigationUrl } from "../../external-navigation";
 import {
@@ -45,28 +52,27 @@ const menuTemplate = (
   onSelect: (id: string) => void,
   rasterizedIcons: ReadonlyMap<string, string>,
   scaleFactor: number,
-  platform: string,
+  keymap: CommandKeymapState | undefined,
 ): MenuItemConstructorOptions[] =>
   items.map((item) => {
     if (item.type === "separator") return { type: "separator" };
     const enabled = item.enabled !== false;
-    const rasterizedIcon = rasterizedIcons.get(menuIconId(item) ?? "");
+    const dataUrl = item.iconUrl ? rasterizedIcons.get(item.iconUrl) : undefined;
+    const artwork = dataUrl ? createRasterizedMenuIcon(dataUrl, scaleFactor) : undefined;
     const icon =
-      item.iconKey || item.iconUrl
-        ? rasterizedIcon
-          ? createRasterizedMenuIcon(rasterizedIcon, scaleFactor)
-          : item.iconKey
-            ? nativeImage.createFromDataURL(
-                `data:image/svg+xml;charset=utf-8,${encodeURIComponent(buildSessionContextMenuIconSvg(item.iconKey))}`,
-              )
-            : undefined
-        : undefined;
-    if (platform === "darwin" && item.iconKey) icon?.setTemplateImage(true);
+      artwork && !artwork.isEmpty()
+        ? artwork
+        : item.iconKey
+          ? getNativeMenuIcon(item.iconKey)
+          : undefined;
     const base = {
       id: item.id,
       label: item.label,
       enabled,
-      accelerator: item.accelerator,
+      accelerator:
+        item.commandId && keymap
+          ? toElectronAccelerator(getPrimaryCommandAccelerator(keymap, item.commandId))
+          : item.accelerator,
       registerAccelerator: false,
       toolTip: item.tooltip,
       icon,
@@ -75,7 +81,7 @@ const menuTemplate = (
     if (item.type === "submenu") {
       return {
         ...base,
-        submenu: menuTemplate(item.submenu, onSelect, rasterizedIcons, scaleFactor, platform),
+        submenu: menuTemplate(item.submenu, onSelect, rasterizedIcons, scaleFactor, keymap),
       };
     }
     return {
@@ -86,73 +92,50 @@ const menuTemplate = (
     };
   });
 
-function createRasterizedMenuIcon(dataUrl: string, scaleFactor: number) {
-  if (scaleFactor <= 1) return nativeImage.createFromDataURL(dataUrl);
-  const icon = nativeImage.createEmpty();
-  icon.addRepresentation({ scaleFactor, dataURL: dataUrl });
-  return icon;
+function hasCommandShortcut(items: readonly NativeContextMenuItem[]): boolean {
+  return items.some(
+    (item) =>
+      item.type !== "separator" &&
+      (Boolean(item.commandId) || (item.type === "submenu" && hasCommandShortcut(item.submenu))),
+  );
 }
 
-interface MenuIconSource {
-  readonly id: string;
-  readonly source: string;
-  readonly template: boolean;
+function collectMenuIconUrls(items: readonly NativeContextMenuItem[]): string[] {
+  return items.flatMap((item) => {
+    if (item.type === "separator") return [];
+    const own = item.iconUrl ? [item.iconUrl] : [];
+    return item.type === "submenu" ? [...own, ...collectMenuIconUrls(item.submenu)] : own;
+  });
 }
 
-function menuIconId(item: Exclude<NativeContextMenuItem, { type: "separator" }>): string | null {
-  if (item.iconKey) return `key:${item.iconKey}`;
-  if (item.iconUrl) return `url:${item.iconUrl}`;
-  return null;
-}
-
-function collectMenuIconSources(items: readonly NativeContextMenuItem[]): MenuIconSource[] {
-  const sources = new Map<string, MenuIconSource>();
-  const visit = (menuItems: readonly NativeContextMenuItem[]) => {
-    for (const item of menuItems) {
-      if (item.type === "separator") continue;
-      const id = menuIconId(item);
-      if (id && !sources.has(id)) {
-        sources.set(
-          id,
-          item.iconKey
-            ? { id, source: getNativeContextMenuIconSvg(item.iconKey), template: true }
-            : { id, source: item.iconUrl!, template: false },
-        );
-      }
-      if (item.type === "submenu") visit(item.submenu);
-    }
-  };
-  visit(items);
-  return [...sources.values()];
-}
-
-/** Rasterizes against the renderer's live foreground color so macOS receives crisp 16 pt assets. */
+/** Rasterizes app artwork at its menu size and isolates failed artwork decodes. */
 async function rasterizeMenuIcons(
   sender: WebContents,
   items: readonly NativeContextMenuItem[],
   scaleFactor: number,
 ): Promise<Map<string, string>> {
-  const iconEntries = collectMenuIconSources(items);
+  const iconEntries = [...new Set(collectMenuIconUrls(items))];
   if (iconEntries.length === 0) return new Map();
 
   const script = `(async function () {
     const entries = ${JSON.stringify(iconEntries)};
-    const color = getComputedStyle(document.documentElement).color;
     const size = Math.max(1, Math.round(16 * ${JSON.stringify(scaleFactor)}));
-    return await Promise.all(entries.map(async ({ id, source, template }) => {
+    const results = await Promise.allSettled(entries.map(async (source) => {
       const image = new Image();
-      image.src = template
-        ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source.replaceAll("currentColor", color))
-        : source;
+      image.src = source;
       await image.decode();
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("Unable to rasterize native menu icon");
-      context.drawImage(image, 0, 0, size, size);
-      return [id, canvas.toDataURL("image/png")];
+      const scale = size / Math.max(image.naturalWidth, image.naturalHeight);
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+      return [source, canvas.toDataURL("image/png")];
     }));
+    return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
   })()`;
 
   try {
@@ -165,7 +148,7 @@ async function rasterizeMenuIcons(
       ),
     );
   } catch {
-    // The SVG fallback below keeps menus usable if a renderer is already being torn down.
+    // App artwork is optional when the renderer is already being torn down.
     return new Map();
   }
 }
@@ -173,10 +156,14 @@ async function rasterizeMenuIcons(
 export const live: Layer.Layer<
   never,
   never,
-  ElectronDesktop | ElectronIpc | MainConfig | WindowRuntime
+  ApplicationSettings | ElectronDesktop | ElectronIpc | MainConfig | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const settings = yield* ApplicationSettings;
     const config = yield* MainConfig;
+    const nativeMenuIcons = Effect.promise(() => prepareNativeMenuIcons(config.platform));
+    // Glyphs rasterize in the background; handlers register without waiting for them.
+    yield* Effect.forkScoped(nativeMenuIcons);
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
@@ -204,10 +191,22 @@ export const live: Layer.Layer<
           const scaleFactor = owner
             ? Math.max(1, screen.getDisplayMatching(owner.getBounds()).scaleFactor)
             : 1;
-          return run("rasterize-context-menu-icons", () =>
-            rasterizeMenuIcons(event.sender, items, scaleFactor),
+          return Effect.all(
+            {
+              glyphs: nativeMenuIcons,
+              rasterizedIcons: run("rasterize-context-menu-icons", () =>
+                rasterizeMenuIcons(event.sender, items, scaleFactor),
+              ),
+              keymap: hasCommandShortcut(items)
+                ? settings.snapshot().pipe(
+                    Effect.map((snapshot) => snapshot.commandKeymap),
+                    Effect.orElseSucceed(() => undefined),
+                  )
+                : Effect.succeed(undefined),
+            },
+            { concurrency: "unbounded" },
           ).pipe(
-            Effect.andThen((rasterizedIcons) =>
+            Effect.andThen(({ rasterizedIcons, keymap }) =>
               Effect.callback<string | null>((resume) => {
                 let selectedId: string | null = null;
                 const menu = desktop.menu.buildFromTemplate(
@@ -218,7 +217,7 @@ export const live: Layer.Layer<
                     },
                     rasterizedIcons,
                     scaleFactor,
-                    config.platform,
+                    keymap,
                   ),
                 );
                 menu.popup({

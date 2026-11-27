@@ -1,3 +1,4 @@
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import type { FileDiffMetadata, SupportedLanguages } from "@pierre/diffs";
 import {
   Editor,
@@ -756,6 +757,7 @@ export function WorkspacePierreEditor({
               <NodexContextMenuItem
                 key={item.id}
                 disabled={item.enabled === false}
+                leftSlot={item.iconKey ? <NativeMenuIcon iconKey={item.iconKey} /> : undefined}
                 onSelect={() => void item.onSelect?.()}
                 rightSlot={item.accelerator ? formatAcceleratorLabel(item.accelerator) : undefined}
               >

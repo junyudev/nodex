@@ -222,8 +222,8 @@ export function PluginsDirectoryPage({
               {
                 id: "folder",
                 label: intl.formatMessage({
-                  id: "plugins.pluginsDirectoryPage.folderPlugin",
-                  defaultMessage: "Plugin from folder…",
+                  id: "plugins.folderPluginDialog.addTitle",
+                  defaultMessage: "Add plugin from folder",
                 }),
                 icon: <FolderIcon />,
                 onSelect: fromFolder.start,

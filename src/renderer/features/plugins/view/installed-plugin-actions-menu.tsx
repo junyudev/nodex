@@ -113,11 +113,11 @@ export function InstalledPluginActionsMenu({
             })}
           </NodexDropdownItem>
         )}
-        {variant === "settings" ? null : <NodexDropdownSeparator />}
+        <NodexDropdownSeparator />
         <NodexDropdownItem
           leftSlot={<TrashIcon />}
           disabled={uninstallDisabled}
-          className="text-danger"
+          tone="danger"
           onSelect={() => void actions.uninstall(row)}
         >
           {forcedLabel ??

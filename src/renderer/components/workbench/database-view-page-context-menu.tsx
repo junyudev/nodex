@@ -12,8 +12,8 @@ import {
 
 import {
   ChevronRightIcon,
+  CopyIcon,
   MoveToIcon,
-  PageMenuCopyIcon,
   PageMenuCopyIdIcon,
   PageMenuCopyLinkIcon,
   PageMenuCopyMarkdownIcon,
@@ -26,7 +26,7 @@ import {
   PageMenuMoveUpIcon,
   PageMenuOpenInIcon,
   PageMenuOpenNewChatIcon,
-  ChatIcon,
+  SendToChatIcon,
 } from "@/components/shared/icons";
 import {
   DataSourcePagePropertyContextMenuItems,
@@ -93,7 +93,7 @@ function DatabaseViewPageMenuActionIcon({
     case "reorder-bottom":
       return <PageMenuMoveBottomIcon />;
     case "copy":
-      return <PageMenuCopyIcon />;
+      return <CopyIcon />;
     case "copy-id":
       return <PageMenuCopyIdIcon />;
     case "copy-deeplink":
@@ -107,7 +107,7 @@ function DatabaseViewPageMenuActionIcon({
     case "open-in-new-chat":
       return <PageMenuOpenNewChatIcon />;
     case "send-to-chat":
-      return <ChatIcon className="icon-xs shrink-0" />;
+      return <SendToChatIcon className="icon-xs shrink-0" />;
     case "delete":
       return <PageMenuDeleteIcon />;
   }
@@ -370,12 +370,10 @@ export function DatabaseViewPageContextMenuOverlay({
     handleMenuOpenChange(false);
   };
 
-  const renderAction = (action: DatabaseViewPageMenuEntry, index: number): ReactNode => {
-    const separator = action.id === "delete" && index > 0 ? <NodexDropdown.Separator /> : null;
+  const renderAction = (action: DatabaseViewPageMenuEntry): ReactNode => {
     if (action.id === "move-to") {
       return (
         <NodexContextMenuSubmenu
-          key={action.id}
           trigger={
             <NodexContextMenuSubmenuTrigger
               leftSlot={<DatabaseViewPageMenuActionIcon actionId={action.id} />}
@@ -397,25 +395,17 @@ export function DatabaseViewPageContextMenuOverlay({
       );
     }
     if (action.children) {
-      return (
-        <Fragment key={action.id}>
-          {separator}
-          <PageActionSubmenu entry={action} onSelect={selectActionAndClose} />
-        </Fragment>
-      );
+      return <PageActionSubmenu entry={action} onSelect={selectActionAndClose} />;
     }
     return (
-      <Fragment key={action.id}>
-        {separator}
-        <NodexContextMenuItem
-          disabled={action.disabled}
-          tone={action.id === "delete" ? "danger" : "default"}
-          leftSlot={<DatabaseViewPageMenuActionIcon actionId={action.id} />}
-          onSelect={() => selectActionAndClose(action.id)}
-        >
-          {action.label}
-        </NodexContextMenuItem>
-      </Fragment>
+      <NodexContextMenuItem
+        disabled={action.disabled}
+        tone={action.id === "delete" ? "danger" : "default"}
+        leftSlot={<DatabaseViewPageMenuActionIcon actionId={action.id} />}
+        onSelect={() => selectActionAndClose(action.id)}
+      >
+        {action.label}
+      </NodexContextMenuItem>
     );
   };
 
@@ -481,7 +471,16 @@ export function DatabaseViewPageContextMenuOverlay({
             </>
           ) : null}
           {hasVisibleProperties && actions.length > 0 ? <NodexDropdown.Separator /> : null}
-          {actions.map(renderAction)}
+          {actions.map((action, index) => {
+            // Page actions read as one group; only Delete stands apart.
+            const startsGroup = index > 0 && action.id === "delete";
+            return (
+              <Fragment key={action.id}>
+                {startsGroup ? <NodexDropdown.Separator /> : null}
+                {renderAction(action)}
+              </Fragment>
+            );
+          })}
         </NodexContextMenuContent>
       </NodexContextMenuPortal>
     </>

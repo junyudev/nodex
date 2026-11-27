@@ -25,31 +25,22 @@ export function buildWebLinkContextMenu(input: {
   readonly selectedText?: string;
 }): NativeContextMenuItem[] {
   const { navigation, selectedText } = input;
-  const items: NativeContextMenuItem[] = [
-    {
-      id: "open-in-label",
-      label: getIntl().formatMessage({
-        id: "lib.webLinkContextMenu.openIn",
-        defaultMessage: "Open in",
-      }),
-      enabled: false,
-    },
-  ];
+  const items: NativeContextMenuItem[] = [];
   if (navigation?.openTab)
     items.push({
       id: "open-in-new-tab",
       label: getIntl().formatMessage({
         id: "lib.webLinkContextMenu.newTab",
-        defaultMessage: "New tab",
+        defaultMessage: "Open in new tab",
       }),
-      iconKey: "openIn",
+      iconKey: "newTab",
     });
-  if (navigation?.openTab && navigation.openWindow)
+  if (navigation?.openWindow)
     items.push({
       id: "open-in-new-window",
       label: getIntl().formatMessage({
         id: "lib.webLinkContextMenu.newWindow",
-        defaultMessage: "New window",
+        defaultMessage: "Open in new window",
       }),
       iconKey: "window",
     });
@@ -58,7 +49,7 @@ export function buildWebLinkContextMenu(input: {
       id: "open-in-external-browser",
       label: getIntl().formatMessage({
         id: "lib.webLinkContextMenu.defaultBrowser",
-        defaultMessage: "Default browser",
+        defaultMessage: "Open in default browser",
       }),
       iconKey: "openIn",
     });
@@ -76,14 +67,15 @@ export function buildWebLinkContextMenu(input: {
         id: "lib.webLinkContextMenu.copyLink",
         defaultMessage: "Copy link",
       }),
-      iconKey: "copy",
+      iconKey: "link",
     },
     {
       id: "save-link-as",
       label: getIntl().formatMessage({
         id: "lib.webLinkContextMenu.saveLinkAs",
-        defaultMessage: "Save link as…",
+        defaultMessage: "Download linked file",
       }),
+      iconKey: "download",
     },
   );
   return items;
@@ -127,8 +119,8 @@ export async function openWebLinkContextMenu(input: {
     await input.navigation?.openTab?.(input.url);
     return;
   }
-  if (selected === "open-in-new-window" && input.navigation?.openTab) {
-    await input.navigation.openWindow?.(input.url);
+  if (selected === "open-in-new-window") {
+    await input.navigation?.openWindow?.(input.url);
     return;
   }
   if (

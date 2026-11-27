@@ -33,13 +33,13 @@ describe("project context menu model", () => {
       });
 
       expect(flattenIds(items)).toEqual([
+        PROJECT_CONTEXT_MENU_ACTION_IDS.reveal,
+        "separator",
         PROJECT_CONTEXT_MENU_ACTION_IDS.togglePause,
         PROJECT_CONTEXT_MENU_ACTION_IDS.togglePin,
         PROJECT_CONTEXT_MENU_ACTION_IDS.edit,
-        "separator",
         "project.section",
         sectionAction,
-        PROJECT_CONTEXT_MENU_ACTION_IDS.reveal,
         PROJECT_CONTEXT_MENU_ACTION_IDS.createStableWorktree,
         "separator",
         PROJECT_CONTEXT_MENU_ACTION_IDS.archiveChats,
@@ -49,7 +49,7 @@ describe("project context menu model", () => {
       expect(readProjectMoveToSectionActionId(sectionAction)).toBe("section-1");
     });
 
-    test("keeps unavailable archive visible and omits unsupported optional rows", () => {
+    test("omits unavailable archive and unsupported optional rows", () => {
       const items = buildProjectContextMenuItems({
         pinned: true,
         showPinAction: false,
@@ -67,11 +67,10 @@ describe("project context menu model", () => {
         PROJECT_CONTEXT_MENU_ACTION_IDS.edit,
         "separator",
         PROJECT_CONTEXT_MENU_ACTION_IDS.markAllRead,
-        PROJECT_CONTEXT_MENU_ACTION_IDS.archiveChats,
         "separator",
         PROJECT_CONTEXT_MENU_ACTION_IDS.remove,
       ]);
-      expect(archive?.type === "separator" ? null : archive?.enabled).toBe(false);
+      expect(archive).toBeUndefined();
     });
   });
 });

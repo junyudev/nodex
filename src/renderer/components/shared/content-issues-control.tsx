@@ -13,7 +13,12 @@ import type { ContentRoutingIdentity } from "../../../shared/content-routing-con
 import type { Project } from "@/lib/types";
 import { useOpenDocumentRecoveryReview } from "@/features/document-recovery/recovery-entry";
 import { CircleAlert } from "@/components/shared/icons/generic-icons";
-import { ChevronRightIcon, LoadingIcon, MoreActionsIcon } from "@/components/shared/icons";
+import {
+  ChevronRightIcon,
+  DeleteIcon,
+  LoadingIcon,
+  MoreActionsIcon,
+} from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexDropdownItem, NodexDropdownMenu, NodexDropdownTitle } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -239,11 +244,19 @@ function ContentIssueRow({
             }
           >
             <NodexDropdownTitle>{affectedScope}</NodexDropdownTitle>
-            {secondaryActions.map((action) => (
-              <NodexDropdownItem key={action.label} onSelect={() => void run(action)}>
-                {action.label}…
-              </NodexDropdownItem>
-            ))}
+            {secondaryActions.map((action) => {
+              const destructive = action.kind === "run" && action.destructive === true;
+              return (
+                <NodexDropdownItem
+                  key={action.label}
+                  leftSlot={destructive ? <DeleteIcon /> : undefined}
+                  tone={destructive ? "danger" : "default"}
+                  onSelect={() => void run(action)}
+                >
+                  {action.label}
+                </NodexDropdownItem>
+              );
+            })}
           </NodexDropdownMenu>
         ) : null}
       </div>

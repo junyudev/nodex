@@ -320,7 +320,7 @@ the selected chip shows `Open file ↵` (`Open folder ↵` for a linked folder).
   over the current surface. The viewer reads through that surface's exact File
   binding, so a revision shows the version it captured. It presents the File
   as a Page File tab does, except that HTML shows as source, and offers View
-  source or View preview for Markdown and SVG, and Save….
+  source or View preview for Markdown and SVG. It can also save a copy.
 - A linked file opens as a local file reference does anywhere in Nodex: in a
   Files tab in the side panel, or in the Browser for a local HTML page. A
   linked folder opens in the system file manager.
@@ -336,8 +336,9 @@ Right-click opens the attachment's context menu.
 
 Library File:
 
-- `Open` and, where a Page File tab can open, `Open in new tab`
-- `Save…` reads the currently authorized File bytes through Core and opens a
+- `Preview` for a Page File image that opens over the Page, or `Open` for other Files.
+  `Open in new tab` is available when the File can open as a Page tab.
+- `Save a copy` reads the currently authorized File bytes through Core and opens a
   destination chooser; no Profile path is revealed
 - `Copy reference` copies the stable `nodex://files/<file-id>` reference
 - `Reveal in Finder` shows a read-only copy of the version the surface reads,
@@ -345,7 +346,7 @@ Library File:
 
 Linked file or legacy saved attachment: the same menu as every local file
 reference, including Open file, Open in the preferred editor, Open with, Save
-as…, Copy path, Copy file contents and Reveal in Finder.
+a copy, Copy path, Copy file contents for eligible text, and the system file manager’s reveal action.
 
 Linked folder: Reveal in Finder and Copy path.
 

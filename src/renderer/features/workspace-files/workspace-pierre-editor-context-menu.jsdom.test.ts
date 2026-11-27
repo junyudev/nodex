@@ -77,7 +77,6 @@ describe("Files editor context menu", () => {
     const items = build(editor);
     expect(items.map((item) => item.id)).toEqual([
       "file-undo",
-      "file-redo",
       "file-history-separator",
       "file-cut",
       "file-copy",
@@ -85,18 +84,15 @@ describe("Files editor context menu", () => {
       "file-select-all",
     ]);
     expect(action(items, "file-undo").enabled).toBe(true);
-    expect(action(items, "file-redo").enabled).toBe(false);
     for (const id of ["file-cut", "file-copy", "file-paste"]) {
       expect(action(items, id).enabled).toBe(true);
     }
     expect(action(items, "file-select-all").nativeRole).toBeUndefined();
   });
 
-  test("readonly snapshots disable edits and capture selected text for Copy", async () => {
+  test("readonly snapshots omit edits and capture selected text for Copy", async () => {
     const empty = build();
-    for (const id of ["file-undo", "file-redo", "file-cut", "file-copy", "file-paste"]) {
-      expect(action(empty, id).enabled).toBe(false);
-    }
+    expect(empty.map((item) => item.id)).toEqual(["file-select-all"]);
     expect(action(empty, "file-select-all").nativeRole).toBe("selectAll");
     document.getSelection()?.selectAllChildren(textbox);
     const selected = build();
@@ -169,7 +165,7 @@ describe("Files editor context menu", () => {
   test("does not publish file actions for an editor retired while preparing destinations", async () => {
     const select = vi.fn(async () => undefined);
     await openWorkspacePierreEditorNativeContextMenu(build(), {}, () => false, {
-      items: [{ id: "file-reference:save", label: "Save as…" }],
+      items: [{ id: "file-reference:save", label: "Save a copy" }],
       select,
     });
     expect(showNativeContextMenu).not.toHaveBeenCalled();

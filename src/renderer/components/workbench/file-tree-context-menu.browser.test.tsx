@@ -11,9 +11,10 @@ const calls = vi.hoisted(() => ({
   copy: vi.fn(async () => true),
   save: vi.fn(async () => ({ path: "/copy.ts" })),
   append: vi.fn(),
+  listOpeners: vi.fn(async (): Promise<string[]> => ["vscode", "cursor"]),
 }));
 vi.mock("@/lib/file-system-operations", () => ({
-  listAvailableFileLinkOpeners: async () => ["vscode", "cursor"],
+  listAvailableFileLinkOpeners: calls.listOpeners,
 }));
 vi.mock("@/lib/file-reference-router", () => ({
   useFileReferenceRouter: () => ({ open: calls.open }),
@@ -67,7 +68,17 @@ describe("file tree context actions", () => {
       { external: true, opener: "vscode" },
     );
     await openMenu();
-    await act(async () => userEvent.click(view.getByRole("menuitem", { name: "Save as…" })));
+    const openWith = await view.findByRole("menuitem", { name: "Open with" });
+    await act(async () => userEvent.hover(openWith));
+    const openInCursor = await view.findByRole("menuitem", { name: "Cursor" });
+    expect(view.queryByRole("menuitem", { name: /^VS Code$/u })).toBeNull();
+    await act(async () => userEvent.click(openInCursor));
+    expect(calls.open).toHaveBeenLastCalledWith(
+      { path: "/workspace/src/file.ts" },
+      { external: true, opener: "cursor" },
+    );
+    await openMenu();
+    await act(async () => userEvent.click(view.getByRole("menuitem", { name: "Save a copy" })));
     expect(calls.save).toHaveBeenCalledWith({ path: "/workspace/src/file.ts" });
     await openMenu();
     await act(async () => userEvent.click(view.getByRole("menuitem", { name: "Copy path" })));
@@ -93,5 +104,37 @@ describe("file tree context actions", () => {
       }),
     );
     queryClient.clear();
+  });
+
+  test("keeps file actions usable during opener discovery and omits unavailable actions", async () => {
+    let finishDiscovery!: (openers: string[]) => void;
+    const discovery = new Promise<string[]>((resolve) => {
+      finishDiscovery = resolve;
+    });
+    calls.listOpeners.mockReturnValueOnce(discovery);
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <FileTreeContextMenu resolvePath={() => "/workspace/file.ts"}>
+          <button type="button" data-item-type="file" data-item-path="file.ts">
+            File
+          </button>
+        </FileTreeContextMenu>
+      </QueryClientProvider>,
+    );
+    try {
+      const row = view.getByRole("button", { name: "File" });
+      await act(async () => userEvent.click(row, { button: "right" }));
+      await view.findByRole("menuitem", { name: "Copy path" });
+      expect(view.queryByRole("menuitem", { name: /^Open/u })).toBeNull();
+      expect(view.queryByRole("menuitem", { name: "Add to chat" })).toBeNull();
+
+      finishDiscovery(["vscode"]);
+      await view.findByRole("menuitem", { name: "Open in VS Code" });
+      expect(view.queryByRole("menuitem", { name: "Open with" })).toBeNull();
+    } finally {
+      view.unmount();
+      queryClient.clear();
+    }
   });
 });

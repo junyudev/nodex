@@ -2,15 +2,12 @@ import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } fro
 import { useState } from "react";
 import type { Project, ProjectCreateInput } from "@/lib/types";
 import {
-  ArchiveIcon,
   MoonIcon,
   ProjectActionsIcon,
   ProjectCollapseAllIcon,
   ProjectRemovedIcon,
   ProjectReopenPreviousIcon,
-  SidebarManualOrderIcon,
   ClockIcon,
-  SidebarUpdatedIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownFlyoutSubmenuItem,
@@ -113,12 +110,11 @@ const sidebarChatOrderMessages = defineMessages({
 });
 
 const SIDEBAR_CHAT_ORDER_OPTIONS = [
-  { order: "activity", label: sidebarChatOrderMessages.activity, Icon: SidebarUpdatedIcon },
-  { order: "manual", label: sidebarChatOrderMessages.manual, Icon: SidebarManualOrderIcon },
+  { order: "activity", label: sidebarChatOrderMessages.activity },
+  { order: "manual", label: sidebarChatOrderMessages.manual },
 ] as const satisfies readonly {
   order: SidebarChatOrder;
   label: MessageDescriptor;
-  Icon: typeof SidebarUpdatedIcon;
 }[];
 
 /** Radio values are strings; "never" stands for leaving idle chats open. */
@@ -161,16 +157,6 @@ function SidebarProjectOptionsMenu({
       }
     >
       <NodexDropdownItem
-        disabled
-        leftSlot={<ArchiveIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
-        data-app-action-sidebar-project-options-archive-all=""
-      >
-        <FormattedMessage
-          id="workbench.sidebarProjectsSectionActions.archiveAll"
-          defaultMessage="Archive all chats"
-        />
-      </NodexDropdownItem>
-      <NodexDropdownItem
         leftSlot={<ProjectRemovedIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
         onSelect={() => {
           setOpen(false);
@@ -179,7 +165,7 @@ function SidebarProjectOptionsMenu({
       >
         <FormattedMessage
           id="workbench.sidebarProjectsSectionActions.removed"
-          defaultMessage="Removed projects…"
+          defaultMessage="Removed projects"
         />
       </NodexDropdownItem>
       <NodexDropdownSeparator paddingClassName="pt-1 pb-2" />
@@ -197,11 +183,10 @@ function SidebarProjectOptionsMenu({
             value={chatOrder}
             onValueChange={(value) => onChatOrderChange(normalizeSidebarChatOrder(value))}
           >
-            {SIDEBAR_CHAT_ORDER_OPTIONS.map(({ order, label, Icon }) => (
+            {SIDEBAR_CHAT_ORDER_OPTIONS.map(({ order, label }) => (
               <NodexDropdownRadioItem
                 key={order}
                 value={order}
-                leftSlot={<Icon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
                 data-app-action-sidebar-chat-order={order}
               >
                 {intl.formatMessage(label)}

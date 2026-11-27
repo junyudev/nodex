@@ -1,4 +1,6 @@
 import { useIntl, defineMessages, getIntl } from "@/lib/i18n";
+import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
+import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import { blockHasType, editorHasBlockWithType, getNodeById } from "@blocknote/core";
 import { FormattingToolbarExtension, SideMenuExtension } from "@blocknote/core/extensions";
 import {
@@ -749,6 +751,30 @@ function NfmAddBlockButton() {
   );
 }
 
+function presentNfmSideMenuSections(sections: readonly NfmSideMenuSection[]) {
+  const platform = resolveCodexRendererCommandPlatform();
+  const deleteAction = sections
+    .flatMap((section) => section.rows)
+    .find((row) => row.key === "delete");
+  return sections
+    .map((section, index) => {
+      const rows = section.rows
+        .filter((row) => row.key !== "delete")
+        .map((row) => {
+          if (row.key === "duplicate") {
+            return { ...row, shortcut: formatAcceleratorLabel("CmdOrCtrl+D", platform) };
+          }
+          if (row.key === "move-to") {
+            return { ...row, shortcut: formatAcceleratorLabel("CmdOrCtrl+Shift+P", platform) };
+          }
+          return row;
+        });
+      if (deleteAction && index === sections.length - 1) rows.push(deleteAction);
+      return { ...section, rows };
+    })
+    .filter((section) => section.rows.length > 0);
+}
+
 function NfmSideMenuRow({
   row,
   index,
@@ -770,6 +796,7 @@ function NfmSideMenuRow({
   onSubmenuChange: (submenu: NfmSideMenuSubmenuKey | null) => void;
   submenuContent?: ReactNode;
 }) {
+  const destructive = row.key === "delete";
   const rowElement = (
     <div
       id={getOptionId(listboxId, index)}
@@ -782,7 +809,7 @@ function NfmSideMenuRow({
       data-disabled={!row.enabled ? "true" : undefined}
       className={cn(
         "group flex h-7 select-none items-center gap-2 rounded-[7px] px-2 text-sm leading-7 outline-hidden",
-        "text-token-foreground",
+        destructive ? "text-token-error-foreground" : "text-token-foreground",
         row.enabled ? "cursor-interaction" : "cursor-default opacity-45",
         focused && "bg-token-list-hover-background",
       )}
@@ -804,7 +831,12 @@ function NfmSideMenuRow({
         onAction(row);
       }}
     >
-      <span className="flex size-5 shrink-0 items-center justify-center text-token-description-foreground">
+      <span
+        className={cn(
+          "flex size-5 shrink-0 items-center justify-center",
+          !destructive && "text-token-description-foreground",
+        )}
+      >
         {getActionIcon(row.key)}
       </span>
       <span className="min-w-0 flex-1 truncate text-left">{row.label}</span>
@@ -916,7 +948,8 @@ function NfmSideMenuSectionView({
               : { sectionKey: section.key, row: section.rows[offset - 1]! };
           return (
             <Fragment key={row.key}>
-              {shouldRenderNfmSideMenuSeparatorBefore(previousFlatRow, currentFlatRow) ? (
+              {(row.key === "delete" && previousFlatRow) ||
+              shouldRenderNfmSideMenuSeparatorBefore(previousFlatRow, currentFlatRow) ? (
                 <NfmSideMenuSeparator kind="group" />
               ) : null}
               <NfmSideMenuRow
@@ -1642,7 +1675,7 @@ function NfmSideMenuPopup({
     ],
   );
   const sections = useMemo(
-    () => filterNfmSideMenuSections(baseSections, query),
+    () => filterNfmSideMenuSections(presentNfmSideMenuSections(baseSections), query),
     [baseSections, query],
   );
   const flatRows = useMemo(() => flattenNfmSideMenuRows(sections), [sections]);

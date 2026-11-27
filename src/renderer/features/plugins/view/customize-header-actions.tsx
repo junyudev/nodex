@@ -39,8 +39,9 @@ export function AddActionsMenu({
   readonly trailingAction?: CustomizeAddAction;
 }) {
   const intl = useIntl();
-  const available = addActions.filter((action) => !action.disabled);
-  const single = addActions.length === 1 && trailingAction == null ? available[0] : undefined;
+  const available = addActions.filter((action) => !action.disabled && action.onSelect);
+  const trailing = trailingAction?.onSelect && !trailingAction.disabled ? trailingAction : null;
+  const single = available.length === 1 && trailing == null ? available[0] : undefined;
   if (single != null) {
     return (
       <ToolbarButton
@@ -55,7 +56,7 @@ export function AddActionsMenu({
       </ToolbarButton>
     );
   }
-  if (available.length === 0 && trailingAction == null) return null;
+  if (available.length === 0 && trailing == null) return null;
   return (
     <NodexDropdownMenu
       align="end"
@@ -78,25 +79,16 @@ export function AddActionsMenu({
         </ToolbarButton>
       }
     >
-      {addActions.map((action) => (
-        <NodexDropdownItem
-          key={action.id}
-          leftSlot={action.icon}
-          disabled={action.disabled}
-          onSelect={action.onSelect}
-        >
+      {available.map((action) => (
+        <NodexDropdownItem key={action.id} leftSlot={action.icon} onSelect={action.onSelect}>
           {action.label}
         </NodexDropdownItem>
       ))}
-      {trailingAction == null ? null : (
+      {trailing == null ? null : (
         <>
-          <NodexDropdownSeparator />
-          <NodexDropdownItem
-            leftSlot={trailingAction.icon}
-            disabled={trailingAction.disabled}
-            onSelect={trailingAction.onSelect}
-          >
-            {trailingAction.label}
+          {available.length > 0 ? <NodexDropdownSeparator /> : null}
+          <NodexDropdownItem leftSlot={trailing.icon} onSelect={trailing.onSelect}>
+            {trailing.label}
           </NodexDropdownItem>
         </>
       )}

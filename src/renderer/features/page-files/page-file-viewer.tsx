@@ -173,8 +173,8 @@ export function PageFileViewer({
                 ) : null}
                 <ViewerIconButton
                   label={intl.formatMessage({
-                    id: "pageFiles.pageFileViewer.save",
-                    defaultMessage: "Save…",
+                    id: "board.pageFileTreeView.save",
+                    defaultMessage: "Save a copy",
                   })}
                   tooltipDelayOpen
                   disabled={!authority}
@@ -219,14 +219,14 @@ export function PageFileViewer({
                   <NodexDropdownSeparator />
                   <NodexDropdownItem leftSlot={<AttachmentIcon />} onSelect={onManage}>
                     {intl.formatMessage({
-                      id: "pageFiles.pageFileViewer.manage",
-                      defaultMessage: "Manage in Page files…",
+                      id: "board.pageFileTreeView.managePageFiles",
+                      defaultMessage: "Manage in Page files",
                     })}
                   </NodexDropdownItem>
                   <NodexDropdownItem leftSlot={<OpenInIcon />} onSelect={onOpenInLibrary}>
                     {intl.formatMessage({
                       id: "pageFiles.pageFileViewer.openLibrary",
-                      defaultMessage: "Open in Library…",
+                      defaultMessage: "Open in Library",
                     })}
                   </NodexDropdownItem>
                 </NodexDropdownMenu>

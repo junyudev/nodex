@@ -1,6 +1,9 @@
 import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
+import { CopyIcon, DeleteIcon, FolderIcon, MoveToIcon } from "@/components/shared/icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
+import { TryInChatIcon } from "@/components/shared/icons/plugin-detail-icons";
 import {
   NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
@@ -10,7 +13,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { MoreActionsButton, type MoreActionsVariant } from "@/components/ui/toolbar-button";
 import { writeTextToClipboard } from "@/lib/clipboard";
-import { revealInFileManagerLabel } from "@/lib/reveal-in-file-manager-label";
+import { getFileManagerRevealMessage } from "../../../../shared/file-link-openers";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import type {
   SkillInventoryContext,
@@ -173,6 +176,7 @@ export function SkillActionsMenu({
     others.map((target) => (
       <NodexDropdownItem
         key={target.id}
+        leftSlot={<FolderIcon />}
         disabled={busy}
         subText={describeSkillReaders(target.readers)}
         onSelect={() => void transfer(target, mode)}
@@ -197,53 +201,29 @@ export function SkillActionsMenu({
       }
     >
       {onTry ? (
-        <NodexDropdownItem onSelect={onTry}>
+        <NodexDropdownItem leftSlot={<TryInChatIcon />} onSelect={onTry}>
           {intl.formatMessage({
             id: "skills.skillActionsMenu.tryInNewChat",
             defaultMessage: "Try in a new chat",
           })}
         </NodexDropdownItem>
       ) : null}
-      {location.writable ? (
-        <NodexDropdownItem disabled={busy} onSelect={() => void transfer(location, "copy")}>
-          {intl.formatMessage({
-            id: "skills.skillActionsMenu.duplicate",
-            defaultMessage: "Duplicate",
-          })}
+      {onTry ? <NodexDropdownSeparator /> : null}
+      {local ? (
+        <NodexDropdownItem
+          leftSlot={<FolderIcon />}
+          onSelect={() =>
+            void router.open(
+              { path: skill.manifestPath },
+              { external: true, opener: "fileManager" },
+            )
+          }
+        >
+          {intl.formatMessage(getFileManagerRevealMessage(navigator.platform))}
         </NodexDropdownItem>
       ) : null}
-      {others.length > 0 ? (
-        <NodexDropdownFlyoutSubmenuItem
-          label={intl.formatMessage({
-            id: "skills.skillActionsMenu.copyTo",
-            defaultMessage: "Copy to",
-          })}
-          disabled={busy}
-        >
-          {destinationItems("copy")}
-        </NodexDropdownFlyoutSubmenuItem>
-      ) : null}
-      {others.length > 0 && skill.writable ? (
-        <NodexDropdownFlyoutSubmenuItem
-          label={intl.formatMessage({
-            id: "skills.skillActionsMenu.moveTo",
-            defaultMessage: "Move to",
-          })}
-          disabled={busy}
-        >
-          {destinationItems("move")}
-        </NodexDropdownFlyoutSubmenuItem>
-      ) : null}
-      <NodexDropdownSeparator />
       <NodexDropdownItem
-        disabled={!local}
-        onSelect={() =>
-          void router.open({ path: skill.manifestPath }, { external: true, opener: "fileManager" })
-        }
-      >
-        {revealInFileManagerLabel()}
-      </NodexDropdownItem>
-      <NodexDropdownItem
+        leftSlot={<CopyIcon />}
         onSelect={() => {
           void writeTextToClipboard(skill.directory).then((copied) => {
             if (copied)
@@ -261,10 +241,52 @@ export function SkillActionsMenu({
           defaultMessage: "Copy path",
         })}
       </NodexDropdownItem>
+      {location.writable || others.length > 0 ? <NodexDropdownSeparator /> : null}
+      {location.writable ? (
+        <NodexDropdownItem
+          leftSlot={<NativeMenuIcon iconKey="duplicate" />}
+          disabled={busy}
+          onSelect={() => void transfer(location, "copy")}
+        >
+          {intl.formatMessage({
+            id: "skills.skillActionsMenu.duplicate",
+            defaultMessage: "Duplicate",
+          })}
+        </NodexDropdownItem>
+      ) : null}
+      {others.length > 0 ? (
+        <NodexDropdownFlyoutSubmenuItem
+          leftSlot={<CopyIcon />}
+          label={intl.formatMessage({
+            id: "skills.skillActionsMenu.copyTo",
+            defaultMessage: "Copy to",
+          })}
+          disabled={busy}
+        >
+          {destinationItems("copy")}
+        </NodexDropdownFlyoutSubmenuItem>
+      ) : null}
+      {others.length > 0 && skill.writable ? (
+        <NodexDropdownFlyoutSubmenuItem
+          leftSlot={<MoveToIcon />}
+          label={intl.formatMessage({
+            id: "skills.skillActionsMenu.moveTo",
+            defaultMessage: "Move to",
+          })}
+          disabled={busy}
+        >
+          {destinationItems("move")}
+        </NodexDropdownFlyoutSubmenuItem>
+      ) : null}
       {skill.writable ? (
         <>
           <NodexDropdownSeparator />
-          <NodexDropdownItem className="text-danger" disabled={busy} onSelect={() => void trash()}>
+          <NodexDropdownItem
+            leftSlot={<DeleteIcon />}
+            tone="danger"
+            disabled={busy}
+            onSelect={() => void trash()}
+          >
             {intl.formatMessage({ id: "skills.skillActionsMenu.delete", defaultMessage: "Delete" })}
           </NodexDropdownItem>
         </>

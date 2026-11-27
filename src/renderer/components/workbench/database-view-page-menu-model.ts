@@ -1,7 +1,22 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import { listPageCopyActions } from "@/lib/page-copy-model";
+import {
+  buildDatabaseListSelectionCommands,
+  type DatabaseListCommandId,
+  type DatabaseListMoveDirection,
+} from "./database-list/database-list-commands";
 
-export type DatabaseViewPageReorderDirection = "top" | "up" | "down" | "bottom";
+export type DatabaseViewPageReorderDirection = DatabaseListMoveDirection;
+
+const reorderActions = {
+  "move-top": { id: "reorder-top", keyword: "first" },
+  "move-up": { id: "reorder-up", keyword: "previous" },
+  "move-down": { id: "reorder-down", keyword: "next" },
+  "move-bottom": { id: "reorder-bottom", keyword: "last" },
+} as const satisfies Record<
+  DatabaseListCommandId,
+  { id: `reorder-${DatabaseViewPageReorderDirection}`; keyword: string }
+>;
 
 export type DatabaseViewPageMenuActionId =
   | "move-to"
@@ -94,7 +109,7 @@ export function buildDatabaseViewPageMenuEntries(
             "send-to-chat",
             intl.formatMessage({
               id: "database.databaseViewPageMenuModel.sendToChat",
-              defaultMessage: "Send to chat…",
+              defaultMessage: "Send to chat",
             }),
             ["thread", "agent", "attach"],
             {
@@ -128,46 +143,12 @@ export function buildDatabaseViewPageMenuEntries(
             }),
             ["position", "rank", "order"],
             {
-              children: [
-                entry(
-                  "reorder-top",
-                  intl.formatMessage({
-                    id: "database.databaseViewPageMenuModel.reorderToTop",
-                    defaultMessage: "Reorder to top",
-                  }),
-                  ["first"],
-                  { disabled: !canMoveUp },
-                ),
-                entry(
-                  "reorder-up",
-                  intl.formatMessage({
-                    id: "database.databaseViewPageMenuModel.reorderUp",
-                    defaultMessage: "Reorder up",
-                  }),
-                  ["previous"],
-                  { disabled: !canMoveUp },
-                ),
-                entry(
-                  "reorder-down",
-                  intl.formatMessage({
-                    id: "database.databaseViewPageMenuModel.reorderDown",
-                    defaultMessage: "Reorder down",
-                  }),
-                  ["next"],
-                  { disabled: !canMoveDown },
-                ),
-                entry(
-                  "reorder-bottom",
-                  intl.formatMessage({
-                    id: "database.databaseViewPageMenuModel.reorderToBottom",
-                    defaultMessage: "Reorder to bottom",
-                  }),
-                  ["last"],
-                  {
-                    disabled: !canMoveDown,
-                  },
-                ),
-              ],
+              children: buildDatabaseListSelectionCommands({ canMoveUp, canMoveDown }, intl).map(
+                ({ id, label, disabled }) => {
+                  const { id: actionId, keyword } = reorderActions[id];
+                  return entry(actionId, label, [keyword], { disabled });
+                },
+              ),
             },
           ),
         ]

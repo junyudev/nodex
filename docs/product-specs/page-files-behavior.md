@@ -91,9 +91,10 @@ no longer exists reads `Deleted chat`.
 Activating a File opens it in a tab beside its Page (see
 [Opening Files](#opening-files)); Arrow keys move through the tree, Right and
 Left unfold and fold folders, and Enter opens. A File's context menu offers
-Open, Open in new tab, Save…, Copy path, Reveal in Finder, Manage in Page files…
-and Remove from Page, which reads Remove path while the body still uses the
-File. The row's `+` and Manage open the Page Files manager.
+Open (Preview for images), Open in new tab, Save a copy, Copy path, Reveal in
+Finder, Manage in Page files, and Remove from Page. The last action reads
+Remove path while the body still uses the File. The row's `+` and Manage in
+Page files open the Page Files manager.
 A Page shown outside a tab group opens the manager on the File instead.
 
 Files and folders dragged in from the system and dropped on the Property are
@@ -159,14 +160,14 @@ Preview for an image and Open for every other File.
 
 The tab's header is the path back to the Page, `<Page> / folder / file`, and its
 Page segment opens the Page. Its controls are View source or View preview for
-HTML, Markdown and SVG, Reload for an HTML preview, Save…, and a menu with Copy
-path, Reveal in Finder, Manage in Page files… and Open in Library….
+HTML, Markdown and SVG, Reload for an HTML preview, Save a copy, and a menu with Copy
+path, Reveal in Finder, Manage in Page files and Open in Library.
 
 Reveal in Finder (Open in Explorer on Windows) shows the File where other
 apps can take it: a read-only copy of its current version, under the name the
 Page shows, ready to drag into another app or open with one. The Library's own
 storage is never revealed, and the copy is not the File: edits to it never reach
-the Library, so a person who wants an editable copy uses Save….
+the Library, so a person who wants an editable copy uses Save a copy.
 
 Each File presents as itself:
 

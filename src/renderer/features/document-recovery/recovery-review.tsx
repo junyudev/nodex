@@ -7,7 +7,14 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { MoreActionsIcon } from "@/components/shared/icons";
+import {
+  CopyIcon,
+  DownloadIcon,
+  MoreActionsIcon,
+  VisibilityIcon,
+  VisibilityOffIcon,
+} from "@/components/shared/icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { NodexButton } from "@/components/ui/button";
 import {
   NodexDialog,
@@ -15,7 +22,11 @@ import {
   NodexDialogDescription,
   NodexDialogTitle,
 } from "@/components/ui/dialog";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
 import { LoadingPlaceholder } from "@/components/ui/loading-placeholder";
 import { toast } from "@/components/ui/toast";
 import { writeTextToClipboard } from "@/lib/clipboard";
@@ -74,6 +85,10 @@ export function RecoveryReview(props: RecoveryReviewProps) {
 interface RecoveryAction {
   readonly label: string;
   readonly run: () => void;
+}
+
+interface RecoveryMenuAction extends RecoveryAction {
+  readonly icon: ReactNode;
 }
 
 const RESOLVE_FAILURE_TITLE = {
@@ -417,22 +432,25 @@ function RecoveryReviewContent({
   const diff = comparison.kind === "diff" ? comparison.diff : null;
   const previewAfter =
     comparison.kind === "diff" || comparison.kind === "document" ? comparison.after : null;
-  const exportAction: RecoveryAction = {
+  const exportAction: RecoveryMenuAction = {
+    icon: <DownloadIcon />,
     label: intl.formatMessage({
       id: "documentRecovery.recoveryReview.exportBackup",
       defaultMessage: "Export backup",
     }),
     run: () => void exportBackup(),
   };
-  const saveCopyAction: RecoveryAction = {
+  const saveCopyAction: RecoveryMenuAction = {
+    icon: <NativeMenuIcon iconKey="duplicate" />,
     label: intl.formatMessage({
       id: "documentRecovery.recoveryReview.saveCopy",
       defaultMessage: "Save as a copy",
     }),
     run: () => void resolve("copy"),
   };
-  const copyAllAction: RecoveryAction | null = previewAfter
+  const copyAllAction: RecoveryMenuAction | null = previewAfter
     ? {
+        icon: <CopyIcon />,
         label: intl.formatMessage({
           id: "documentRecovery.recoveryReview.copyMarkdown",
           defaultMessage: "Copy as Markdown",
@@ -502,8 +520,11 @@ function RecoveryReviewContent({
     inspection?.can_copy ? saveCopyAction : null,
     copyAllAction,
     entry || exportLocal ? exportAction : null,
+  ].filter((action): action is RecoveryMenuAction => action !== null && action !== primaryAction);
+  const toggleResolvedAction: RecoveryMenuAction | null =
     pending.length > 0
       ? {
+          icon: resolvedRequested ? <VisibilityOffIcon /> : <VisibilityIcon />,
           label: resolvedRequested
             ? intl.formatMessage({
                 id: "documentRecovery.recoveryReview.hideResolved",
@@ -515,10 +536,7 @@ function RecoveryReviewContent({
               }),
           run: () => setResolvedRequested((value) => !value),
         }
-      : null,
-  ].filter(
-    (action): action is RecoveryAction => action !== null && action.label !== primaryAction?.label,
-  );
+      : null;
   // Discarding sits beside the decision it competes with, unless it already is the decision.
   const secondary =
     entry?.kind === "staged" ? (
@@ -698,8 +716,12 @@ function RecoveryReviewContent({
                     </>
                   ) : null}
                 </div>
-                {menuActions.length > 0 ? (
-                  <RecoveryMoreMenu actions={menuActions} disabled={busy} />
+                {menuActions.length > 0 || toggleResolvedAction ? (
+                  <RecoveryMoreMenu
+                    actions={menuActions}
+                    toggleResolved={toggleResolvedAction}
+                    disabled={busy}
+                  />
                 ) : null}
                 {primaryAction ? (
                   <NodexButton size="sm" disabled={busy} onClick={primaryAction.run}>
@@ -822,9 +844,11 @@ function RecoveryCanvasComparison({
 
 function RecoveryMoreMenu({
   actions,
+  toggleResolved,
   disabled,
 }: {
-  readonly actions: readonly RecoveryAction[];
+  readonly actions: readonly RecoveryMenuAction[];
+  readonly toggleResolved: RecoveryMenuAction | null;
   readonly disabled: boolean;
 }) {
   const intl = useIntl();
@@ -849,10 +873,16 @@ function RecoveryMoreMenu({
       }
     >
       {actions.map((action) => (
-        <NodexDropdownItem key={action.label} onSelect={action.run}>
+        <NodexDropdownItem key={action.label} leftSlot={action.icon} onSelect={action.run}>
           {action.label}
         </NodexDropdownItem>
       ))}
+      {actions.length > 0 && toggleResolved ? <NodexDropdownSeparator /> : null}
+      {toggleResolved ? (
+        <NodexDropdownItem leftSlot={toggleResolved.icon} onSelect={toggleResolved.run}>
+          {toggleResolved.label}
+        </NodexDropdownItem>
+      ) : null}
     </NodexDropdownMenu>
   );
 }

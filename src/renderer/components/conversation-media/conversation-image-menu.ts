@@ -1,3 +1,4 @@
+import { joinNativeContextMenuGroups } from "../../../shared/native-context-menu";
 import { getIntl } from "@/lib/i18n";
 import type { ConversationImageAction } from "@/lib/content-image";
 import { toast } from "@/components/ui/toast";
@@ -15,7 +16,13 @@ export function showConversationImageMenu(
 ): boolean {
   if (actions.length === 0 || !canShowNativeContextMenu()) return false;
   void showNativeContextMenu(
-    actions.map(({ id, label }) => ({ id, label })),
+    joinNativeContextMenuGroups(
+      ...([["open"], ["copy", "address"], ["add"], ["reveal", "download"]] as const).map((group) =>
+        actions
+          .filter(({ id }) => group.some((member) => member === id))
+          .map(({ id, label, iconKey }) => ({ id, label, iconKey })),
+      ),
+    ),
     point,
   )
     .then(async (id) => {

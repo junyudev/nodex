@@ -43,7 +43,7 @@ test("adds a plugin from a folder, limits it to a Project and updates it", async
         .getByRole("button", { name: "Plugins", exact: true })
         .click();
       await page.getByRole("button", { name: "Add", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Plugin from folder…" }).click();
+      await page.getByRole("menuitem", { name: "Add plugin from folder" }).click();
 
       const review = page.getByRole("dialog", { name: "Add plugin from folder" });
       await expect(review.getByText("Field Notes", { exact: true })).toBeVisible();

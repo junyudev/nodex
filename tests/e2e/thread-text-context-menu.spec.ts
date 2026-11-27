@@ -195,7 +195,7 @@ test("native context menus preserve selected text, image actions, and file edito
     const sessionId = owner.slice("session:".length);
     const composer = scene.locator('[data-codex-composer="true"]').first();
     await composer.fill("Give me a reply to select.");
-    await composer.press("Enter");
+    await scene.getByRole("button", { name: "Send prompt", exact: true }).click();
     const response = scene.locator("[data-response-annotation-target] .codex-markdown").first();
     await expect(
       response.getByText(`Copy ${selectedText} precisely from this reply.`, { exact: true }),
@@ -310,13 +310,13 @@ test("native context menus preserve selected text, image actions, and file edito
     expect(
       fallbackMenu.items.filter((item) => item.id !== "inspect").map((item) => item.label),
     ).toEqual([
+      "Copy image",
       process.platform === "darwin"
         ? "Reveal in Finder"
         : process.platform === "win32"
           ? "Open in Explorer"
           : "Open in File Manager",
-      "Copy Image",
-      "Save Image As…",
+      "Save a copy",
       ...(process.platform !== "darwin" ? ["Select All"] : []),
     ]);
     await expect.poll(copiedImageSize).toEqual({ width: 192, height: 96 });
@@ -336,7 +336,7 @@ test("native context menus preserve selected text, image actions, and file edito
       expect.arrayContaining([
         expect.objectContaining({ id: "open", label: "Open image in new tab" }),
         expect.objectContaining({ id: "copy", label: "Copy image" }),
-        expect.objectContaining({ id: "download", label: "Download a copy" }),
+        expect.objectContaining({ id: "download", label: "Save a copy" }),
       ]),
     );
     expect(imageMenu.items.some((item) => item.id === "copyImage" || item.id === "inspect")).toBe(
@@ -354,16 +354,14 @@ test("native context menus preserve selected text, image actions, and file edito
       captureNativeMenu(harness.application, page, null),
       editor.click({ button: "right" }),
     ]);
-    expect(editorMenu.items.slice(0, 6).map((item) => item.id)).toEqual([
-      "file-undo",
-      "file-redo",
+    expect(editorMenu.items.slice(0, 4).map((item) => item.id)).toEqual([
       "file-cut",
       "file-copy",
       "file-paste",
       "file-select-all",
     ]);
     expect(editorMenu.items.slice(-4).map(({ id, label }) => ({ id, label }))).toEqual([
-      { id: "file-reference:save", label: "Save as…" },
+      { id: "file-reference:save", label: "Save a copy" },
       { id: "file-reference:copy-path", label: "Copy path" },
       { id: "file-reference:copy-contents", label: "Copy file contents" },
       {

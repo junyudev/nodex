@@ -1,5 +1,5 @@
 import { useIntl } from "@/lib/i18n";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronRightLgIcon, EllipsisIcon } from "@/components/shared/icons/customize-action-icons";
 import {
   ChevronDownSm16Icon,
@@ -8,7 +8,13 @@ import {
 } from "@/components/shared/icons/file-viewer-icons";
 import { CheckmarkMdIcon } from "@/components/shared/icons/plugin-detail-icons";
 import { SkillGitHubIcon } from "@/components/shared/icons/skill-fallback-icons";
-import { SidePanelFilesIcon } from "@/components/shared/icons";
+import {
+  CopyIcon,
+  DownloadIcon,
+  FolderIcon,
+  OpenInIcon,
+  SidePanelFilesIcon,
+} from "@/components/shared/icons";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
@@ -26,6 +32,7 @@ import {
 } from "@/components/ui/viewer-header";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
+import { getFileManagerRevealMessage } from "../../../shared/file-link-openers";
 import type {
   WorkspaceFileBreadcrumb,
   WorkspaceFilePathVariants,
@@ -164,6 +171,32 @@ function WorkspaceFilePathActions({
             id: "workspaceFiles.workspaceFileViewerHeader.copyPath",
             defaultMessage: "Copy path",
           });
+  const pathOptions = [
+    [
+      variants.absolute,
+      intl.formatMessage({
+        id: "workspaceFiles.workspaceFileViewerHeader.absolutePath",
+        defaultMessage: "Absolute path",
+      }),
+    ],
+    [
+      variants.projectRelative,
+      intl.formatMessage({
+        id: "workspaceFiles.workspaceFileViewerHeader.relativeToProject",
+        defaultMessage: "Relative to project",
+      }),
+    ],
+    [
+      variants.repoRelative,
+      intl.formatMessage({
+        id: "workspaceFiles.workspaceFileViewerHeader.relativeToRepo",
+        defaultMessage: "Relative to repo",
+      }),
+    ],
+  ] as const;
+  const availablePaths = pathOptions.flatMap(([value, label]) =>
+    value === null ? [] : [{ value, label }],
+  );
   return (
     <>
       <ViewerControlGroup label={copyLabel}>
@@ -172,50 +205,34 @@ function WorkspaceFilePathActions({
           label={copyLabel}
           value={preferredWorkspaceFileCopyPath(path, variants)}
         />
-        <NodexDropdownMenu
-          align="start"
-          contentWidth="menu"
-          triggerTooltipContent="Copy path options"
-          triggerButton={
-            <ViewerButton
-              aria-label={intl.formatMessage({
-                id: "workspaceFiles.workspaceFileViewerHeader.copyPathOptions",
-                defaultMessage: "Copy path options",
-              })}
-              uniform
-            >
-              <ChevronDownSm16Icon />
-            </ViewerButton>
-          }
-        >
-          <NodexDropdownItem
-            disabled={variants.absolute === null}
-            onSelect={() => variants.absolute && copyText(variants.absolute)}
+        {availablePaths.length > 0 ? (
+          <NodexDropdownMenu
+            align="start"
+            contentWidth="menu"
+            triggerTooltipContent="Copy path options"
+            triggerButton={
+              <ViewerButton
+                aria-label={intl.formatMessage({
+                  id: "workspaceFiles.workspaceFileViewerHeader.copyPathOptions",
+                  defaultMessage: "Copy path options",
+                })}
+                uniform
+              >
+                <ChevronDownSm16Icon />
+              </ViewerButton>
+            }
           >
-            {intl.formatMessage({
-              id: "workspaceFiles.workspaceFileViewerHeader.absolutePath",
-              defaultMessage: "Absolute path",
-            })}
-          </NodexDropdownItem>
-          <NodexDropdownItem
-            disabled={variants.projectRelative === null}
-            onSelect={() => variants.projectRelative && copyText(variants.projectRelative)}
-          >
-            {intl.formatMessage({
-              id: "workspaceFiles.workspaceFileViewerHeader.relativeToProject",
-              defaultMessage: "Relative to project",
-            })}
-          </NodexDropdownItem>
-          <NodexDropdownItem
-            disabled={variants.repoRelative === null}
-            onSelect={() => variants.repoRelative && copyText(variants.repoRelative)}
-          >
-            {intl.formatMessage({
-              id: "workspaceFiles.workspaceFileViewerHeader.relativeToRepo",
-              defaultMessage: "Relative to repo",
-            })}
-          </NodexDropdownItem>
-        </NodexDropdownMenu>
+            {availablePaths.map(({ value, label }) => (
+              <NodexDropdownItem
+                key={label}
+                leftSlot={<CopyIcon />}
+                onSelect={() => copyText(value)}
+              >
+                {label}
+              </NodexDropdownItem>
+            ))}
+          </NodexDropdownMenu>
+        ) : null}
       </ViewerControlGroup>
       {gitHubUrl ? (
         <ViewerIconButton
@@ -236,7 +253,8 @@ export interface WorkspaceFileViewerOption {
   readonly id: string;
   readonly label: string;
   readonly onSelect: () => void;
-  readonly icon?: ReactNode;
+  readonly icon: ReactNode;
+  readonly group: "copy" | "view" | "refresh";
 }
 
 export interface WorkspaceFileOpenTarget {
@@ -257,12 +275,13 @@ export interface WorkspaceFileOpenControl {
 }
 
 function TargetIcon({ url }: { url: string | null }) {
-  return url ? <img alt="" className="icon-sm" src={url} /> : null;
+  return url ? <img alt="" className="icon-sm" src={url} /> : <OpenInIcon className="icon-sm" />;
 }
 
 function WorkspaceFileOpenButton({ control }: { control: WorkspaceFileOpenControl }) {
   const intl = useIntl();
   const { primary } = control;
+  const alternatives = control.targets.filter((target) => target.id !== primary?.id);
   return (
     <ViewerSplitButton
       label={
@@ -286,40 +305,43 @@ function WorkspaceFileOpenButton({ control }: { control: WorkspaceFileOpenContro
       })}
       menu={
         <>
-          {control.targets.map((target) => (
+          {alternatives.map((target) => (
             <NodexDropdownItem
               key={target.id}
               leftSlot={<TargetIcon url={target.iconUrl} />}
               onSelect={target.open}
             >
-              {target.label}
+              {intl.formatMessage(
+                {
+                  id: "workspaceFiles.workspaceFileViewerHeader.openIn",
+                  defaultMessage: "Open in {app}",
+                },
+                { app: target.label },
+              )}
             </NodexDropdownItem>
           ))}
-          {control.targets.length > 0 &&
-          (control.onRevealInFolder || control.onOpenGitHub || control.onSaveAs) ? (
-            <NodexDropdownSeparator />
-          ) : null}
-          {control.onRevealInFolder ? (
-            <NodexDropdownItem onSelect={control.onRevealInFolder}>
-              {intl.formatMessage({
-                id: "workspaceFiles.workspaceFileViewerHeader.openFolder",
-                defaultMessage: "Open in folder",
-              })}
-            </NodexDropdownItem>
-          ) : null}
           {control.onOpenGitHub ? (
-            <NodexDropdownItem onSelect={control.onOpenGitHub}>
+            <NodexDropdownItem leftSlot={<SkillGitHubIcon />} onSelect={control.onOpenGitHub}>
               {intl.formatMessage({
                 id: "workspaceFiles.workspaceFileViewerHeader.openGitHub",
                 defaultMessage: "Open in GitHub",
               })}
             </NodexDropdownItem>
           ) : null}
+          {(alternatives.length > 0 || control.onOpenGitHub) &&
+          (control.onRevealInFolder || control.onSaveAs) ? (
+            <NodexDropdownSeparator />
+          ) : null}
+          {control.onRevealInFolder ? (
+            <NodexDropdownItem leftSlot={<FolderIcon />} onSelect={control.onRevealInFolder}>
+              {intl.formatMessage(getFileManagerRevealMessage(navigator.platform))}
+            </NodexDropdownItem>
+          ) : null}
           {control.onSaveAs ? (
-            <NodexDropdownItem onSelect={control.onSaveAs}>
+            <NodexDropdownItem leftSlot={<DownloadIcon />} onSelect={control.onSaveAs}>
               {intl.formatMessage({
-                id: "workspaceFiles.workspaceFileViewerHeader.saveAs",
-                defaultMessage: "Save as…",
+                id: "workspaceFiles.workspaceFileViewerHeader.saveCopy",
+                defaultMessage: "Save a copy",
               })}
             </NodexDropdownItem>
           ) : null}
@@ -356,10 +378,15 @@ function WorkspaceFileOptionsMenu({ options }: { options: readonly WorkspaceFile
         </ViewerButton>
       }
     >
-      {options.map((option) => (
-        <NodexDropdownItem key={option.id} leftSlot={option.icon} onSelect={option.onSelect}>
-          {option.label}
-        </NodexDropdownItem>
+      {options.map((option, index) => (
+        <Fragment key={option.id}>
+          {index > 0 && options[index - 1]?.group !== option.group ? (
+            <NodexDropdownSeparator />
+          ) : null}
+          <NodexDropdownItem leftSlot={option.icon} onSelect={option.onSelect}>
+            {option.label}
+          </NodexDropdownItem>
+        </Fragment>
       ))}
     </NodexDropdownMenu>
   );
@@ -542,6 +569,9 @@ export function WorkspaceFileViewerHeader({
 }: WorkspaceFileViewerHeaderProps) {
   const ancestors = Math.max(0, breadcrumb.segments.length - 1);
   const comparison = controls.editor?.comparison ?? null;
+  const showGitHubButton = Boolean(!controls.editor && path && pathVariants && gitHubUrl);
+  const open =
+    showGitHubButton && controls.open ? { ...controls.open, onOpenGitHub: null } : controls.open;
   return (
     <ViewerHeader
       className="group @container/file-header w-full"
@@ -598,7 +628,7 @@ export function WorkspaceFileViewerHeader({
             />
           ) : null,
         },
-        { id: "file-actions", content: <WorkspaceFileControls {...controls} /> },
+        { id: "file-actions", content: <WorkspaceFileControls {...controls} open={open} /> },
       ]}
     />
   );

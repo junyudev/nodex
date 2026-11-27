@@ -126,7 +126,7 @@ describe("DatabaseViewPageContextMenu", () => {
 
     await openMenu(screen);
     await openSubmenu(screen, "Copy");
-    const copyDeeplink = await screen.findByRole("menuitem", { name: "Copy deeplink" });
+    const copyDeeplink = await screen.findByRole("menuitem", { name: "Copy link" });
     await act(async () => {
       fireEvent.click(copyDeeplink);
       await Promise.resolve();
@@ -214,7 +214,7 @@ describe("DatabaseViewPageContextMenu", () => {
 
     await openMenu(screen);
     await openSubmenu(screen, "Open in");
-    const sendToChatItem = await screen.findByRole("menuitem", { name: "Send to chat…" });
+    const sendToChatItem = await screen.findByRole("menuitem", { name: "Send to chat" });
     await act(async () => {
       fireEvent.click(sendToChatItem);
       await Promise.resolve();
@@ -244,7 +244,7 @@ describe("DatabaseViewPageContextMenu", () => {
 
     await openMenu(screen);
     await openSubmenu(screen, "Open in");
-    const sendToChatItem = await screen.findByRole("menuitem", { name: "Send to chat…" });
+    const sendToChatItem = await screen.findByRole("menuitem", { name: "Send to chat" });
     await act(async () => {
       fireEvent.click(sendToChatItem);
       await Promise.resolve();
@@ -315,15 +315,13 @@ describe("DatabaseViewPageContextMenu", () => {
       await Promise.resolve();
     });
 
-    const reorderToTop = await screen.findByRole("menuitem", { name: "Reorder to top" });
+    const reorderToTop = await screen.findByRole("menuitem", { name: "Move to top" });
     await waitFor(() => expect(reorderToTop).toBe(document.activeElement));
     await act(async () => {
       fireEvent.keyDown(document.activeElement ?? search, { key: "ArrowLeft" });
       await Promise.resolve();
     });
-    await waitFor(() =>
-      expect(screen.queryByRole("menuitem", { name: "Reorder to top" })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Move to top" })).toBeNull());
     expect(screen.getByRole("menuitem", { name: "Reorder" })).toBe(document.activeElement);
 
     await act(async () => {

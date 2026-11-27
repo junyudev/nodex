@@ -13,13 +13,17 @@ import {
   ServerIcon,
   SlashCircleIcon,
   WarningCircleIcon,
-  XmarkMdIcon,
 } from "@/components/shared/icons/plugin-detail-icons";
+import { Unlink16Glyph } from "@/components/shared/icons/outline-glyphs";
 import { skillFallbackIcon } from "@/components/shared/icons/skill-fallback-icons";
 import { NodexSwitch } from "@/components/ui/button";
 import { CardTile } from "@/components/ui/card-tile";
 import { DetailSection } from "@/components/ui/detail-page";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -148,6 +152,7 @@ function AppConnectedMenu({
   const intl = useIntl();
   const management = usePluginManagement(context);
   const [disconnecting, setDisconnecting] = useState(false);
+  const canReconnect = app.installUrl != null;
   const disconnect = async () => {
     setDisconnecting(true);
     return runWithCleanup(
@@ -184,6 +189,22 @@ function AppConnectedMenu({
       },
     );
   };
+  const connected = (
+    <>
+      <span className="size-1.5 shrink-0 rounded-full bg-(--color-chart-green)" />
+      {intl.formatMessage({
+        id: "plugins.pluginIncludes.connected",
+        defaultMessage: "Connected",
+      })}
+    </>
+  );
+  if (!canReconnect && !app.canDisconnect) {
+    return (
+      <span className="flex shrink-0 items-center gap-1.5 text-sm text-token-text-secondary">
+        {connected}
+      </span>
+    );
+  }
   return (
     <div role="presentation" onClick={stopPropagation} onKeyDown={stopPropagation}>
       <NodexDropdownMenu
@@ -198,36 +219,25 @@ function AppConnectedMenu({
           >
             {disconnecting ? <ActivitySpinnerIcon className="icon-xxs" /> : null}
             <span className="flex items-center gap-1.5">
-              {disconnecting ? (
-                "Disconnecting…"
-              ) : (
-                <>
-                  <span className="size-1.5 shrink-0 rounded-full bg-(--color-chart-green)" />
-                  {intl.formatMessage({
-                    id: "plugins.pluginIncludes.connected",
-                    defaultMessage: "Connected",
-                  })}
-                </>
-              )}
+              {disconnecting ? "Disconnecting…" : connected}
             </span>
             <ChevronDownSmIcon className="icon-2xs shrink-0 text-token-description-foreground" />
           </ToolbarButton>
         }
       >
-        <NodexDropdownItem
-          leftSlot={<RefreshArrowsIcon />}
-          disabled={app.installUrl == null}
-          onSelect={() => onConnect(app)}
-        >
-          {intl.formatMessage({
-            id: "plugins.pluginIncludes.reconnect",
-            defaultMessage: "Reconnect",
-          })}
-        </NodexDropdownItem>
+        {canReconnect ? (
+          <NodexDropdownItem leftSlot={<RefreshArrowsIcon />} onSelect={() => onConnect(app)}>
+            {intl.formatMessage({
+              id: "plugins.pluginIncludes.reconnect",
+              defaultMessage: "Reconnect",
+            })}
+          </NodexDropdownItem>
+        ) : null}
+        {canReconnect && app.canDisconnect ? <NodexDropdownSeparator /> : null}
         {app.canDisconnect ? (
           <NodexDropdownItem
-            leftSlot={<XmarkMdIcon />}
-            className="text-danger"
+            leftSlot={<Unlink16Glyph />}
+            tone="danger"
             onSelect={() => void disconnect()}
           >
             {intl.formatMessage({

@@ -713,7 +713,11 @@ describe("single image editor", () => {
         await settleAsyncRender();
       });
       await act(async () => {
-        fireEvent.click(view.getByRole("menuitem", { name: "Open in folder" }));
+        fireEvent.click(
+          view.getByRole("menuitem", {
+            name: /^(Reveal in Finder|Open in Explorer|Open in File Manager)$/,
+          }),
+        );
       });
       expect(invokeCalls).toContainEqual([
         "shell:open-file-link",

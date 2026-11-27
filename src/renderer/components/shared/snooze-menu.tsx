@@ -1,3 +1,4 @@
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { useIntl } from "@/lib/i18n";
 import { lazy, Suspense, useRef, useState, type ReactElement } from "react";
 import { ClockIcon } from "@/components/shared/icons";
@@ -26,7 +27,7 @@ const LazyCustomSnoozeForm = lazy(async () => ({
 
 /**
  * The snooze choices every menu offers, read at `now`: each preset with when it brings the item
- * back beside its name, then Custom… for any other time.
+ * back beside its name, then Custom for any other time.
  */
 export function SnoozeMenuItems({
   now,
@@ -52,8 +53,8 @@ export function SnoozeMenuItems({
         </NodexDropdownItem>
       ))}
       <NodexDropdownSeparator />
-      <NodexDropdownItem onSelect={onCustom}>
-        {intl.formatMessage({ id: "shared.snoozeMenu.custom", defaultMessage: "Custom…" })}
+      <NodexDropdownItem leftSlot={<ClockIcon className="icon-xs" />} onSelect={onCustom}>
+        {intl.formatMessage({ id: "shared.snoozeMenu.custom", defaultMessage: "Custom" })}
       </NodexDropdownItem>
     </>
   );
@@ -68,12 +69,12 @@ export function useCustomSnoozeHandoff(onChoose: (snoozedUntil: string) => void)
   const appHandle = useScopeHandle(appScope);
   const requested = useRef(false);
   return {
-    /** Custom… was chosen; the dialog opens as the menu finishes closing. */
+    /** Custom was chosen; the dialog opens as the menu finishes closing. */
     request: () => {
       requested.current = true;
     },
     /**
-     * Called from the menu's `finalFocus`: true when Custom… was chosen, so the menu returns focus
+     * Called from the menu's `finalFocus`: true when Custom was chosen, so the menu returns focus
      * to its trigger before the dialog opens.
      */
     handOff: (): boolean => {
@@ -194,7 +195,7 @@ export function SnoozeMenu({
             {formatChatSnoozeTime(current, openedAt, intl.locale)}
           </NodexDropdownItem>
           {onWake ? (
-            <NodexDropdownItem onSelect={onWake}>
+            <NodexDropdownItem leftSlot={<NativeMenuIcon iconKey="play" />} onSelect={onWake}>
               {intl.formatMessage({ id: "shared.snoozeMenu.wake", defaultMessage: "Wake" })}
             </NodexDropdownItem>
           ) : null}

@@ -12,6 +12,16 @@ import {
   NodexContextMenuSubmenu,
   NodexContextMenuSubmenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  AttachmentIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  DownloadIcon,
+  OpenInIcon,
+} from "@/components/shared/icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
+import { NodexDropdownSeparator } from "@/components/ui/dropdown";
+import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
 import { toast } from "@/components/ui/toast";
 import { getFileTreeEventPath } from "@/lib/file-tree-paths";
 import { listAvailableFileLinkOpeners } from "@/lib/file-system-operations";
@@ -23,6 +33,11 @@ import {
   FILE_LINK_OPENER_OPTIONS,
   type FileLinkOpenerId,
 } from "../../../shared/file-link-openers";
+
+function FileOpenerIcon({ opener }: { readonly opener: FileLinkOpenerId }) {
+  const iconUrl = FILE_LINK_OPENER_ICON_URLS[opener];
+  return iconUrl ? <img alt="" src={iconUrl} className="icon-xs object-contain" /> : <OpenInIcon />;
+}
 
 /** A file's menu keeps its real identity even when tree labels are compressed or disambiguated. */
 export function FileTreeContextMenu({
@@ -51,6 +66,7 @@ export function FileTreeContextMenu({
     return message ? intl.formatMessage(message) : item.label;
   };
   const preferred = options.find((item) => item.id === opener) ?? options[0];
+  const alternatives = options.filter((item) => item.id !== preferred?.id);
   const run = (operation: () => Promise<unknown>) => {
     void operation().catch((error: unknown) =>
       toast.danger(
@@ -96,46 +112,57 @@ export function FileTreeContextMenu({
       </NodexContextMenuTrigger>
       <NodexContextMenuPortal>
         <NodexContextMenuContent>
-          <NodexContextMenuItem
-            disabled={!preferred}
-            onSelect={() => preferred && openExternal(preferred.id)}
-          >
-            {preferred
-              ? intl.formatMessage(
+          {preferred ? (
+            <>
+              <NodexContextMenuItem
+                leftSlot={<FileOpenerIcon opener={preferred.id} />}
+                onSelect={() => openExternal(preferred.id)}
+              >
+                {intl.formatMessage(
                   { id: "workbench.fileTreeContextMenu.openIn", defaultMessage: "Open in {app}" },
                   { app: openerLabel(preferred) },
-                )
-              : intl.formatMessage({
-                  id: "workbench.fileTreeContextMenu.open",
-                  defaultMessage: "Open",
-                })}
-          </NodexContextMenuItem>
-          <NodexContextMenuSubmenu
-            disabled={options.length === 0}
-            trigger={
-              <NodexContextMenuSubmenuTrigger>
-                <FormattedMessage
-                  id="workbench.fileTreeContextMenu.openWith"
-                  defaultMessage={"Open with"}
+                )}
+              </NodexContextMenuItem>
+              {alternatives.length > 0 ? (
+                <NodexContextMenuSubmenu
+                  trigger={
+                    <NodexContextMenuSubmenuTrigger
+                      leftSlot={<NativeMenuIcon iconKey="window" />}
+                      rightSlot={<ChevronRightIcon className="icon-xs opacity-75" />}
+                    >
+                      <FormattedMessage
+                        id="workbench.fileTreeContextMenu.openWith"
+                        defaultMessage="Open with"
+                      />
+                    </NodexContextMenuSubmenuTrigger>
+                  }
+                  renderContent={() =>
+                    alternatives.map((item) => (
+                      <NodexContextMenuItem
+                        key={item.id}
+                        leftSlot={<FileOpenerIcon opener={item.id} />}
+                        onSelect={() => openExternal(item.id)}
+                      >
+                        {openerLabel(item)}
+                      </NodexContextMenuItem>
+                    ))
+                  }
                 />
-              </NodexContextMenuSubmenuTrigger>
-            }
-            renderContent={() =>
-              options.map((item) => (
-                <NodexContextMenuItem key={item.id} onSelect={() => openExternal(item.id)}>
-                  {openerLabel(item)}
-                </NodexContextMenuItem>
-              ))
-            }
-          />
-          <div role="separator" className="my-1 h-px bg-border" />
-          <NodexContextMenuItem onSelect={() => path && run(() => saveWorkspaceFileCopy({ path }))}>
+              ) : null}
+              <NodexDropdownSeparator />
+            </>
+          ) : null}
+          <NodexContextMenuItem
+            leftSlot={<DownloadIcon />}
+            onSelect={() => path && run(() => saveWorkspaceFileCopy({ path }))}
+          >
             <FormattedMessage
               id="workbench.fileTreeContextMenu.saveAs"
-              defaultMessage={"Save as…"}
+              defaultMessage="Save a copy"
             />
           </NodexContextMenuItem>
           <NodexContextMenuItem
+            leftSlot={<CopyIcon />}
             onSelect={() =>
               path &&
               run(async () => {
@@ -154,33 +181,35 @@ export function FileTreeContextMenu({
               defaultMessage={"Copy path"}
             />
           </NodexContextMenuItem>
-          <NodexContextMenuItem
-            disabled={!composerChatKey}
-            onSelect={() => {
-              if (!path || !composerChatKey) return;
-              composerDraftIntents.set(composerChatKey, {
-                prompt: "",
-                focusNonce: Date.now(),
-                attachmentMode: "append",
-                promptInput: {
-                  text: "",
-                  addedFiles: [
-                    {
-                      label: path.split(/[\\/]/).at(-1) ?? path,
-                      path,
-                      fsPath: path,
-                      hostId: "local",
-                    },
-                  ],
-                },
-              });
-            }}
-          >
-            <FormattedMessage
-              id="workbench.fileTreeContextMenu.addToChat"
-              defaultMessage={"Add to chat"}
-            />
-          </NodexContextMenuItem>
+          {composerChatKey ? (
+            <NodexContextMenuItem
+              leftSlot={<AttachmentIcon />}
+              onSelect={() => {
+                if (!path) return;
+                composerDraftIntents.set(composerChatKey, {
+                  prompt: "",
+                  focusNonce: Date.now(),
+                  attachmentMode: "append",
+                  promptInput: {
+                    text: "",
+                    addedFiles: [
+                      {
+                        label: path.split(/[\\/]/).at(-1) ?? path,
+                        path,
+                        fsPath: path,
+                        hostId: "local",
+                      },
+                    ],
+                  },
+                });
+              }}
+            >
+              <FormattedMessage
+                id="workbench.fileTreeContextMenu.addToChat"
+                defaultMessage={"Add to chat"}
+              />
+            </NodexContextMenuItem>
+          ) : null}
         </NodexContextMenuContent>
       </NodexContextMenuPortal>
     </NodexContextMenuRoot>

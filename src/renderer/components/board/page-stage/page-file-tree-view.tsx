@@ -21,6 +21,7 @@ import {
   NodexContextMenuRoot,
   NodexContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { NodexDropdownSeparator } from "@/components/ui/dropdown";
 import { formatBytes } from "@/lib/file-metadata-format";
 import type { PageFileTreeProvenance, PageFileTreeRow } from "@/lib/page-file-tree";
 import { cn } from "@/lib/utils";
@@ -444,12 +445,15 @@ function FileTreeRow({
               defaultMessage: "Open in new tab",
             })}
           </NodexContextMenuItem>
-          <div role="separator" className="my-1 h-px bg-border" />
+          <NodexDropdownSeparator />
           <NodexContextMenuItem
             leftSlot={<DownloadIcon className="icon-xs" />}
             onSelect={() => actions.onSave(item)}
           >
-            {intl.formatMessage({ id: "board.pageFileTreeView.save", defaultMessage: "Save…" })}
+            {intl.formatMessage({
+              id: "board.pageFileTreeView.save",
+              defaultMessage: "Save a copy",
+            })}
           </NodexContextMenuItem>
           {path ? (
             <NodexContextMenuItem leftSlot={<CopyIcon />} onSelect={() => actions.onCopyPath(item)}>
@@ -462,32 +466,35 @@ function FileTreeRow({
           <NodexContextMenuItem leftSlot={<FolderIcon />} onSelect={() => actions.onReveal(item)}>
             {intl.formatMessage(getFileManagerRevealMessage(navigator.platform))}
           </NodexContextMenuItem>
-          <div role="separator" className="my-1 h-px bg-border" />
+          <NodexDropdownSeparator />
           <NodexContextMenuItem
             leftSlot={<AttachmentIcon />}
             onSelect={() => actions.onManage(item)}
           >
             {intl.formatMessage({
               id: "board.pageFileTreeView.managePageFiles",
-              defaultMessage: "Manage in Page files…",
+              defaultMessage: "Manage in Page files",
             })}
           </NodexContextMenuItem>
           {path && actions.onRemovePath ? (
-            <NodexContextMenuItem
-              tone="danger"
-              leftSlot={<NativeMenuIcon iconKey="remove" />}
-              onSelect={() => actions.onRemovePath?.(item)}
-            >
-              {item.body_count > 0
-                ? intl.formatMessage({
-                    id: "board.pageFileTreeView.removePath",
-                    defaultMessage: "Remove path",
-                  })
-                : intl.formatMessage({
-                    id: "board.pageFileTreeView.removeFromPage",
-                    defaultMessage: "Remove from Page",
-                  })}
-            </NodexContextMenuItem>
+            <>
+              <NodexDropdownSeparator />
+              <NodexContextMenuItem
+                tone="danger"
+                leftSlot={<NativeMenuIcon iconKey="remove" />}
+                onSelect={() => actions.onRemovePath?.(item)}
+              >
+                {item.body_count > 0
+                  ? intl.formatMessage({
+                      id: "board.pageFileTreeView.removePath",
+                      defaultMessage: "Remove path",
+                    })
+                  : intl.formatMessage({
+                      id: "board.pageFileTreeView.removeFromPage",
+                      defaultMessage: "Remove from Page",
+                    })}
+              </NodexContextMenuItem>
+            </>
           ) : null}
         </NodexContextMenuContent>
       </NodexContextMenuPortal>

@@ -22,7 +22,15 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
-import { BulletListIcon, CopyLightIcon } from "@/components/shared/icons/file-viewer-icons";
+import { BulletListIcon } from "@/components/shared/icons/file-viewer-icons";
+import {
+  CodeIcon,
+  CopyIcon,
+  DisableWordWrapIcon,
+  EnableWordWrapIcon,
+  RefreshIcon,
+} from "@/components/shared/icons";
+import { PreviewOnlyIcon } from "@/components/shared/icons/code-preview-icons";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
@@ -1468,57 +1476,17 @@ export function WorkspaceFilesPanel({
   }
 
   const fileContent = documentSnapshot?.content ?? previewState.content;
-  const relativePath = pathVariants?.repoRelative ?? pathVariants?.projectRelative ?? null;
   const options: WorkspaceFileViewerOption[] = [
-    ...(selectedPath
-      ? [
-          {
-            id: "copy-path",
-            label: intl.formatMessage({
-              id: "workspaceFiles.workspaceFilesPanel.copyPath",
-              defaultMessage: "Copy path",
-            }),
-            icon: <CopyLightIcon />,
-            onSelect: () =>
-              copyText(
-                pathVariants?.absolute ?? selectedPath,
-                getIntl().formatMessage({
-                  id: "workspaceFiles.workspaceFilesPanel.copyPathFailed",
-                  defaultMessage: "Unable to copy path",
-                }),
-              ),
-          },
-          ...(relativePath
-            ? [
-                {
-                  id: "copy-relative-path",
-                  label: intl.formatMessage({
-                    id: "workspaceFiles.workspaceFilesPanel.copyRelativePath",
-                    defaultMessage: "Copy relative path",
-                  }),
-                  icon: <CopyLightIcon />,
-                  onSelect: () =>
-                    copyText(
-                      relativePath,
-                      getIntl().formatMessage({
-                        id: "workspaceFiles.workspaceFilesPanel.copyPathFailed",
-                        defaultMessage: "Unable to copy path",
-                      }),
-                    ),
-                },
-              ]
-            : []),
-        ]
-      : []),
     ...(showsText && fileContent
       ? [
           {
             id: "copy-contents",
+            group: "copy" as const,
             label: intl.formatMessage({
               id: "workspaceFiles.workspaceFilesPanel.copyContents",
               defaultMessage: "Copy file contents",
             }),
-            icon: <CopyLightIcon />,
+            icon: <CopyIcon />,
             onSelect: () =>
               copyText(
                 fileContent,
@@ -1534,14 +1502,16 @@ export function WorkspaceFilesPanel({
       ? [
           {
             id: "rich-view",
+            group: "view" as const,
+            icon: richView ? <CodeIcon /> : <PreviewOnlyIcon />,
             label: richView
               ? intl.formatMessage({
-                  id: "workspaceFiles.workspaceFilesPanel.disableRichView",
-                  defaultMessage: "Disable rich view",
+                  id: "workspaceFiles.workspaceFileViewerHeader.viewSource",
+                  defaultMessage: "View source",
                 })
               : intl.formatMessage({
-                  id: "workspaceFiles.workspaceFilesPanel.enableRichView",
-                  defaultMessage: "Enable rich view",
+                  id: "workspaceFiles.workspaceFileViewerHeader.viewPreview",
+                  defaultMessage: "View preview",
                 }),
             onSelect: toggleRichView,
           },
@@ -1551,6 +1521,8 @@ export function WorkspaceFilesPanel({
       ? [
           {
             id: "word-wrap",
+            group: "view" as const,
+            icon: wordWrap ? <DisableWordWrapIcon /> : <EnableWordWrapIcon />,
             label: wordWrap
               ? intl.formatMessage({
                   id: "workspaceFiles.workspaceFilesPanel.disableWrap",
@@ -1568,6 +1540,8 @@ export function WorkspaceFilesPanel({
       ? [
           {
             id: "refresh",
+            group: "refresh" as const,
+            icon: <RefreshIcon />,
             label: intl.formatMessage({
               id: "workspaceFiles.workspaceFilesPanel.refresh",
               defaultMessage: "Refresh files",

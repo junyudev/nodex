@@ -1,21 +1,19 @@
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { useIntl } from "@/lib/i18n";
 import { useRef, type ReactNode } from "react";
 import { PageExecutionHoldItem } from "@/components/workbench/execution-hold-controls";
 import {
   AutomationsIcon,
+  DeleteIcon,
+  DownloadIcon,
   TerminalIcon,
   PageMenuCopyIdIcon,
+  PageMenuCopyLinkIcon,
   PageMenuCopyMarkdownIcon,
   PageMenuCopyTitleIcon,
 } from "@/components/shared/icons";
 import { ChevronDownSm16Icon, CopyLightIcon } from "@/components/shared/icons/file-viewer-icons";
-import {
-  ArrowDownOpenBase16Glyph,
-  ArrowUpRightMd16Glyph,
-  Link16Glyph,
-  Pencil16Glyph,
-  Trash16Glyph,
-} from "@/components/shared/icons/outline-glyphs";
+import { Pencil16Glyph } from "@/components/shared/icons/outline-glyphs";
 import { ArrowRightLightIcon, PageLightIcon } from "@/components/shared/icons/page-chrome-icons";
 import {
   PageFullWidthIcon,
@@ -57,7 +55,7 @@ function PageCopyActionIcon({ actionId }: { readonly actionId: PageCopyActionId 
     case "copy-id":
       return <PageMenuCopyIdIcon />;
     case "copy-deeplink":
-      return <Link16Glyph />;
+      return <PageMenuCopyLinkIcon />;
     case "copy-title":
       return <PageMenuCopyTitleIcon />;
     case "copy-markdown":
@@ -144,16 +142,26 @@ export function PageStageMenu({
       }}
       triggerButton={trigger}
     >
-      {actions.onRename ? (
-        <NodexDropdownItem
-          leftSlot={<Pencil16Glyph />}
-          onSelect={() => {
-            focusTargetRef.current = actions.onRename ?? null;
-          }}
-        >
-          {intl.formatMessage({ id: "board.pageMenu.rename", defaultMessage: "Rename" })}
+      {actions.onOpenOnRight ? (
+        <NodexDropdownItem leftSlot={<ArrowRightLightIcon />} onSelect={actions.onOpenOnRight}>
+          {intl.formatMessage({
+            id: "board.pageMenu.openOnRight",
+            defaultMessage: "Open on right",
+          })}
         </NodexDropdownItem>
       ) : null}
+      {actions.onOpenInNewWindow ? (
+        <NodexDropdownItem
+          leftSlot={<NativeMenuIcon iconKey="window" />}
+          onSelect={actions.onOpenInNewWindow}
+        >
+          {intl.formatMessage({
+            id: "board.pageMenu.openInNewWindow",
+            defaultMessage: "Open in new window",
+          })}
+        </NodexDropdownItem>
+      ) : null}
+      {actions.onOpenOnRight || actions.onOpenInNewWindow ? <NodexDropdownSeparator /> : null}
       <NodexDropdownFlyoutSubmenuItem
         label={intl.formatMessage({ id: "board.pageMenu.copy", defaultMessage: "Copy" })}
         leftSlot={<CopyLightIcon />}
@@ -170,37 +178,24 @@ export function PageStageMenu({
         ))}
       </NodexDropdownFlyoutSubmenuItem>
       {actions.onDownloadMarkdown ? (
-        <NodexDropdownItem
-          leftSlot={<ArrowDownOpenBase16Glyph />}
-          onSelect={actions.onDownloadMarkdown}
-        >
+        <NodexDropdownItem leftSlot={<DownloadIcon />} onSelect={actions.onDownloadMarkdown}>
           {intl.formatMessage({
             id: "board.pageMenu.downloadMarkdown",
             defaultMessage: "Download as Markdown",
           })}
         </NodexDropdownItem>
       ) : null}
-      {actions.onOpenOnRight || actions.onOpenInNewWindow ? <NodexDropdownSeparator /> : null}
-      {actions.onOpenOnRight ? (
-        <NodexDropdownItem leftSlot={<ArrowRightLightIcon />} onSelect={actions.onOpenOnRight}>
-          {intl.formatMessage({
-            id: "board.pageMenu.openOnRight",
-            defaultMessage: "Open on right",
-          })}
-        </NodexDropdownItem>
-      ) : null}
-      {actions.onOpenInNewWindow ? (
-        <NodexDropdownItem
-          leftSlot={<ArrowUpRightMd16Glyph />}
-          onSelect={actions.onOpenInNewWindow}
-        >
-          {intl.formatMessage({
-            id: "board.pageMenu.openInNewWindow",
-            defaultMessage: "Open in new window",
-          })}
-        </NodexDropdownItem>
-      ) : null}
       <NodexDropdownSeparator />
+      {actions.onRename ? (
+        <NodexDropdownItem
+          leftSlot={<Pencil16Glyph />}
+          onSelect={() => {
+            focusTargetRef.current = actions.onRename ?? null;
+          }}
+        >
+          {intl.formatMessage({ id: "board.pageMenu.rename", defaultMessage: "Rename" })}
+        </NodexDropdownItem>
+      ) : null}
       <ToggleItem
         icon={<PageFullWidthIcon active={actions.fullWidth} />}
         checked={actions.fullWidth}
@@ -236,11 +231,7 @@ export function PageStageMenu({
       {actions.onDelete ? (
         <>
           <NodexDropdownSeparator />
-          <NodexDropdownItem
-            leftSlot={<Trash16Glyph />}
-            onSelect={actions.onDelete}
-            className="text-(--destructive) hover:!bg-(--destructive)/10 focus:!bg-(--destructive)/10"
-          >
+          <NodexDropdownItem leftSlot={<DeleteIcon />} onSelect={actions.onDelete} tone="danger">
             {intl.formatMessage({ id: "board.pageMenu.delete", defaultMessage: "Delete" })}
           </NodexDropdownItem>
         </>

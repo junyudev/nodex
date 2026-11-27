@@ -12,7 +12,7 @@ import {
   ArchiveIcon,
   MoveToIcon,
   OpenInIcon,
-  RefreshIcon,
+  HistoryIcon,
   ProjectActionsIcon,
 } from "@/components/shared/icons";
 import {
@@ -29,6 +29,7 @@ import {
   NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
   NodexDropdownMenu,
+  NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { appScope, useScopeHandle } from "@/lib/maitai";
@@ -178,6 +179,22 @@ export function LibraryResourceActions({
           return false;
         }}
       >
+        {onOpenInProject && projects.length > 0 ? (
+          <>
+            <NodexDropdownItem
+              leftSlot={<OpenInIcon />}
+              onSelect={() => {
+                pendingDialogRef.current = "open_project";
+              }}
+            >
+              {intl.formatMessage({
+                id: "components.libraryResourceActions.openInProject",
+                defaultMessage: "Open in Project",
+              })}
+            </NodexDropdownItem>
+            <NodexDropdownSeparator />
+          </>
+        ) : null}
         <NodexDropdownFlyoutSubmenuItem
           label={intl.formatMessage({
             id: "components.libraryResourceActions.moveTo",
@@ -214,41 +231,30 @@ export function LibraryResourceActions({
             />
           )}
         </NodexDropdownFlyoutSubmenuItem>
-        {onOpenInProject ? (
-          <NodexDropdownItem
-            leftSlot={<OpenInIcon />}
-            disabled={projects.length === 0}
-            onSelect={() => {
-              pendingDialogRef.current = "open_project";
-            }}
-          >
-            {intl.formatMessage({
-              id: "components.libraryResourceActions.openInProject",
-              defaultMessage: "Open in Project…",
-            })}
-          </NodexDropdownItem>
-        ) : null}
         {expectedMetadataRevision !== undefined ? (
-          <NodexDropdownItem
-            leftSlot={lifecycle === "active" ? <ArchiveIcon /> : <RefreshIcon />}
-            onSelect={() => {
-              if (lifecycle === "active") {
-                pendingDialogRef.current = "archive";
-                return;
-              }
-              void applyLifecycle();
-            }}
-          >
-            {lifecycle === "active"
-              ? intl.formatMessage({
-                  id: "components.libraryResourceActions.archive",
-                  defaultMessage: "Archive",
-                })
-              : intl.formatMessage({
-                  id: "components.libraryResourceActions.restore",
-                  defaultMessage: "Restore",
-                })}
-          </NodexDropdownItem>
+          <>
+            <NodexDropdownSeparator />
+            <NodexDropdownItem
+              leftSlot={lifecycle === "active" ? <ArchiveIcon /> : <HistoryIcon />}
+              onSelect={() => {
+                if (lifecycle === "active") {
+                  pendingDialogRef.current = "archive";
+                  return;
+                }
+                void applyLifecycle();
+              }}
+            >
+              {lifecycle === "active"
+                ? intl.formatMessage({
+                    id: "components.libraryResourceActions.archive",
+                    defaultMessage: "Archive",
+                  })
+                : intl.formatMessage({
+                    id: "components.libraryResourceActions.restore",
+                    defaultMessage: "Restore",
+                  })}
+            </NodexDropdownItem>
+          </>
         ) : null}
       </NodexDropdownMenu>
 

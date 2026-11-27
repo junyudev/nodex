@@ -127,7 +127,7 @@ export function WorkbenchPanelNewTabButton({
             {showNodexSeparator ? <NodexDropdownSeparator /> : null}
             {shouldCreateCurrentProjectDbView ? (
               <NodexDropdownItem
-                leftSlot={<Icon className="icon-sm" />}
+                leftSlot={<Icon className="icon-xs" />}
                 keyboardShortcut={resolvePanelActionShortcutLabel(
                   action,
                   isMac,
@@ -142,7 +142,7 @@ export function WorkbenchPanelNewTabButton({
             ) : isPanelDestinationAction(action) ? (
               <NodexDropdownFlyoutSubmenuItem
                 label={action.label}
-                leftSlot={<Icon className="icon-sm" />}
+                leftSlot={<Icon className="icon-xs" />}
                 contentClassName="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
               >
                 <PanelDestinationPicker
@@ -167,11 +167,11 @@ export function WorkbenchPanelNewTabButton({
                     action.kind === "db_view"
                       ? intl.formatMessage({
                           id: "workbench.workbenchPanelNewTabButton.openDatabasePlaceholder",
-                          defaultMessage: "Open DB…",
+                          defaultMessage: "Open DB",
                         })
                       : intl.formatMessage({
                           id: "workbench.workbenchPanelNewTabButton.openPagePlaceholder",
-                          defaultMessage: "Open Page…",
+                          defaultMessage: "Open Page",
                         })
                   }
                   currentProjectId={currentProjectId}
@@ -184,7 +184,7 @@ export function WorkbenchPanelNewTabButton({
               </NodexDropdownFlyoutSubmenuItem>
             ) : (
               <NodexDropdownItem
-                leftSlot={<Icon className="icon-sm" />}
+                leftSlot={<Icon className="icon-xs" />}
                 keyboardShortcut={resolvePanelActionShortcutLabel(
                   action,
                   isMac,

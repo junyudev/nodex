@@ -3,22 +3,14 @@ import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { QueuedRunStatus } from "./queued-run-label";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { toastFailure } from "@/lib/failure-toast";
-import { memo, useCallback, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useRef, useState, type ReactNode } from "react";
 import {
-  ArchiveIcon,
   ChatActionsIcon,
-  ClearContextIcon,
-  ClockIcon,
-  EditIcon,
-  SessionPinFilledIcon,
-  SessionPinIcon,
-  SidePanelSideChatIcon,
-  CopyIcon,
   SlashStatusIcon,
   ChatIcon,
-  ForkIcon,
   MoveToLeftPaneIcon,
   MoveToRightPaneIcon,
+  SidePanelSideChatIcon,
 } from "@/components/shared/icons";
 import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import {
@@ -26,6 +18,7 @@ import {
   NodexDropdownItem,
   NodexDropdownMenu,
   NodexDropdownSeparator,
+  NodexDropdownSummarySubmenuItem,
 } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { writeTextToClipboardStrict } from "@/lib/clipboard";
@@ -43,7 +36,15 @@ import type {
 } from "../thread-stage-types";
 import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 import { sessionForkDestinations } from "@/lib/session-fork";
-import { describeChatSnooze } from "@/lib/chat-snooze";
+import {
+  buildChatActionGroups,
+  SESSION_CONTEXT_MENU_ACTION_IDS as actionIds,
+} from "@/components/workbench/session-context-menu-model";
+import type { NativeContextMenuItem } from "../../../../shared/native-context-menu";
+import { useNodexReferenceRouter } from "@/lib/nodex-reference-router";
+import { canShowNativeContextMenu } from "@/lib/native-context-menu";
+import { useResolvedCommandKeymapState } from "@/lib/use-command-keymap-state";
+import { formatCommandShortcutLabel } from "../../../../shared/command-keybindings";
 import {
   preloadCustomSnoozeForm,
   SnoozeMenuItems,
@@ -66,6 +67,8 @@ const CHAT_TAB_ACTIONS_TRIGGER_CLASS =
 function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHeaderProps) {
   const intl = useIntl();
   const { variant, paneMove } = useThreadStageHeaderSlot();
+  const router = useNodexReferenceRouter();
+  const keymap = useResolvedCommandKeymapState();
   const [menuOpen, setMenuOpen] = useState(false);
   // Reminder presets are relative to when the menu opens.
   const [menuOpenedAt, setMenuOpenedAt] = useState(() => new Date());
@@ -85,19 +88,13 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
   const canSetSnooze = Boolean(model.threadId && actions.onSetThreadSnooze);
   const canForkThread = Boolean(model.threadId && actions.onForkThread);
   const canClearContext = Boolean(model.threadId && actions.onClearContext);
-  const hasNewWorkActions = canForkThread || canClearContext || model.showSideChatAction;
   const opensSubagents = provider?.controls?.subagents === true;
   const canOpenNativeTasks = Boolean(
     model.threadId &&
     (provider?.controls?.nativeTaskDetails || opensSubagents) &&
     actions.onOpenSubagentsPanel,
   );
-  // Groups follow the shared chat-actions order: identity, new work, copy, window, runtime, Archive.
-  const hasIdentityActions = canRenameThread || canTogglePin || canSetSnooze;
   const hasRuntimeActions = canOpenNativeTasks || Boolean(provider?.diagnostics);
-  const showThreadActions = Boolean(
-    model.threadId || model.cwd || model.showSideChatAction || actions.onCopyConversationMarkdown,
-  );
 
   const handleAction = useCallback(
     async (action: (() => void | Promise<void>) | undefined, failureTitle: string) => {
@@ -134,6 +131,230 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       );
     }
   }, []);
+
+  const [identity, newWork, organization, copy, windows, archive] = buildChatActionGroups({
+    canRename: canRenameThread,
+    pinned: canTogglePin ? model.pinned === true : undefined,
+    canSnooze: canSetSnooze,
+    snoozedUntil: model.snoozedUntil,
+    now: menuOpenedAt,
+    forkDestinations: canForkThread
+      ? (model.forkDestinations ??
+        sessionForkDestinations({ isWorktree: false, canCreateWorktree: false }))
+      : [],
+    newSideChat:
+      model.showSideChatAction && actions.onOpenSideChat
+        ? {
+            id: "new-side-chat",
+            commandId: "openSideChat",
+            label: intl.formatMessage({
+              id: "conversation.stageHeader.newSideChat",
+              defaultMessage: "New side chat",
+            }),
+          }
+        : undefined,
+    clearContext: canClearContext
+      ? {
+          id: "clear-context",
+          label: intl.formatMessage({
+            id: "conversation.stageHeader.clearContext",
+            defaultMessage: "Clear context",
+          }),
+          iconKey: "trash",
+        }
+      : undefined,
+    canCopyWorkingDirectory: Boolean(model.cwd),
+    canCopySessionId: Boolean(model.threadId),
+    canCopyLink: Boolean(model.sessionId),
+    canCopyMarkdown: Boolean(model.threadId && actions.onCopyConversationMarkdown),
+    canOpenInNewWindow: Boolean(router && model.sessionId && canShowNativeContextMenu()),
+    canArchive: canArchiveThread,
+  });
+
+  const forkThread = (target: "local" | "newWorktree") => {
+    if (forkInFlight.current) return;
+    forkInFlight.current = true;
+    setForking(true);
+    void handleAction(
+      () =>
+        runWithCleanup(
+          async () => {
+            await actions.onForkThread?.(target);
+          },
+          {
+            cleanup: () => {
+              forkInFlight.current = false;
+              setForking(false);
+            },
+          },
+        ),
+      intl.formatMessage({
+        id: "conversation.stageHeader.forkFailed",
+        defaultMessage: "Couldn’t fork the conversation",
+      }),
+    );
+  };
+  const handlers: Record<string, () => void> = {
+    [actionIds.rename]: () => actions.onRequestRenameThread?.(),
+    [actionIds.togglePin]: () =>
+      void handleAction(
+        actions.onToggleThreadPin,
+        model.pinned
+          ? intl.formatMessage({
+              id: "conversation.stageHeader.unpinFailed",
+              defaultMessage: "Couldn’t unpin the chat",
+            })
+          : intl.formatMessage({
+              id: "conversation.stageHeader.pinFailed",
+              defaultMessage: "Couldn’t pin the chat",
+            }),
+      ),
+    [actionIds.wake]: () =>
+      void handleAction(
+        () => actions.onSetThreadSnooze?.(null),
+        intl.formatMessage({
+          id: "conversation.stageHeader.wakeFailed",
+          defaultMessage: "Couldn’t wake the chat",
+        }),
+      ),
+    [actionIds.fork]: () => forkThread("local"),
+    [actionIds.forkInNewWorktree]: () => forkThread("newWorktree"),
+    [actionIds.copyWorkingDirectory]: () =>
+      void handleCopyText(
+        model.cwd,
+        intl.formatMessage({
+          id: "conversation.stageHeader.workingDirectoryCopied",
+          defaultMessage: "Working directory copied",
+        }),
+      ),
+    [actionIds.copySessionId]: () =>
+      void handleCopyText(
+        model.threadId,
+        intl.formatMessage({
+          id: "conversation.stageHeader.sessionIdCopied",
+          defaultMessage: "Session ID copied",
+        }),
+      ),
+    [actionIds.copyDeeplink]: () =>
+      void handleCopyText(
+        model.sessionId ? buildSessionDeepLink({ sessionId: model.sessionId }) : null,
+        intl.formatMessage({
+          id: "conversation.stageHeader.deeplinkCopied",
+          defaultMessage: "Link copied",
+        }),
+      ),
+    [actionIds.copyConversationMarkdown]: () => void actions.onCopyConversationMarkdown?.(),
+    [actionIds.openInNewWindow]: () =>
+      void handleAction(
+        async () => {
+          if (!router || !model.sessionId) return;
+          const outcome = await router.open(
+            { kind: "session", sessionId: model.sessionId },
+            {
+              source: { surface: "conversation", sessionId: model.sessionId },
+              gesture: { kind: "menu", action: "new-window" },
+            },
+          );
+          if (outcome === "failed")
+            throw new Error(
+              intl.formatMessage({
+                id: "conversation.stageHeader.openInNewWindowFailed",
+                defaultMessage: "Could not open chat in a new window",
+              }),
+            );
+        },
+        intl.formatMessage({
+          id: "conversation.stageHeader.openInNewWindowFailed",
+          defaultMessage: "Could not open chat in a new window",
+        }),
+      ),
+    [actionIds.archive]: () =>
+      void handleAction(
+        actions.onArchiveThread,
+        intl.formatMessage({
+          id: "conversation.stageHeader.archiveFailed",
+          defaultMessage: "Couldn’t archive the chat",
+        }),
+      ),
+    "new-side-chat": () =>
+      void handleAction(
+        actions.onOpenSideChat,
+        intl.formatMessage({
+          id: "conversation.stageHeader.sideChatFailed",
+          defaultMessage: "Couldn’t open a side chat",
+        }),
+      ),
+    "clear-context": () =>
+      void handleAction(
+        actions.onClearContext,
+        intl.formatMessage({
+          id: "conversation.stageHeader.clearContextFailed",
+          defaultMessage: "Couldn’t clear the context",
+        }),
+      ),
+  };
+  const renderItem = (item: NativeContextMenuItem, index: number): ReactNode => {
+    if (item.type === "separator") return <NodexDropdownSeparator key={item.id ?? index} />;
+    const leftSlot =
+      item.id === "new-side-chat" ? (
+        <SidePanelSideChatIcon className={menuIconClassName} />
+      ) : item.iconKey ? (
+        <NativeMenuIcon iconKey={item.iconKey} />
+      ) : undefined;
+    const shortcut = item.commandId
+      ? formatCommandShortcutLabel(keymap, item.commandId)
+      : undefined;
+    if (item.type === "submenu") {
+      if (item.id === "session.snooze") {
+        return (
+          <NodexDropdownSummarySubmenuItem
+            key={item.id}
+            ariaLabel={item.label}
+            label={item.label}
+            leftSlot={leftSlot}
+            value={shortcut}
+          >
+            {model.snoozedUntil ? item.submenu.slice(0, 3).map(renderItem) : null}
+            <SnoozeMenuItems
+              now={menuOpenedAt}
+              onChoose={snoozeChat}
+              onCustom={customSnooze.request}
+            />
+          </NodexDropdownSummarySubmenuItem>
+        );
+      }
+      return (
+        <NodexDropdownFlyoutSubmenuItem
+          key={item.id}
+          label={item.label}
+          leftSlot={leftSlot}
+          contentMotion="none"
+        >
+          {item.submenu.map(renderItem)}
+        </NodexDropdownFlyoutSubmenuItem>
+      );
+    }
+    return (
+      <NodexDropdownItem
+        key={item.id}
+        disabled={
+          item.enabled === false ||
+          (forking && (item.id === actionIds.fork || item.id === actionIds.forkInNewWorktree))
+        }
+        leftSlot={leftSlot}
+        keyboardShortcut={shortcut}
+        tone={item.id === "clear-context" ? "danger" : undefined}
+        onSelect={handlers[item.id]}
+      >
+        {item.label}
+      </NodexDropdownItem>
+    );
+  };
+  const actionGroups = [identity, newWork, organization, copy, windows].filter(
+    (group) => group.length,
+  );
+  const showThreadActions =
+    actionGroups.length > 0 || archive.length > 0 || hasRuntimeActions || Boolean(paneMove);
 
   const actionsMenu = showThreadActions ? (
     <NodexDropdownMenu
@@ -178,250 +399,15 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
         </button>
       }
     >
-      {canRenameThread ? (
-        <NodexDropdownItem
-          leftSlot={<EditIcon className={menuIconClassName} />}
-          keyboardShortcut={model.shortcuts?.rename}
-          onSelect={() => actions.onRequestRenameThread?.()}
-        >
-          <FormattedMessage id="conversation.stageHeader.rename" defaultMessage="Rename" />
-        </NodexDropdownItem>
-      ) : null}
-      {canTogglePin ? (
-        <NodexDropdownItem
-          leftSlot={
-            model.pinned ? (
-              <SessionPinFilledIcon className={menuIconClassName} />
-            ) : (
-              <SessionPinIcon className={menuIconClassName} />
-            )
-          }
-          keyboardShortcut={model.shortcuts?.togglePin}
-          onSelect={() =>
-            void handleAction(
-              actions.onToggleThreadPin,
-              model.pinned
-                ? getIntl().formatMessage({
-                    id: "conversation.stageHeader.unpinFailed",
-                    defaultMessage: "Couldn’t unpin the chat",
-                  })
-                : getIntl().formatMessage({
-                    id: "conversation.stageHeader.pinFailed",
-                    defaultMessage: "Couldn’t pin the chat",
-                  }),
-            )
-          }
-        >
-          {model.pinned
-            ? intl.formatMessage({ id: "conversation.stageHeader.unpin", defaultMessage: "Unpin" })
-            : intl.formatMessage({ id: "conversation.stageHeader.pin", defaultMessage: "Pin" })}
-        </NodexDropdownItem>
-      ) : null}
-      {canSetSnooze ? (
-        <NodexDropdownFlyoutSubmenuItem
-          label={intl.formatMessage({
-            id: "conversation.stageHeader.snooze",
-            defaultMessage: "Snooze",
-          })}
-          leftSlot={<ClockIcon className={menuIconClassName} />}
-          contentMotion="none"
-        >
-          {/* Like every Snooze menu: when it returns and Wake first, then the choices. */}
-          {model.snoozedUntil ? (
-            <>
-              <NodexDropdownItem disabled>
-                {describeChatSnooze(model.snoozedUntil, menuOpenedAt, intl.locale)}
-              </NodexDropdownItem>
-              <NodexDropdownItem
-                onSelect={() =>
-                  void handleAction(
-                    () => actions.onSetThreadSnooze?.(null),
-                    getIntl().formatMessage({
-                      id: "conversation.stageHeader.wakeFailed",
-                      defaultMessage: "Couldn’t wake the chat",
-                    }),
-                  )
-                }
-              >
-                <FormattedMessage id="conversation.stageHeader.wake" defaultMessage="Wake" />
-              </NodexDropdownItem>
-              <NodexDropdownSeparator />
-            </>
-          ) : null}
-          <SnoozeMenuItems
-            now={menuOpenedAt}
-            onChoose={snoozeChat}
-            onCustom={customSnooze.request}
-          />
-        </NodexDropdownFlyoutSubmenuItem>
-      ) : null}
-      {hasIdentityActions && hasNewWorkActions ? <NodexDropdownSeparator /> : null}
-      {model.showSideChatAction ? (
-        <NodexDropdownItem
-          leftSlot={<SidePanelSideChatIcon className={menuIconClassName} />}
-          keyboardShortcut={model.shortcuts?.openSideTask}
-          onSelect={() =>
-            void handleAction(
-              actions.onOpenSideChat,
-              getIntl().formatMessage({
-                id: "conversation.stageHeader.sideChatFailed",
-                defaultMessage: "Couldn’t open a side chat",
-              }),
-            )
-          }
-        >
-          <FormattedMessage
-            id="conversation.stageHeader.newSideChat"
-            defaultMessage="New side chat"
-          />
-        </NodexDropdownItem>
-      ) : null}
-      {canForkThread ? (
-        <NodexDropdownFlyoutSubmenuItem
-          label={intl.formatMessage({
-            id: "conversation.stageHeader.fork",
-            defaultMessage: "Fork",
-          })}
-          leftSlot={<ForkIcon className={menuIconClassName} />}
-          contentMotion="none"
-        >
-          {(
-            model.forkDestinations ??
-            sessionForkDestinations({ isWorktree: false, canCreateWorktree: false })
-          ).map((destination) => (
-            <NodexDropdownItem
-              key={destination.target}
-              leftSlot={
-                <NativeMenuIcon iconKey={destination.iconKey} className={menuIconClassName} />
-              }
-              disabled={forking}
-              onSelect={() => {
-                if (forkInFlight.current) return;
-                forkInFlight.current = true;
-                setForking(true);
-                void handleAction(
-                  async () => {
-                    await runWithCleanup(
-                      async () => {
-                        await actions.onForkThread?.(destination.target);
-                      },
-                      {
-                        cleanup: () => {
-                          forkInFlight.current = false;
-                          setForking(false);
-                        },
-                      },
-                    );
-                  },
-                  getIntl().formatMessage({
-                    id: "conversation.stageHeader.forkFailed",
-                    defaultMessage: "Couldn’t fork the conversation",
-                  }),
-                );
-              }}
-            >
-              {destination.label}
-            </NodexDropdownItem>
-          ))}
-        </NodexDropdownFlyoutSubmenuItem>
-      ) : null}
-      {canClearContext ? (
-        <NodexDropdownItem
-          leftSlot={<ClearContextIcon className={menuIconClassName} />}
-          onSelect={() =>
-            void handleAction(
-              actions.onClearContext,
-              getIntl().formatMessage({
-                id: "conversation.stageHeader.clearContextFailed",
-                defaultMessage: "Couldn’t clear the context",
-              }),
-            )
-          }
-        >
-          <FormattedMessage
-            id="conversation.stageHeader.clearContext"
-            defaultMessage="Clear context"
-          />
-        </NodexDropdownItem>
-      ) : null}
-      {hasIdentityActions || hasNewWorkActions ? <NodexDropdownSeparator /> : null}
-      <NodexDropdownFlyoutSubmenuItem
-        label={intl.formatMessage({ id: "conversation.stageHeader.copy", defaultMessage: "Copy" })}
-        leftSlot={<CopyIcon className={menuIconClassName} />}
-        contentMotion="none"
-      >
-        <NodexDropdownItem
-          disabled={!model.cwd}
-          leftSlot={<CopyIcon className={menuIconClassName} />}
-          onSelect={() =>
-            void handleCopyText(
-              model.cwd,
-              getIntl().formatMessage({
-                id: "conversation.stageHeader.workingDirectoryCopied",
-                defaultMessage: "Working directory copied",
-              }),
-            )
-          }
-        >
-          <FormattedMessage
-            id="conversation.stageHeader.copyWorkingDirectory"
-            defaultMessage="Copy working directory"
-          />
-        </NodexDropdownItem>
-        {model.threadId ? (
-          <NodexDropdownItem
-            leftSlot={<CopyIcon className={menuIconClassName} />}
-            onSelect={() =>
-              void handleCopyText(
-                model.threadId,
-                getIntl().formatMessage({
-                  id: "conversation.stageHeader.sessionIdCopied",
-                  defaultMessage: "Session ID copied",
-                }),
-              )
-            }
-          >
-            <FormattedMessage
-              id="conversation.stageHeader.copySessionId"
-              defaultMessage="Copy session ID"
-            />
-          </NodexDropdownItem>
-        ) : null}
-        {model.sessionId ? (
-          <NodexDropdownItem
-            leftSlot={<CopyIcon className={menuIconClassName} />}
-            onSelect={() =>
-              void handleCopyText(
-                buildSessionDeepLink({ sessionId: model.sessionId as string }),
-                getIntl().formatMessage({
-                  id: "conversation.stageHeader.deeplinkCopied",
-                  defaultMessage: "Deeplink copied",
-                }),
-              )
-            }
-          >
-            <FormattedMessage
-              id="conversation.stageHeader.copyDeeplink"
-              defaultMessage="Copy deeplink"
-            />
-          </NodexDropdownItem>
-        ) : null}
-        {model.threadId && actions.onCopyConversationMarkdown ? (
-          <NodexDropdownItem
-            leftSlot={<CopyIcon className={menuIconClassName} />}
-            keyboardShortcut={model.shortcuts?.copyConversationMarkdown}
-            onSelect={() => void actions.onCopyConversationMarkdown?.()}
-          >
-            <FormattedMessage
-              id="conversation.stageHeader.copyMarkdown"
-              defaultMessage="Copy as Markdown"
-            />
-          </NodexDropdownItem>
-        ) : null}
-      </NodexDropdownFlyoutSubmenuItem>
+      {actionGroups.map((group, index) => (
+        <Fragment key={group[0]?.id}>
+          {index > 0 ? <NodexDropdownSeparator /> : null}
+          {group.map(renderItem)}
+        </Fragment>
+      ))}
       {paneMove ? (
         <>
-          <NodexDropdownSeparator />
+          {actionGroups.length > 0 ? <NodexDropdownSeparator /> : null}
           <NodexDropdownItem
             leftSlot={
               paneMove.side === "left" ? (
@@ -444,7 +430,9 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           </NodexDropdownItem>
         </>
       ) : null}
-      {hasRuntimeActions ? <NodexDropdownSeparator /> : null}
+      {hasRuntimeActions && (actionGroups.length > 0 || paneMove) ? (
+        <NodexDropdownSeparator />
+      ) : null}
       {canOpenNativeTasks ? (
         <NodexDropdownItem
           leftSlot={<ChatIcon className={menuIconClassName} />}
@@ -481,24 +469,12 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           }}
         />
       ) : null}
-      {canArchiveThread ? (
+      {archive.length > 0 ? (
         <>
-          <NodexDropdownSeparator />
-          <NodexDropdownItem
-            leftSlot={<ArchiveIcon className={menuIconClassName} />}
-            keyboardShortcut={model.shortcuts?.archive}
-            onSelect={() =>
-              void handleAction(
-                actions.onArchiveThread,
-                getIntl().formatMessage({
-                  id: "conversation.stageHeader.archiveFailed",
-                  defaultMessage: "Couldn’t archive the chat",
-                }),
-              )
-            }
-          >
-            <FormattedMessage id="conversation.stageHeader.archive" defaultMessage="Archive" />
-          </NodexDropdownItem>
+          {actionGroups.length > 0 || paneMove || hasRuntimeActions ? (
+            <NodexDropdownSeparator />
+          ) : null}
+          {archive.map(renderItem)}
         </>
       ) : null}
     </NodexDropdownMenu>
@@ -565,6 +541,7 @@ export const ThreadStageHeader = memo(
     left.model.subagentName === right.model.subagentName &&
     left.model.cwd === right.model.cwd &&
     left.model.pinned === right.model.pinned &&
-    left.model.shortcuts === right.model.shortcuts &&
+    left.model.snoozedUntil === right.model.snoozedUntil &&
+    left.model.forkDestinations === right.model.forkDestinations &&
     left.model.showSideChatAction === right.model.showSideChatAction,
 );

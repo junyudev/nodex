@@ -42,9 +42,10 @@ export function buildWorkspacePierreEditorContextMenu({
     restore();
     ownerDocument.execCommand(command);
   };
-  return [
+  const items: WorkspacePierreEditorContextMenuItem[] = [
     {
       id: "file-undo",
+      iconKey: "undo",
       label: getIntl().formatMessage({
         id: "workspaceFiles.workspacePierreEditorContextMenu.undo",
         defaultMessage: "Undo",
@@ -59,6 +60,7 @@ export function buildWorkspacePierreEditorContextMenu({
     },
     {
       id: "file-redo",
+      iconKey: "redo",
       label: getIntl().formatMessage({
         id: "workspaceFiles.workspacePierreEditorContextMenu.redo",
         defaultMessage: "Redo",
@@ -74,6 +76,7 @@ export function buildWorkspacePierreEditorContextMenu({
     { id: "file-history-separator", type: "separator" },
     {
       id: "file-cut",
+      iconKey: "cut",
       label: getIntl().formatMessage({
         id: "workspaceFiles.workspacePierreEditorContextMenu.cut",
         defaultMessage: "Cut",
@@ -85,6 +88,7 @@ export function buildWorkspacePierreEditorContextMenu({
     },
     {
       id: "file-copy",
+      iconKey: "copy",
       label: getIntl().formatMessage({
         id: "workspaceFiles.workspacePierreEditorContextMenu.copy",
         defaultMessage: "Copy",
@@ -100,6 +104,7 @@ export function buildWorkspacePierreEditorContextMenu({
     },
     {
       id: "file-paste",
+      iconKey: "paste",
       label: getIntl().formatMessage({
         id: "workspaceFiles.workspacePierreEditorContextMenu.paste",
         defaultMessage: "Paste",
@@ -136,6 +141,7 @@ export function buildWorkspacePierreEditorContextMenu({
     },
     {
       id: "file-select-all",
+      iconKey: "selectAll",
       label: getIntl().formatMessage({
         id: "workspaceFiles.workspacePierreEditorContextMenu.selectAll",
         defaultMessage: "Select all",
@@ -157,6 +163,8 @@ export function buildWorkspacePierreEditorContextMenu({
       },
     },
   ];
+  const available = items.filter((item) => item.type === "separator" || item.enabled !== false);
+  return available[0]?.type === "separator" ? available.slice(1) : available;
 }
 
 export async function openWorkspacePierreEditorNativeContextMenu(

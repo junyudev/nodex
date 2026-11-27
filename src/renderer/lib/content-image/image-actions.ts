@@ -1,3 +1,4 @@
+import type { NativeContextMenuIconKey } from "../../../shared/native-context-menu";
 import { getIntl } from "@/lib/i18n";
 import type { ImageEditComposerTarget } from "./types";
 import { openUserAttachmentImagePreview } from "./image-preview-opener";
@@ -12,6 +13,7 @@ import { getFileManagerRevealMessage } from "../../../shared/file-link-openers";
 export interface ConversationImageAction {
   readonly id: "open" | "address" | "add" | "copy" | "reveal" | "download";
   readonly label: string;
+  readonly iconKey: NativeContextMenuIconKey;
   readonly run: () => Promise<void>;
 }
 interface ImageActionInput {
@@ -70,6 +72,7 @@ export function createConversationImageActions(
   const actions: ConversationImageAction[] = [
     {
       id: "open",
+      iconKey: "newTab",
       label: getIntl().formatMessage({
         id: "lib.imageActions.openTab",
         defaultMessage: "Open image in new tab",
@@ -104,13 +107,30 @@ export function createConversationImageActions(
       },
     },
   ];
+  if (
+    canSelectOrCopy &&
+    typeof ClipboardItem !== "undefined" &&
+    typeof navigator.clipboard?.write === "function"
+  )
+    actions.push({
+      id: "copy",
+      iconKey: "copy",
+      label: getIntl().formatMessage({ id: "lib.imageActions.copy", defaultMessage: "Copy image" }),
+      run: async () => {
+        const data = await imageData(input);
+        if (!data || !current()) return;
+        const result = await writeImageToClipboard(data);
+        if (!result.ok && current()) throw new Error(result.message);
+      },
+    });
   const address = conversationImageWebAddress(input.raw, input.url);
   if (address)
     actions.push({
       id: "address",
+      iconKey: "link",
       label: getIntl().formatMessage({
         id: "lib.imageActions.copyAddress",
-        defaultMessage: "Copy image address",
+        defaultMessage: "Copy image link",
       }),
       run: async () => {
         if (current()) await writeTextToClipboardStrict(address);
@@ -120,6 +140,7 @@ export function createConversationImageActions(
   if (canSelectOrCopy && composer)
     actions.push({
       id: "add",
+      iconKey: "attach",
       label: getIntl().formatMessage({
         id: "lib.imageActions.addToChat",
         defaultMessage: "Add to chat",
@@ -150,24 +171,10 @@ export function createConversationImageActions(
           );
       },
     });
-  if (
-    canSelectOrCopy &&
-    typeof ClipboardItem !== "undefined" &&
-    typeof navigator.clipboard?.write === "function"
-  )
-    actions.push({
-      id: "copy",
-      label: getIntl().formatMessage({ id: "lib.imageActions.copy", defaultMessage: "Copy image" }),
-      run: async () => {
-        const data = await imageData(input);
-        if (!data || !current()) return;
-        const result = await writeImageToClipboard(data);
-        if (!result.ok && current()) throw new Error(result.message);
-      },
-    });
   if (input.hostId === "local" && input.path)
     actions.push({
       id: "reveal",
+      iconKey: "folder",
       label: getIntl().formatMessage(
         getFileManagerRevealMessage(
           input.platform ?? (typeof navigator !== "undefined" ? navigator.platform : ""),
@@ -186,9 +193,10 @@ export function createConversationImageActions(
     });
   actions.push({
     id: "download",
+    iconKey: "download",
     label: getIntl().formatMessage({
       id: "lib.imageActions.download",
-      defaultMessage: "Download a copy",
+      defaultMessage: "Save a copy",
     }),
     run: async () => {
       if (current()) await input.download();

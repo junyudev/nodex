@@ -261,7 +261,7 @@ describe("DataSourcePagePropertyContextMenuItems", () => {
 
     await openMenu(view.getByRole("button", { name: "Page row" }));
     await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "More properties…" }));
+      fireEvent.click(view.getByRole("menuitem", { name: "More properties" }));
       await Promise.resolve();
     });
     const notesOption = await view.findByRole("menuitem", { name: "Notes" });

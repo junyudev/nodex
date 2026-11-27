@@ -1,14 +1,15 @@
 import { defineMessages, useIntl } from "@/lib/i18n";
-import type { ComponentType } from "react";
+import { useId, type ComponentType } from "react";
 
 import {
   CheckmarkIcon,
   ChevronRightIcon,
-  CopyIcon,
+  PageMenuCopyLinkIcon,
   BoardIcon,
   DeleteIcon,
   EditIcon,
 } from "@/components/shared/icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { SlidersHorizontal } from "@/components/shared/icons/generic-icons";
 import {
   NodexContextMenuContent,
@@ -79,6 +80,7 @@ export function DatabaseViewActionMenuOverlay({
 }) {
   const intl = useIntl();
   const ViewIcon = session.viewIcon;
+  const lastViewReasonId = useId();
   return (
     <NodexContextMenuPortal>
       <NodexContextMenuContent
@@ -93,6 +95,38 @@ export function DatabaseViewActionMenuOverlay({
         collisionPadding={12}
         sideOffset={2}
       >
+        <NodexContextMenuItem
+          disabled={session.busy}
+          leftSlot={<BoardIcon />}
+          onSelect={() => invokeAfterClose(onMenuOpenChange, session.onOpenSource)}
+        >
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span>
+              {intl.formatMessage({
+                id: "database.databaseViewActionMenu.source",
+                defaultMessage: "Source",
+                description: "Data Source associated with the View",
+              })}
+            </span>
+            <span className="min-w-0 truncate text-token-description-foreground">
+              {session.dataSourceName}
+            </span>
+          </span>
+        </NodexContextMenuItem>
+
+        <NodexDropdown.Separator paddingClassName="py-1" />
+        <NodexContextMenuItem
+          disabled={session.busy}
+          leftSlot={<PageMenuCopyLinkIcon />}
+          onSelect={() => invokeAfterClose(onMenuOpenChange, session.onCopyLink)}
+        >
+          {intl.formatMessage({
+            id: "database.databaseViewActionMenu.copyViewLink",
+            defaultMessage: "Copy link to view",
+          })}
+        </NodexContextMenuItem>
+
+        <NodexDropdown.Separator paddingClassName="py-1" />
         <NodexContextMenuItem
           disabled={session.busy}
           leftSlot={<EditIcon />}
@@ -155,40 +189,7 @@ export function DatabaseViewActionMenuOverlay({
         </NodexContextMenuItem>
         <NodexContextMenuItem
           disabled={session.busy}
-          leftSlot={<BoardIcon />}
-          rightSlot={<ChevronRightIcon className="size-4" />}
-          onSelect={() => invokeAfterClose(onMenuOpenChange, session.onOpenSource)}
-        >
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span>
-              {intl.formatMessage({
-                id: "database.databaseViewActionMenu.source",
-                defaultMessage: "Source",
-                description: "Data Source associated with the View",
-              })}
-            </span>
-            <span className="min-w-0 truncate text-token-description-foreground">
-              {session.dataSourceName}
-            </span>
-          </span>
-        </NodexContextMenuItem>
-
-        <NodexDropdown.Separator paddingClassName="py-1" />
-        <NodexContextMenuItem
-          disabled={session.busy}
-          leftSlot={<CopyIcon />}
-          onSelect={() => invokeAfterClose(onMenuOpenChange, session.onCopyLink)}
-        >
-          {intl.formatMessage({
-            id: "database.databaseViewActionMenu.copyViewLink",
-            defaultMessage: "Copy link to view",
-          })}
-        </NodexContextMenuItem>
-
-        <NodexDropdown.Separator paddingClassName="py-1" />
-        <NodexContextMenuItem
-          disabled={session.busy}
-          leftSlot={<CopyIcon />}
+          leftSlot={<NativeMenuIcon iconKey="duplicate" />}
           onSelect={() => invokeAfterClose(onMenuOpenChange, session.onDuplicate)}
         >
           {intl.formatMessage({
@@ -196,8 +197,11 @@ export function DatabaseViewActionMenuOverlay({
             defaultMessage: "Duplicate view",
           })}
         </NodexContextMenuItem>
+        <NodexDropdown.Separator paddingClassName="py-1" />
         <NodexContextMenuItem
+          tone="danger"
           disabled={session.busy || !session.canDelete}
+          aria-describedby={!session.canDelete ? lastViewReasonId : undefined}
           leftSlot={<DeleteIcon />}
           onSelect={() => {
             onMenuOpenChange(false);
@@ -209,6 +213,17 @@ export function DatabaseViewActionMenuOverlay({
             defaultMessage: "Delete view",
           })}
         </NodexContextMenuItem>
+        {!session.canDelete ? (
+          <div
+            id={lastViewReasonId}
+            className="px-2 pb-1 text-xs text-token-description-foreground"
+          >
+            {intl.formatMessage({
+              id: "database.databaseViewActionMenu.lastViewRequired",
+              defaultMessage: "Keep at least one view",
+            })}
+          </div>
+        ) : null}
       </NodexContextMenuContent>
     </NodexContextMenuPortal>
   );

@@ -378,7 +378,7 @@ describe("conversation video player", () => {
         await openNodexMenu(trigger);
         const popupControl =
           control === "Video options"
-            ? await view.findByRole("menuitem", { name: "Save video as…" })
+            ? await view.findByRole("menuitem", { name: "Save a copy" })
             : await view.findByRole("button", { name: "Mute video" });
         expect(player?.contains(popupControl)).toBe(true);
         await act(async () => {

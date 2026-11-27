@@ -26,7 +26,8 @@ import {
   type ReactNode,
   type SVGProps,
 } from "react";
-import { CircleDotIcon, SplitIcon } from "@/components/shared/icons/generic-icons";
+import { RecordIcon } from "@/components/shared/icons/customize-action-icons";
+import { SplitIcon } from "@/components/shared/icons/generic-icons";
 import {
   GoalTargetIcon,
   PageIcon,
@@ -988,7 +989,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
                   },
                 },
               },
-              icon: <CircleDotIcon className="size-4 shrink-0" />,
+              icon: <RecordIcon className="size-4 shrink-0" />,
               active: false,
             },
           ]

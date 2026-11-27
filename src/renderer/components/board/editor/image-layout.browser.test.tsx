@@ -320,7 +320,7 @@ describe("attachment chip", () => {
         ).toEqual([
           "Open",
           "Open in new tab",
-          "Save…",
+          "Save a copy",
           "Copy reference",
           // Reveal in Finder, Open in Explorer or Open in File Manager, by platform.
           expect.stringMatching(/^(?:Reveal|Open) in /u),
@@ -339,7 +339,7 @@ describe("attachment chip", () => {
         });
         await act(async () => {
           fireEvent.click(
-            within(await view.findByRole("menu")).getByRole("menuitem", { name: "Save…" }),
+            within(await view.findByRole("menu")).getByRole("menuitem", { name: "Save a copy" }),
           );
           await settleEditor();
         });

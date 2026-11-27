@@ -50,7 +50,7 @@ describe("Custom snooze", () => {
       fireEvent.mouseDown(screen.getByRole("button", { name: "Snooze" }), { button: 0 });
       await Promise.resolve();
     });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Custom…" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Custom" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Snooze until" });
     const field = await within(dialog).findByRole("textbox", { name: "Date and time" });

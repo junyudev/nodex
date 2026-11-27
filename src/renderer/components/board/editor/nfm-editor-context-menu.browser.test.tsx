@@ -7,16 +7,7 @@ import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
 import { captureNfmPasteTarget, createNfmPasteTargetPlugin } from "./nfm-paste-target";
 import { readNativePastePayload } from "./nfm-paste-event";
-import {
-  NfmEditorContextMenu,
-  NfmEditorContextMenuPreview,
-  runNfmEditorContextCommand,
-} from "./nfm-editor-context-menu";
-import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
-import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-runtime";
-
-const shortcut = (accelerator: string) =>
-  formatAcceleratorLabel(accelerator, resolveCodexRendererCommandPlatform());
+import { NfmEditorContextMenu, runNfmEditorContextCommand } from "./nfm-editor-context-menu";
 
 afterEach(() => {
   cleanup();
@@ -142,42 +133,6 @@ describe("markdown editor context menu", () => {
       Object.defineProperty(window, "api", { configurable: true, value: originalApi });
     }
   });
-  test("renders cut, copy, and paste actions with shortcuts", () => {
-    const view = render(
-      <NfmEditorContextMenuPreview
-        selectionEmpty={false}
-        editable={true}
-        onCommand={() => undefined}
-      />,
-    );
-
-    expect(Boolean(view.baseElement.textContent?.includes("Cut"))).toBe(true);
-    expect(Boolean(view.baseElement.textContent?.includes(shortcut("CmdOrCtrl+X")))).toBe(true);
-    expect(Boolean(view.baseElement.textContent?.includes("Copy"))).toBe(true);
-    expect(Boolean(view.baseElement.textContent?.includes(shortcut("CmdOrCtrl+C")))).toBe(true);
-    expect(Boolean(view.baseElement.textContent?.includes("Paste"))).toBe(true);
-    expect(Boolean(view.baseElement.textContent?.includes(shortcut("CmdOrCtrl+V")))).toBe(true);
-  });
-
-  test("emits the selected editing command", async () => {
-    let command = "";
-    const view = render(
-      <NfmEditorContextMenuPreview
-        selectionEmpty={false}
-        editable={true}
-        onCommand={(nextCommand) => {
-          command = nextCommand;
-        }}
-      />,
-    );
-
-    await act(async () => {
-      fireEvent.click(view.getByText("Copy"));
-    });
-
-    expect(command).toBe("copy");
-  });
-
   test("uses document editing commands after restoring editor focus", async () => {
     const calls: string[] = [];
     const editor = {
@@ -204,9 +159,6 @@ describe("markdown editor context menu", () => {
         calls.push(`paste:${text}`);
         return true;
       },
-      prosemirrorView: {
-        focus: () => calls.push("focus"),
-      },
     };
 
     Object.defineProperty(window, "api", {
@@ -221,13 +173,22 @@ describe("markdown editor context menu", () => {
     });
 
     try {
-      const handled = await runNfmEditorContextCommand(editor, "paste", (command) => {
-        calls.push(command);
-        return true;
+      const view = render(
+        <NfmEditorContextMenu editor={editor}>
+          <div data-testid="editor">Editor content</div>
+        </NfmEditorContextMenu>,
+      );
+      await act(async () => {
+        fireEvent.contextMenu(view.getByTestId("editor"), { button: 2, clientX: 10, clientY: 10 });
+        await Promise.resolve();
+      });
+      const paste = await view.findByRole("menuitem", { name: /^Paste/u });
+      await act(async () => {
+        fireEvent.click(paste);
+        await Promise.resolve();
       });
 
-      expect(handled).toBe(true);
-      expect(calls.join(",")).toBe("focus,paste:from clipboard");
+      expect(calls).toEqual(["paste:from clipboard"]);
     } finally {
       Object.defineProperty(window, "api", {
         configurable: true,

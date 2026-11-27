@@ -95,11 +95,11 @@ function PanelDestinationActionMenu({
     action.kind === "db_view"
       ? intl.formatMessage({
           id: "workbench.workbenchPanelControls.openDatabasePlaceholder",
-          defaultMessage: "Open DB…",
+          defaultMessage: "Open DB",
         })
       : intl.formatMessage({
           id: "workbench.workbenchPanelControls.openPagePlaceholder",
-          defaultMessage: "Open Page…",
+          defaultMessage: "Open Page",
         });
 
   return (

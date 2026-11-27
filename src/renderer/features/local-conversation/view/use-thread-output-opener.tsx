@@ -2,7 +2,7 @@ import { getIntl } from "@/lib/i18n";
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { ConnectorFallbackIcon, ConnectorGlobeIcon, PluginsIcon } from "@/components/shared/icons";
 import { ColorfulFileResourceIcon } from "@/components/shared/file-resource-icon";
-import { getFileManagerNameMessage } from "../../../../shared/file-link-openers";
+import { getFileManagerRevealMessage } from "../../../../shared/file-link-openers";
 import type { LinkActivation } from "../../../../shared/link-opening";
 import { snapshotLinkActivation } from "@/lib/link-activation";
 import { openLink } from "@/lib/link-opening";
@@ -158,9 +158,8 @@ export function useThreadOutputOpener(scope: ThreadOutputScope) {
                 kind: "native" as const,
                 label: getIntl().formatMessage({
                   id: "conversation.useThreadOutputOpener.browser",
-                  defaultMessage: "Default browser",
+                  defaultMessage: "Open in default browser",
                 }),
-                isSystemDefault: true,
                 open: () =>
                   openUrl({
                     url: action.url,
@@ -195,8 +194,6 @@ export function useThreadOutputOpener(scope: ThreadOutputScope) {
       isSystemDefault: destination.isSystemDefault ?? destination.systemDefault ?? false,
       open: () => openFileReferenceTarget(destination, target),
     });
-    const managerMessage = getFileManagerNameMessage(navigator.platform);
-    const manager = managerMessage ? getIntl().formatMessage(managerMessage) : null;
     return [
       {
         id: "preview",
@@ -211,21 +208,15 @@ export function useThreadOutputOpener(scope: ThreadOutputScope) {
             {
               id: "reveal",
               kind: "reveal" as const,
-              label: getIntl().formatMessage(
-                {
-                  id: "conversation.useThreadOutputOpener.showInManager",
-                  defaultMessage: "Show in {manager}",
-                },
-                { manager },
-              ),
+              label: getIntl().formatMessage(getFileManagerRevealMessage(navigator.platform)),
               open: () => openFile(target, { external: true, opener: "fileManager" }),
             },
             {
               id: "download",
               kind: "download" as const,
               label: getIntl().formatMessage({
-                id: "conversation.useThreadOutputOpener.downloadCopy",
-                defaultMessage: "Download a copy",
+                id: "conversation.useThreadOutputOpener.saveCopy",
+                defaultMessage: "Save a copy",
               }),
               open: async () =>
                 (await saveWorkspaceFileCopy({ hostId, path: target.path })).path !== null,

@@ -87,6 +87,7 @@ import {
   SplitIcon as LucideSplitIcon,
   Star as LucideStar,
   TextCursorInput as LucideTextCursorInput,
+  TextSelect as LucideTextSelect,
   WifiOff as LucideWifiOff,
   AppWindow as LucideAppWindow,
   Cookie as LucideCookie,
@@ -358,6 +359,10 @@ export const RotateCcw: LucideIconType = /* @__PURE__ */ createOutlineIcon(
 );
 export const Route: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideRoute, "Route");
 export const Rows3: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideRows3, "Rows3");
+export const TextSelect: LucideIconType = /* @__PURE__ */ createGenericIcon(
+  LucideTextSelect,
+  "TextSelect",
+);
 export const Scissors: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideScissors,
   "Scissors",

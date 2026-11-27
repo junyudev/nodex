@@ -184,6 +184,18 @@ describe("ordinary conversation media", () => {
     expect(reads).toHaveBeenCalledTimes(1);
   });
 
+  test("removes the audio options trigger when inline audio fails and has no source to copy", async () => {
+    const view = render(
+      mediaTree(null, <ConversationMedia src="data:audio/mpeg;base64,YQ==" alt="Voice memo" />),
+    );
+    expect(view.getByRole("button", { name: "More options for Voice memo" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.error(view.getByLabelText("Voice memo"));
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("button", { name: "More options for Voice memo" })).toBeNull();
+  });
+
   test("retires same-URL audio and video decoders when their physical source authority changes", async () => {
     const client = createTestQueryClient();
     const tree = (generation: number) =>

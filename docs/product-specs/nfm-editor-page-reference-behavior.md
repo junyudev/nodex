@@ -46,7 +46,7 @@ Right-clicking a Page Mention leads the editor context menu with the mention's o
 
 - `Open page` opens the available Page through the same host navigator as a click.
 - `Turn into embed` replaces the mention's Block with a Page Reference Block for the same Page. It is offered only in an editable Page, when the mention is the only content of a plain paragraph without children (surrounding whitespace aside), and when `/Embed page…` could embed the Page: it is active and is neither the edited Page nor one of its ancestors. A mention inside a sentence, heading, or list item stays inline. The conversion keeps the Block ID and is one Undo step; if the line changed while the menu was open, nothing is converted and the editor says so.
-- `Copy deeplink` copies the Page's deeplink with the same words and feedback as every Page menu.
+- `Copy link` copies the Page’s link with the same words and feedback as every Page menu.
 
 While the menu is open the chip keeps its hover highlight. Click stays reserved for opening the Page.
 

@@ -146,6 +146,7 @@ function TaskActionsMenu({
       <NodexDropdownItem
         disabled={busy}
         leftSlot={<DeleteIcon />}
+        tone="danger"
         onSelect={() => onRequestDelete(task)}
       >
         <FormattedMessage id="automations.automationsSidebar.delete" defaultMessage="Delete" />

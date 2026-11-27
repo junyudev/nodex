@@ -1,7 +1,10 @@
 import { getIntl } from "@/lib/i18n";
 import type { FileLinkTarget } from "../../shared/file-link-openers";
 import { getFileManagerRevealMessage } from "../../shared/file-link-openers";
-import type { NativeContextMenuItem } from "../../shared/native-context-menu";
+import type {
+  NativeContextMenuBaseItem,
+  NativeContextMenuItem,
+} from "../../shared/native-context-menu";
 import { showNativeContextMenu } from "./native-context-menu";
 import { writeTextToClipboard } from "./clipboard";
 import { openLink } from "./link-opening";
@@ -12,6 +15,7 @@ import {
 } from "./file-reference-open-targets";
 import {
   readWorkspaceFileGitHubUrl,
+  readWorkspaceFileMetadata,
   readWorkspaceFileText,
   saveWorkspaceFileCopy,
 } from "./workspace-file-operations";
@@ -51,11 +55,17 @@ export async function buildFileReferenceContextMenu({
 }: Omit<FileReferenceContextMenuRequest, "x" | "y">): Promise<CapturedFileReferenceContextMenu> {
   const empty: CapturedFileReferenceContextMenu = { items: [], select: async () => undefined };
   if (!isCurrent()) return empty;
-  const [targets, github] = await Promise.all([
+  const maxCopyBytes = 2 * 1024 * 1024;
+  const [targets, github, metadata] = await Promise.all([
     hostId === "local"
       ? readFileReferenceOpenTargets(target.path)
       : Promise.resolve({ primary: null, alternatives: [] }),
     readWorkspaceFileGitHubUrl({ hostId, path: target.path, line: target.line }).catch(() => null),
+    readWorkspaceFileMetadata({
+      hostId,
+      path: target.path,
+      contentSampleMaxFileBytes: maxCopyBytes,
+    }).catch(() => null),
   ]);
   if (!isCurrent()) return empty;
   const actions = new Map<string, () => Promise<unknown>>();
@@ -63,7 +73,7 @@ export async function buildFileReferenceContextMenu({
     id: string,
     label: string,
     run: () => Promise<unknown>,
-    extras: { iconKey?: "folder" | "copy" | "window"; iconUrl?: string } = {},
+    extras: Pick<NativeContextMenuBaseItem, "iconKey" | "iconUrl">,
   ): NativeContextMenuItem => {
     actions.set(id, run);
     return { id, label, ...extras };
@@ -78,7 +88,7 @@ export async function buildFileReferenceContextMenu({
           defaultMessage: "Open file",
         }),
         () => open(target, { hostId, title: label, mode: "preview", sidePanel: true }),
-        { iconKey: "folder" },
+        { iconKey: "openIn" },
       ),
     );
   if (!sidePanel && hostId === "local" && browserAvailable && isBrowserHtmlFilePath(target.path))
@@ -90,6 +100,7 @@ export async function buildFileReferenceContextMenu({
           defaultMessage: "View in browser",
         }),
         () => open(target, { hostId, sidePanel: false }),
+        { iconKey: "openIn" },
       ),
     );
   if (targets.primary) {
@@ -102,9 +113,11 @@ export async function buildFileReferenceContextMenu({
           { app: primary.label },
         ),
         () => openFileReferenceTarget(primary, target),
-        { iconUrl: primary.iconUrl },
+        { iconUrl: primary.iconUrl, iconKey: "openIn" },
       ),
     );
+  }
+  if (targets.alternatives.length > 0) {
     items.push({
       id: "file-reference:open-with",
       label: getIntl().formatMessage({
@@ -118,7 +131,7 @@ export async function buildFileReferenceContextMenu({
           `file-reference:open-with:${destination.id}`,
           destination.label,
           () => openFileReferenceTarget(destination, target),
-          { iconUrl: destination.iconUrl },
+          { iconUrl: destination.iconUrl, iconKey: "openIn" },
         ),
       ),
     });
@@ -132,15 +145,16 @@ export async function buildFileReferenceContextMenu({
           defaultMessage: "Open in GitHub",
         }),
         () => openUrl({ url: github, hostId, initiator: "file_context_menu" }),
+        { iconKey: "openIn" },
       ),
     );
-  if (targets.primary || github) items.push({ type: "separator" });
+  if (items.length > 0) items.push({ type: "separator" });
   items.push(
     item(
       "file-reference:save",
       getIntl().formatMessage({
         id: "lib.fileReferenceContextMenu.saveAs",
-        defaultMessage: "Save as…",
+        defaultMessage: "Save a copy",
       }),
       async () => {
         try {
@@ -155,6 +169,7 @@ export async function buildFileReferenceContextMenu({
             );
         }
       },
+      { iconKey: "download" },
     ),
     item(
       "file-reference:copy-path",
@@ -167,23 +182,36 @@ export async function buildFileReferenceContextMenu({
         iconKey: "copy",
       },
     ),
-    item(
-      "file-reference:copy-contents",
-      getIntl().formatMessage({
-        id: "lib.fileReferenceContextMenu.copyContents",
-        defaultMessage: "Copy file contents",
-      }),
-      async () => {
-        const result = await readWorkspaceFileText({
-          hostId,
-          path: target.path,
-          maxBytes: 2 * 1024 * 1024,
-        });
-        if (isCurrent()) await writeTextToClipboard(result.contents);
-      },
-      { iconKey: "copy" },
-    ),
   );
+  if (metadata?.contentKind === "text")
+    items.push(
+      item(
+        "file-reference:copy-contents",
+        getIntl().formatMessage({
+          id: "lib.fileReferenceContextMenu.copyContents",
+          defaultMessage: "Copy file contents",
+        }),
+        async () => {
+          try {
+            const result = await readWorkspaceFileText({
+              hostId,
+              path: target.path,
+              maxBytes: maxCopyBytes,
+            });
+            if (isCurrent()) await writeTextToClipboard(result.contents);
+          } catch {
+            if (isCurrent())
+              toast.danger(
+                getIntl().formatMessage({
+                  id: "lib.fileReferenceContextMenu.copyContentsFailed",
+                  defaultMessage: "Could not copy file contents",
+                }),
+              );
+          }
+        },
+        { iconKey: "copy" },
+      ),
+    );
   if (hostId === "local")
     items.push(
       item(

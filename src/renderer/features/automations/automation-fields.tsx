@@ -4,7 +4,7 @@ import {
   AutomationLoadingIcon,
   AutomationTemplateColorIcon,
   CompactChevronDownIcon,
-  SidePanelPlusIcon,
+  ConfigStatusIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownItem,
@@ -712,21 +712,25 @@ export function AutomationEnvironmentField({
             </>
           )}
         </div>
-        <NodexDropdownSeparator />
-        <NodexDropdownItem
-          leftSlot={<SidePanelPlusIcon className="icon-2xs shrink-0" />}
-          onSelect={() =>
-            onOpenSettings?.({
-              projectId: project?.id ?? null,
-              configPath: selectedPath.length > 0 ? selectedPath : null,
-            })
-          }
-        >
-          <FormattedMessage
-            id="automations.automationFields.createLocalEnvironment"
-            defaultMessage="Create local environment"
-          />
-        </NodexDropdownItem>
+        {onOpenSettings ? (
+          <>
+            <NodexDropdownSeparator />
+            <NodexDropdownItem
+              leftSlot={<ConfigStatusIcon className="icon-xs shrink-0" />}
+              onSelect={() =>
+                onOpenSettings({
+                  projectId: project?.id ?? null,
+                  configPath: selectedPath.length > 0 ? selectedPath : null,
+                })
+              }
+            >
+              <FormattedMessage
+                id="conversation.environmentSelectorPopover.settings"
+                defaultMessage="Environment settings"
+              />
+            </NodexDropdownItem>
+          </>
+        ) : null}
       </NodexDropdownMenu>
     </AutomationFieldRow>
   );

@@ -30,7 +30,7 @@ export async function pageFilesTree(stage: Locator, total: number): Promise<Loca
 /** Tree activation previews a File in a tab; management is an explicit context action. */
 export async function managePageFile(page: Page, item: Locator): Promise<Locator> {
   await item.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Manage in Page files…", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Manage in Page files", exact: true }).click();
   const manager = page.getByRole("dialog", { name: "Page files", exact: true });
   await expect(manager).toBeVisible();
   return manager;

@@ -15,7 +15,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 
 import {
   ArchiveIcon,
-  CloseIcon,
+  DeleteIcon,
   NewChatIcon,
   PlusIcon,
   ProjectActionsIcon,
@@ -38,6 +38,7 @@ import {
   NodexDropdownMenu,
   NodexDropdownRadioGroup,
   NodexDropdownRadioItem,
+  NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { serializeSortableTranslation } from "@/lib/sortable-transform";
@@ -485,19 +486,18 @@ function SectionActions({
       <NodexDropdownItem leftSlot={<SettingsGeneralIcon className="icon-xs" />} onSelect={onRename}>
         <FormattedMessage id="workbench.sidebarCustomSections.edit" defaultMessage="Edit section" />
       </NodexDropdownItem>
+      {!archiveDisabled && section.effectiveSessionCount > 0 ? (
+        <NodexDropdownItem leftSlot={<ArchiveIcon className="icon-xs" />} onSelect={onArchiveAll}>
+          <FormattedMessage
+            id="workbench.sidebarCustomSections.archiveAll"
+            defaultMessage="Archive all chats"
+          />
+        </NodexDropdownItem>
+      ) : null}
+      <NodexDropdownSeparator />
       <NodexDropdownItem
-        leftSlot={<ArchiveIcon className="icon-xs" />}
-        disabled={archiveDisabled || section.effectiveSessionCount === 0}
-        onSelect={onArchiveAll}
-      >
-        <FormattedMessage
-          id="workbench.sidebarCustomSections.archiveAll"
-          defaultMessage="Archive all chats"
-        />
-      </NodexDropdownItem>
-      <NodexDropdownItem
-        className="text-token-error-foreground"
-        leftSlot={<CloseIcon className="icon-xs" />}
+        tone="danger"
+        leftSlot={<DeleteIcon className="icon-xs" />}
         onSelect={onDelete}
       >
         <FormattedMessage
@@ -929,7 +929,7 @@ export function SidebarProjectSectionMenu({
         >
           <FormattedMessage
             id="workbench.sidebarCustomSections.newSectionMenu"
-            defaultMessage="New section…"
+            defaultMessage="New section"
           />
         </NodexDropdownItem>
       </NodexDropdownFlyoutSubmenuItem>

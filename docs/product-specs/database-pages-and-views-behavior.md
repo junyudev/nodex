@@ -66,22 +66,22 @@ revisions, and durable operation receipts. A Library presentation never infers a
 Project for these operations. Project-default creation retains its explicit
 Data Source and status route; deleting a Page does not require that route.
 The development-only `database-page-reorder-menu` capability adds a `Reorder`
-submenu containing top, up, down, and bottom positions; ordinary launches omit
-that submenu, and unavailable edge positions remain disabled when it is
-enabled. This gate affects only the context-menu entry, not drag, keyboard, or
+submenu with `Move to top`, `Move up`, `Move down`, and `Move to bottom`,
+matching the bulk-selection menu. Ordinary launches omit the submenu. When
+enabled, it disables positions that are already at an edge. This gate affects only the context-menu entry, not drag, keyboard, or
 bulk-selection ordering. `Copy` contains `Copy ID` whenever a current Page
-key exists, plus `Copy deeplink`, `Copy title`, and `Copy content as Markdown`.
+key exists, plus `Copy link`, `Copy title`, and `Copy content as Markdown`.
 `Copy ID` copies only the user-facing Page key and never falls back to UUID;
-`Copy deeplink` remains the distinct UUID-based action. Markdown copy reads the
+`Copy link` remains the distinct UUID-based action. Markdown copy reads the
 canonical owned Page Document in the current Library through the View's
 presentation route rather than a visible View projection. `Open in` contains `Open
-in new chat` and `Send to chat…`. Open in new chat atomically creates an
+in new chat` and `Send to chat`. Open in new chat atomically creates an
 ordinary Project Session and its Linked chat edge before Window Scene
 presentation; a presentation failure preserves that durable Chat and relation.
 Both hand the Page to the chat, so a Page still in Triage or Todo moves to In Progress
 in the same transaction; a Page already in In Progress, In Review, Done, or Canceled keeps its
 stage.
-`Send to chat…` hands off to a Window-owned chooser after the context menu
+`Send to chat` hands off to a Window-owned chooser after the context menu
 closes. The chooser retains the selected Page and remains usable if its source
 View unmounts. In a chat's Scene it lists that chat first, labeled `This chat`. Page image inputs follow the verified exact-version byte-snapshot contract
 in [Page prompt image inputs](./nfm-page-prompt-image-inputs.md).
@@ -121,7 +121,7 @@ The Page context menu also exposes a bounded, schema-driven Property section.
 The current writable Board grouping Property appears first, followed by exact
 built-in Status, Priority, Due date, Tags, and Estimate roles, with
 duplicates removed and at most seven direct entries. Remaining active
-Properties appear under `More properties…`; root-menu search surfaces a matching
+Properties appear under `More properties`; root-menu search surfaces a matching
 custom Property directly instead of requiring that extra navigation step.
 Every Property entry remains a native context submenu. Select and multi-select
 submenus host the canonical `PropertyOptionPicker`, including the same search,
@@ -292,8 +292,8 @@ Every row stays inside the floating surface, and its footer offers both Add sort
 and whole-list Delete sort actions.
 
 A quick filter opens one Property-specific editor rather than a generic form.
-Its compact header owns Property, operator, and a More menu; the More menu puts
-Delete filter before Add to advanced filter. Text and number use a direct input,
+Its compact header owns Property, operator, and a More menu. The menu offers
+Move to advanced filter, followed by Delete filter in its own group. Text and number use a direct input,
 checkbox exposes Checked and Unchecked rows, select and multi-select expose the
 searchable option list directly, Relation exposes the current Library Page search
 directly, and Date/DateTime embed the calendar. No quick editor adds a second

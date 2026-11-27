@@ -14,7 +14,7 @@ import {
   NodexDropdownMenu,
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
-import { revealInFileManagerLabel } from "@/lib/reveal-in-file-manager-label";
+import { getFileManagerRevealMessage } from "../../../../shared/file-link-openers";
 import { MoreActionsButton, ToolbarButton } from "@/components/ui/toolbar-button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { usePendingPluginActions } from "../model/install-sessions";
@@ -260,9 +260,12 @@ export function PluginDetailActions({
 
   const canUninstall = installed && row.canUninstall;
   const fromFolder = installed && row.localFolder != null;
+  const canUpdateFromFolder = fromFolder && handlers.onUpdateFromFolder != null;
+  const canRevealFolder = fromFolder && handlers.onRevealFolder != null;
+  const hasFolderActions = canUpdateFromFolder || canRevealFolder;
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {canUninstall || fromFolder ? (
+      {canUninstall || hasFolderActions ? (
         <NodexDropdownMenu
           align="end"
           contentWidth="sm"
@@ -270,7 +273,19 @@ export function PluginDetailActions({
           onOpenChange={setMenuOpen}
           triggerButton={<MoreActionsButton variant="toolbar" />}
         >
-          {fromFolder && handlers.onUpdateFromFolder != null ? (
+          {canRevealFolder ? (
+            <NodexDropdownItem
+              leftSlot={<FolderIcon />}
+              onSelect={() => {
+                setMenuOpen(false);
+                handlers.onRevealFolder?.();
+              }}
+            >
+              {intl.formatMessage(getFileManagerRevealMessage(navigator.platform))}
+            </NodexDropdownItem>
+          ) : null}
+          {canRevealFolder && canUpdateFromFolder ? <NodexDropdownSeparator /> : null}
+          {canUpdateFromFolder ? (
             <NodexDropdownItem
               leftSlot={<RefreshArrowsIcon />}
               disabled={pending != null}
@@ -285,23 +300,12 @@ export function PluginDetailActions({
               })}
             </NodexDropdownItem>
           ) : null}
-          {fromFolder && handlers.onRevealFolder != null ? (
-            <NodexDropdownItem
-              leftSlot={<FolderIcon />}
-              onSelect={() => {
-                setMenuOpen(false);
-                handlers.onRevealFolder?.();
-              }}
-            >
-              {revealInFileManagerLabel()}
-            </NodexDropdownItem>
-          ) : null}
-          {fromFolder && canUninstall ? <NodexDropdownSeparator /> : null}
+          {hasFolderActions && canUninstall ? <NodexDropdownSeparator /> : null}
           {canUninstall ? (
             <NodexDropdownItem
               leftSlot={<TrashIcon />}
               disabled={forcedLabel != null || enabling || pending === "uninstalling"}
-              className="text-danger"
+              tone="danger"
               onSelect={() => {
                 setMenuOpen(false);
                 handlers.onUninstall();

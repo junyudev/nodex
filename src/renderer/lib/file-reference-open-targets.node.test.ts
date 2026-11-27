@@ -29,11 +29,7 @@ afterEach(() => vi.unstubAllGlobals());
 test("offers only available editor destinations and promotes the preferred installed target", async () => {
   const targets = await readFileReferenceOpenTargets("/repo/file.ts");
   expect(targets.primary?.opener).toBe("cursor");
-  expect(targets.alternatives.map((target) => target.id)).toEqual([
-    "vscode",
-    "cursor",
-    "fileManager",
-  ]);
+  expect(targets.alternatives.map((target) => target.id)).toEqual(["vscode", "fileManager"]);
 });
 test("uses actual native applications and routes them by appPath", async () => {
   operations.native.mockResolvedValue({
@@ -98,10 +94,7 @@ test.each(["empty", "failed"])(
       label: "Default app",
       systemDefault: true,
     });
-    expect(targets.alternatives.map((target) => target.id)).toEqual([
-      "systemDefault",
-      "fileManager",
-    ]);
+    expect(targets.alternatives.map((target) => target.id)).toEqual(["fileManager"]);
     expect(await openFileReferenceTarget(targets.primary!, { path: "/repo/diagram.pdf" })).toBe(
       true,
     );

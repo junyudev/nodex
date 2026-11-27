@@ -245,7 +245,7 @@ respect_system_proxy = false
           .locator('button[data-card-context-menu-trigger="true"]')
           .click({ button: "right" });
         await page.getByRole("menuitem", { name: "Open in", exact: true }).hover();
-        await page.getByRole("menuitem", { name: "Send to chat…", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Send to chat", exact: true }).click();
         await page.locator('[data-nfm-send-to-thread-row-kind="new-thread"]').click();
         await expect(page.getByText("Sent Page to new chat", { exact: true })).toBeVisible({
           timeout: 30_000,

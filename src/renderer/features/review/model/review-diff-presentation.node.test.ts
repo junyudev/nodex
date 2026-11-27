@@ -217,55 +217,51 @@ describe("review file context menu", () => {
   const fileContext: ReviewFileContextMenuInput = {
     canOpenFile: true,
     canOpenInNewTab: true,
+    canRequestChanges: true,
+    wrap: false,
     selectedText: "const value = 1;",
     relativePath: "src/example.ts",
     githubUrl: "https://github.com/example/project/blob/main/src/example.ts",
     primary: { id: "cursor", label: "Cursor", opener: "cursor" },
-    alternatives: [
-      { id: "cursor", label: "Cursor", opener: "cursor" },
-      { id: "vscode", label: "VS Code", opener: "vscode" },
-    ],
+    alternatives: [{ id: "vscode", label: "VS Code", opener: "vscode" }],
   };
 
   describe("Review file context menu", () => {
     test("keeps selection and path actions beside file opening and line comments", () => {
       const items = buildReviewFileContextMenu(fileContext);
       expect(items.map((item) => (item.type === "separator" ? "separator" : item.label))).toEqual([
-        "Request changes",
+        "Open in new tab",
         "Open in Cursor",
         "Open with",
         "Open in GitHub",
         "separator",
+        "Request changes",
+        "separator",
         "Copy selection",
         "Copy path",
         "Copy relative path",
-        "Toggle line wrap",
+        "separator",
+        "Enable word wrap",
       ]);
       expect(items.find((item) => item.id === "open-with")).toMatchObject({
         type: "submenu",
-        submenu: [
-          { id: "open-in-new-tab", label: "New tab" },
-          { id: "open-target:cursor", label: "Cursor" },
-          { id: "open-target:vscode", label: "VS Code" },
-        ],
+        submenu: [{ id: "open-target:vscode", label: "VS Code" }],
       });
     });
 
-    test("retains Request changes while an empty selection disables only its copy action", () => {
+    test("omits Request changes for ineligible lines and only copies an existing selection", () => {
       const items = buildReviewFileContextMenu({
         ...fileContext,
+        canRequestChanges: false,
         selectedText: "",
       });
-      expect(items.find((item) => item.id === "copy-selection")).toMatchObject({ enabled: false });
-      expect(items.find((item) => item.id === "request-changes")).toEqual({
-        id: "request-changes",
-        label: "Request changes",
-      });
-      expect(items.find((item) => item.id === "copy-path")).toMatchObject({ enabled: true });
+      expect(items.some((item) => item.id === "copy-selection")).toBe(false);
+      expect(items.some((item) => item.id === "request-changes")).toBe(false);
+      expect(items.some((item) => item.id === "copy-path")).toBe(true);
     });
 
     test("remembers editor choices without promoting native viewers or terminals", () => {
-      expect(reviewFileTargetPreferredOpener(fileContext.alternatives[1]!)).toBe("vscode");
+      expect(reviewFileTargetPreferredOpener(fileContext.alternatives[0]!)).toBe("vscode");
       for (const opener of ["fileManager", "terminal", "iterm2", "ghostty", "warp"] as const) {
         expect(reviewFileTargetPreferredOpener({ id: opener, label: opener, opener })).toBeNull();
       }
@@ -288,10 +284,8 @@ describe("review file context menu", () => {
       const submenu = items.find((item) => item.id === "open-with");
       if (submenu?.type !== "submenu")
         throw new Error("The deleted file has available external targets");
-      expect(submenu.submenu.map((item) => item.id)).toEqual([
-        "open-target:cursor",
-        "open-target:vscode",
-      ]);
+      expect(submenu.submenu.map((item) => item.id)).toEqual(["open-target:vscode"]);
+      expect(items.some((item) => item.id === "open-in-new-tab")).toBe(false);
       expect(items.some((item) => item.id === "open-in-github")).toBe(false);
     });
 
@@ -304,13 +298,11 @@ describe("review file context menu", () => {
         primary: null,
         alternatives: [],
       });
-      expect(items.map((item) => item.id)).toEqual([
+      expect(items.filter((item) => item.type !== "separator").map((item) => item.id)).toEqual([
         "request-changes",
         "copy-selection",
-        "copy-path",
         "toggle-wrap",
       ]);
-      expect(items.find((item) => item.id === "copy-path")).toMatchObject({ enabled: false });
     });
   });
 });

@@ -271,7 +271,7 @@ test("replays Board, List, and editor transfers through their content participan
       });
       await page.getByRole("button", { name: /^More actions for / }).click();
       await expect(page.getByText("Project: Surface history", { exact: true })).toBeVisible();
-      await page.getByRole("menuitem", { name: "Clear undo history…", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Clear undo history", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Clear undo history?" });
       await expect(dialog).toBeVisible();
       const confirmationScreenshot = test.info().outputPath("reset-history-confirmation.png");

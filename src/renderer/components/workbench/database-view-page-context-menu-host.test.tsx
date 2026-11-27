@@ -66,7 +66,7 @@ describe("DatabaseViewPageContextMenuHost", () => {
       });
       await Promise.resolve();
     });
-    const send = await view.findByRole("menuitem", { name: "Send to chat…" });
+    const send = await view.findByRole("menuitem", { name: "Send to chat" });
     await act(async () => {
       fireEvent.click(send);
       await Promise.resolve();

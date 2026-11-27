@@ -12,6 +12,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { DownloadIcon } from "@/components/shared/icons";
+import { PictureInPicture2 } from "@/components/shared/icons/generic-icons";
 import { EllipsisIcon } from "@/components/shared/icons/customize-action-icons";
 import {
   MediaExitFullscreenIcon,
@@ -183,6 +185,9 @@ export function ConversationVideoPlayer({
     rate: 1,
   });
   const [fullscreen, setFullscreen] = useState(false);
+  const [pictureInPictureElement, setPictureInPictureElement] = useState<HTMLVideoElement | null>(
+    null,
+  );
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [actionFailed, setActionFailed] = useState(false);
@@ -221,6 +226,17 @@ export function ConversationVideoPlayer({
     container.ownerDocument.addEventListener("fullscreenchange", changed);
     return () => container.ownerDocument.removeEventListener("fullscreenchange", changed);
   }, [container]);
+  useEffect(() => {
+    if (!element) return;
+    const enter = () => setPictureInPictureElement(element);
+    const leave = () => setPictureInPictureElement(null);
+    element.addEventListener("enterpictureinpicture", enter);
+    element.addEventListener("leavepictureinpicture", leave);
+    return () => {
+      element.removeEventListener("enterpictureinpicture", enter);
+      element.removeEventListener("leavepictureinpicture", leave);
+    };
+  }, [element]);
   const update = (patch: Partial<typeof playback>) =>
     setPlayback((current) => ({ ...current, ...patch }));
   const action = async (perform: () => Promise<unknown>) => {
@@ -261,6 +277,8 @@ export function ConversationVideoPlayer({
   const volumeIcon =
     playback.muted || playback.volume === 0 ? <MediaVolumeMutedIcon /> : <MediaVolumeIcon />;
   const pictureInPictureEnabled = element?.ownerDocument.pictureInPictureEnabled === true;
+  const pictureInPictureActive =
+    pictureInPictureElement !== null && pictureInPictureElement === element;
   return (
     <NodexTooltip tooltipContent={title}>
       <div
@@ -454,6 +472,7 @@ export function ConversationVideoPlayer({
                 }
               >
                 <NodexDropdownItem
+                  leftSlot={<DownloadIcon />}
                   disabled={downloadPending}
                   onSelect={() => {
                     setActionFailed(false);
@@ -464,7 +483,7 @@ export function ConversationVideoPlayer({
                 >
                   {intl.formatMessage({
                     id: "components.conversationVideoPlayer.save",
-                    defaultMessage: "Save video as…",
+                    defaultMessage: "Save a copy",
                   })}
                 </NodexDropdownItem>
                 <NodexDropdownSeparator />
@@ -488,21 +507,30 @@ export function ConversationVideoPlayer({
                   ))}
                 </NodexDropdownRadioGroup>
                 {pictureInPictureEnabled ? (
-                  <NodexDropdownItem
-                    onSelect={() => {
-                      if (!element) return;
-                      void action(() =>
-                        element.ownerDocument.pictureInPictureElement === element
-                          ? element.ownerDocument.exitPictureInPicture()
-                          : element.requestPictureInPicture(),
-                      );
-                    }}
-                  >
-                    {intl.formatMessage({
-                      id: "components.conversationVideoPlayer.pictureInPicture",
-                      defaultMessage: "Picture in picture",
-                    })}
-                  </NodexDropdownItem>
+                  <>
+                    <NodexDropdownSeparator />
+                    <NodexDropdownItem
+                      leftSlot={<PictureInPicture2 />}
+                      onSelect={() => {
+                        if (!element) return;
+                        void action(() =>
+                          element.ownerDocument.pictureInPictureElement === element
+                            ? element.ownerDocument.exitPictureInPicture()
+                            : element.requestPictureInPicture(),
+                        );
+                      }}
+                    >
+                      {pictureInPictureActive
+                        ? intl.formatMessage({
+                            id: "components.conversationVideoPlayer.exitPictureInPicture",
+                            defaultMessage: "Exit picture in picture",
+                          })
+                        : intl.formatMessage({
+                            id: "components.conversationVideoPlayer.pictureInPicture",
+                            defaultMessage: "Picture in picture",
+                          })}
+                    </NodexDropdownItem>
+                  </>
                 ) : null}
               </NodexDropdownMenu>
               {container?.ownerDocument.fullscreenEnabled ? (

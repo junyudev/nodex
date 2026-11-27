@@ -31,8 +31,8 @@ account menu beside the rail. Its first group switches and joins Spaces, as
 opens Account settings, then Settings and **Feedback & community**, which remain
 available in every account state, including an unconfigured or offline build.
 Feedback & community opens beside the menu with [What's new](#whats-new), then,
-below a separator, the Nodex QQ group, whose number stays readable in its row
-and is copied when chosen, with a confirmation that says to search for it in QQ,
+below a separator, **Copy QQ group number**, with the number visible in the row
+and a confirmation that says to search for it in QQ,
 then the Nodex Discord server, which opens in the system browser so Discord can
 take over. The account actions follow
 the current connection: sign in, cancel the pending browser login, sign in

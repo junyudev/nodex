@@ -99,7 +99,12 @@ export function SidebarChatsSectionMenu() {
           </CodexSidebarActionButton>
         }
       >
-        <NodexDropdownItem onClick={() => setOpen(true)}>{title}</NodexDropdownItem>
+        <NodexDropdownItem
+          leftSlot={<FolderIcon className="icon-xs" />}
+          onSelect={() => setOpen(true)}
+        >
+          {title}
+        </NodexDropdownItem>
       </NodexDropdownMenu>
       <NodexDialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
         <NodexDialogContent size="compact">

@@ -322,6 +322,7 @@ export function EnvironmentSelectorPopover({
           </NodexDropdownMessage>
         )}
 
+        <NodexDropdownSeparator />
         <NodexDropdownItem
           className={COMPOSER_PICKER_ITEM_CLASS_NAME}
           closeOnClick={false}

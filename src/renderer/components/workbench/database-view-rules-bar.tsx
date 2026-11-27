@@ -24,11 +24,13 @@ import {
   DragHandleDotsIcon,
   FilterIcon,
   MoreActionsIcon,
+  MoveToIcon,
   PlusIcon,
   SortAscendingIcon,
   SortDescendingIcon,
 } from "@/components/shared/icons";
 import { ArrowUpDown } from "@/components/shared/icons/generic-icons";
+import { NodexDropdown } from "@/components/ui/dropdown";
 import { NodexIconButton } from "@/components/ui/button";
 import {
   ContinuousSortableDragOverlay,
@@ -375,8 +377,11 @@ function QuickFilterEditor({
           chrome="transparent"
           className="h-5 w-auto max-w-[100px] px-1 text-xs"
         />
-        <NodexPopover>
-          <NodexPopoverTrigger>
+        <NodexDropdown.Menu
+          align="start"
+          side="right"
+          contentWidth="menuBounded"
+          triggerButton={
             <button
               type="button"
               aria-label={intl.formatMessage({
@@ -388,28 +393,26 @@ function QuickFilterEditor({
             >
               <MoreActionsIcon className="size-3.5" />
             </button>
-          </NodexPopoverTrigger>
-          <NodexPopoverContent className="w-60 p-1" align="start" side="right" sideOffset={2}>
-            <button
-              type="button"
-              className={cn(MENU_ROW, "text-token-error-foreground")}
-              onClick={() => controller.removeQuickFilter(filter.filterId)}
-            >
-              <DeleteIcon className="size-4" /> {intl.formatMessage(messages.deleteFilter)}
-            </button>
-            <button
-              type="button"
-              className={MENU_ROW}
-              onClick={() => controller.moveQuickFilterToAdvanced(filter.filterId)}
-            >
-              <FilterIcon className="size-4" />{" "}
-              {intl.formatMessage({
-                id: "database.databaseViewRulesBar.addToAdvancedFilter",
-                defaultMessage: "Add to advanced filter",
-              })}
-            </button>
-          </NodexPopoverContent>
-        </NodexPopover>
+          }
+        >
+          <NodexDropdown.Item
+            leftSlot={<MoveToIcon />}
+            onSelect={() => controller.moveQuickFilterToAdvanced(filter.filterId)}
+          >
+            {intl.formatMessage({
+              id: "database.databaseViewRulesBar.addToAdvancedFilter",
+              defaultMessage: "Move to advanced filter",
+            })}
+          </NodexDropdown.Item>
+          <NodexDropdown.Separator />
+          <NodexDropdown.Item
+            leftSlot={<DeleteIcon />}
+            tone="danger"
+            onSelect={() => controller.removeQuickFilter(filter.filterId)}
+          >
+            {intl.formatMessage(messages.deleteFilter)}
+          </NodexDropdown.Item>
+        </NodexDropdown.Menu>
       </div>
       <div
         className={cn(

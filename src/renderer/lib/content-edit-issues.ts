@@ -12,6 +12,8 @@ export type ContentEditIssueAction =
       readonly kind: "run";
       readonly label: string;
       readonly run: () => unknown | Promise<unknown>;
+      /** Destroys something; a menu shows it with the delete glyph in the danger tone. */
+      readonly destructive?: boolean;
       readonly confirmation?: {
         readonly title: string;
         readonly description: string;

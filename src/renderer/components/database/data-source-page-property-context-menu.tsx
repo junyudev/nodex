@@ -24,6 +24,7 @@ import type {
   DataSourcePagePropertyMenuSource,
 } from "./data-source-page-property-menu-source";
 import { PropertyEditorIcon } from "./property-editor-icons";
+import { NodexMenuRowContent, nodexMenuRowClassName } from "@/components/ui/menu-row";
 import { DataSourcePropertyValueEditor } from "./data-source-property-value-editor";
 import { PropertyEditorFeedback } from "./property-editor-feedback";
 
@@ -51,17 +52,26 @@ const PropertyMenuTrigger = forwardRef<
       {...props}
       data-page-property-menu-item="true"
       data-card-menu-item={itemDataAttribute}
-      className={cn(ITEM_CLASS_NAME, "flex w-full items-center gap-2", className)}
+      className={cn(
+        nodexMenuRowClassName,
+        "group flex w-full cursor-interaction items-center hover:bg-token-list-hover-background focus:bg-token-list-hover-background data-[highlighted]:bg-token-list-hover-background data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
+        className,
+      )}
     >
-      <span className="flex size-5 shrink-0 items-center justify-center text-token-description-foreground">
-        {descriptor.pending ? (
-          <LoadingIcon className="size-4 animate-spin" />
-        ) : (
-          <PropertyEditorIcon property={descriptor.property} className="size-4" />
-        )}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{descriptor.property.name}</span>
-      <ChevronRightIcon className="size-3.5 shrink-0 text-token-description-foreground" />
+      <NodexMenuRowContent
+        leading={
+          descriptor.pending ? (
+            <LoadingIcon className="size-4 animate-spin" />
+          ) : (
+            <PropertyEditorIcon property={descriptor.property} className="size-4" />
+          )
+        }
+        trailing={
+          <ChevronRightIcon className="size-3.5 shrink-0 text-token-description-foreground" />
+        }
+      >
+        {descriptor.property.name}
+      </NodexMenuRowContent>
     </div>
   );
 });
@@ -341,7 +351,7 @@ export function DataSourcePagePropertyContextMenuItems({
             >
               {intl.formatMessage({
                 id: "components.dataSourcePagePropertyContextMenu.moreProperties",
-                defaultMessage: "More properties…",
+                defaultMessage: "More properties",
               })}
             </NodexContextMenuSubmenuTrigger>
           }

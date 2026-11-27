@@ -8,7 +8,7 @@ import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module
 import { testPropertySemantics } from "../../../shared/testing/database-property-record";
 import type { DatabaseViewRulesController } from "../../lib/use-database-view-rules-controller";
 import { useDatabaseViewRulesController } from "../../lib/use-database-view-rules-controller";
-import { render } from "../../test/dom";
+import { openNodexMenu, render } from "../../test/dom";
 import { DatabaseViewRulesBar, DatabaseViewRuleToolbarControls } from "./database-view-rules-bar";
 
 const config: DatabaseViewConfigV6 = {
@@ -411,8 +411,8 @@ test("edits option filters directly in the quick-filter surface", async () => {
   expect(screen.getByRole("option", { name: "Design" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Filter value for Tags" })).toBeNull();
 
-  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Delete filter" }));
+  await openNodexMenu(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Delete filter" }));
   expect(removeQuickFilter).toHaveBeenCalledWith("filter-tags");
 });
 

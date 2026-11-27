@@ -205,7 +205,7 @@ test("decodes captured file media, preserves grouped image identity through term
         await Promise.resolve();
       });
       expect(nativeMenu).toHaveBeenCalledWith(
-        expect.arrayContaining([{ id: "open", label: "Open image in new tab" }]),
+        expect.arrayContaining([{ id: "open", label: "Open image in new tab", iconKey: "newTab" }]),
         expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
       );
       expect(view.queryByRole("dialog")).toBeNull();

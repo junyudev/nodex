@@ -1,3 +1,4 @@
+import { getNativeMenuIcon } from "../../native-menu-icons";
 import { getMainIntl } from "../../i18n/main-intl";
 import {
   DictationDiagnosticsSchema,
@@ -671,6 +672,7 @@ export const live = (
                 const menu = desktop.menu.buildFromTemplate([
                   {
                     id: "close-window",
+                    icon: getNativeMenuIcon("close"),
                     label: getMainIntl().formatMessage({
                       id: "main.contextMenu.closeDictationWindow",
                       defaultMessage: "Close window",

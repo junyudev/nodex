@@ -39,12 +39,22 @@ describe("FileLinkAnchor", () => {
     const path = "C:/repo/file.md";
     const open = vi.fn(async () => true);
     const request = { hostId, target: { path }, label: "File", open, x: 1, y: 2 };
-    invoke.mockResolvedValue({ contents: "remote content" });
+    invoke.mockImplementation(async (channel) =>
+      channel === "read-file-metadata" ? { contentKind: "text" } : { contents: "remote content" },
+    );
     menu.show.mockResolvedValue("file-reference:copy-contents");
     await openFileReferenceContextMenu(request);
+    expect(invoke).toHaveBeenCalledWith(
+      "read-file-metadata",
+      expect.objectContaining({ hostId, path }),
+    );
     expect(invoke).toHaveBeenCalledWith("read-file", { hostId, path, maxBytes: 2 * 1024 * 1024 });
     expect(menu.copy).toHaveBeenCalledWith("remote content");
-    for (const selection of ["file-reference:reveal", "file-reference:open-with:vscode"]) {
+    for (const selection of [
+      "file-reference:reveal",
+      "file-reference:preferred",
+      "file-reference:open-with:vscode",
+    ]) {
       menu.show.mockResolvedValue(selection);
       await openFileReferenceContextMenu(request);
     }

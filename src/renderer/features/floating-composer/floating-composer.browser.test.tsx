@@ -1,7 +1,7 @@
 import "../../globals.css";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithAppMaitai } from "@/test/app-maitai";
@@ -17,7 +17,11 @@ import {
   RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_PX,
   RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR,
 } from "@/lib/right-panel-composer-overlay-reserve";
-import { FloatingComposer, type FloatingComposerState } from "./floating-composer";
+import {
+  FloatingComposer,
+  type FloatingComposerMenuItem,
+  type FloatingComposerState,
+} from "./floating-composer";
 
 const PANE = { left: 40, top: 30, width: 1000, height: 700 };
 const PREFERENCE_KEY = "nodex:floating-composer:v1";
@@ -34,11 +38,13 @@ const SHOWN: FloatingComposerState = { visible: true };
 function Harness({
   initialState = SHOWN,
   transcript,
+  menuItems,
   groupWidth,
   anchorToGroup = false,
 }: {
   initialState?: FloatingComposerState;
   transcript?: ReactNode;
+  menuItems?: readonly FloatingComposerMenuItem[];
   groupWidth?: number;
   anchorToGroup?: boolean;
 }) {
@@ -74,6 +80,7 @@ function Harness({
         }}
         title="Plan the release"
         transcript={transcript}
+        menuItems={menuItems}
         expanded={expanded}
         onExpandedChange={setExpanded}
       >
@@ -272,8 +279,10 @@ describe("FloatingComposer", () => {
     expect(states.at(-1)).toMatchObject({ visible: true });
   });
 
-  test("minimizes from the move menu into its corner and restores the same conversation where it was read", async () => {
+  test("minimizes into its corner and restores the same conversation where it was read", async () => {
+    const openFullView = vi.fn();
     const view = renderHarness({
+      menuItems: [{ id: "full-view", label: "Open in full view", onSelect: openFullView }],
       transcript: (
         <div data-testid="conversation-log" className="min-h-0 flex-1 overflow-y-auto">
           <p style={{ height: 2000 }}>Shipped the release notes.</p>
@@ -303,10 +312,15 @@ describe("FloatingComposer", () => {
     await act(async () => {
       await userEvent.click(view.getByRole("button", { name: "Move composer" }));
     });
-    // The menu is portaled; its clicks must reach the item rather than the handle.
-    const item = await view.findByRole("menuitem", { name: "Minimize composer" });
+    // The portaled placement item still receives its click through the drag handle.
+    const placement = await view.findByRole("menuitem", { name: "Open in full view" });
     await act(async () => {
-      await userEvent.click(item);
+      await userEvent.click(placement);
+    });
+    expect(openFullView).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await userEvent.click(view.getByRole("button", { name: "Minimize composer" }));
     });
     const restore = await view.findByRole("button", { name: "Restore composer" });
     expect(states.at(-1)).toMatchObject({ visible: false });

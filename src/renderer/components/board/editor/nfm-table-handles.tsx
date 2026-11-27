@@ -3,7 +3,6 @@ import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-r
 import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import {
   AddButton,
-  DeleteButton,
   ExtendButton,
   SplitButton,
   TableCellButton,
@@ -30,11 +29,14 @@ import {
   type DefaultStyleSchema,
 } from "@blocknote/core";
 import { TableHandlesExtension } from "@blocknote/core/extensions";
-import { ArrowLeft, ArrowRight, CircleX, Scissors } from "@/components/shared/icons/generic-icons";
+import { ArrowLeft, ArrowRight, Scissors } from "@/components/shared/icons/generic-icons";
+import { NodexMenuRowContent } from "@/components/ui/menu-row";
+import { NodexDropdownSeparator } from "@/components/ui/dropdown";
 import type { ReactNode } from "react";
 import {
   CheckmarkIcon,
   ChevronDownIcon,
+  DeleteIcon,
   DragHandleDotsIcon,
   MoveDownIcon,
   MoveUpIcon,
@@ -156,23 +158,35 @@ function NfmTableActionMenuItem({
   icon,
   onClick,
   shortcut,
+  tone = "default",
 }: {
   children: ReactNode;
   disabled?: boolean;
   icon: ReactNode;
   onClick?: () => void;
   shortcut?: string;
+  tone?: "default" | "danger";
 }) {
   const Components = useComponentsContext()!;
 
   return (
     <Components.Generic.Menu.Item disabled={disabled} onClick={onClick}>
-      <NfmTableMenuRowContent
-        icon={icon}
-        rightSlot={shortcut ? <span>{shortcut}</span> : undefined}
-      >
-        {children}
-      </NfmTableMenuRowContent>
+      {tone === "danger" ? (
+        <NodexMenuRowContent
+          leading={<span className="flex w-5 justify-center">{icon}</span>}
+          tone={tone}
+          labelClassName="text-token-error-foreground"
+        >
+          {children}
+        </NodexMenuRowContent>
+      ) : (
+        <NfmTableMenuRowContent
+          icon={icon}
+          rightSlot={shortcut ? <span>{shortcut}</span> : undefined}
+        >
+          {children}
+        </NfmTableMenuRowContent>
+      )}
     </Components.Generic.Menu.Item>
   );
 }
@@ -545,7 +559,12 @@ function NfmTableHandleMutationButton({
   };
 
   return (
-    <NfmTableActionMenuItem icon={icon} onClick={mutateTable} shortcut={shortcut}>
+    <NfmTableActionMenuItem
+      icon={icon}
+      onClick={mutateTable}
+      shortcut={shortcut}
+      tone={action === "clear" ? "danger" : "default"}
+    >
       {children}
     </NfmTableActionMenuItem>
   );
@@ -582,11 +601,27 @@ function NfmTableCellClearButton() {
   };
 
   return (
-    <NfmTableActionMenuItem
-      icon={<CircleX className="size-5" aria-hidden="true" />}
-      onClick={clearCell}
-    >
+    <NfmTableActionMenuItem icon={<DeleteIcon />} tone="danger" onClick={clearCell}>
       {intl.formatMessage({ id: "editor.nfmTableHandles.clear", defaultMessage: "Clear contents" })}
+    </NfmTableActionMenuItem>
+  );
+}
+
+function NfmTableHandleDeleteButton({ orientation }: Pick<TableHandleMenuProps, "orientation">) {
+  const intl = useIntl();
+  const tableHandles = useExtension(TableHandlesExtension);
+  const index = useExtensionState(TableHandlesExtension, {
+    selector: (state) => (orientation === "column" ? state?.colIndex : state?.rowIndex),
+  });
+  if (!tableHandles || index === undefined) return null;
+
+  return (
+    <NfmTableActionMenuItem
+      icon={<NfmSideMenuDeleteIcon />}
+      tone="danger"
+      onClick={() => tableHandles.removeRowOrColumn(index, orientation)}
+    >
+      {intl.formatMessage({ id: "editor.nfmTableHandles.delete", defaultMessage: "Delete" })}
     </NfmTableActionMenuItem>
   );
 }
@@ -621,21 +656,6 @@ function NfmTableHandleMenu(props: TableHandleMenuProps) {
           defaultMessage: "Duplicate",
         })}
       </NfmTableHandleMutationButton>
-      <NfmTableHandleMutationButton
-        action="clear"
-        icon={<CircleX className="size-5" aria-hidden="true" />}
-        orientation={props.orientation}
-      >
-        {intl.formatMessage({
-          id: "editor.nfmTableHandles.clear",
-          defaultMessage: "Clear contents",
-        })}
-      </NfmTableHandleMutationButton>
-      <DeleteButton orientation={props.orientation}>
-        <NfmTableMenuRowContent icon={<NfmSideMenuDeleteIcon />}>
-          {intl.formatMessage({ id: "editor.nfmTableHandles.delete", defaultMessage: "Delete" })}
-        </NfmTableMenuRowContent>
-      </DeleteButton>
       <TableHeaderRowButton orientation={props.orientation}>
         <NfmTableMenuRowContent icon={<NfmSideMenuTableHeaderIcon />}>
           {intl.formatMessage({
@@ -652,6 +672,18 @@ function NfmTableHandleMenu(props: TableHandleMenuProps) {
           })}
         </NfmTableMenuRowContent>
       </TableHeaderColumnButton>
+      <NodexDropdownSeparator />
+      <NfmTableHandleMutationButton
+        action="clear"
+        icon={<DeleteIcon />}
+        orientation={props.orientation}
+      >
+        {intl.formatMessage({
+          id: "editor.nfmTableHandles.clear",
+          defaultMessage: "Clear contents",
+        })}
+      </NfmTableHandleMutationButton>
+      <NfmTableHandleDeleteButton orientation={props.orientation} />
     </TableHandleMenu>
   );
 }
@@ -666,6 +698,7 @@ function NfmTableCellMenu() {
           {intl.formatMessage({ id: "editor.nfmTableHandles.split", defaultMessage: "Split cell" })}
         </NfmTableMenuRowContent>
       </SplitButton>
+      <NodexDropdownSeparator />
       <NfmTableCellClearButton />
     </TableCellMenu>
   );
