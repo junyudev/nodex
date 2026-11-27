@@ -185,7 +185,7 @@ async function main(): Promise<void> {
   }
 
   throw new Error(
-    "Usage: desktop-build.ts <build|core-dev|rust-dev|rust-release|stage-node|stage-ripgrep|stage-codex|stage-native|package|package-prepared> [darwin arm64|win32 x64] [--cached]",
+    "Usage: desktop-build.ts <build|core-dev|rust-dev|rust-release|stage-node|stage-ripgrep|stage-codex|stage-native|package|package-prepared> [darwin|win32] [arm64|x64] [--cached]",
   );
 }
 

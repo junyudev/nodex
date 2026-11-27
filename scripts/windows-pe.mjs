@@ -7,7 +7,7 @@ export { isWindowsSystemDll };
 import { WINDOWS_PE_MACHINE as machines } from "../src/shared/windows-pe-header.mjs";
 export { inspectWindowsPe } from "../src/shared/windows-pe-header.mjs";
 
-/** Read the CPU identifier from the PE signature and COFF header. */
+/** Inspect the PE signature and COFF Machine, never a filename or emulation result. */
 function readPeMachine(file) {
   const descriptor = openSync(file, "r");
   const read = (length, position) => {
@@ -177,14 +177,18 @@ export function assertPeDependencies(file, expected, options = {}) {
 
 export function readPeArchitecture(file) {
   const machine = readPeMachine(file);
-  if (machine !== machines.x64)
-    throw new Error(`Unsupported PE Machine 0x${machine.toString(16)}: ${file}`);
-  return "x64";
+  const architecture = Object.keys(machines).find((key) => machines[key] === machine);
+  if (!architecture) throw new Error(`Unsupported PE Machine 0x${machine.toString(16)}: ${file}`);
+  return architecture;
 }
 
 export function assertPeArchitecture(file, expected) {
-  if (expected !== "x64") throw new Error(`Unsupported Windows architecture: ${expected}`);
-  readPeArchitecture(file);
+  if (!(expected in machines)) throw new Error(`Unsupported Windows architecture: ${expected}`);
+  const actual = readPeArchitecture(file);
+  if (actual !== expected)
+    throw new Error(
+      `Windows architecture mismatch: expected ${expected}, found ${actual}: ${file}`,
+    );
 }
 
 /** Inventory includes renamed PE images, never symlinks or special files. */
@@ -214,7 +218,7 @@ export function listWindowsPeImages(root) {
 
 /** Every shipped PE must match its CPU and have a clean-machine dependency closure. */
 export function verifyWindowsArchitectureClosure(root, expected, options = {}) {
-  if (expected !== "x64") throw new Error(`Unsupported Windows architecture: ${expected}`);
+  if (!(expected in machines)) throw new Error(`Unsupported Windows architecture: ${expected}`);
   const files = listWindowsPeImages(root);
   if (!files.length) throw new Error(`Windows payload has no native images: ${root}`);
   return files.filter((relative) => {

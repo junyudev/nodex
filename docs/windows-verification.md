@@ -1,14 +1,14 @@
 # Windows verification
 
-Nodex supports Windows 11 on x64. Windows evidence comes from
-three layers. Each layer proves what the cheaper layer cannot; none substitutes for
-another.
+Nodex ships for Windows 11 on x64 and also builds natively on arm64 for development
+and verification. Windows evidence comes from three layers. Each layer proves what
+the cheaper layer cannot; none substitutes for another.
 
-| Layer       | Environment                                        | Proves                                                                                                                                |
-| ----------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Automated   | GitHub `windows-latest` (Windows Server, x64)      | Native builds, Rust and application suites, packaging and closure, silent install, packaged Core and Agent Runtime startup, uninstall |
-| Interactive | Windows 11 virtual machine on an Apple silicon Mac | Windows semantics under a standard user: UI, input, shell integration, installer and upgrade flows                                    |
-| Acceptance  | Physical x64 Windows 11 PC                         | GPU rendering, representative performance, power and session lifecycle, physical peripherals                                          |
+| Layer       | Environment                                               | Proves                                                                                                                                |
+| ----------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Automated   | GitHub `windows-latest` (x64), `windows-11-arm` on demand | Native builds, Rust and application suites, packaging and closure, silent install, packaged Core and Agent Runtime startup, uninstall |
+| Interactive | Windows 11 arm64 virtual machine on an Apple silicon Mac  | Windows semantics under a standard user: UI, input, shell integration, installer and upgrade flows                                    |
+| Acceptance  | Physical x64 Windows 11 PC                                | GPU rendering, representative performance, power and session lifecycle, physical peripherals                                          |
 
 The automated layer is defined in [`.github/workflows/windows.yml`](../.github/workflows/windows.yml)
 and runs the full `unit`, `core-client`, `main`, `renderer`, and `integration` suites.
@@ -94,9 +94,8 @@ timing luck fails there first. Suites follow these rules on every platform:
   the VC++ Redistributable installed globally. Clean-machine DLL availability is
   therefore checked statically, including delay imports and transitive app-local
   dependencies, by the [runtime closure policy](release-windows.md#clean-machine-dependency-policy).
-- **The virtual machine** runs on Apple silicon, so the x64 build runs through emulation
-  and its timing is not representative. The package is therefore always proven on a
-  native x64 runner.
+- **The virtual machine** builds and runs arm64 natively for development and
+  interactive checks. A native x64 runner verifies the published x64 package.
   The machine also has no nested virtualization, so WSL 2, Windows Sandbox, and
   virtualization-based security are unavailable.
 - **Only physical hardware** exercises real GPU drivers, mixed-DPI monitors,
@@ -106,7 +105,8 @@ timing luck fails there first. Suites follow these rules on every platform:
 
 Use Windows 11 Pro or Enterprise in a hypervisor with snapshot support.
 
-- Allocate 6–8 virtual CPUs, 12–16 GB of memory, and about 150 GB of disk.
+- Allocate 6–8 virtual CPUs, 8 GB of memory by default, and about 150 GB of disk.
+  Raise memory temporarily for in-VM release builds.
 - Create a **standard (non-administrator)** account whose name contains a space and
   non-ASCII characters, for example `测试 用户`. Keep UAC and Defender real-time
   protection at their defaults.

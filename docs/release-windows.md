@@ -1,19 +1,19 @@
 # Windows packaging runbook
 
-Nodex builds its Windows 11 installer natively for x64. The Windows
-workflow and official release pipeline share one native distribution implementation.
-Stable releases and Nightly prereleases include it in the same verified
-Release Bundle as macOS arm64. [Application releases](release.md) owns identity,
-certification, protected finalization, promotion and Rehearsal.
+Nodex builds Windows 11 installers natively for x64 and arm64. Stable releases,
+Nightly, and Windows update feeds publish x64 only. The Windows workflow and
+official release pipeline share one native packaging and verification path.
+[Application releases](release.md) owns identity, certification, protected
+finalization, promotion and Rehearsal.
 
 ## Build an installer
 
-Use the [Windows development prerequisites](development.md#windows-11-x64)
-and a clean worktree on a native x64 Windows host:
+Use the [Windows development prerequisites](development.md#windows-11)
+and a clean worktree on a native Windows host:
 
 ```powershell
 vp install --frozen-lockfile
-vp run package:win:x64
+vp run package:win
 ```
 
 Packaging builds the application, stages the
@@ -21,8 +21,13 @@ native runtime, verifies the prepared output, then invokes electron-builder NSIS
 The reusable Windows distribution runs build, staging, architecture verification,
 packaging, and the installed-app probe through one repository-owned Release Module. Its `package:win:prepared <arch>` entrypoint verifies the existing prepared
 build and generates the Windows update manifest before packaging; it does not rebuild or restage source.
-A host that is not native x64 is rejected. The installer is
-`dist/Nodex-<version>-win-x64-setup.exe`.
+`package:win` uses the host CPU. The explicit `package:win:x64` and
+`package:win:arm64` commands require the matching host. The installer is
+`dist/Nodex-<version>-win-<arch>-setup.exe`.
+
+To get an arm64 installer from CI, dispatch the **Windows** workflow with
+`arch=arm64`. Download the `nodex-windows-arm64-<source-sha>` workflow artifact.
+The installer has updates disabled.
 
 The one-click installer is per-user, includes no elevation helper, and requests no administrator access.
 Its application identity is `app.jyu.nodex`. It installs under the user's Programs
@@ -141,7 +146,7 @@ it, including the Swift helper's retail CRT. The build worker never adds or
 substitutes DLLs in the sealed Desktop Tool tree.
 
 Codex archive hashes, file inventories, entrypoint hashes and canonical runtime
-metadata digests are pinned for Windows x64. Node's executable
+metadata digests are pinned for Windows x64 and arm64. Node's executable
 hash/size and license hash are pinned in `node-runtime.lock.json`. node-pty's
 matching N-API prebuild is copied to a private output and loaded by staged Node;
 the root dependency remains Electron's own rebuild. Only each runtime's required

@@ -128,6 +128,7 @@ test.each(["callback", "sync"] as const)(
       "src/.hidden.ts": "",
       "src/node_modules/excluded.ts": "",
       "node_modules/node-pty/prebuilds/win32-x64/conpty.node": "",
+      "node_modules/node-pty/prebuilds/win32-arm64/conpty.node": "",
       "node_modules/node-pty/prebuilds/darwin-arm64/pty.node": "",
       "node_modules/node-pty/build/Release/pty.node": "",
       "node_modules/node-pty/build/Release/nested/support.dll": "",

@@ -74,13 +74,15 @@ describe("parseBrowserRuntimeReleaseLock", () => {
     expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow("must contain exactly darwin-arm64");
   });
 
-  test("records when Windows has no verified runtime", () => {
+  test("records Windows targets with no verified runtime", () => {
     const lock = makeLock();
     const assets = lock.assets as Record<string, unknown>;
     assets["win32-x64"] = null;
+    assets["win32-arm64"] = null;
 
     const parsed = parseBrowserRuntimeReleaseLock(lock);
     expect(parsed.assets["win32-x64"]).toBeNull();
+    expect(parsed.assets["win32-arm64"]).toBeNull();
     expect(parsed.assets["darwin-arm64"].url).not.toBeNull();
   });
 
@@ -97,15 +99,15 @@ describe("parseBrowserRuntimeReleaseLock", () => {
     };
     const assets = lock.assets as Record<string, unknown>;
     Object.assign(assets, windowsBrowserRuntimeLockFixture(desktopBuild));
-    const x64 = assets["win32-x64"] as Record<string, unknown>;
-    x64.url = `https://github.com/example/nodex/releases/download/${tag}/${x64.assetName}`;
+    const arm64 = assets["win32-arm64"] as Record<string, unknown>;
+    arm64.url = `https://github.com/example/nodex/releases/download/${tag}/${arm64.assetName}`;
 
     const parsed = parseBrowserRuntimeReleaseLock(lock);
-    expect(browserRuntimeReleaseForTarget(parsed, "win32-x64").tag).toBe(tag);
+    expect(browserRuntimeReleaseForTarget(parsed, "win32-arm64").tag).toBe(tag);
     expect(browserRuntimeReleaseForTarget(parsed, "darwin-arm64").tag).toBe(lock.tag);
 
-    x64.url = String(x64.url).replace(tag, String(lock.tag));
-    expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow("win32-x64 URL does not match");
+    arm64.url = String(arm64.url).replace(tag, String(lock.tag));
+    expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow("win32-arm64 URL does not match");
   });
 
   test("rejects non-HTTPS release assets", () => {

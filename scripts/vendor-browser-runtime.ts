@@ -742,7 +742,7 @@ function parseCliOptions(argv: string[]): VendorOptions {
     !reuseExisting &&
     codexCompatibilityVersion &&
     outputPath &&
-    targetArch === "x64"
+    (targetArch === "x64" || targetArch === "arm64")
   ) {
     return { packageRoot, codexCompatibilityVersion, outputPath, targetArch };
   }
@@ -757,7 +757,7 @@ function parseCliOptions(argv: string[]): VendorOptions {
       "Usage: vendor-browser-runtime.ts " +
         "--codex-compatibility-version <version> --target-arch <arm64> " +
         "--app <ChatGPT.app> --out <directory> [--reuse-existing]\n" +
-        "Windows: --windows-package <extracted MSIX directory> --target-arch <x64> " +
+        "Windows: --windows-package <extracted MSIX directory> --target-arch <x64|arm64> " +
         "--codex-compatibility-version <version> --out <directory>",
     );
   }

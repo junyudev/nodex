@@ -222,6 +222,7 @@ describe("Browser runtime publication", () => {
         {
           assets: {
             "win32-x64": null,
+            "win32-arm64": null,
             "darwin-arm64": {
               archiveSha256: arm64Archive.archiveSha256,
               archiveSize: arm64Archive.archiveSize,
@@ -259,6 +260,9 @@ describe("Browser runtime publication", () => {
       await expect(
         verifyBrowserRuntimePublishInput({ ...options, windowsX64Path: options.arm64Path }),
       ).rejects.toThrow("runtime is unavailable for win32-x64");
+      await expect(
+        verifyBrowserRuntimePublishInput({ ...options, windowsArm64Path: options.arm64Path }),
+      ).rejects.toThrow("runtime is unavailable for win32-arm64");
       await expect(
         verifyBrowserRuntimePublishInput({ ...options, repo: "example/wrong-repository" }),
       ).rejects.toThrow("does not match its release lock");

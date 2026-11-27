@@ -135,7 +135,7 @@ describe("electron-builder runtime resources", () => {
       icon: "icon.ico",
       requestedExecutionLevel: "asInvoker",
       signExecutable: false,
-      target: [{ target: "nsis", arch: ["x64"] }],
+      target: "nsis",
     });
     expect(config.nsis).toMatchObject({
       differentialPackage: false,

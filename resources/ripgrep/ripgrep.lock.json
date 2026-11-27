@@ -24,6 +24,16 @@
         "size": 1878284
       }
     },
+    "win32-arm64": {
+      "binarySha256": "d33a29a9ef03c9f4c03be9e8d88498e6e2d2e566d64cdbdef97f9afc8f13120c",
+      "binarySize": 3859456,
+      "archive": {
+        "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-aarch64-pc-windows-msvc.zip",
+        "member": "ripgrep-15.2.0-aarch64-pc-windows-msvc/rg.exe",
+        "sha256": "e4abca10c3a64ebea742667dd7009449d49403db5460dd6873e389fa2945360f",
+        "size": 1640124
+      }
+    },
     "win32-x64": {
       "binarySha256": "14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680",
       "binarySize": 4218880,

@@ -112,7 +112,9 @@ export function buildWindowsDistribution(options: {
   readonly identityPath: string;
   readonly outputDirectory: string;
   readonly release: boolean;
-}): ArchitectureBuildManifest {
+}): ArchitectureBuildManifest | undefined {
+  if (options.release && options.architecture !== "x64")
+    throw new Error("Official Windows distribution requires x64.");
   if (process.platform !== "win32" || process.arch !== options.architecture)
     throw new Error("Windows distribution requires the matching native runner and Node CPU.");
   const cwd = resolve(options.cwd);
@@ -141,7 +143,11 @@ export function buildWindowsDistribution(options: {
   task("run", "package:win:prepared", options.architecture);
   assertSourceIdentity(cwd, identity);
 
-  const appRoot = join(cwd, "dist", "win-unpacked");
+  const appRoot = join(
+    cwd,
+    "dist",
+    options.architecture === "x64" ? "win-unpacked" : "win-arm64-unpacked",
+  );
   const resources = join(appRoot, "resources");
   const preparedPath = join(cwd, ".generated/prepared-electron-build.json");
   const prepared = JSON.parse(readFileSync(preparedPath, "utf8")) as PreparedElectronBuildManifest;
@@ -214,7 +220,10 @@ export function buildWindowsDistribution(options: {
     join(cwd, "dist", `Nodex-${identity.version}-win-${options.architecture}-setup.exe`),
     installerPath,
   );
-  const architecture = `windows-${options.architecture}` as const;
+  copyFileSync(probePath, join(output, "installed-app-probe.json"));
+  // Standalone verification artifacts do not enter the application release bundle.
+  if (options.architecture === "arm64") return;
+  const architecture = "windows-x64";
   const artifacts = [
     {
       architecture,
@@ -254,7 +263,6 @@ export function buildWindowsDistribution(options: {
       2,
     )}\n`,
   );
-  copyFileSync(probePath, join(output, "installed-app-probe.json"));
   const manifest = parseArchitectureBuildManifest({
     schemaVersion: 3,
     architecture,

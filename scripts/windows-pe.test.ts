@@ -4,6 +4,7 @@ import { join, dirname } from "node:path";
 import { createRequire } from "node:module";
 import { afterEach, expect, test } from "vite-plus/test";
 import {
+  assertPeArchitecture,
   readPeArchitecture,
   readPeImports,
   assertPeDependencies,
@@ -23,10 +24,16 @@ const fixture = () => {
   return root;
 };
 
-test("reads x64 from the COFF header", () => {
+test.each([
+  ["x64", 0x8664],
+  ["arm64", 0xaa64],
+] as const)("reads %s from the COFF header", (arch, machine) => {
   const file = join(fixture(), "native.node");
-  writeFileSync(file, image(0x8664));
-  expect(readPeArchitecture(file)).toBe("x64");
+  writeFileSync(file, image(machine));
+  expect(readPeArchitecture(file)).toBe(arch);
+  expect(() => assertPeArchitecture(file, arch === "x64" ? "arm64" : "x64")).toThrow(
+    "architecture mismatch",
+  );
 });
 
 test.each([
@@ -59,28 +66,31 @@ test("rejects a foreign architecture anywhere in a Windows payload", () => {
 
 test("Windows targets select native Rust triples and omit macOS helpers", () => {
   expect(desktopBuildTarget("win32", "x64").rustTarget).toBe("x86_64-pc-windows-msvc");
-  expect(desktopBuildTarget("win32", "x64").rustPackages).toEqual([
+  expect(desktopBuildTarget("win32", "arm64").rustTarget).toBe("aarch64-pc-windows-msvc");
+  expect(desktopBuildTarget("win32", "arm64").rustPackages).toEqual([
     "nodex-core-server",
     "nodex-cli",
     "nodex-platform",
   ]);
-  expect(() => desktopBuildTarget("win32", "arm64")).toThrow("Unsupported Nodex desktop target");
+  expect(() => desktopBuildTarget("win32", "ia32")).toThrow("Unsupported Nodex desktop target");
 });
 
 test("inspects renamed PE images as part of the payload closure", () => {
   const root = fixture();
   writeFileSync(join(root, "hidden-image.bin"), image(0xaa64));
-  expect(() => verifyWindowsArchitectureClosure(root, "x64")).toThrow("Unsupported PE Machine");
+  expect(() => verifyWindowsArchitectureClosure(root, "x64")).toThrow("architecture mismatch");
 });
 
 test("recognizes only the installed NSIS maintenance bootstrap outside the application CPU closure", () => {
   const root = fixture();
-  writeFileSync(join(root, "Nodex.exe"), image(0x8664));
+  writeFileSync(join(root, "Nodex.exe"), image(0xaa64));
   writeFileSync(join(root, "Uninstall Nodex.exe"), image(0x14c));
-  expect(() => verifyWindowsArchitectureClosure(root, "x64")).toThrow("Unsupported PE Machine");
-  expect(verifyWindowsArchitectureClosure(root, "x64", { installed: true })).toEqual(["Nodex.exe"]);
-  writeFileSync(join(root, "Uninstall Nodex.exe"), image(0xaa64));
-  expect(() => verifyWindowsArchitectureClosure(root, "x64", { installed: true })).toThrow(
+  expect(() => verifyWindowsArchitectureClosure(root, "arm64")).toThrow("Unsupported PE Machine");
+  expect(verifyWindowsArchitectureClosure(root, "arm64", { installed: true })).toEqual([
+    "Nodex.exe",
+  ]);
+  writeFileSync(join(root, "Uninstall Nodex.exe"), image(0x8664));
+  expect(() => verifyWindowsArchitectureClosure(root, "arm64", { installed: true })).toThrow(
     "Unexpected NSIS uninstaller machine",
   );
 });
@@ -122,7 +132,7 @@ test.each(["import", "delay"])(
     writeFileSync(join(root, "vcruntime140.dll"), image(0x8664, ["missing.dll"]));
     expect(() => verifyWindowsArchitectureClosure(root, "x64")).toThrow("missing.dll");
     writeFileSync(join(root, "vcruntime140.dll"), image(0xaa64));
-    expect(() => verifyWindowsArchitectureClosure(root, "x64")).toThrow("Unsupported PE Machine");
+    expect(() => verifyWindowsArchitectureClosure(root, "x64")).toThrow("architecture mismatch");
     writeFileSync(
       join(root, "vcruntime140.dll"),
       image(0x8664, [
@@ -161,22 +171,26 @@ test("fails closed on malformed tables and DLL names", () => {
   expect(() => readPeImports(file)).toThrow("DLL basename");
 });
 
-test("closes the complete pinned x64 terminal payload, including nested helpers", () => {
-  const arch = "x64";
-  const machine = 0x8664;
-  const require = createRequire(import.meta.url);
-  const root = join(dirname(require.resolve("node-pty/package.json")), `prebuilds/win32-${arch}`);
-  const host = join(fixture(), "node.exe");
-  writeFileSync(host, image(machine));
-  const files = verifyWindowsArchitectureClosure(root, arch, { nodeHost: host });
-  expect(files).toContain("conpty/OpenConsole.exe");
-});
+test.each([
+  ["x64", 0x8664],
+  ["arm64", 0xaa64],
+] as const)(
+  "closes the complete pinned %s terminal payload, including nested helpers",
+  (arch, machine) => {
+    const require = createRequire(import.meta.url);
+    const root = join(dirname(require.resolve("node-pty/package.json")), `prebuilds/win32-${arch}`);
+    const host = join(fixture(), "node.exe");
+    writeFileSync(host, image(machine));
+    const files = verifyWindowsArchitectureClosure(root, arch, { nodeHost: host });
+    expect(files).toContain("conpty/OpenConsole.exe");
+  },
+);
 
 test.skipIf(process.platform !== "win32")(
   "closes the installed native Claude SDK payload before packaging",
   () => {
     const arch = process.arch;
-    if (arch !== "x64") throw new Error(`Unsupported Windows CPU ${arch}`);
+    if (arch !== "x64" && arch !== "arm64") throw new Error(`Unsupported Windows CPU ${arch}`);
     const require = createRequire(import.meta.url);
     const sdkRequire = createRequire(require.resolve("@anthropic-ai/claude-agent-sdk"));
     const root = dirname(

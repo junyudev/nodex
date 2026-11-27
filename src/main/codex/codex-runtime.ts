@@ -153,7 +153,8 @@ export function pinnedCodexAppServerIdentity(
   arch: string,
 ): AppServerRuntimeIdentity | undefined {
   const target = `${platform}-${arch}`;
-  if (target !== "darwin-arm64" && target !== "win32-x64") return undefined;
+  if (target !== "darwin-arm64" && target !== "win32-arm64" && target !== "win32-x64")
+    return undefined;
   return {
     entrypointSha256: release.builds[target].entrypointSha256,
     protocolSchemaFingerprint: release.protocolSchema.sha256,

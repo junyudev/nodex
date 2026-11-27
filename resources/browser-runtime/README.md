@@ -90,7 +90,8 @@ Updating the runtime is an explicit maintainer workflow:
      --arm64 .generated/browser-runtime-release/<arm64-asset>.tar.gz
    ```
 
-   Include `--win32-x64 <archive>` for the conformance-tested Windows target.
+   Include `--win32-x64 <archive>` and `--win32-arm64 <archive>` for the
+   conformance-tested Windows targets.
    Set the Windows asset entry to null when no conformance-tested archive can be
    published.
 

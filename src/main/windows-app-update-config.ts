@@ -9,27 +9,34 @@ export const windowsUpdateFeedUrls = (architecture: "x64") => ({
   nightly: `https://nodex.jyu.app/updates/nightly/windows-${architecture}/appcast.xml`,
 });
 
-const manifest = z
-  .object({
-    schemaVersion: z.literal(1),
+const manifestFields = {
+  schemaVersion: z.literal(1),
+  buildVersion: z.string().regex(APP_UPDATE_BUILD_VERSION_PATTERN),
+  publicKey: z.literal(APP_UPDATE_PUBLIC_KEY),
+};
+
+const manifest = z.discriminatedUnion("updates", [
+  z.strictObject({
+    ...manifestFields,
+    architecture: z.enum(["x64", "arm64"]),
+    updates: z.literal("disabled"),
+    feedUrls: z.null(),
+  }),
+  z.strictObject({
+    ...manifestFields,
     architecture: z.literal("x64"),
-    updates: z.enum(["disabled", "enabled"]),
-    buildVersion: z.string().regex(APP_UPDATE_BUILD_VERSION_PATTERN),
-    feedUrls: z.object({ stable: z.string(), nightly: z.string() }).strict().nullable(),
-    publicKey: z.literal(APP_UPDATE_PUBLIC_KEY),
-  })
-  .strict();
+    updates: z.literal("enabled"),
+    feedUrls: z.strictObject({ stable: z.string(), nightly: z.string() }),
+  }),
+]);
 
 export type WindowsAppUpdateConfig = z.infer<typeof manifest>;
 
 export function parseWindowsAppUpdateConfig(value: unknown): WindowsAppUpdateConfig {
   const config = manifest.parse(value);
+  if (config.updates === "disabled") return config;
   const expected = windowsUpdateFeedUrls(config.architecture);
-  if (config.updates === "disabled") {
-    if (config.feedUrls !== null) throw new Error("Disabled Windows updates must have no feeds.");
-    return config;
-  }
-  if (config.feedUrls?.stable !== expected.stable || config.feedUrls.nightly !== expected.nightly) {
+  if (config.feedUrls.stable !== expected.stable || config.feedUrls.nightly !== expected.nightly) {
     throw new Error("Packaged Windows update feeds do not match their architecture.");
   }
   return config;

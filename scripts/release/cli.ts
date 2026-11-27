@@ -242,7 +242,8 @@ const main = async (): Promise<void> => {
   }
   if (command === "build-windows") {
     const architecture = required(flags, "arch");
-    if (architecture !== "x64") throw new Error("Windows --arch must be x64.");
+    if (architecture !== "x64" && architecture !== "arm64")
+      throw new Error("Windows --arch must be x64 or arm64.");
     buildWindowsDistribution({
       architecture,
       cwd: projectRoot,
@@ -401,6 +402,7 @@ const main = async (): Promise<void> => {
     await publishBrowserRuntime({
       arm64Path: required(flags, "arm64"),
       windowsX64Path: flags.get("win32-x64"),
+      windowsArm64Path: flags.get("win32-arm64"),
       lockPath: required(flags, "lock"),
       repo: required(flags, "repo"),
       tag: required(flags, "tag"),

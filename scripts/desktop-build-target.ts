@@ -1,5 +1,5 @@
 export type DesktopArchitecture = "x64" | "arm64";
-export type WindowsArchitecture = "x64";
+export type WindowsArchitecture = DesktopArchitecture;
 
 export type DesktopBuildTarget =
   | {
@@ -15,7 +15,7 @@ export type DesktopBuildTarget =
       readonly platform: "win32";
       readonly arch: WindowsArchitecture;
       readonly key: `win32-${WindowsArchitecture}`;
-      readonly rustTarget: "x86_64-pc-windows-msvc";
+      readonly rustTarget: "x86_64-pc-windows-msvc" | "aarch64-pc-windows-msvc";
       readonly executableSuffix: ".exe";
       readonly runtime: "windows";
       readonly rustPackages: readonly string[];
@@ -41,12 +41,12 @@ export function desktopBuildTarget(
       runtime: "macos",
       rustPackages: ["nodex-core-server", "nodex-cli", "nodex-browser-profile-helper"],
     };
-  if (platform === "win32" && arch === "x64")
+  if (platform === "win32" && (arch === "x64" || arch === "arm64"))
     return {
       platform,
       arch,
       key: `win32-${arch}`,
-      rustTarget: "x86_64-pc-windows-msvc",
+      rustTarget: arch === "x64" ? "x86_64-pc-windows-msvc" : "aarch64-pc-windows-msvc",
       executableSuffix: ".exe",
       runtime: "windows",
       rustPackages: ["nodex-core-server", "nodex-cli", "nodex-platform"],

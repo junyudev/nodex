@@ -15,6 +15,7 @@ const TARGET_TRIPLES = {
   "darwin-arm64": "aarch64-apple-darwin",
   "linux-arm64": "aarch64-unknown-linux-musl",
   "linux-x64": "x86_64-unknown-linux-musl",
+  "win32-arm64": "aarch64-pc-windows-msvc",
   "win32-x64": "x86_64-pc-windows-msvc",
 };
 const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -168,7 +169,7 @@ export function parseCodexAppServerReleaseLock(value) {
 
   const releaseTargets = Object.keys(TARGET_TRIPLES);
   if (!isObject(value.builds) || !hasExactKeys(value.builds, releaseTargets)) {
-    throw new Error("Codex builds must contain exactly the four supported release targets");
+    throw new Error("Codex builds must contain exactly the five supported release targets");
   }
   const builds = Object.fromEntries(
     releaseTargets.map((key) => {

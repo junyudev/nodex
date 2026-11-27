@@ -46,6 +46,7 @@ export const browserRuntimeReleaseArguments = (
 export type BrowserRuntimePublishOptions = {
   readonly arm64Path: string;
   readonly windowsX64Path?: string;
+  readonly windowsArm64Path?: string;
   readonly lockPath: string;
   readonly repo: string;
   readonly tag: string;
@@ -55,6 +56,7 @@ function localBrowserRuntimeArchives(options: BrowserRuntimePublishOptions) {
   return [
     { target: "darwin-arm64", platform: "darwin", arch: "arm64", path: options.arm64Path },
     { target: "win32-x64", platform: "win32", arch: "x64", path: options.windowsX64Path },
+    { target: "win32-arm64", platform: "win32", arch: "arm64", path: options.windowsArm64Path },
   ] as const;
 }
 

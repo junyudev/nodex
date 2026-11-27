@@ -2,7 +2,7 @@ import { z } from "zod";
 import releaseLock from "../../resources/agent-runtime/node-runtime.lock.json";
 
 export const nodeRuntimeRelease = releaseLock;
-export type StandaloneNodeArchitecture = "x64";
+export type StandaloneNodeArchitecture = "x64" | "arm64";
 export type StandaloneNodeTarget =
   | { readonly platform: "darwin"; readonly arch: "arm64" }
   | { readonly platform: "win32"; readonly arch: StandaloneNodeArchitecture };

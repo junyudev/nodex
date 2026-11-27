@@ -5,8 +5,14 @@ runs:
   steps:
     - name: Prepare native rustup
       shell: pwsh
+      env:
+        RUNNER_CPU: ${{ runner.arch }}
       run: |
-        $target = 'x86_64-pc-windows-msvc'
+        $target = switch ($env:RUNNER_CPU) {
+          'ARM64' { 'aarch64-pc-windows-msvc' }
+          'X64' { 'x86_64-pc-windows-msvc' }
+          default { throw "Unsupported Windows runner architecture: $env:RUNNER_CPU" }
+        }
         $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
         if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
           Invoke-WebRequest "https://static.rust-lang.org/rustup/dist/$target/rustup-init.exe" -OutFile "$env:RUNNER_TEMP\rustup-init.exe"

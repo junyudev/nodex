@@ -21,23 +21,28 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { MainConfig } from "../../app/MainConfig";
 
 export const OPENCODE_INSTALL_COMMAND = "curl -fsSL https://opencode.ai/v2/install | /bin/bash";
-export const openCodeInstallCommand = (platform: string): string =>
-  platform === "win32" ? openCodeWindowsInstallScript : OPENCODE_INSTALL_COMMAND;
+export const openCodeInstallCommand = (platform: string, architecture = "x64"): string =>
+  platform === "win32" ? openCodeWindowsInstallScript(architecture) : OPENCODE_INSTALL_COMMAND;
 
-const openCodeWindowsInstallScript = [
-  "$ErrorActionPreference = 'Stop'",
-  "$root = Join-Path $env:USERPROFILE '.opencode'",
-  "$temporary = if ($env:NODEX_OPENCODE_INSTALL_TEMP) { $env:NODEX_OPENCODE_INSTALL_TEMP } else { Join-Path $root ([Guid]::NewGuid().ToString()) }",
-  "New-Item -ItemType Directory -Path $temporary -Force | Out-Null",
-  "try {",
-  "Invoke-WebRequest -Uri 'https://opencode.ai/update/api/latest/cli/opencode/opencode-windows-x64-baseline.zip' -OutFile (Join-Path $temporary 'opencode.zip')",
-  "Expand-Archive -LiteralPath (Join-Path $temporary 'opencode.zip') -DestinationPath (Join-Path $temporary 'unpacked')",
-  "$binary = @(Get-ChildItem -LiteralPath (Join-Path $temporary 'unpacked') -Recurse -Filter 'opencode.exe')",
-  "if ($binary.Count -ne 1) { throw 'The download did not contain one OpenCode executable.' }",
-  "New-Item -ItemType Directory -Path (Join-Path $root 'bin') -Force | Out-Null",
-  "[IO.File]::Move($binary[0].FullName, (Join-Path $root 'bin\\opencode.exe'))",
-  "} finally { Remove-Item -LiteralPath $temporary -Recurse -Force }",
-].join("; ");
+export const openCodeWindowsInstallScript = (architecture: string): string => {
+  if (architecture !== "x64" && architecture !== "arm64")
+    throw new Error("Unsupported Windows architecture");
+  const artifact = architecture === "arm64" ? "arm64" : "x64-baseline";
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "$root = Join-Path $env:USERPROFILE '.opencode'",
+    "$temporary = if ($env:NODEX_OPENCODE_INSTALL_TEMP) { $env:NODEX_OPENCODE_INSTALL_TEMP } else { Join-Path $root ([Guid]::NewGuid().ToString()) }",
+    "New-Item -ItemType Directory -Path $temporary -Force | Out-Null",
+    "try {",
+    `Invoke-WebRequest -Uri 'https://opencode.ai/update/api/latest/cli/opencode/opencode-windows-${artifact}.zip' -OutFile (Join-Path $temporary 'opencode.zip')`,
+    "Expand-Archive -LiteralPath (Join-Path $temporary 'opencode.zip') -DestinationPath (Join-Path $temporary 'unpacked')",
+    "$binary = @(Get-ChildItem -LiteralPath (Join-Path $temporary 'unpacked') -Recurse -Filter 'opencode.exe')",
+    "if ($binary.Count -ne 1) { throw 'The download did not contain one OpenCode executable.' }",
+    "New-Item -ItemType Directory -Path (Join-Path $root 'bin') -Force | Out-Null",
+    "[IO.File]::Move($binary[0].FullName, (Join-Path $root 'bin\\opencode.exe'))",
+    "} finally { Remove-Item -LiteralPath $temporary -Recurse -Force }",
+  ].join("; ");
+};
 
 const MAXIMUM_INSTALL_OUTPUT_BYTES = 256 * 1024;
 const MAXIMUM_VERSION_OUTPUT_BYTES = 4 * 1024;
@@ -311,7 +316,7 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
                   "-ExecutionPolicy",
                   "Bypass",
                   "-Command",
-                  openCodeWindowsInstallScript,
+                  openCodeWindowsInstallScript(host.arch ?? "x64"),
                 ],
                 {
                   ...processOptions,

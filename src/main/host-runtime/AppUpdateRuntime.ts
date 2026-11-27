@@ -64,14 +64,15 @@ export interface AppUpdateRuntimeOptions {
 }
 
 const createUpdaterPlatform = (config: MainConfigValue): AppUpdaterPlatform | null => {
-  if (!config.isPackaged || !hostCapabilities(config.platform, config.arch).autoUpdate) return null;
-  if (config.platform === "win32" && config.arch === "x64") {
+  if (!config.isPackaged) return null;
+  if (config.platform === "win32" && (config.arch === "x64" || config.arch === "arm64")) {
     return createPackagedWindowsAppUpdaterPlatform({
       resourcesPath: config.resourcesPath,
       architecture: config.arch,
       directory: join(config.nodexHome, "updates", `windows-${config.arch}`),
     });
   }
+  if (!hostCapabilities(config.platform, config.arch).autoUpdate) return null;
   return createPackagedMacAppUpdaterPlatform({
     applicationBundlePath: resolve(config.resourcesPath, "..", ".."),
     architecture: "arm64",

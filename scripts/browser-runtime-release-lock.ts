@@ -51,6 +51,7 @@ export type BrowserRuntimeReleaseIdentity = {
 export type BrowserRuntimeReleaseLock = BrowserRuntimeReleaseIdentity & {
   assets: {
     "darwin-arm64": MacBrowserRuntimeReleaseAsset;
+    "win32-arm64": WindowsBrowserRuntimeReleaseAsset | null;
     "win32-x64": WindowsBrowserRuntimeReleaseAsset | null;
   };
   runtimeFamily: "browser";
@@ -66,7 +67,11 @@ export function browserRuntimeReleaseForTarget(
 }
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
-export const BROWSER_RUNTIME_RELEASE_TARGETS = ["darwin-arm64", "win32-x64"] as const;
+export const BROWSER_RUNTIME_RELEASE_TARGETS = [
+  "darwin-arm64",
+  "win32-arm64",
+  "win32-x64",
+] as const;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -105,7 +110,10 @@ function parseRuntimeVersions(value: unknown, label: string): RuntimeVersions {
 }
 
 function parseAsset(value: unknown, target: "darwin-arm64"): MacBrowserRuntimeReleaseAsset;
-function parseAsset(value: unknown, target: "win32-x64"): WindowsBrowserRuntimeReleaseAsset | null;
+function parseAsset(
+  value: unknown,
+  target: "win32-x64" | "win32-arm64",
+): WindowsBrowserRuntimeReleaseAsset | null;
 function parseAsset(
   value: unknown,
   target: BrowserRuntimeTargetKey,
@@ -162,7 +170,7 @@ function parseAsset(
     throw new Error(`Invalid Windows package metadata: ${label}`);
   }
   if (!isObject(value.appServer)) throw new Error(`Missing app-server identity: ${label}`);
-  const targetArch = "x64";
+  const targetArch = target === "win32-arm64" ? "arm64" : "x64";
   const sourceCommit = requireString(
     value.appServer.sourceCommit,
     `${label}.appServer.sourceCommit`,
@@ -235,13 +243,14 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
   const actualTargetKeys = Object.keys(value.assets).sort();
   if (JSON.stringify(actualTargetKeys) !== JSON.stringify(BROWSER_RUNTIME_RELEASE_TARGETS)) {
     throw new Error(
-      "Browser runtime release lock must contain exactly darwin-arm64 and win32-x64 entries",
+      "Browser runtime release lock must contain exactly darwin-arm64, win32-arm64 and win32-x64 entries",
     );
   }
   const lock: BrowserRuntimeReleaseLock = {
     ...parseReleaseIdentity(value, "release"),
     assets: {
       "darwin-arm64": parseAsset(value.assets["darwin-arm64"], "darwin-arm64"),
+      "win32-arm64": parseAsset(value.assets["win32-arm64"], "win32-arm64"),
       "win32-x64": parseAsset(value.assets["win32-x64"], "win32-x64"),
     },
     runtimeFamily: value.runtimeFamily,
