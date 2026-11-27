@@ -94,6 +94,7 @@ describe("Workbench profile preferences", () => {
         chats: true,
         // Lanes a stored Profile never chose start as a new one does: finished chats stay
         // folded, while Snoozed folds only the chats returning later.
+        projectInboxes: false,
         active: false,
         working: false,
         snoozed: false,

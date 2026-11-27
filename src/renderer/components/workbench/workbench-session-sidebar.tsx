@@ -858,7 +858,7 @@ function SidebarProjectThreadRowsContent({
 function SidebarThreadOrganizerSections({
   laneHolding,
   laneViewMenu,
-  projectInboxCounts,
+  projectInboxes,
   activeProjectId,
   activeSessionId,
   activePendingClientThreadId,
@@ -921,10 +921,13 @@ function SidebarThreadOrganizerSections({
 }: {
   /** The reader points at or works in the sidebar, so its lanes hold still. */
   laneHolding: boolean;
-  /** Adjusts what Attention view shows; it stays beside its first heading. */
+  /** Adjusts what Attention view shows; it leads the chat lanes. */
   laneViewMenu: ReactNode;
-  /** Messages waiting in each Project's own Inbox. */
-  projectInboxCounts: Readonly<Record<string, number>>;
+  /** What waits in each Project's own Inbox, and whether it waits on the reader's answer. */
+  projectInboxes: {
+    readonly counts: InboxCounts["projects"];
+    readonly waiting: InboxCounts["waiting"]["projects"];
+  };
   activeProjectId: string | null;
   activeSessionId: string | null;
   activePendingClientThreadId?: string | null;
@@ -1847,8 +1850,12 @@ function SidebarThreadOrganizerSections({
     dnd?: CodexProjectRowDndCapability,
     currentSectionId: string | null = null,
   ) => {
-    // In Attention view, a Project is a place to open; its chats already sit in their lanes.
+    // In Attention view, a Project is its Inbox; its chats sit in their lanes unless the view
+    // shows another Project's.
     const expanded = !arrangedByAttention && expandedProjectIds.has(project.id);
+    const chatsListed = arrangedByAttention
+      ? lifecycle.scopeProjectId === null || lifecycle.scopeProjectId === project.id
+      : expanded;
     const threadListId = `project:${project.id}` as const;
     const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
       .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
@@ -1870,7 +1877,9 @@ function SidebarThreadOrganizerSections({
         expanded={expanded}
         disclosure={!arrangedByAttention}
         dnd={dnd}
-        inboxCount={projectInboxCounts[project.id] ?? 0}
+        inboxCount={projectInboxes.counts[project.id] ?? 0}
+        inboxWaiting={projectInboxes.waiting[project.id] === true}
+        chatsListed={chatsListed}
         threadItems={projectThreadItems}
         onActivate={() =>
           arrangedByAttention ? onSelectProject(project.id) : onToggleProjectExpanded(project.id)
@@ -2099,8 +2108,9 @@ function SidebarThreadOrganizerSections({
       wakeLabel: snoozedLane.wakeLabels.get(threadKey) ?? null,
       quiet: snoozedLane.later.has(threadKey),
     });
-  const toggleShelf = (shelf: "active" | "working" | "snoozed" | "settled") => () =>
-    onSetSidebarSectionCollapsed(shelf, !sidebarCollapsibleSections[shelf]);
+  const toggleShelf =
+    (shelf: "projectInboxes" | "active" | "working" | "snoozed" | "settled") => () =>
+      onSetSidebarSectionCollapsed(shelf, !sidebarCollapsibleSections[shelf]);
   const laneAttention = (chats: readonly SidebarLifecycleChat[]) =>
     resolveSidebarGroupStatus({
       needsAttention: chats.some((chat) => chat.status === "attention"),
@@ -2149,11 +2159,45 @@ function SidebarThreadOrganizerSections({
       forcedVisibleKey: activeThreadKey,
     };
     const shows = (shelf: SidebarOptionalShelf) => !hiddenShelves.includes(shelf);
-    // The view options stay beside the first heading: Pinned when it shows, otherwise Active,
-    // which always does.
+    // The view options lead the chat lanes they arrange: Pinned when it shows, otherwise Active,
+    // which always does. The Projects above them keep their own tools.
     const pinnedLeads = shows("pinned") && chatLanes.pinned.length > 0;
     return (
       <>
+        {/* Each Project here is its Inbox, so the Projects follow the Inbox entry above them. */}
+        {shows("projects") ? (
+          <CodexSidebarSection
+            heading={intl.formatMessage({
+              id: "workbench.workbenchSessionSidebar.projects",
+              defaultMessage: "Projects",
+            })}
+            collapsed={sidebarCollapsibleSections.projectInboxes}
+            onToggle={toggleShelf("projectInboxes")}
+            actions={
+              <SidebarProjectsSectionActions
+                chatOrder={chatOrder}
+                onChatOrderChange={onChatOrderChange}
+                organize={lifecycle.organize}
+                autoSettleDays={lifecycle.autoSettleDays}
+                onAutoSettleDaysChange={lifecycle.onAutoSettleDaysChange}
+                onCreateProject={onCreateProject}
+                openCreateDialogTick={projectPickerOpenTick}
+              />
+            }
+          >
+            <StableWorktreeSidebarRows
+              entries={pendingStableWorktrees}
+              onOpen={onOpenStableWorktree}
+            />
+            {renderProjectGroupRows(placeProjectGroups, {
+              reorderScope: "projects",
+              extraPages: sidebarListExtraPages.projectInboxes ?? 0,
+              onExtraPagesChange: (extraPages) =>
+                onSidebarListExtraPagesChange("projectInboxes", extraPages),
+              readsProjectWindow: true,
+            })}
+          </CodexSidebarSection>
+        ) : null}
         {pinnedLeads ? (
           <SidebarChatLaneSection
             {...laneProps}
@@ -2234,39 +2278,6 @@ function SidebarThreadOrganizerSections({
               onSidebarListExtraPagesChange("snoozed", extraPages)
             }
           />
-        ) : null}
-        {shows("projects") ? (
-          <CodexSidebarSection
-            heading={intl.formatMessage({
-              id: "workbench.workbenchSessionSidebar.projects",
-              defaultMessage: "Projects",
-            })}
-            collapsed={projectsSectionCollapsed}
-            onToggle={onToggleProjectsSectionCollapsed}
-            actions={
-              <SidebarProjectsSectionActions
-                chatOrder={chatOrder}
-                onChatOrderChange={onChatOrderChange}
-                organize={lifecycle.organize}
-                autoSettleDays={lifecycle.autoSettleDays}
-                onAutoSettleDaysChange={lifecycle.onAutoSettleDaysChange}
-                onCreateProject={onCreateProject}
-                openCreateDialogTick={projectPickerOpenTick}
-              />
-            }
-          >
-            <StableWorktreeSidebarRows
-              entries={pendingStableWorktrees}
-              onOpen={onOpenStableWorktree}
-            />
-            {renderProjectGroupRows(placeProjectGroups, {
-              reorderScope: "projects",
-              extraPages: sidebarListExtraPages.projects ?? 0,
-              onExtraPagesChange: (extraPages) =>
-                onSidebarListExtraPagesChange("projects", extraPages),
-              readsProjectWindow: true,
-            })}
-          </CodexSidebarSection>
         ) : null}
         {shows("settled") ? renderSettledShelf() : null}
       </>
@@ -2855,7 +2866,10 @@ export function ProjectSessionSidebar({
                     onScopeChange={lifecycle.onScopeChange}
                   />
                 }
-                projectInboxCounts={inboxCounts.projects}
+                projectInboxes={{
+                  counts: inboxCounts.projects,
+                  waiting: inboxCounts.waiting.projects,
+                }}
                 activeProjectId={activeProjectId}
                 activeSessionId={activeSessionId}
                 activePendingClientThreadId={activePendingClientThreadId}

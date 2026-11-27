@@ -174,10 +174,10 @@ export type SidebarChatShelf = SidebarChatLane | "settled";
  * `Active` always shows: it is what the arrangement is for.
  */
 export const SIDEBAR_OPTIONAL_SHELVES = [
+  "projects",
   "pinned",
   "working",
   "snoozed",
-  "projects",
   "settled",
 ] as const;
 export type SidebarOptionalShelf = (typeof SIDEBAR_OPTIONAL_SHELVES)[number];

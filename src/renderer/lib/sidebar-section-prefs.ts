@@ -3,6 +3,8 @@ export const SIDEBAR_COLLAPSIBLE_SECTION_IDS = [
   "pages",
   "projects",
   "chats",
+  // Attention view's Projects lane, the Project Inboxes, folds apart from the By project tree.
+  "projectInboxes",
   "active",
   "working",
   "snoozed",

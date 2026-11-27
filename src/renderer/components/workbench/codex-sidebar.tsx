@@ -853,22 +853,45 @@ function ProjectMenuItems({
   });
 }
 
-function CollapsedProjectStatus({
+/**
+ * A Project row's glyph: its Inbox waiting on the reader's answer, as the Inbox entry shows it, and
+ * its chats only while the sidebar does not list them, since a listed chat shows its own.
+ */
+function ProjectRowStatus({
+  projectName,
   activity,
+  chatsListed,
+  inboxWaiting,
 }: {
+  projectName: string;
   activity: ProjectActivitySummary | null | undefined;
+  chatsListed: boolean;
+  inboxWaiting: boolean;
 }) {
-  const status = activity
-    ? resolveSidebarGroupStatus({
-        needsAttention: activity.waitingCount > 0,
-        unread: activity.unreadCount > 0,
-        running: activity.activeCount > 0,
-      })
-    : null;
+  const intl = useIntl();
+  const chats = chatsListed ? null : activity;
+  const status = resolveSidebarGroupStatus({
+    needsAttention: inboxWaiting || (chats?.waitingCount ?? 0) > 0,
+    unread: (chats?.unreadCount ?? 0) > 0,
+    running: (chats?.activeCount ?? 0) > 0,
+  });
   if (!status) return null;
   return (
     <span className="pe-0.5" data-app-action-sidebar-project-status={status}>
-      <SidebarStatusIndicator status={status} label={SIDEBAR_GROUP_STATUS_LABELS[status]} />
+      <SidebarStatusIndicator
+        status={status}
+        label={
+          inboxWaiting
+            ? intl.formatMessage(
+                {
+                  id: "workbench.codexSidebar.projectInboxWaiting",
+                  defaultMessage: "Something in {project}'s Inbox waits for your answer",
+                },
+                { project: projectName },
+              )
+            : SIDEBAR_GROUP_STATUS_LABELS[status]
+        }
+      />
     </span>
   );
 }
@@ -1080,6 +1103,8 @@ export function CodexProjectRow({
   sectionCatalog,
   currentSectionId = null,
   inboxCount = 0,
+  inboxWaiting = false,
+  chatsListed = expanded,
   children,
 }: {
   project: Project;
@@ -1114,6 +1139,10 @@ export function CodexProjectRow({
   currentSectionId?: string | null;
   /** Messages waiting in this Project's own Inbox, which is its Home. */
   inboxCount?: number;
+  /** Something in this Project's Inbox waits for the reader's answer. */
+  inboxWaiting?: boolean;
+  /** The sidebar lists this Project's chats, so the row does not summarize them. Open by default. */
+  chatsListed?: boolean;
   children?: ReactNode;
 }) {
   const intl = useIntl();
@@ -1381,7 +1410,7 @@ export function CodexProjectRow({
             }
             actions={
               <div className="grid items-center">
-                {inboxCount > 0 || !expanded ? (
+                {inboxCount > 0 || inboxWaiting || !chatsListed ? (
                   <span
                     className={cn(
                       "pointer-events-none col-start-1 row-start-1 flex items-center gap-1.5 justify-self-end group-hover/folder-row:invisible group-focus-within/folder-row:invisible",
@@ -1402,8 +1431,12 @@ export function CodexProjectRow({
                         {inboxCount}
                       </span>
                     ) : null}
-                    {/* Only a collapsed Project summarizes its chats; an open one shows them. */}
-                    {!expanded ? <CollapsedProjectStatus activity={activity} /> : null}
+                    <ProjectRowStatus
+                      projectName={project.name}
+                      activity={activity}
+                      chatsListed={chatsListed}
+                      inboxWaiting={inboxWaiting}
+                    />
                   </span>
                 ) : null}
                 <div className="col-start-1 row-start-1 flex gap-1">

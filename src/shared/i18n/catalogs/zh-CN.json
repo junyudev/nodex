@@ -9405,6 +9405,7 @@
   "workbench.codexSidebar.projectChats": "{project} 中的聊天",
   "workbench.codexSidebar.projectDetails": "{project} 的项目详情",
   "workbench.codexSidebar.projectInbox": "{project} 的收件箱中有 {count} 条",
+  "workbench.codexSidebar.projectInboxWaiting": "{project} 的收件箱里有事项在等你回答",
   "workbench.codexSidebar.projectNotFound": "找不到项目 {id}",
   "workbench.codexSidebar.projectUnavailable": "此项目已不可用",
   "workbench.codexSidebar.reopenChat": "重新打开对话",

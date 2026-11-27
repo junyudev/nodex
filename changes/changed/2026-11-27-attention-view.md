@@ -6,3 +6,5 @@ media:
 ---
 
 The sidebar's **Arrange by attention** is now called **Attention view**, and it introduces itself. While your chats sit under their projects and two of them wait on you at once, a tip beside the toggle says what the view does. It goes away for good when you dismiss it or turn the view on, with the toggle, `⌥⌘U` or **Toggle Attention view** in the command palette, and **Settings > General > Show tips** turns it off with every other tip.
+
+Attention view now opens with your projects, right beneath the Inbox that counts them all, since each project there is its own Inbox. Every project in the sidebar marks when something in its Inbox waits for your answer. In Attention view a project leaves its chats to the lanes below, and sums them up only while you're showing another project.

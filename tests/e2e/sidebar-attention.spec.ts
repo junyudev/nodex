@@ -13,6 +13,10 @@ const THREAD_TITLE = "data-app-action-sidebar-thread-title";
 const section = (page: Page, heading: string) => page.locator(`[${HEADING}="${heading}"]:visible`);
 const thread = (scope: Locator, chat: { title: string }) =>
   scope.locator(`${THREAD_ROW}[${THREAD_TITLE}="${chat.title}"]:visible`);
+const projectStatus = (page: Page, name: string) =>
+  section(page, "Projects")
+    .locator(`[data-app-action-sidebar-project-label="${name}"]`)
+    .locator("[data-app-action-sidebar-project-status]");
 
 async function expandSection(section: Locator) {
   const toggle = section.locator("[data-app-action-sidebar-section-toggle]");
@@ -90,7 +94,14 @@ test("lists chats in Attention view and applies sidebar actions to their live la
               .locator(`[${HEADING}]:visible`)
               .evaluateAll((nodes, attr) => nodes.map((node) => node.getAttribute(attr)), HEADING),
           )
-          .toEqual(["Pinned", "Active", "Working", "Snoozed", "Projects", "Settled"]);
+          .toEqual(["Projects", "Pinned", "Active", "Working", "Snoozed", "Settled"]);
+        // Each Project is its Inbox: Core's waits on an answer, while Nodex's waiting chat
+        // already shows in Active and Web's Inbox holds only a review.
+        await expect(
+          projectStatus(page, "Core").getByLabel("Something in Core's Inbox waits for your answer"),
+        ).toBeVisible();
+        await expect(projectStatus(page, "Nodex")).toHaveCount(0);
+        await expect(projectStatus(page, "Web")).toHaveCount(0);
 
         await expandSection(active);
         await expandSection(section(page, "Working"));
@@ -131,7 +142,7 @@ test("lists chats in Attention view and applies sidebar actions to their live la
 
       await test.step("scope both chats and Inbox to Core", async () => {
         await expect(attentionView).toHaveAttribute("aria-pressed", "true");
-        // The view options stay beside the first heading without pointing at it.
+        // The view options lead the chat lanes without pointing at them.
         await section(page, "Pinned").getByRole("button", { name: "View options" }).click();
         await page.getByRole("menuitem", { name: /^Chats from/ }).hover();
         await page.locator(`[data-app-action-sidebar-scope-option="${coreProjectId}"]`).click();
@@ -139,6 +150,11 @@ test("lists chats in Attention view and applies sidebar actions to their live la
         await expect(clearScope).toBeVisible();
         await expect(inbox.getByLabel("2 in Inbox")).toBeVisible();
         await expect(waitingGlyph).toBeVisible();
+        // The lanes no longer list Nodex's chats, so its row summarizes them.
+        await expect(projectStatus(page, "Nodex")).toHaveAttribute(
+          "data-app-action-sidebar-project-status",
+          "attention",
+        );
         await expectChats(
           sidebar,
           [
