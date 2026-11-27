@@ -13,6 +13,15 @@ const browserUrl = z
   .max(16_384)
   .url()
   .regex(/^(https?|file):\/\//i, "Use an HTTP, HTTPS or local file URL");
+// The published pattern names the shape of an issue or pull request link; which subroutes and
+// anchors open natively takes URL parsing JSON Schema can't publish, so the host decides that.
+const gitHubThreadUrl = z
+  .string()
+  .max(16_384)
+  .regex(
+    /^https?:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/(?:pull|issues)\/[1-9]\d*(?:[/?#]\S*)?$/i,
+    "Use a GitHub issue or pull request URL",
+  );
 const common = {
   window: WorkbenchWindowReferenceSchema.optional(),
   idempotencyKey: idempotencyKeySchema.optional(),
@@ -39,6 +48,10 @@ export const sessionPresentationSchemas = {
           (input) => Number(input.url !== undefined) + Number(input.tabId !== undefined) === 1,
           "Choose a URL or an existing Browser tab identity",
         ),
+      z.strictObject({
+        kind: z.literal("github"),
+        url: gitHubThreadUrl,
+      }),
       z.strictObject({ kind: z.literal("terminal"), terminalId: identity.optional() }),
       z
         .strictObject({
@@ -63,7 +76,7 @@ const descriptions: Record<keyof typeof sessionPresentationSchemas, string> = {
   navigate_to_session:
     "Show a Session in the current Profile in the calling Turn's submission window and wait for its navigation receipt. An explicit window must be a current window reference returned by Workbench context. Never infers global focus. Without a submission window, supply an explicit returned window reference.",
   open_in_nodex:
-    "Show a file (optionally at a line), Browser URL or existing Browser tab, Terminal, Review, Page, View or Canvas in the calling Session's panel. Use this after creating or editing an artifact when showing the result would help the user. A local HTML file opens rendered in the Browser, reloading a tab that already shows it; set line to open its source in Files instead. Browser URLs may be HTTP, HTTPS or a file on this device. Set sessionId only for an explicitly requested other Session. Without a submission window, Nodex uses the window showing that Session, then one that has shown it, then the most recently focused window. Status queued means that window keeps the tab until the Session is next shown there, without navigating. Existing Browser and Terminal identities must belong to that Session. Local workspace targets require a local Session. Returns the exact window, Scene receipt and the surface that opened; this opens presentation and does not read file contents or execute shell commands on behalf of the Agent.",
+    "Show a file (optionally at a line), Browser URL or existing Browser tab, native GitHub issue or pull request, Terminal, Review, Page, View or Canvas in the calling Session's panel. Use this after creating or editing an artifact when showing the result would help the user. A local HTML file opens rendered in the Browser, reloading a tab that already shows it; set line to open its source in Files instead. Browser URLs may be HTTP, HTTPS or a file on this device. Choose github with a thread URL for a native GitHub tab, including its view and anchor. Set sessionId only for an explicitly requested other Session. Without a submission window, Nodex uses the window showing that Session, then one that has shown it, then the most recently focused window. Status queued means that window keeps the tab until the Session is next shown there, without navigating. Existing Browser and Terminal identities must belong to that Session. Local workspace targets require a local Session. Returns the exact window, Scene receipt and the surface that opened; this opens presentation and does not read file contents or execute shell commands on behalf of the Agent.",
 };
 export const sessionPresentationToolCatalog: readonly Tool[] = Object.entries(
   sessionPresentationSchemas,

@@ -1,3 +1,5 @@
+import { createLinkRouter } from "@/lib/link-opening";
+import { DEFAULT_LINK_OPENING_SETTINGS } from "../../../shared/link-opening-settings";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { createWorkbenchLinkPresenter, linkBrowserOwner } from "./workbench-link-opening";
 import { createWorkbenchSceneNavigator } from "@/lib/workbench-scene-navigator";
@@ -20,10 +22,10 @@ import {
   type WorkbenchSurfaceDescriptor,
 } from "../../../shared/workbench-scene";
 import { findWorkbenchPanelLeafForTab } from "../../../shared/workbench-panel-layout";
-import type { ResolvedLinkOpenRequest } from "../../../shared/link-opening";
+import type { ResolvedWebLinkOpenRequest } from "../../../shared/link-opening";
 
 const url = "https://example.com/";
-const request = (patch: Partial<ResolvedLinkOpenRequest> = {}): ResolvedLinkOpenRequest => ({
+const request = (patch: Partial<ResolvedWebLinkOpenRequest> = {}): ResolvedWebLinkOpenRequest => ({
   url,
   initiator: "test",
   target: "in-app-browser",
@@ -267,4 +269,39 @@ describe("Workbench link presentation", () => {
     expect(linkBrowserOwner({ kind: "library" })).toBeNull();
     expect(linkBrowserOwner({ kind: "inbox" })).toBeNull();
   });
+});
+
+it("captures the GitHub opener before reading preferences, independently of Browser", async () => {
+  const originalOpen = vi.fn(async () => true);
+  const nextOpen = vi.fn(async () => true);
+  const openExternal = vi.fn(async () => true);
+  const browserOpen = vi.fn(async () => true);
+  let currentOpen = originalOpen;
+  const preferences = { ...DEFAULT_LINK_OPENING_SETTINGS, nativeGitHubHosts: ["github.com"] };
+  let finishReading!: (settings: typeof preferences) => void;
+  const router = createLinkRouter({
+    browserAvailable: false,
+    browser: () => ({ available: false, open: browserOpen }),
+    github: () => currentOpen,
+    readSettings: () =>
+      new Promise((resolve) => {
+        finishReading = resolve;
+      }),
+    openExternal,
+  });
+  const result = router.openLink({
+    url: "https://github.com/org/repo/issues/9",
+    initiator: "test",
+  });
+  currentOpen = nextOpen;
+  finishReading(preferences);
+  expect(await result).toBe(true);
+  expect(originalOpen).toHaveBeenCalledWith({
+    ref: { host: "github.com", owner: "org", repo: "repo", number: 9 },
+    kind: "issue",
+    reveal: { view: "overview", anchor: null },
+  });
+  expect(nextOpen).not.toHaveBeenCalled();
+  expect(browserOpen).not.toHaveBeenCalled();
+  expect(openExternal).not.toHaveBeenCalled();
 });

@@ -396,6 +396,87 @@ export function MoonIcon(props: CanonicalIconProps) {
   );
 }
 
+// GitHub issues and pull requests. A pull request is two branches: the base on the left and the
+// change on the right, whose top end says where it stands. Every node is open, as in Aerial view.
+const PULL_REQUEST_BASE = [
+  "M4.25 4.75a1.75 1.75 0 1 0 3.5 0 1.75 1.75 0 1 0-3.5 0",
+  "M4.25 15.25a1.75 1.75 0 1 0 3.5 0 1.75 1.75 0 1 0-3.5 0",
+  "M6 6.5v7",
+] as const;
+const PULL_REQUEST_HEAD_NODE = "M12.25 15.25a1.75 1.75 0 1 0 3.5 0 1.75 1.75 0 1 0-3.5 0";
+
+const PULL_REQUEST_PATHS = lineGlyphPaths(
+  ...PULL_REQUEST_BASE,
+  PULL_REQUEST_HEAD_NODE,
+  "M14 13.5V8a2.75 2.75 0 0 0-2.75-2.75H9",
+  "M10.75 3.5 9 5.25 10.75 7",
+);
+
+const PULL_REQUEST_DRAFT_PATHS = lineGlyphPaths(
+  ...PULL_REQUEST_BASE,
+  PULL_REQUEST_HEAD_NODE,
+  "M14 10.75v.5M14 7.25v.5M14 3.75v.5",
+);
+
+const PULL_REQUEST_CLOSED_PATHS = lineGlyphPaths(
+  ...PULL_REQUEST_BASE,
+  PULL_REQUEST_HEAD_NODE,
+  "M14 13.5v-4",
+  "M12.25 3.5l3.5 3.5M15.75 3.5l-3.5 3.5",
+);
+
+const PULL_REQUEST_MERGED_PATHS = lineGlyphPaths(
+  ...PULL_REQUEST_BASE,
+  "M12.25 11a1.75 1.75 0 1 0 3.5 0 1.75 1.75 0 1 0-3.5 0",
+  "M6 6.5c0 2.5 2 4.5 4.5 4.5h1.75",
+);
+
+const ISSUE_RING = "M3 10a7 7 0 1 0 14 0 7 7 0 1 0-14 0";
+
+const ISSUE_OPEN_PATHS = [
+  ...lineGlyphPaths(ISSUE_RING),
+  "M8.5 10a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0",
+];
+
+const ISSUE_COMPLETED_PATHS = lineGlyphPaths(ISSUE_RING, "M7 10.25l2 2 4-4.5");
+
+const ISSUE_NOT_PLANNED_PATHS = lineGlyphPaths(ISSUE_RING, "M5.25 14.75l9.5-9.5");
+
+/** An open pull request: a change that points back at its base. */
+export function PullRequestIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={PULL_REQUEST_PATHS} />;
+}
+
+/** A draft pull request: the change is still being drawn. */
+export function PullRequestDraftIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={PULL_REQUEST_DRAFT_PATHS} />;
+}
+
+/** A pull request closed without merging. */
+export function PullRequestClosedIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={PULL_REQUEST_CLOSED_PATHS} />;
+}
+
+/** A merged pull request: the change joined its base. */
+export function PullRequestMergedIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={PULL_REQUEST_MERGED_PATHS} />;
+}
+
+/** An open issue. */
+export function IssueOpenIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={ISSUE_OPEN_PATHS} />;
+}
+
+/** An issue closed as completed. */
+export function IssueCompletedIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={ISSUE_COMPLETED_PATHS} />;
+}
+
+/** An issue closed as not planned or as a duplicate. */
+export function IssueNotPlannedIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={ISSUE_NOT_PLANNED_PATHS} />;
+}
+
 /* Glyphs drawn on a 16px grid for dense notification surfaces, where scaled 20px artwork reads light. */
 const CLOSE_16_PATHS: readonly IconPath[] = [
   "M10.9621 4.29539C11.167 4.09057 11.4992 4.09076 11.7043 4.29539C11.9093 4.50039 11.9092 4.83255 11.7043 5.03758L8.74235 7.99949L11.7052 10.9624C11.9098 11.1673 11.9097 11.4996 11.7052 11.7046C11.5003 11.9095 11.1681 11.9093 10.9631 11.7046L8.00016 8.74168L5.03727 11.7046C4.83222 11.9093 4.5 11.9095 4.29509 11.7046C4.09054 11.4996 4.09051 11.1673 4.29509 10.9624L7.25798 7.99949L4.29606 5.03758C4.09107 4.83255 4.09105 4.5004 4.29606 4.29539C4.50111 4.09079 4.83336 4.09054 5.03825 4.29539L8.00016 7.2573L10.9621 4.29539Z",

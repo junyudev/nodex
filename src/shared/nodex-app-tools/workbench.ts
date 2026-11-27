@@ -1,3 +1,4 @@
+import { gitHubThreadKey, gitHubThreadSurfaceConfigSchema } from "../github-thread";
 import { WorkbenchAgentsSurfaceConfigSchema } from "../schemas/workbench-agents";
 import { pluginAppBindingKey } from "../agent-plugins/app-entrypoints";
 import { WorkbenchPanelPluginAppBindingSchema } from "../schemas/workbench-scene";
@@ -166,6 +167,11 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
     ...referenceBase,
     kind: z.literal("agents"),
     config: WorkbenchAgentsSurfaceConfigSchema,
+  }),
+  z.strictObject({
+    ...referenceBase,
+    kind: z.literal("github_thread"),
+    config: gitHubThreadSurfaceConfigSchema,
   }),
 ]);
 export type WorkbenchSurfaceReference = z.infer<typeof WorkbenchSurfaceReferenceSchema>;
@@ -469,6 +475,7 @@ function observedTargetKey(surface: WorkbenchSurfaceReference): string {
   const { kind, config } = surface;
   if (kind === "conversation") return JSON.stringify([kind, config.sessionId]);
   if (kind === "inbox") return JSON.stringify([kind, inboxScopeKey(config.scope)]);
+  if (kind === "github_thread") return gitHubThreadKey(config.thread);
   if (kind === "browser") return JSON.stringify([kind, config.browserTabId]);
   if (kind === "skill")
     return JSON.stringify([kind, config.hostId, config.skillId, config.projectId]);

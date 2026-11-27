@@ -24,6 +24,7 @@ import {
   make as makeApplicationSettings,
 } from "../../settings/ApplicationSettings";
 import { DesktopNotificationRuntime } from "../../host-runtime/DesktopNotificationRuntime";
+import { CoreAuthority } from "../../core-runtime/CoreAuthority";
 import { CoreModules } from "../../core-runtime/CoreModules";
 import { ApplicationSettingsIpcError, live } from "./ApplicationSettingsIpc";
 import {
@@ -141,6 +142,9 @@ it.effect("validates and persists settings with the owning window authority", ()
       live.pipe(
         Layer.provide(
           Layer.mergeAll(
+            Layer.succeed(CoreAuthority, {
+              identity: { libraryId: "personal" },
+            } as CoreAuthority["Service"]),
             Layer.succeed(CoreModules, {
               workspace: {
                 read: () =>

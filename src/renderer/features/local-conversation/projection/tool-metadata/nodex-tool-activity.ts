@@ -1,3 +1,4 @@
+import { gitHubThreadLabel, parseGitHubThreadUrl } from "../../../../../shared/github-thread";
 import { defineMessages, getIntl, type MessageDescriptor } from "@/lib/i18n";
 import type { MarkdownBlock } from "../../../../../shared/nodex-markdown";
 import type { CodexDynamicToolCallView } from "../../../../lib/types";
@@ -1137,6 +1138,19 @@ function resolveOpen(call: CodexDynamicToolCallView): NodexToolActivity {
           }),
         ),
       ]);
+    case "github": {
+      const thread = parseGitHubThreadUrl(stringValue(target, "url") ?? "");
+      return activity(call, "workspace", open, [
+        text(
+          thread
+            ? gitHubThreadLabel(thread.ref)
+            : getIntl().formatMessage({
+                id: "conversation.nodexToolActivity.githubTab",
+                defaultMessage: "GitHub tab",
+              }),
+        ),
+      ]);
+    }
     case "browser":
       return activity(call, "workspace", open, [
         text(

@@ -40,7 +40,7 @@ export function createNfmLinkExtension() {
         isAllowedUri: (url, ctx) => !!isAllowedUri(url, ctx.protocols),
         linkOnPaste: false,
         markdownLinks: false,
-        openOnClick: true,
+        openOnClick: false,
         protocols: [],
         shouldAutoLink: shouldAutoLinkWhileTyping,
         validate: (url) => !!url,
@@ -54,7 +54,7 @@ export function createNfmLinkExtension() {
         enableClickSelection: false,
         HTMLAttributes: parentOptions?.HTMLAttributes ?? defaultOptions.HTMLAttributes,
         isAllowedUri: parentOptions?.isAllowedUri ?? defaultOptions.isAllowedUri,
-        openOnClick: true,
+        openOnClick: false,
         linkOnPaste: false,
         markdownLinks: false,
         protocols: [],
@@ -148,6 +148,6 @@ export function createNfmLinkExtension() {
   }).configure({
     autolink: true,
     enableClickSelection: false,
-    openOnClick: true,
+    openOnClick: false,
   });
 }

@@ -4,6 +4,7 @@ import {
   createDefaultWorkbenchLayoutSnapshot,
   createDefaultWorkbenchLayoutSnapshotV3,
 } from "../workbench-layout";
+import { WorkbenchSurfaceDescriptorSchema } from "./workbench-scene";
 import { moveWorkbenchPanelTab } from "../workbench-panel-layout";
 import {
   makeWorkbenchSceneKey,
@@ -33,10 +34,10 @@ function record(
   };
 }
 
-function agentsCatalog(
+function catalogWithPanelSurfaces(
   owner: WorkbenchSceneOwner,
   panelId: "right" | "bottom",
-  surfaces: readonly { id: string; kind: string; config: unknown }[],
+  surfaces: readonly { id: string; kind: string; config: unknown; state?: unknown }[],
 ) {
   const session = record();
   const scene = materializeInitialWorkbenchScene(owner);
@@ -83,7 +84,9 @@ describe("WindowSession schemas", () => {
     "restores Agents in the $owner.kind $panelId panel",
     ({ owner, panelId, projectId }) => {
       const tab = { ...agentsTab, config: { projectId } };
-      const parsed = WindowSessionCatalogSchema.parse(agentsCatalog(owner, panelId, [tab]));
+      const parsed = WindowSessionCatalogSchema.parse(
+        catalogWithPanelSurfaces(owner, panelId, [tab]),
+      );
       expect(
         parsed.sessions[0]?.layout.scenesByOwnerKey[makeWorkbenchSceneKey(owner)]
           ?.panelSurfacesById[tab.id],
@@ -101,20 +104,72 @@ describe("WindowSession schemas", () => {
       legacyScope: "all",
     },
   ])("rejects an invalid Agents config %j", (config) => {
-    const catalog = agentsCatalog({ kind: "inbox" }, "right", [{ ...agentsTab, config }]);
+    const catalog = catalogWithPanelSurfaces({ kind: "inbox" }, "right", [
+      { ...agentsTab, config },
+    ]);
     expect(WindowSessionCatalogSchema.safeParse(catalog).success).toBe(false);
   });
 
   test("rejects a misspelled surface kind, a duplicate, and disallowed Agents placement", () => {
     const project = { kind: "project", projectId: "alpha" } as const;
     for (const catalog of [
-      agentsCatalog({ kind: "inbox" }, "right", [{ ...agentsTab, kind: "agent" }]),
-      agentsCatalog(project, "right", [agentsTab, { ...agentsTab, id: "duplicate" }]),
-      agentsCatalog(project, "bottom", [agentsTab]),
-      agentsCatalog({ kind: "library" }, "right", [agentsTab]),
+      catalogWithPanelSurfaces({ kind: "inbox" }, "right", [{ ...agentsTab, kind: "agent" }]),
+      catalogWithPanelSurfaces(project, "right", [agentsTab, { ...agentsTab, id: "duplicate" }]),
+      catalogWithPanelSurfaces(project, "bottom", [agentsTab]),
+      catalogWithPanelSurfaces({ kind: "library" }, "right", [agentsTab]),
     ]) {
       expect(WindowSessionCatalogSchema.safeParse(catalog).success).toBe(false);
     }
+  });
+
+  test.each([
+    { kind: "inbox" },
+    { kind: "library" },
+    { kind: "project", projectId: "alpha" },
+    { kind: "session", sessionId: "chat" },
+  ] as const)("round-trips a GitHub tab in the $kind Scene", (owner) => {
+    const tab = {
+      id: "github-tab",
+      kind: "github_thread",
+      config: {
+        thread: { host: "github.com", owner: "Org", repo: "Repo", number: 9 },
+        kind: "pull_request",
+      },
+      state: { view: "files" },
+    };
+    const parsed = WindowSessionCatalogSchema.parse(
+      catalogWithPanelSurfaces(owner, "right", [tab]),
+    );
+    const restored = WindowSessionCatalogSchema.parse(JSON.parse(JSON.stringify(parsed)));
+    expect(
+      restored.sessions[0]?.layout.scenesByOwnerKey[makeWorkbenchSceneKey(owner)]
+        ?.panelSurfacesById[tab.id],
+    ).toMatchObject(tab);
+    expect(restored).toEqual(parsed);
+  });
+
+  test("rejects invalid GitHub tab config and transient reveals in saved state", () => {
+    const tab = {
+      id: "github-tab",
+      kind: "github_thread",
+      titleSnapshot: "A pull request",
+      stateKey: 0,
+      config: {
+        thread: { host: "github.com", owner: "Org", repo: "Repo", number: 9 },
+        kind: "pull_request",
+      },
+      state: { view: "overview" },
+    };
+    expect(WorkbenchSurfaceDescriptorSchema.parse(tab)).toEqual(tab);
+    for (const invalid of [
+      { config: { ...tab.config, url: "https://github.com/Org/Repo/pull/9" } },
+      { config: { ...tab.config, thread: { ...tab.config.thread, number: 0 } } },
+      { state: { view: "checks" } },
+      { state: { ...tab.state, reveal: { anchor: "issuecomment-5" } } },
+    ])
+      expect(WorkbenchSurfaceDescriptorSchema.safeParse({ ...tab, ...invalid }).success).toBe(
+        false,
+      );
   });
 
   test("accepts only HTTP and HTTPS URLs for a new Browser window", () => {

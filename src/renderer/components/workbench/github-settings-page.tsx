@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { useLinkOpeningSettings } from "@/lib/link-opening-settings";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { defineMessage, useIntl } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +34,7 @@ export function GitHubSettingsView({
   onConnect,
   onUpdate,
   onRetry,
+  linkPreference,
 }: {
   snapshot: SourcesSettingsSnapshot;
   pending: boolean;
@@ -39,6 +42,7 @@ export function GitHubSettingsView({
   onConnect: () => void;
   onUpdate: (input: UpdateSourceSettingsInput) => void;
   onRetry: (id: string) => void;
+  linkPreference?: ReactNode;
 }) {
   const intl = useIntl();
   const source = snapshot.source;
@@ -105,6 +109,7 @@ export function GitHubSettingsView({
             />
           </NodexSettingsRow>
         ) : null}
+        {linkPreference}
       </NodexSettingsSection>
       {source ? (
         <>
@@ -216,6 +221,27 @@ export function GitHubSettingsView({
     </NodexSettingsPageSurface>
   );
 }
+function GitHubLinkPreferenceRow() {
+  const intl = useIntl();
+  const { settings, updateSettings, isLoading } = useLinkOpeningSettings();
+  const label = intl.formatMessage(settingsMessages.githubOpenThreadsInNodex);
+  return (
+    <NodexSettingsRow
+      label={label}
+      description={intl.formatMessage(settingsMessages.githubOpenThreadsInNodexDescription)}
+    >
+      <NodexSwitch
+        ariaLabel={label}
+        checked={settings.openGitHubThreadsInNodex}
+        disabled={isLoading}
+        onCheckedChange={(openGitHubThreadsInNodex) => {
+          void updateSettings({ ...settings, openGitHubThreadsInNodex }).catch(() => undefined);
+        }}
+      />
+    </NodexSettingsRow>
+  );
+}
+
 export function GitHubSettingsPage() {
   const intl = useIntl();
   const client = useQueryClient();
@@ -235,7 +261,13 @@ export function GitHubSettingsPage() {
   });
   if (!query.data)
     return (
-      <NodexSettingsPageSurface title={intl.formatMessage(settingsMessages.githubTitle)}>
+      <NodexSettingsPageSurface
+        title={intl.formatMessage(settingsMessages.githubTitle)}
+        subtitle={intl.formatMessage(settingsMessages.githubSubtitle)}
+      >
+        <NodexSettingsSection>
+          <GitHubLinkPreferenceRow />
+        </NodexSettingsSection>
         <p className="text-sm text-token-text-secondary" role="status">
           {query.error
             ? intl.formatMessage({
@@ -249,6 +281,7 @@ export function GitHubSettingsPage() {
   return (
     <GitHubSettingsView
       snapshot={query.data}
+      linkPreference={<GitHubLinkPreferenceRow />}
       pending={mutation.isPending}
       error={mutation.error?.message ?? null}
       onConnect={() => mutation.mutate({ kind: "connect" })}

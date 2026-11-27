@@ -142,6 +142,9 @@ export interface AppShellTabItem {
   domTabId?: string;
   title: string;
   titleSource?: AppShellTabTitleSource;
+  renderPresentation?: (
+    render: (chrome: Pick<AppShellTabItem, "title" | "location" | "iconElement">) => ReactNode,
+  ) => ReactNode;
   /**
    * Where the tab's content lives, outermost first: the Library or a Project, or a file's folders.
    * The default tooltip shows it under the title, and a tab sharing its title with another shows
@@ -175,7 +178,16 @@ export interface AppShellTabTitleSource {
 
 export type AppShellTabPresentation = Pick<
   AppShellTabItem,
-  "id" | "title" | "titleSource" | "icon" | "iconElement" | "disabled" | "titleLabel" | "preview"
+  | "id"
+  | "title"
+  | "titleSource"
+  | "location"
+  | "icon"
+  | "iconElement"
+  | "disabled"
+  | "titleLabel"
+  | "preview"
+  | "renderPresentation"
 >;
 
 /**
@@ -830,7 +842,17 @@ export function AppShellTabs({
   );
 }
 
-function AppShellTabPanel({
+function AppShellTabPanel(props: Parameters<typeof AppShellTabPanelBody>[0]) {
+  return props.tab.renderPresentation ? (
+    props.tab.renderPresentation((chrome) => (
+      <AppShellTabPanelBody {...props} tab={{ ...props.tab, ...chrome }} />
+    ))
+  ) : (
+    <AppShellTabPanelBody {...props} />
+  );
+}
+
+function AppShellTabPanelBody({
   tab,
   panelId,
   controllerId,
@@ -961,7 +983,17 @@ function blurActiveElementWithin(element: HTMLElement): void {
   activeElement.blur();
 }
 
-function AppShellTab({
+function AppShellTab(props: Parameters<typeof AppShellTabChrome>[0]) {
+  return props.tab.renderPresentation ? (
+    props.tab.renderPresentation((chrome) => (
+      <AppShellTabChrome {...props} tab={{ ...props.tab, ...chrome }} />
+    ))
+  ) : (
+    <AppShellTabChrome {...props} />
+  );
+}
+
+function AppShellTabChrome({
   tab,
   locationDetail,
   controllerId,

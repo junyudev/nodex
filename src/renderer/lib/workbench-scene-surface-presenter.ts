@@ -105,7 +105,9 @@ export function createWorkbenchSceneSurfacePresenter(
       {
         preparedScene: target.scene,
         surfaceId: surface.id,
-        ...((input.request.kind === "files" || input.request.kind === "page_stage") &&
+        ...((input.request.kind === "files" ||
+          input.request.kind === "page_stage" ||
+          input.request.kind === "github_thread") &&
         input.request.reveal
           ? { reveal: input.request.reveal }
           : {}),

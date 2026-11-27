@@ -1,6 +1,6 @@
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { WebsiteGitHubIcon } from "@/components/shared/icons/website-icons";
-import { openExternalUrl } from "@/lib/file-system-operations";
+import { useRoutedWebLink } from "@/lib/web-link-navigation";
 import {
   INBOX_ENTRY_KINDS,
   type InboxEntryKind,
@@ -277,6 +277,7 @@ export function InboxMessage({
   readonly actions: React.ReactNode;
 }) {
   const intl = useIntl();
+  const routeLink = useRoutedWebLink();
   const fromUser = item.source.kind === "user";
   // A message that was set aside says so while it waits again, so its age is no surprise.
   const now = new Date(useInboxClock());
@@ -371,11 +372,7 @@ export function InboxMessage({
     ) : item.source.kind === "github" ? (
       <a
         href={item.source.url}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (item.source.kind === "github") void openExternalUrl(item.source.url);
-        }}
+        {...routeLink({ url: item.source.url, initiator: "inbox_github_sender" })}
         className="inline-flex min-w-0 items-center gap-1 hover:text-token-foreground"
       >
         <WebsiteGitHubIcon className="icon-2xs shrink-0" />

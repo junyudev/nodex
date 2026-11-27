@@ -1,4 +1,4 @@
-import type { ResolvedLinkOpenRequest } from "../../../shared/link-opening";
+import type { ResolvedWebLinkOpenRequest } from "../../../shared/link-opening";
 import {
   getWorkbenchSceneReturnLocation,
   type WorkbenchLocation,
@@ -73,7 +73,7 @@ export function createWorkbenchLinkPresenter(port: {
   readonly openWindow: (url: string) => Promise<boolean>;
 }) {
   return async (
-    request: ResolvedLinkOpenRequest,
+    request: ResolvedWebLinkOpenRequest,
     openerBrowserTabId?: string,
   ): Promise<boolean> => {
     const owner = port.getOwner();

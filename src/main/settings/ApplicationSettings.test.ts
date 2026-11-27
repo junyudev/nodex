@@ -283,12 +283,14 @@ describe("ApplicationSettings", () => {
           openLinkInTarget: "external-browser",
           openLocalUrlInTarget: "in-app-browser",
           externalBrowserLinkShortcut: "primary",
+          openGitHubThreadsInNodex: true,
         } as const;
         assert.deepEqual((yield* settings.snapshot()).linkOpening, defaults);
         const changed = {
           openLinkInTarget: "in-app-browser",
           openLocalUrlInTarget: "external-browser",
           externalBrowserLinkShortcut: "alt",
+          openGitHubThreadsInNodex: false,
         } as const;
         const observed = yield* Deferred.make<void>();
         const changes = yield* settings.linkOpeningSettingsChanges.pipe(

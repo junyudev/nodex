@@ -56,6 +56,5 @@ export const turnRowHandlers = () => ({
   onAnswer: vi.fn().mockResolvedValue(undefined),
   onAccept: vi.fn().mockResolvedValue(undefined),
   onStart: vi.fn().mockResolvedValue(undefined),
-  onOpenPR: vi.fn(),
   onSnooze: vi.fn(),
 });

@@ -427,6 +427,14 @@ export const settingsMessages = defineMessages({
     id: "settings.keyboardShortcuts.subtitle",
     defaultMessage: "Every command's shortcut. Search by name or by pressing the keys.",
   },
+  githubOpenThreadsInNodex: {
+    id: "settings.github.openThreadsInNodex",
+    defaultMessage: "Open issues and pull requests in Nodex",
+  },
+  githubOpenThreadsInNodexDescription: {
+    id: "settings.github.openThreadsInNodexDescription",
+    defaultMessage: "Links to GitHub issues and pull requests open here as tabs.",
+  },
   githubSubtitle: {
     id: "settings.github.subtitle",
     defaultMessage: "Your GitHub account, and the repositories and activity that reach your Inbox.",
@@ -2762,6 +2770,18 @@ const SETTINGS_SEARCH_CATALOG = {
       settingsMessages.computerUseLockedUse,
       settingsMessages.computerUsePictureInPicture,
       settingsMessages.computerUseAlwaysHidePictureInPicture,
+    ],
+  },
+  github: {
+    messages: [
+      settingsMessages.githubTitle,
+      settingsMessages.githubOpenThreadsInNodex,
+      settingsMessages.githubOpenThreadsInNodexDescription,
+      "Sources",
+      "Assigned to me",
+      "Review requests",
+      "Mentions",
+      "Repositories",
     ],
   },
   git: {

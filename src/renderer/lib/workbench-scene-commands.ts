@@ -1,3 +1,4 @@
+import { DEFAULT_GITHUB_THREAD_SURFACE_STATE } from "../../shared/github-thread";
 import type { PageSearchReveal } from "./page-search-reveal";
 import type { WorkbenchSurfaceReveal } from "../../shared/nodex-app-tools/workbench-reveal";
 import {
@@ -484,7 +485,7 @@ export function prepareWorkbenchSceneCommand(
             )
           : createSecureRuntimeId("surface")),
       stateKey: 0,
-      state: null,
+      state: command.surface.kind === "github_thread" ? DEFAULT_GITHUB_THREAD_SURFACE_STATE : null,
     } as WorkbenchSurfaceDescriptor;
     if (surface.kind === "files")
       surface = { ...surface, config: canonicalWorkbenchFilesConfig(surface.config) };
@@ -939,7 +940,46 @@ export function createWorkbenchSceneCommands(
             ephemeralPanels: { ...prepared.ephemeralPanels, pendingSurfaceReveal: null },
           };
         }
-        if (reveal && reveal.kind !== "page-search" && prepared.tabId) {
+        const githubReveals = prepared.ephemeralPanels.gitHubThreadRevealsByScene;
+        const sceneReveals = githubReveals[sceneKey];
+        const retainedReveals =
+          sceneReveals &&
+          removeKeys(
+            sceneReveals,
+            prepared.closing.map((tab) => tab.observed.tabId),
+          );
+        if (reveal?.kind === "github_thread") {
+          if (
+            !prepared.tabId ||
+            resolveWorkbenchSceneSurface(prepared.scene, prepared.tabId)?.kind !== "github_thread"
+          )
+            return receipt({ error: "invalid_command" });
+          prepared = {
+            ...prepared,
+            ephemeralPanels: {
+              ...prepared.ephemeralPanels,
+              gitHubThreadRevealsByScene: {
+                ...githubReveals,
+                [sceneKey]: {
+                  ...retainedReveals,
+                  [prepared.tabId]: {
+                    operationId: input.operationId,
+                    target: { view: reveal.view, anchor: reveal.anchor },
+                  },
+                },
+              },
+            },
+          };
+        } else if (retainedReveals && retainedReveals !== sceneReveals) {
+          prepared = {
+            ...prepared,
+            ephemeralPanels: {
+              ...prepared.ephemeralPanels,
+              gitHubThreadRevealsByScene: { ...githubReveals, [sceneKey]: retainedReveals },
+            },
+          };
+        }
+        if ((reveal?.kind === "file" || reveal?.kind === "review") && prepared.tabId) {
           const surface = resolveWorkbenchSceneSurface(prepared.scene, prepared.tabId);
           if (
             !surface ||

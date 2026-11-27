@@ -1,6 +1,37 @@
 import type { WebContents } from "electron";
 import { isExternallyOpenableUrl, isHttpUrl } from "../../shared/browser-url-policy";
-import type { LinkOpenRequest } from "../../shared/link-opening";
+import { resolveLinkOpenRequest, type LinkOpenRequest } from "../../shared/link-opening";
+import type {
+  EffectiveLinkOpeningSettings,
+  LinkOpeningSettings,
+} from "../../shared/link-opening-settings";
+import {
+  getWorkbenchSceneReturnLocation,
+  type WorkbenchLocation,
+} from "../../shared/workbench-layout";
+
+/** Forward the original intent so the Workbench can route it in its live Scene. */
+export function resolveApplicationWindowLinkDestination(
+  request: LinkOpenRequest,
+  preferences: LinkOpeningSettings | EffectiveLinkOpeningSettings,
+  location: WorkbenchLocation,
+):
+  | { readonly kind: "workbench"; readonly request: LinkOpenRequest }
+  | { readonly kind: "external"; readonly url: string }
+  | null {
+  const { kind } = getWorkbenchSceneReturnLocation(location);
+  const browserAvailable = kind === "project" || kind === "session";
+  const resolved = resolveLinkOpenRequest({
+    request,
+    preferences,
+    browserAvailable,
+    githubAvailable: browserAvailable || kind === "library" || kind === "inbox",
+  });
+  if (!resolved) return null;
+  return resolved.target === "external-browser"
+    ? { kind: "external", url: resolved.url }
+    : { kind: "workbench", request };
+}
 
 /** Trusted app-shell links use preferences; other permitted schemes belong to the OS. */
 export function applicationWindowLinkRequest(

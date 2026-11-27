@@ -1,3 +1,9 @@
+import {
+  DEFAULT_GITHUB_THREAD_SURFACE_STATE,
+  gitHubThreadLabel,
+  type GitHubThreadSurfaceConfig,
+} from "../../shared/github-thread";
+import type { WorkbenchGitHubThreadReveal } from "../../shared/nodex-app-tools/workbench-reveal";
 import type { AgentsMapScope } from "../../shared/agents-map";
 import { AERIAL_VIEW_TITLE } from "./workbench-panel-actions";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
@@ -92,6 +98,11 @@ export type WorkbenchSurfaceOpenRequest =
       readonly titleSnapshot?: string;
     }
   | { readonly kind: "agents"; readonly config: AgentsMapScope }
+  | {
+      readonly kind: "github_thread";
+      readonly config: GitHubThreadSurfaceConfig;
+      readonly reveal?: WorkbenchGitHubThreadReveal;
+    }
   | {
       readonly kind: "review";
       readonly config: WorkbenchReviewSurfaceConfig;
@@ -380,6 +391,14 @@ function makeSurfaceDescriptor(
         },
       };
     }
+    case "github_thread":
+      return {
+        ...common,
+        kind: request.kind,
+        config: request.config,
+        titleSnapshot: gitHubThreadLabel(request.config.thread),
+        state: DEFAULT_GITHUB_THREAD_SURFACE_STATE,
+      };
     case "agents":
       return {
         ...common,
@@ -667,6 +686,7 @@ function validateSceneSurfaceRequest(
     return null;
 
   if (
+    input.request.kind === "github_thread" ||
     input.request.kind === "skill" ||
     input.request.kind === "page_stage" ||
     input.request.kind === "page_file"
@@ -731,7 +751,8 @@ export function createWorkbenchSceneNavigator(
       !(input.request.kind === "page_stage" && input.request.reveal) &&
       input.request.kind !== "skill" &&
       input.request.kind !== "plugin_app" &&
-      input.request.kind !== "agents"
+      input.request.kind !== "agents" &&
+      input.request.kind !== "github_thread"
     ) {
       return presentPreviewSurface(port, input, candidate);
     }

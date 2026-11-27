@@ -556,6 +556,7 @@ describe("link opening", () => {
                         resolveLinkOpenRequest({
                           browserAvailable,
                           preferences: {
+                            ...DEFAULT_LINK_OPENING_SETTINGS,
                             openLinkInTarget: webTarget,
                             openLocalUrlInTarget: localTarget,
                             externalBrowserLinkShortcut: "primary",
@@ -601,6 +602,77 @@ describe("link opening", () => {
         expect(result?.target).toBe(openTarget ?? "external-browser");
       }
     });
+    it("opens GitHub threads natively only for plain implicit activation on an effective host", () => {
+      const url = "https://GITHUB.EXAMPLE/Org/Repo/pull/9/files#r120";
+      const preferences = {
+        ...DEFAULT_LINK_OPENING_SETTINGS,
+        nativeGitHubHosts: ["github.example"],
+      };
+      const request = { url, initiator: "test" };
+      expect(
+        resolveLinkOpenRequest({
+          request: { ...request, markdownContext: true },
+          browserAvailable: false,
+          githubAvailable: true,
+          preferences,
+        }),
+      ).toMatchObject({
+        target: "github-thread",
+        disposition: "default",
+        download: false,
+        thread: {
+          ref: { host: "github.example", owner: "Org", repo: "Repo", number: 9 },
+          kind: "pull_request",
+          reveal: { view: "files", anchor: "discussion_r120" },
+        },
+      });
+      for (const disabled of [
+        { ...preferences, nativeGitHubHosts: ["github.com"] },
+        { ...preferences, openGitHubThreadsInNodex: false },
+      ]) {
+        expect(
+          resolveLinkOpenRequest({
+            request,
+            browserAvailable: true,
+            githubAvailable: true,
+            preferences: disabled,
+          })?.target,
+        ).toBe("external-browser");
+      }
+      for (const [overrides, expected] of [
+        [{ openTarget: "in-app-browser" }, { target: "in-app-browser" }],
+        [{ openTarget: "external-browser" }, { target: "external-browser" }],
+        [{ useExternalBrowser: true }, { target: "external-browser" }],
+        [{ webOnly: true }, { target: "external-browser" }],
+        [{ disposition: "new-tab" }, { target: "in-app-browser", disposition: "new-tab" }],
+        [{ activation: { platform: "darwin", metaKey: true } }, { target: "external-browser" }],
+        [{ activation: { platform: "linux", ctrlKey: true } }, { target: "external-browser" }],
+        [
+          { activation: { platform: "darwin", button: 1 } },
+          { target: "in-app-browser", disposition: "new-background-tab" },
+        ],
+        [
+          { activation: { platform: "darwin", button: 1, shiftKey: true } },
+          { target: "in-app-browser", disposition: "new-tab" },
+        ],
+        [{ activation: { platform: "darwin", shiftKey: true } }, { target: "external-browser" }],
+        [{ activation: { platform: "darwin", altKey: true } }, { download: true }],
+        [
+          { url: "https://github.example/Org/Repo/blob/main/src.ts" },
+          { target: "external-browser" },
+        ],
+      ] as const) {
+        const resolved = resolveLinkOpenRequest({
+          request: { ...request, ...overrides },
+          browserAvailable: true,
+          githubAvailable: true,
+          preferences,
+        });
+        expect(resolved).toMatchObject(expected);
+        expect(resolved?.target).not.toBe("github-thread");
+      }
+    });
+
     it("denies unsupported URLs and preserves explicit external schemes", () => {
       for (const url of [
         "javascript:alert(1)",

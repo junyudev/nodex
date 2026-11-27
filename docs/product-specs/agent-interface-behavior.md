@@ -224,11 +224,12 @@ observation, including preview surfaces. Unavailable resources retain their life
 handles identify the observed occurrence, never whichever tab is selected later.
 Expired observations and changed presentation require a new observation.
 
-`open_in_nodex` opens a selected file, Browser, Terminal, Review, Page, View or
-Canvas in the calling Session's panel, or an explicitly selected Session. Agents use it
+`open_in_nodex` opens a selected file, Browser tab, GitHub thread, Terminal,
+Review, Page, View or Canvas in the calling Session's panel, or an explicitly
+selected Session. Agents use it
 after creating or editing an artifact when showing the result would help the user.
 Hidden Sessions retain their opened tabs without navigation. Its receipt names the
-surface that opened, including its URL for a Page, View or Browser tab.
+surface that opened, including its URL for a Page, View, Browser or GitHub tab.
 `navigate_to_session` returns the chat URL on success. Relative paths resolve
 against the target task's workspace, and workspace requests resolve within
 canonical selected roots. Existing Browser and Terminal
@@ -245,6 +246,12 @@ per Session in a window: opening it again activates the tab already showing it a
 reloads it, so an edit appears. The receipt reports whether that reload started. A tab
 restored after a restart counts once it has been shown. Web URLs always open their
 own tab.
+
+The `github` target accepts a GitHub issue or pull request URL and opens or
+focuses its [GitHub tab](github-tabs-behavior.md), revealing the linked view
+or anchor. This explicit target works independently of the link-opening
+preference or a connected GitHub account. Use the `browser` target to open
+the web page in a Browser tab.
 
 `open_in_nodex` uses the Turn's submission window. A Turn with no live submission
 window, such as one continuing after a restart, uses the window showing the Session,

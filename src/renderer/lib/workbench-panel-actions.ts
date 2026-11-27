@@ -260,10 +260,7 @@ export function isPanelActionTargetAllowed(action: PanelNewTabAction, panelId: P
 
 export function isWorkbenchTabKind(
   kind: PanelNewTabActionKind,
-): kind is Exclude<
-  WorkbenchTabProjection["kind"],
-  "image_editor" | "page_file" | "skill" | "side_chat" | "plugin_app"
-> {
+): kind is Exclude<PanelNewTabActionKind, "side_chat" | "new_page"> {
   return kind !== "side_chat" && kind !== "new_page";
 }
 
@@ -341,7 +338,13 @@ export function matchesPanelActionShortcut(
 }
 
 export function getDefaultPanelIdForTabKind(kind: WorkbenchTabProjection["kind"]): PanelId {
-  if (kind === "image_editor" || kind === "page_file" || kind === "skill" || kind === "plugin_app")
+  if (
+    kind === "image_editor" ||
+    kind === "page_file" ||
+    kind === "skill" ||
+    kind === "plugin_app" ||
+    kind === "github_thread"
+  )
     return "right";
   return getPanelNewTabAction(kind).defaultPanelId;
 }

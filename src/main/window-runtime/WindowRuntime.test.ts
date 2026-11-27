@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, it as itapplicationwindowlinkopening } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -20,13 +20,17 @@ import {
   type WindowRuntimeSnapshot,
   type WindowRuntimeWindowSnapshot,
 } from "./window-runtime-lifecycle";
+import { readEffectiveLinkOpeningSettings } from "../settings/effective-link-opening";
 import { WindowSessionState, type AcquiredWindowSession } from "../window-session-state";
 import { fromState, WindowRuntime, type WindowRuntimeService } from "./WindowRuntime";
 import { Effect as Effectapplicationwindowcoordinator } from "effect";
 import type { WindowSessionRecord } from "../../shared/window-session";
 import { createApplicationWindowCoordinator } from "./application-window-coordinator";
 import { type WindowCleanupReport, make, type ShutdownWindow } from "./WindowShutdown";
-import { installApplicationWindowLinkRouting } from "./application-window-link-opening";
+import {
+  resolveApplicationWindowLinkDestination,
+  installApplicationWindowLinkRouting,
+} from "./application-window-link-opening";
 import { resolveLinkOpenRequest } from "../../shared/link-opening";
 import { DEFAULT_LINK_OPENING_SETTINGS } from "../../shared/link-opening-settings";
 
@@ -827,7 +831,6 @@ describe("WindowShutdown", () => {
 });
 
 describe("application-window-link-opening", () => {
-  const it = itapplicationwindowlinkopening;
   describe("trusted application window link fallback", () => {
     function fixture() {
       const contents = new EventEmitter();
@@ -847,7 +850,7 @@ describe("application-window-link-opening", () => {
         popup!({ url, disposition } as Parameters<NonNullable<typeof popup>>[0]);
       return { contents, open, windowOpen };
     }
-    it("denies native popups and sends HTTP destinations through the same preference decision", () => {
+    test("denies native popups and sends HTTP destinations through the same preference decision", () => {
       const f = fixture();
       expect(f.windowOpen("https://example.com")).toEqual({ action: "deny" });
       const request = f.open.mock.calls[0]![0];
@@ -873,7 +876,64 @@ describe("application-window-link-opening", () => {
         expect(f.open).toHaveBeenLastCalledWith(request);
       }
     });
-    it("opens permitted non-HTTP schemes explicitly externally and rejects unsupported schemes", () => {
+    it.effect("reads configured GitHub hosts only for the enabled personal Space", () =>
+      Effect.gen(function* () {
+        const sources = [
+          { kind: "github", enabled: false, config: { host: "GITHUB.EXAMPLE" } },
+          { kind: "github", enabled: true, config: { host: "github.com" } },
+        ];
+        const read = vi.fn(() =>
+          Effect.succeed({ value: { kind: "sources", value: { kind: "sources", sources } } }),
+        );
+        const input = {
+          preferences: DEFAULT_LINK_OPENING_SETTINGS,
+          personalSpaceId: "personal",
+          workspace: { read } as unknown as Parameters<
+            typeof readEffectiveLinkOpeningSettings
+          >[0]["workspace"],
+        };
+        for (const settings of [
+          { ...input, activeSpaceId: "team" },
+          {
+            ...input,
+            activeSpaceId: undefined,
+            preferences: { ...input.preferences, openGitHubThreadsInNodex: false },
+          },
+        ]) {
+          expect((yield* readEffectiveLinkOpeningSettings(settings)).nativeGitHubHosts).toEqual([]);
+        }
+        expect(read).not.toHaveBeenCalled();
+        const effective = yield* readEffectiveLinkOpeningSettings({
+          ...input,
+          activeSpaceId: undefined,
+        });
+        expect(effective.nativeGitHubHosts).toEqual(["github.example", "github.com"]);
+      }),
+    );
+    test("forwards a plain GitHub popup unchanged even in a Scene without Browser", () => {
+      const f = fixture();
+      const url = "https://github.com/org/repo/pull/9/files#r20";
+      const preferences = { ...DEFAULT_LINK_OPENING_SETTINGS, nativeGitHubHosts: ["github.com"] };
+      f.windowOpen(url);
+      const request = f.open.mock.calls[0]![0];
+      expect(
+        resolveApplicationWindowLinkDestination(request, preferences, { kind: "library" }),
+      ).toEqual({
+        kind: "workbench",
+        request: { url, initiator: "window_open", disposition: "default" },
+      });
+      expect(
+        resolveApplicationWindowLinkDestination(request, DEFAULT_LINK_OPENING_SETTINGS, {
+          kind: "library",
+        }),
+      ).toEqual({ kind: "external", url });
+      f.windowOpen(url, "background-tab");
+      const background = f.open.mock.calls[1]![0];
+      expect(
+        resolveApplicationWindowLinkDestination(background, preferences, { kind: "library" }),
+      ).toEqual({ kind: "external", url });
+    });
+    test("opens permitted non-HTTP schemes explicitly externally and rejects unsupported schemes", () => {
       const f = fixture();
       f.windowOpen("mailto:a@example.com");
       expect(f.open).toHaveBeenCalledWith({
@@ -886,7 +946,7 @@ describe("application-window-link-opening", () => {
         expect(f.windowOpen(url)).toEqual({ action: "deny" });
       expect(f.open).not.toHaveBeenCalled();
     });
-    it("keeps app navigation internal and prevents external main-frame navigation before routing it", () => {
+    test("keeps app navigation internal and prevents external main-frame navigation before routing it", () => {
       const f = fixture();
       const preventDefault = vi.fn();
       f.contents.emit("will-navigate", { preventDefault }, "nodex://app/index.html");

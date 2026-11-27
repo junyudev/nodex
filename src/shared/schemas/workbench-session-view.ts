@@ -1,3 +1,4 @@
+import { gitHubThreadSurfaceConfigSchema, gitHubThreadSurfaceStateSchema } from "../github-thread";
 import { WorkbenchSkillSurfaceConfigSchema } from "./workbench-skill";
 import { z } from "zod";
 import { WorkbenchPageFileSurfaceConfigSchema } from "./workbench-page-file";
@@ -256,6 +257,12 @@ export const WorkbenchSessionViewTabSchema = z
       ...tabBaseSchema,
       kind: z.literal("agents"),
       config: WorkbenchAgentsSurfaceConfigSchema,
+    }),
+    z.strictObject({
+      ...tabBaseSchema,
+      kind: z.literal("github_thread"),
+      config: gitHubThreadSurfaceConfigSchema,
+      state: gitHubThreadSurfaceStateSchema,
     }),
   ])
   .superRefine((tab, context) => {

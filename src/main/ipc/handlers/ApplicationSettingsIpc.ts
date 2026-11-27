@@ -1,3 +1,6 @@
+import { rendererSpaceParameter } from "../../../shared/space-ipc-policy";
+import { CoreAuthority } from "../../core-runtime/CoreAuthority";
+import { readEffectiveLinkOpeningSettings } from "../../settings/effective-link-opening";
 import {
   agentProfilesFor,
   parseAgentProfileDriver,
@@ -189,6 +192,7 @@ export const live: Layer.Layer<
   never,
   never,
   | CoreModules
+  | CoreAuthority
   | ApplicationMenuRuntime
   | ApplicationSettings
   | AgentRuntimeProviderConfiguration
@@ -202,6 +206,7 @@ export const live: Layer.Layer<
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const core = yield* CoreModules;
+    const personalSpaceId = (yield* CoreAuthority).identity.libraryId;
     const applicationSettings = yield* ApplicationSettings;
     const runtimeProviders = yield* AgentRuntimeProviderConfiguration;
     const config = yield* MainConfig;
@@ -855,6 +860,21 @@ export const live: Layer.Layer<
       "settings:link-opening:get",
       "Link opening settings",
       (value) => value.linkOpening,
+    );
+    yield* ipc.handleQuery("settings:link-opening:effective", (event) =>
+      authorize(event, "Link opening settings").pipe(
+        Effect.andThen(applicationSettings.snapshot()),
+        Effect.flatMap((snapshot) =>
+          readEffectiveLinkOpeningSettings({
+            preferences: snapshot.linkOpening,
+            activeSpaceId:
+              rendererSpaceParameter(event.senderFrame?.url ?? "") ??
+              windows.bootstrap(event.sender.id).activeSpaceId,
+            personalSpaceId,
+            workspace: core.workspace,
+          }),
+        ),
+      ),
     );
     yield* ipc.handlePlainCommand("settings:link-opening:update", (event, input: unknown) =>
       authorize(event, "Link opening settings").pipe(

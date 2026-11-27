@@ -83,6 +83,10 @@ Account owns the optional Nodex identity and its connection controls, following
 and the Account page observe the same Profile account state. Native Agent
 authentication remains separate.
 
+GitHub includes **Open issues and pull requests in Nodex**, enabled by default.
+It controls whether eligible GitHub links open as native tabs in the personal
+Space. See [GitHub tabs](github-tabs-behavior.md).
+
 The Worktrees section follows
 [Codex Managed Worktree Lifecycle Behavior](codex-managed-worktree-lifecycle-behavior.md)
 for root preferences, automatic retention, grouped inventory, and safe removal.

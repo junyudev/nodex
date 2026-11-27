@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type { z } from "zod";
 import { isSameBrowserDocument, shouldOpenLinkInBrowser } from "../../shared/browser-url-policy";
+import { gitHubThreadLabel, parseGitHubThreadUrl } from "../../shared/github-thread";
 import { buildFileUrl } from "../../shared/file-link-openers";
 import type { sessionPresentationSchemas } from "../../shared/nodex-app-tools/session-presentation-schemas";
 import type { WorkbenchCommand } from "../../shared/nodex-app-tools/workbench-commands";
@@ -100,6 +101,18 @@ export const make = Effect.gen(function* () {
       }
       return opening;
     });
+    if (target.kind === "github") {
+      const thread = parseGitHubThreadUrl(target.url);
+      if (!thread) return null;
+      return {
+        surface: {
+          kind: "github_thread",
+          titleSnapshot: gitHubThreadLabel(thread.ref),
+          config: { thread: thread.ref, kind: thread.kind },
+        },
+        reveal: { kind: "github_thread", ...thread.reveal },
+      };
+    }
     if (target.kind === "file") {
       const surface = yield* resolveFile(target.path);
       if (!surface) return null;

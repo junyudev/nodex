@@ -1,3 +1,4 @@
+import { useRoutedWebLink } from "@/lib/web-link-navigation";
 import { FormattedMessage, useIntl, defineMessage } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
@@ -34,7 +35,6 @@ export function InboxTurnRow({
   onAnswer,
   onAccept,
   onStart,
-  onOpenPR,
   onSnooze,
 }: {
   readonly item: InboxItem;
@@ -46,11 +46,11 @@ export function InboxTurnRow({
   readonly onAnswer: (label: string) => Promise<unknown>;
   readonly onAccept: () => Promise<unknown>;
   readonly onStart: () => Promise<unknown>;
-  readonly onOpenPR: () => void;
   /** Sets this move aside until a time; a new reason to need the reader shows at once. */
   readonly onSnooze: (until: string) => void;
 }) {
   const intl = useIntl();
+  const routeLink = useRoutedWebLink();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hostAvailable = useSpaceHostAvailable();
@@ -164,7 +164,10 @@ export function InboxTurnRow({
                   defaultMessage: "Open PR",
                 })}
                 icon={OpenExternalIcon}
-                onClick={onOpenPR}
+                {...routeLink({
+                  url: data.pull_request_url,
+                  initiator: "inbox_review_pull_request",
+                })}
               />
             ) : null}
             {replyable && data.active_chat ? (

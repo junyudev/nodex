@@ -22,7 +22,7 @@ import { PersonCircleIcon } from "@/components/shared/icons/customize-action-ico
 import { WebsiteGitHubIcon } from "@/components/shared/icons/website-icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { openExternalUrl } from "@/lib/file-system-operations";
+import { useRoutedWebLink } from "@/lib/web-link-navigation";
 import { cn } from "@/lib/utils";
 import { InboxCopyAction } from "./inbox-copy-action";
 import { InboxIconAction, InboxIconActions } from "./inbox-icon-action";
@@ -183,6 +183,7 @@ function ActivityLine({
   readonly handlers: InboxActivityHandlers;
 }) {
   const intl = useIntl();
+  const routeLink = useRoutedWebLink();
   const [expanded, setExpanded] = useState(arrivalToken !== null);
   const [arrivedWith, setArrivedWith] = useState(arrivalToken);
   // A message the reader was brought to opens on arrival, as each further arrival does.
@@ -206,7 +207,6 @@ function ActivityLine({
         handlers.onOpenAutomation?.(subject.automation_id);
         return;
       case "thread":
-        void openExternalUrl(subject.url);
         return;
       case "source":
         handlers.onOpenGitHubSettings();
@@ -253,7 +253,9 @@ function ActivityLine({
             <NodexButton
               size="xs"
               variant="ghost"
-              onClick={openSubject}
+              {...(subject.kind === "thread"
+                ? routeLink({ url: subject.url, initiator: "inbox_activity_thread" })
+                : { onClick: openSubject })}
               disabled={subject.kind === "automation" && !handlers.onOpenAutomation}
               className="max-w-[30%] shrink-0 gap-1.5"
             >
@@ -339,7 +341,7 @@ function ActivityLine({
                     defaultMessage: "Open on GitHub",
                   })}
                   icon={OpenExternalIcon}
-                  onClick={() => void openExternalUrl(row.url!)}
+                  {...routeLink({ url: row.url, initiator: "inbox_activity_event", webOnly: true })}
                 />
               ) : null}
               {!row.page_id && !row.session_id && !row.url && row.category === "problems" ? (

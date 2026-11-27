@@ -1,10 +1,13 @@
 import {
+  implicitGitHubThreadLink,
   resolveLinkOpenRequest,
   type LinkOpenRequest,
-  type ResolvedLinkOpenRequest,
+  type ResolvedWebLinkOpenRequest,
 } from "../../shared/link-opening";
 import {
+  EffectiveLinkOpeningSettingsSchema,
   LinkOpeningSettingsSchema,
+  type EffectiveLinkOpeningSettings,
   type LinkOpeningSettings,
 } from "../../shared/link-opening-settings";
 import { openExternalUrl } from "./file-system-operations";
@@ -19,9 +22,14 @@ export interface LinkRouterPort {
   readonly browserAvailable: boolean;
   readonly browser: () => {
     readonly available: boolean;
-    readonly open: (request: ResolvedLinkOpenRequest) => Promise<boolean>;
+    readonly open: (request: ResolvedWebLinkOpenRequest) => Promise<boolean>;
   };
-  readonly readSettings: () => Promise<LinkOpeningSettings>;
+  readonly github?: () =>
+    | ((thread: import("../../shared/github-thread").GitHubThreadLink) => Promise<boolean>)
+    | null;
+  readonly readSettings: (
+    includeGitHubHosts: boolean,
+  ) => Promise<LinkOpeningSettings | EffectiveLinkOpeningSettings>;
   readonly openExternal: (url: string) => Promise<boolean>;
   readonly saveLink?: (url: string) => Promise<boolean>;
 }
@@ -39,12 +47,15 @@ export function createLinkRouter(port: LinkRouterPort): LinkRouter {
     browserAvailable: port.browserAvailable,
     async openLink(request) {
       const browser = port.browser();
+      const github = port.github?.();
       const resolved = resolveLinkOpenRequest({
         request,
         browserAvailable: browser.available,
-        preferences: await port.readSettings(),
+        githubAvailable: Boolean(github),
+        preferences: await port.readSettings(Boolean(github && implicitGitHubThreadLink(request))),
       });
       if (!resolved) return false;
+      if (resolved.target === "github-thread") return (await github?.(resolved.thread)) ?? false;
       if (resolved.download && port.saveLink) return await port.saveLink(resolved.url);
       return resolved.target === "in-app-browser"
         ? await browser.open(resolved)
@@ -53,8 +64,12 @@ export function createLinkRouter(port: LinkRouterPort): LinkRouter {
   };
 }
 export const desktopLinkOpeningAdapter = {
-  readSettings: async () =>
-    LinkOpeningSettingsSchema.parse(await invokeRendererQuery("settings:link-opening:get")),
+  readSettings: async (includeGitHubHosts: boolean) =>
+    includeGitHubHosts
+      ? EffectiveLinkOpeningSettingsSchema.parse(
+          await invokeRendererQuery("settings:link-opening:effective"),
+        )
+      : LinkOpeningSettingsSchema.parse(await invokeRendererQuery("settings:link-opening:get")),
   openExternal: openExternalUrl,
   saveLink: (url: string) => invokePlainCommand(saveLinkCommand, { url }),
 };
