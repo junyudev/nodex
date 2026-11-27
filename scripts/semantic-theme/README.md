@@ -19,7 +19,11 @@ document. Keep numeric palette verification there and cascade verification in
 the computed-style browser suite.
 
 Visual review must identify the effective appearance and persisted palette overrides
-of the target window; a clean Profile can resolve to a different palette. Match the
+of the target window; a clean Profile can resolve to a different palette. Nodex's
+default seeds follow the palette an established desktop Profile renders: a `#111111`
+surface with `#fcfcfc` ink in dark mode and `#0d0d0d` ink on `#ffffff` in light mode.
+A clean Profile's default preset is lighter and lower in contrast, so a sync never
+changes those seeds. Match the
 native opaque/translucent state before comparing paint. Root-variable equality is
 only an input check: also inspect actual surfaces, descendant color inheritance,
 ancestor opacity, and control hover/selected/open states. Keep these measurements

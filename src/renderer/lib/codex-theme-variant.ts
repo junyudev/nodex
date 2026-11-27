@@ -211,23 +211,25 @@ interface DerivedTheme {
 const BLACK: Rgb = { blue: 0, green: 0, red: 0 };
 const WHITE: Rgb = { blue: 255, green: 255, red: 255 };
 
-// Contrast, ink and surface belong to the appearance. The accent is resolved independently.
+// The desktop app's resolved default palette, as it renders for an established Profile: a deep
+// #111111 dark surface with #fcfcfc ink, and #0d0d0d ink on white. Every surface, control, border
+// and text role derives from these seeds. The accent is resolved independently.
 const DEFAULT_THEMES: Record<ThemeVariant, Omit<BaseTheme, "accent">> = {
   dark: {
     contrast: 60,
-    ink: "#ffffff",
+    ink: "#fcfcfc",
     semanticColors: {
-      diffAdded: "#40c977",
-      diffRemoved: "#fa423e",
+      diffAdded: "#00a240",
+      diffRemoved: "#e02e2a",
     },
-    surface: "#181818",
+    surface: "#111111",
   },
   light: {
     contrast: 45,
-    ink: "#1a1c1f",
+    ink: "#0d0d0d",
     semanticColors: {
       diffAdded: "#00a240",
-      diffRemoved: "#ba2623",
+      diffRemoved: "#e02e2a",
     },
     surface: "#ffffff",
   },
