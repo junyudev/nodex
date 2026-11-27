@@ -226,8 +226,8 @@ production custom-domain contract and must remain in the generated Pages tree;
 
 Claude Code, Codex and Antigravity, the built-in Agents, and DeepSeek, connected with the reader's
 own API key, are the story's four peers: each has a mark beside the headline, a place in the
-tagline and real work in the demos, as a lead or a subagent, a route from the Inbox and its own
-usage meter. OpenCode's free models and the ACP Registry round them out. Keep that balance when a
+page's description and real work in the demos, as a lead or a subagent, a route from the Inbox and
+its own usage meter. OpenCode's free models and the ACP Registry round them out. Keep that balance when a
 demo changes, in the marks, the copy and who does what. A DeepSeek key runs on Nodex's Codex, so
 its lines take Codex's color while its whale mark names it.
 
@@ -241,9 +241,10 @@ back to the chat's Subagents map as the last part comes home; **All local.** ope
 with its Page in the side tab group, where the agent writes its findings, attaches its report and
 marks the Page ready for review, and the reader opens the report beside the Page. Icons beside
 the last two lines show what they cover, and a line's short caption appears only while its
-chapter plays. The sentence beside the headline is the README's tagline; change both together.
+chapter plays. The sentence beside the headline names what Nodex is, the cross-agent workspace and
+notebook; it is also the README's tagline and the page title's, so change them together.
 Sections then cover Aerial view, with every chat at work and its whole tree of subagents across
-the three peers, every provider's models and plans in one menu, work landing in Pages on a Board
+the four peers, every provider's models and plans in one menu, work landing in Pages on a Board
 until it waits for the reader to accept it, one plain request that has an agent file a whole
 backlog, and reaching all of it from a phone, followed by a feature grid and a final download
 call.

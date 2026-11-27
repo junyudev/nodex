@@ -8,10 +8,10 @@
   </a>
 </p>
 
-<h3 align="center">一个收件箱。所有 Agent。全在本地。</h3>
+<h3 align="center">一个收件箱。所有智能体。全在本地。</h3>
 
 <p align="center">
-  开源工作台：让 Claude Code、Codex、Antigravity 和 DeepSeek 在同一套本地 Pages 上协作。
+  跨智能体的工作空间和笔记本。
 </p>
 
 <p align="center">
@@ -36,15 +36,15 @@
 <picture>
   <source srcset=".github/assets/readme/hero-zh-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/hero-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/hero-zh-light.avif" alt="往 Nodex 收件箱里连发六条消息，每条都得到建议，分别去往 Codex、Antigravity、DeepSeek、正在运行的对话和笔记，其中一条被手动换成 Claude Opus；Claude 对话把路由、测试和文档分别交给 GPT、Gemini 和免费模型，看着 Gemini 子 Agent 完成后，再回到对话的子智能体协作图；Gemini 对话把分析结果写进 Page、附上 HTML 报告，并标记为待审查" width="100%">
+  <img src=".github/assets/readme/hero-zh-light.avif" alt="往 Nodex 收件箱里连发六条消息，每条都得到建议，分别去往 Codex、Antigravity、DeepSeek、正在运行的对话和笔记，其中一条被手动换成 Claude Opus；Claude 对话把路由、测试和文档分别交给 GPT、Gemini 和免费模型，看着 Gemini 子智能体完成后，再回到对话的子智能体协作图；Gemini 对话把分析结果写进 Page、附上 HTML 报告，并标记为待审查" width="100%">
 </picture>
 
-Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：把想法整理成 prompt、给每件事挑模型、
+编程智能体已经很会干活了。活儿以外的部分还得你自己来：把想法整理成 prompt、给每件事挑模型、
 记住哪个对话在做哪件事、再把结果归档。**Nodex 负责的就是这部分**，而且所有数据都留在你的电脑上。
 
 ### 一个会做规划的收件箱
 
-一口气丢进好几条消息。Nodex 为每一条给出建议：新对话该去哪个 Project、用哪个 Agent、模型和推理强度，
+一口气丢进好几条消息。Nodex 为每一条给出建议：新对话该去哪个 Project、用哪个智能体、模型和推理强度，
 或者直接发给已经在做这件事的对话。你确认之前，什么都不会运行，除非你让 Nodex 替你开始明确的请求。
 
 ### 谁都能带队，谁都能帮忙
@@ -52,12 +52,12 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 <picture>
   <source srcset=".github/assets/readme/aerial-zh-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/aerial-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/aerial-zh-light.avif" alt="鸟瞰视图里三个正在工作的对话：Claude Code 带着 Codex、Antigravity 和 OpenCode 子 Agent，Codex 请 Claude 审查后收到结果，Antigravity 的 Codex 子 Agent 又把截图交给 DeepSeek，每条连线都是对应服务商的颜色" width="100%">
+  <img src=".github/assets/readme/aerial-zh-light.avif" alt="鸟瞰视图里三个正在工作的对话：Claude Code 带着 Codex、Antigravity 和 OpenCode 子智能体，Codex 请 Claude 审查后收到结果，Antigravity 的 Codex 子智能体又把截图交给 DeepSeek，每条连线都是对应服务商的颜色" width="100%">
 </picture>
 
 任何对话都可以把一部分工作交给另一家的模型：Claude Code 对话把测试交给 Antigravity 里的 Gemini，
 把路由交给 Codex 里的 GPT；Codex 对话也能请 Claude 审查。鸟瞰视图同时显示每个正在工作的对话和
-它的整棵子 Agent 树。在对话旁打开子 Agent 就能查看进展；Agent 支持时，还能追问或叫停。
+它的整棵子智能体树。在对话旁打开子智能体就能查看进展；智能体支持时，还能追问或叫停。
 
 <details>
 <summary>让 Claude 默认这样分工</summary>
@@ -96,17 +96,17 @@ yourself and spawning sparingly. Outside Nodex, ignore this section.
 </picture>
 
 内置 Claude Code、Codex、Antigravity 和 OpenCode，DeepSeek、Kimi、GLM 和 MiniMax 用你自己的 API key 接入，
-还能从 ACP Registry 安装 40 多个 Agent，OpenCode 的免费模型就在同一个菜单里。用量表显示每个订阅和每个 API key 还剩多少，收件箱挑模型时会把余量考虑进去。
+还能从 ACP Registry 安装 40 多个智能体，OpenCode 的免费模型就在同一个菜单里。用量表显示每个订阅和每个 API key 还剩多少，收件箱挑模型时会把余量考虑进去。
 
 ### 工作成果落在你们共同编辑的 Pages 里
 
 <picture>
   <source srcset=".github/assets/readme/pages-zh-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/pages-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/pages-zh-light.avif" alt="Nodex 看板旁打开着一个 Page：Agent 把发现写进 Page、附上文件，Page 进入审查中等待接受，火焰图从 Page 的文件里打开到新 tab" width="100%">
+  <img src=".github/assets/readme/pages-zh-light.avif" alt="Nodex 看板旁打开着一个 Page：智能体把发现写进 Page、附上文件，Page 进入审查中等待接受，火焰图从 Page 的文件里打开到新 tab" width="100%">
 </picture>
 
-每条收件箱消息都是一个 Page。交给项目的工作会在它的看板上从待分流一路推进到已完成，每张卡片都写明下一步轮到谁。Agent 通过
+每条收件箱消息都是一个 Page。交给项目的工作会在它的看板上从待分流一路推进到已完成，每张卡片都写明下一步轮到谁。智能体通过
 `nodex` CLI 读写 Pages，把报告、截图和 trace 作为文件附上去。工作完成后，Page 会停在审查中，等你接受。
 
 ### 说一句话，整个看板自己理好
@@ -114,13 +114,13 @@ yourself and spawning sparingly. Outside Nodex, ignore this section.
 <picture>
   <source srcset=".github/assets/readme/tidy-zh-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/tidy-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/tidy-zh-light.avif" alt="在 agent 输入栏里说一句话，Agent 读完 15 个 Page，一次批量应用 13 处修改，List 按状态重新分组" width="100%">
+  <img src=".github/assets/readme/tidy-zh-light.avif" alt="在智能体输入栏里说一句话，智能体读完 15 个 Page，一次批量应用 13 处修改，List 按状态重新分组" width="100%">
 </picture>
 
-用大白话提要求就行。Agent 先用一条只读查询读完整个 backlog，再用一次原子批量编辑写回，
+用大白话提要求就行。智能体先用一条只读查询读完整个 backlog，再用一次原子批量编辑写回，
 不会覆盖更新的内容。你打开的视图会随之重新分组。
 
-### 离开工位，不离开你的 Agent
+### 离开工位，不离开你的智能体
 
 <picture>
   <source srcset=".github/assets/readme/mobile-zh-dark.avif" media="(prefers-color-scheme: dark)">
@@ -132,7 +132,7 @@ Nodex Mobile 能看到所有对话，需要你处理的排在最前。可以批�
 或者随手把想法丢进收件箱，离线时也行。它通过局域网或 Tailscale 直连你的电脑，全程端到端加密，
 中间没有 Nodex 服务器。[开始配置](https://nodex.jyu.app/download/#mobile)。
 
-## Agent 周边的一切
+## 智能体周边的一切
 
 - **自动化**：按计划、心跳或 GitHub 事件开始工作，也可以先问你。
 - **GitHub**：Issue 和 PR 跟着对应的 Page，审查意见和 CI 结果会回到它的对话。

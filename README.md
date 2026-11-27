@@ -11,7 +11,7 @@
 <h3 align="center">One inbox. Every agent. All local.</h3>
 
 <p align="center">
-  The open-source workspace where Claude Code, Codex, Antigravity and DeepSeek work from the same local Pages.
+  The cross-agent workspace and notebook.
 </p>
 
 <p align="center">
