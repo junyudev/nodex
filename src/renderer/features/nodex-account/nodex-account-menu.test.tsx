@@ -1,7 +1,7 @@
 import { EMPTY_APP_COMPONENTS_STATE } from "../../../shared/app-components";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, test, vi } from "vite-plus/test";
 const modelStatusFixture = {
   creditsPerUsd: 25,
   models: [],
@@ -74,10 +74,15 @@ vi.mock("@/lib/clipboard", async (importOriginal) => ({
   writeTextToClipboard: clipboard.writeText,
 }));
 beforeEach(() => {
+  // The menu offers Mini on hosts that have it; pin one so the menu reads the same on every runner.
+  document.documentElement.dataset.codexOs = "darwin";
   clipboard.writeText.mockReset().mockResolvedValue(true);
   spaces.switch.mockReset().mockResolvedValue(undefined);
   spaces.openJoin.mockReset();
   spaces.state = { spaces: [spaces.personal], current: spaces.personal };
+});
+afterEach(() => {
+  delete document.documentElement.dataset.codexOs;
 });
 
 const signedOut: NodexAccountSnapshot = {
