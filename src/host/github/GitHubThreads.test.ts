@@ -6,7 +6,6 @@ import {
   GitHubApiResponseError,
   PinnedGitHubCredential,
   SourceAccount,
-  sourceApiLayer,
   type GitHubApiError,
   type GitHubGraphQlInput,
   type GitHubRestInput,
@@ -16,9 +15,6 @@ import { it } from "@effect/vitest";
 import { describe, expect } from "vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import { gitHubThreadKey, parseGitHubThreadUrl } from "../../shared/github-thread";
 import { makeGitHubAccount } from "./GitHubAccount";
@@ -225,29 +221,19 @@ describe("GitHub thread data", () => {
     Effect.gen(function* () {
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
-      const requests: string[] = [];
-      const http = HttpClient.make((request) =>
-        Effect.gen(function* () {
-          requests.push(request.url);
-          expect(request.headers.authorization).toBe("Bearer source-token");
-          if (request.url.endsWith("/user")) {
-            return HttpClientResponse.fromWeb(
-              request,
-              Response.json({ login: account.account_login, id: 1 }),
-            );
-          }
-          yield* Deferred.succeed(entered, undefined);
-          yield* Deferred.await(release);
-          return HttpClientResponse.fromWeb(request, Response.json(summariesFixture));
-        }),
-      );
-      const apiLayer = sourceApiLayer(() =>
-        Effect.succeed({ token: Redacted.make("source-token"), fingerprint: "source-fingerprint" }),
-      ).pipe(Layer.provide(Layer.succeed(HttpClient.HttpClient, http)));
-      const api = yield* Effect.service(GitHubApi).pipe(Effect.provide(apiLayer));
-      const threads = yield* makeGitHubThreads(api, yield* makeGitHubAccount(api), () =>
-        Effect.succeed(account),
-      );
+      // GitHub answers a missing thread with partial data and a field-scoped NOT_FOUND.
+      const threads = yield* makeFixture({
+        graph: (input) =>
+          Effect.gen(function* () {
+            expect(input).toMatchObject({
+              operation: "thread.summaries",
+              allowMissingFields: true,
+            });
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(release);
+            return summariesFixture;
+          }),
+      });
       const issue = { ...ref, number: 15170 };
       const missing = { ...ref, repo: "go-gh", number: 2147483647 };
       const [result, reordered] = yield* Effect.all(
@@ -285,7 +271,7 @@ describe("GitHub thread data", () => {
         },
       });
       expect(reordered).toEqual(result);
-      expect(requests.filter((url) => url.endsWith("/graphql"))).toHaveLength(1);
+      expect(threads.callsTo("thread.summaries")).toHaveLength(1);
     }),
   );
 

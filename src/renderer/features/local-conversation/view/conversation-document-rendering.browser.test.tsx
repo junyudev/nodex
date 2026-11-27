@@ -344,8 +344,10 @@ describe("local conversation search highlights", () => {
     test("updates a highlighted native transcript without duplicated text or replacing its link", async () => {
       const original = "needle [label](https://example.test) and needle";
       const native = fixture(original, "unrelated");
+      // A web link reads its site's icon.
       const view = renderForLocalConversationSearchHighlights(
         <NativeRows native={native} entry={native.entry} identity={0} />,
+        { wrapper: TestQueryProvider },
       );
       const root = view.getByTestId("root");
       const highlights = createLocalConversationSearchHighlightOwner({
