@@ -1,5 +1,4 @@
 import type { MenuItemConstructorOptions } from "electron";
-import { getNativeMenuIcon } from "../native-menu-icons";
 import { getMainIntl } from "../i18n/main-intl";
 import { isExternallyOpenableUrl, isHttpUrl } from "../../shared/browser-url-policy";
 
@@ -85,7 +84,6 @@ export function buildBrowserContextMenuTemplate({
             id: "main.contextMenu.openInTab",
             defaultMessage: "Open in new tab",
           }),
-          icon: getNativeMenuIcon("newTab"),
           click: () => actions.openLink(params.linkURL),
         },
         {
@@ -93,7 +91,6 @@ export function buildBrowserContextMenuTemplate({
             id: "main.contextMenu.openInWindow",
             defaultMessage: "Open in new window",
           }),
-          icon: getNativeMenuIcon("window"),
           click: () => actions.openWindow(params.linkURL),
         },
       );
@@ -104,7 +101,6 @@ export function buildBrowserContextMenuTemplate({
           id: "main.contextMenu.openExternal",
           defaultMessage: "Open in default browser",
         }),
-        icon: getNativeMenuIcon("openIn"),
         click: () => actions.openExternal(params.linkURL),
       });
     }
@@ -117,18 +113,17 @@ export function buildBrowserContextMenuTemplate({
         id: "main.contextMenu.copyLink",
         defaultMessage: "Copy link",
       }),
-      icon: getNativeMenuIcon("link"),
       click: () => actions.copyLink(params.linkURL),
     });
   }
   if (params.isEditable && params.editFlags.canCut) {
-    edits.push({ role: "cut", icon: getNativeMenuIcon("cut") });
+    edits.push({ role: "cut" });
   }
   if ((params.isEditable || hasCopyableSelection(params)) && params.editFlags.canCopy) {
-    edits.push({ role: "copy", icon: getNativeMenuIcon("copy") });
+    edits.push({ role: "copy" });
   }
   if (params.isEditable && params.editFlags.canPaste) {
-    edits.push({ role: "paste", icon: getNativeMenuIcon("paste") });
+    edits.push({ role: "paste" });
   }
   if (edits.length > 0) {
     pushSeparator(template);
@@ -139,7 +134,6 @@ export function buildBrowserContextMenuTemplate({
     if (canGoBack)
       template.push({
         label: getMainIntl().formatMessage({ id: "main.contextMenu.back", defaultMessage: "Back" }),
-        icon: getNativeMenuIcon("back"),
         click: actions.back,
       });
     if (canGoForward)
@@ -148,7 +142,6 @@ export function buildBrowserContextMenuTemplate({
           id: "main.contextMenu.forward",
           defaultMessage: "Forward",
         }),
-        icon: getNativeMenuIcon("forward"),
         click: actions.forward,
       });
     if (canReload)
@@ -157,7 +150,6 @@ export function buildBrowserContextMenuTemplate({
           id: "main.contextMenu.reload",
           defaultMessage: "Reload",
         }),
-        icon: getNativeMenuIcon("reload"),
         click: actions.reload,
       });
   }
@@ -170,7 +162,6 @@ export function buildBrowserContextMenuTemplate({
           id: "main.contextMenu.quickAnnotate",
           defaultMessage: "Quick annotate",
         }),
-        icon: getNativeMenuIcon("annotate"),
         click: () => actions.annotate("quick-annotate"),
       },
       {
@@ -178,7 +169,6 @@ export function buildBrowserContextMenuTemplate({
           id: "main.contextMenu.annotate",
           defaultMessage: "Annotate",
         }),
-        icon: getNativeMenuIcon("annotate"),
         click: () => actions.annotate("annotate"),
       },
     );
@@ -191,7 +181,6 @@ export function buildBrowserContextMenuTemplate({
         id: "main.contextMenu.attachImage",
         defaultMessage: "Add to chat",
       }),
-      icon: getNativeMenuIcon("attach"),
       click: () => actions.attachImage(params.srcURL),
     });
   }
@@ -202,7 +191,6 @@ export function buildBrowserContextMenuTemplate({
       id: "main.contextMenu.inspect",
       defaultMessage: "Inspect",
     }),
-    icon: getNativeMenuIcon("inspect"),
     click: () => actions.inspect({ x: params.x, y: params.y }),
   });
   return template;
