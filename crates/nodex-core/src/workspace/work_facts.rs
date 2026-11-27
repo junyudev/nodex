@@ -146,6 +146,9 @@ pub(super) fn apply(
                 params![page, session],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             ).optional()?.ok_or_else(|| denied("The reporting Session is not linked to this Page"))?;
+            if let Some(run) = report_run_id {
+                super::page_chat::scope_borrowed_chat_to_run(connection, &page, &session, run)?;
+            }
             let transition = match outcome {
                 WorkReportOutcome::Ready => Some((&["doing"][..], "review")),
                 WorkReportOutcome::Dropped => Some((&["triage", "plan", "doing"][..], "canceled")),
@@ -207,6 +210,7 @@ pub(super) fn apply(
             session_id,
             expected_revision,
             observation,
+            scoped_observations,
         } => {
             require_session(connection, library, session_id)?;
             if super::decision_run::read(connection, session_id)?.is_some() {
@@ -214,43 +218,15 @@ pub(super) fn apply(
                     "Decision runs are outside chat execution observation",
                 ));
             }
-            if observation.pending_requests.len() > 100
-                || observation.pending_request_ids.len() > 100
-            {
-                return Err(invalid("Execution capture is bounded to 100 requests"));
-            }
-            if observation
-                .last_reply_excerpt
-                .as_ref()
-                .is_some_and(|text| text.chars().count() > 400)
-            {
-                return Err(invalid("Last reply excerpt exceeds 400 characters"));
-            }
-            if observation.state == SessionExecutionState::Queued
-                && observation
-                    .queue
-                    .as_ref()
-                    .is_none_or(|queue| queue.position == 0)
-            {
-                return Err(invalid(
-                    "Queued execution requires a positive queue position",
-                ));
-            }
-            for request in &observation.pending_requests {
-                validate_id("request_id", &request.id)?;
-            }
-            if let Some(agent) = &observation.agent {
-                crate::library::validate_agent_selection(agent)?;
+            validate_observation(observation)?;
+            if scoped_observations.len() > 100 {
+                return Err(invalid("Execution capture is bounded to 100 scopes"));
             }
             let mut recorded = observation.clone();
             if recorded.agent.is_none() {
                 recorded.agent = super::page_chat::session_agent_selection(connection, session_id)?;
             }
-            let encoded = serde_json::to_string(&recorded)
-                .map_err(|_| invalid("Invalid execution observation"))?;
-            if encoded.len() > 16000 {
-                return Err(invalid("Observation exceeds 16000 bytes"));
-            }
+            let encoded = encode_observation(&recorded)?;
             let revision = connection
                 .query_row(
                     "SELECT revision FROM session_execution_observations WHERE session_id=?1",
@@ -268,18 +244,21 @@ pub(super) fn apply(
             connection.execute("INSERT INTO session_execution_observations(session_id,revision,observed_json,observed_at) VALUES(?1,1,?2,?3) ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,observed_json=excluded.observed_json,observed_at=excluded.observed_at",params![session_id,encoded,now])?;
             pages.extend(
                 connection
-                    .prepare("SELECT page_id FROM page_active_chats WHERE session_id=?1")?
+                    .prepare("SELECT page_id FROM page_active_chats WHERE session_id=?1 AND borrowed_scope_id IS NULL")?
                     .query_map([session_id], |r| r.get::<_, String>(0))?
                     .collect::<rusqlite::Result<Vec<_>>>()?,
             );
+            let mut captures = vec![(None, observation)];
+            for scoped in scoped_observations {
+                let changed = record_scoped_observation(connection, session_id, scoped)?;
+                if changed.is_empty() {
+                    continue;
+                }
+                pages.extend(changed);
+                captures.push((Some(scoped.scope.key()), &scoped.observation));
+            }
             status_receipt = supersede_ready_reports(
-                connection,
-                library,
-                context,
-                operation,
-                session_id,
-                observation,
-                &now,
+                connection, library, context, operation, session_id, &captures, &now,
             )?;
             sessions.push(session_id.clone());
         }
@@ -313,6 +292,82 @@ pub(super) fn apply(
     finish_mutation(connection, context, epoch, operation, hash, effects)
 }
 
+fn validate_observation(observation: &SessionExecutionObservation) -> Result<(), StoreError> {
+    if observation.pending_requests.len() > 100 || observation.pending_request_ids.len() > 100 {
+        return Err(invalid("Execution capture is bounded to 100 requests"));
+    }
+    if observation
+        .last_reply_excerpt
+        .as_ref()
+        .is_some_and(|text| text.chars().count() > 400)
+    {
+        return Err(invalid("Last reply excerpt exceeds 400 characters"));
+    }
+    if observation.state == SessionExecutionState::Queued
+        && observation
+            .queue
+            .as_ref()
+            .is_none_or(|queue| queue.position == 0)
+    {
+        return Err(invalid(
+            "Queued execution requires a positive queue position",
+        ));
+    }
+    for request in &observation.pending_requests {
+        validate_id("request_id", &request.id)?;
+    }
+    if let Some(agent) = &observation.agent {
+        crate::library::validate_agent_selection(agent)?;
+    }
+    Ok(())
+}
+
+fn encode_observation(observation: &SessionExecutionObservation) -> Result<String, StoreError> {
+    let encoded =
+        serde_json::to_string(observation).map_err(|_| invalid("Invalid execution observation"))?;
+    if encoded.len() > 16000 {
+        return Err(invalid("Observation exceeds 16000 bytes"));
+    }
+    Ok(encoded)
+}
+
+fn record_scoped_observation(
+    connection: &Connection,
+    session: &str,
+    scoped: &SessionScopedObservation,
+) -> Result<Vec<String>, StoreError> {
+    let (kind, id) = scoped.scope.key();
+    validate_id("scope id", id)?;
+    validate_observation(&scoped.observation)?;
+    let Some(run) = &scoped.observation.run_id else {
+        return Err(invalid("Scoped observations require a Run"));
+    };
+    validate_id("run_id", run)?;
+    let encoded = encode_observation(&scoped.observation)?;
+    let changed = connection.execute(
+        "INSERT INTO session_scoped_observations(session_id,scope_kind,scope_id,observed_json)
+         SELECT ?1,?2,?3,?4 WHERE EXISTS(SELECT 1 FROM page_active_chats
+           WHERE session_id=?1 AND borrowed_scope_kind=?2 AND borrowed_scope_id=?3)
+         ON CONFLICT(session_id,scope_kind,scope_id) DO UPDATE SET observed_json=excluded.observed_json
+         WHERE session_scoped_observations.observed_json<>excluded.observed_json",
+        params![session, kind, id, encoded],
+    )?;
+    if changed == 0 {
+        return Ok(vec![]);
+    }
+    connection.execute(
+        "INSERT OR IGNORE INTO page_turn_dirty
+         SELECT page_id FROM page_active_chats WHERE session_id=?1 AND borrowed_scope_kind=?2 AND borrowed_scope_id=?3",
+        params![session, kind, id],
+    )?;
+    Ok(connection
+        .prepare(
+            "SELECT page_id FROM page_active_chats WHERE session_id=?1 AND borrowed_scope_kind=?2 AND borrowed_scope_id=?3",
+        )?
+        .query_map(params![session, kind, id], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?)
+}
+
 /// A later root Run invalidates the active chat's earlier claim, even if the
 /// Run already ended by the time the Host observed it. The person still owns Status.
 fn supersede_ready_reports(
@@ -321,35 +376,45 @@ fn supersede_ready_reports(
     context: &BoundModuleContext,
     operation: &str,
     session: &str,
-    observation: &SessionExecutionObservation,
+    captures: &[(Option<(&str, &str)>, &SessionExecutionObservation)],
     now: &str,
 ) -> Result<Option<nodex_core_contracts::database::DatabaseReceipt>, StoreError> {
-    let start = observation
-        .run_id
-        .as_deref()
-        .zip(observation.run_started_at)
-        .or_else(|| {
-            observation
-                .earlier_run_start
-                .as_ref()
-                .map(|start| (start.run_id.as_str(), start.started_at))
-        });
-    let Some((run, started_at)) = start else {
-        return Ok(None);
-    };
-    if observation.state == SessionExecutionState::Unavailable {
-        return Ok(None);
-    }
-    let candidates = connection.prepare(
+    let mut candidates = Vec::new();
+    let mut statement = connection.prepare(
         "SELECT report.page_id, CASE WHEN report.report_status_moved THEN report.status_fence END
          FROM page_active_chats active
          JOIN project_session_pages report USING (page_id, session_id)
-         WHERE active.session_id=?1 AND report.report_outcome='ready'
+         WHERE active.session_id=?1 AND active.borrowed_scope_kind IS ?4 AND active.borrowed_scope_id IS ?5 AND report.report_outcome='ready'
            AND report.report_run_id IS NOT ?2
            AND CAST(round(unixepoch(report.report_at, 'subsec') * 1000) AS INTEGER) < ?3",
-    )?.query_map(params![session, run, started_at], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
-    })?.collect::<rusqlite::Result<Vec<_>>>()?;
+    )?;
+    for (scope, observation) in captures {
+        if observation.state == SessionExecutionState::Unavailable {
+            continue;
+        }
+        let start = observation
+            .run_id
+            .as_deref()
+            .zip(observation.run_started_at)
+            .or_else(|| {
+                scope
+                    .is_none()
+                    .then_some(observation.earlier_run_start.as_ref())
+                    .flatten()
+                    .map(|start| (start.run_id.as_str(), start.started_at))
+            });
+        let Some((run, started_at)) = start else {
+            continue;
+        };
+        let (kind, id) = scope.map_or((None, None), |(kind, id)| (Some(kind), Some(id)));
+        candidates.extend(
+            statement
+                .query_map(params![session, run, started_at, kind, id], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?,
+        );
+    }
     let steps = candidates
         .iter()
         .filter_map(|(page, fence)| {

@@ -22119,6 +22119,12 @@
               "null"
             ]
           },
+          "scoped_run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "turn": {
             "$ref": "#/components/schemas/PageTurn"
           }
@@ -35221,6 +35227,12 @@
                   },
                   "observation": {
                     "$ref": "#/components/schemas/SessionExecutionObservation"
+                  },
+                  "scoped_observations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SessionScopedObservation"
+                    }
                   },
                   "session_id": {
                     "type": "string"
@@ -49957,6 +49969,12 @@
               },
               "observation": {
                 "$ref": "#/components/schemas/SessionExecutionObservation"
+              },
+              "scoped_observations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SessionScopedObservation"
+                }
               },
               "session_id": {
                 "type": "string"
@@ -65499,6 +65517,12 @@
             "type": "integer",
             "format": "int64"
           },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionScopedObserver"
+            }
+          },
           "session_id": {
             "type": "string"
           },
@@ -65580,6 +65604,46 @@
           }
         },
         "additionalProperties": false
+      },
+      "SessionExecutionScope": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delivery"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "run"
+                ]
+              }
+            }
+          }
+        ]
       },
       "SessionExecutionState": {
         "type": "string",
@@ -65859,6 +65923,54 @@
           },
           "run_id": {
             "type": "string"
+          }
+        }
+      },
+      "SessionScopedObservation": {
+        "type": "object",
+        "required": [
+          "scope",
+          "observation"
+        ],
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/SessionExecutionObservation"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SessionExecutionScope"
+          }
+        }
+      },
+      "SessionScopedObserver": {
+        "type": "object",
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "observation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SessionExecutionObservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "question_request_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "question_run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SessionExecutionScope"
           }
         }
       },

@@ -4692,7 +4692,7 @@ CREATE TABLE page_active_chats (
   page_id TEXT PRIMARY KEY REFERENCES pages(block_id) ON DELETE CASCADE,
   session_id TEXT NOT NULL,
   revision INTEGER NOT NULL CHECK(revision >= 1),
-  set_at TEXT NOT NULL,
+  set_at TEXT NOT NULL, borrowed_scope_id TEXT, borrowed_scope_kind TEXT CHECK ((borrowed_scope_kind IS NULL) = (borrowed_scope_id IS NULL) AND borrowed_scope_kind IN ('delivery','run')),
   FOREIGN KEY(session_id,page_id) REFERENCES project_session_pages(session_id,page_id) ON DELETE CASCADE
 ) STRICT;
 CREATE INDEX idx_page_active_chats_session ON page_active_chats(session_id,page_id);
@@ -4945,6 +4945,21 @@ CREATE TABLE session_execution_observations (
   observed_json TEXT NOT NULL CHECK (json_valid(observed_json)),
   observed_at TEXT NOT NULL
 ) WITHOUT ROWID, STRICT;
+CREATE TABLE session_scoped_observations (
+  session_id TEXT NOT NULL REFERENCES project_sessions(id) ON DELETE CASCADE,
+  scope_kind TEXT NOT NULL CHECK(scope_kind IN ('delivery','run')),
+  scope_id TEXT NOT NULL,
+  observed_json TEXT NOT NULL CHECK(json_valid(observed_json)),
+  PRIMARY KEY(session_id,scope_kind,scope_id)
+) WITHOUT ROWID, STRICT;
+CREATE VIEW page_active_chat_execution AS
+SELECT active.page_id, active.session_id, active.borrowed_scope_kind, active.borrowed_scope_id,
+       CASE WHEN active.borrowed_scope_id IS NULL THEN chat.observed_json ELSE scoped.observed_json END AS observed_json
+FROM page_active_chats active
+LEFT JOIN session_execution_observations chat ON chat.session_id=active.session_id
+LEFT JOIN session_scoped_observations scoped
+  ON scoped.session_id=active.session_id AND scoped.scope_kind=active.borrowed_scope_kind
+  AND scoped.scope_id=active.borrowed_scope_id;
 CREATE TABLE page_turn_episodes (
   page_id TEXT PRIMARY KEY REFERENCES pages(block_id) ON DELETE CASCADE,
   signature TEXT NOT NULL,
@@ -5045,7 +5060,7 @@ END;
 CREATE TRIGGER turn_session_execution_observations_insert AFTER INSERT ON session_execution_observations
 
 BEGIN
-  INSERT INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=NEW.session_id ON CONFLICT DO NOTHING;
+  INSERT INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=NEW.session_id AND borrowed_scope_id IS NULL ON CONFLICT DO NOTHING;
 END;
 CREATE TRIGGER turn_data_source_property_values_insert AFTER INSERT ON data_source_property_values
 WHEN NEW.property_id='status'
@@ -5070,7 +5085,7 @@ END;
 CREATE TRIGGER turn_session_execution_observations_update AFTER UPDATE ON session_execution_observations
 
 BEGIN
-  INSERT INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=NEW.session_id ON CONFLICT DO NOTHING;
+  INSERT INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=NEW.session_id AND borrowed_scope_id IS NULL ON CONFLICT DO NOTHING;
 END;
 CREATE TRIGGER turn_data_source_property_values_update AFTER UPDATE ON data_source_property_values
 WHEN NEW.property_id='status'
@@ -5095,7 +5110,7 @@ END;
 CREATE TRIGGER turn_session_execution_observations_delete AFTER DELETE ON session_execution_observations
 
 BEGIN
-  INSERT INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=OLD.session_id ON CONFLICT DO NOTHING;
+  INSERT INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=OLD.session_id AND borrowed_scope_id IS NULL ON CONFLICT DO NOTHING;
 END;
 CREATE TRIGGER turn_data_source_property_values_delete AFTER DELETE ON data_source_property_values
 WHEN OLD.property_id='status'
@@ -5244,7 +5259,7 @@ CREATE TABLE page_turn_replies (
   proposal_id TEXT PRIMARY KEY REFERENCES inbox_proposals(proposal_id) ON DELETE CASCADE,
   page_id TEXT NOT NULL REFERENCES pages(block_id) ON DELETE CASCADE,
   episode TEXT NOT NULL
-) WITHOUT ROWID, STRICT;
+, previous_scope_id TEXT, previous_scope_kind TEXT CHECK ((previous_scope_kind IS NULL) = (previous_scope_id IS NULL) AND previous_scope_kind IN ('delivery','run'))) WITHOUT ROWID, STRICT;
 CREATE TABLE page_turn_notification_intents (
   member_id TEXT NOT NULL REFERENCES members(id),
   page_id TEXT NOT NULL REFERENCES pages(block_id) ON DELETE CASCADE,
@@ -6098,4 +6113,4 @@ CREATE TABLE inbox_start_requests (
   CHECK (consent_basis IS NULL OR proposal_id IS NULL)
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version=225;
+PRAGMA user_version=226;

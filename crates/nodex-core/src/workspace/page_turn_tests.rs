@@ -56,6 +56,7 @@ fn capture(w: &TestWorkspace, revision: i64, observation: SessionExecutionObserv
         &w.module,
         &format!("capture:{revision}"),
         ProjectWorkspaceIntent::RecordSessionExecution {
+            scoped_observations: vec![],
             session_id: "chat".into(),
             expected_revision: revision,
             observation,
@@ -169,6 +170,7 @@ fn observations_are_revisioned_host_facts_and_unavailable_is_not_failure_or_a_pe
         request(
             "stale",
             ProjectWorkspaceIntent::RecordSessionExecution {
+                scoped_observations: vec![],
                 session_id: "chat".into(),
                 expected_revision: 0,
                 observation: observation(SessionExecutionState::Working),
@@ -183,6 +185,7 @@ fn observations_are_revisioned_host_facts_and_unavailable_is_not_failure_or_a_pe
         request(
             "forge-observation",
             ProjectWorkspaceIntent::RecordSessionExecution {
+                scoped_observations: vec![],
                 session_id: "chat".into(),
                 expected_revision: 3,
                 observation: observation(SessionExecutionState::Working),
@@ -603,6 +606,7 @@ fn completed_chat_needs_its_owner_to_reply_and_projects_the_reply_body() {
             request(
                 "oversize",
                 ProjectWorkspaceIntent::RecordSessionExecution {
+                    scoped_observations: vec![],
                     session_id: "chat".into(),
                     expected_revision: 3,
                     observation: oversized,

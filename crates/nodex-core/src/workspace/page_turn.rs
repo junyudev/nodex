@@ -28,6 +28,8 @@ struct Facts {
     work: PageWork,
     stage: Option<String>,
     active: Option<(String, Option<i64>)>,
+    borrowed: bool,
+    awaiting_delivery: bool,
     active_agent: Option<PageAssignee>,
     observation: Option<SessionExecutionObservation>,
     report: Option<String>,
@@ -142,6 +144,9 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
             }
         }
     }
+    if facts.awaiting_delivery {
+        return (executing(), Some(Queued));
+    }
     if facts.report.as_deref() == Some("blocked") {
         return (owner(), Some(Blocked));
     }
@@ -160,7 +165,7 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
         return (owner(), Some(Stalled));
     }
     if facts.stage.as_deref() == Some("review") {
-        if facts.report_awaits_quiet {
+        if facts.report_awaits_quiet || (facts.borrowed && facts.observation.is_none()) {
             return (TurnActor::None, None);
         }
         return (owner(), Some(Review));
@@ -171,12 +176,13 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
         && facts.observation.as_ref().is_some_and(|observation| {
             observation.state == SessionExecutionState::Idle
                 && observation.run_id.is_some()
-                && facts.active.as_ref().is_some_and(|(_, selected_at)| {
-                    observation
-                        .run_started_at
-                        .zip(*selected_at)
-                        .is_some_and(|(started, selected_at)| started > selected_at)
-                })
+                && (facts.borrowed
+                    || facts.active.as_ref().is_some_and(|(_, selected_at)| {
+                        observation
+                            .run_started_at
+                            .zip(*selected_at)
+                            .is_some_and(|(started, selected_at)| started > selected_at)
+                    }))
                 && observation.terminal_status == Some(SessionExecutionTerminalStatus::Completed)
                 && !observation.person_stopped
                 && !observation.stalled
@@ -241,7 +247,26 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
     };
     let blockers = crate::database::work_graph::summaries(connection, ids)?;
     let mut holds = super::execution_holds::for_pages(connection, ids)?;
-    let rows = connection.prepare("SELECT page.block_id,work.value_json,json_extract(status.value_json,'$'),active.session_id,CAST(round(unixepoch(active.set_at,'subsec')*1000) AS INTEGER),observation.observed_json,report.report_outcome,
+    // Older schema upgrades initialize Turn episodes before delivery-scoped facts exist.
+    let scoped: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='page_active_chat_execution')",
+        [],
+        |r| r.get(0),
+    )?;
+    let (scope_columns, observation_join, report_filter) = if scoped {
+        (
+            "observation.borrowed_scope_kind, observation.borrowed_scope_id",
+            "LEFT JOIN page_active_chat_execution observation ON observation.page_id=active.page_id",
+            "AND (active.borrowed_scope_id IS NULL OR report.report_run_id=COALESCE(json_extract(observation.observed_json,'$.runId'),CASE WHEN active.borrowed_scope_kind='run' THEN active.borrowed_scope_id END))",
+        )
+    } else {
+        (
+            "NULL, NULL",
+            "LEFT JOIN session_execution_observations observation ON observation.session_id=active.session_id",
+            "",
+        )
+    };
+    let rows = connection.prepare(&format!("SELECT page.block_id,work.value_json,json_extract(status.value_json,'$'),active.session_id,CAST(round(unixepoch(active.set_at,'subsec')*1000) AS INTEGER),observation.observed_json,report.report_outcome,
         CASE WHEN report.report_outcome='ready' AND report.report_status_moved
             AND report.status_fence=page.status_person_revision THEN
           NOT COALESCE((json_extract(observation.observed_json,'$.state') IN ('idle','failed')
@@ -254,30 +279,62 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
                 OR report.report_run_id=json_extract(observation.observed_json,'$.runId')
                 OR (json_extract(observation.observed_json,'$.personStopped')=1
                     AND json_extract(observation.observed_json,'$.runStartedAt') IS NULL)),0)
-        ELSE 0 END
-        FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value JOIN blocks block ON block.id=page.block_id JOIN block_properties work ON work.block_id=page.block_id AND work.property_key='work' LEFT JOIN data_source_page_memberships membership ON membership.page_block_id=page.block_id AND membership.data_source_id=page.parent_id AND page.parent_kind='data_source' AND membership.removed_at IS NULL LEFT JOIN data_source_property_values status ON status.data_source_id=membership.data_source_id AND status.membership_id=membership.id AND status.property_id='status' LEFT JOIN page_active_chats active ON active.page_id=page.block_id LEFT JOIN session_execution_observations observation ON observation.session_id=active.session_id LEFT JOIN project_session_pages report ON report.page_id=page.block_id AND report.session_id=active.session_id")?
-        .query_map([json!(ids).to_string()], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,Option<String>>(2)?, row.get::<_,Option<String>>(3)?, row.get::<_,Option<i64>>(4)?, row.get::<_,Option<String>>(5)?, row.get::<_,Option<String>>(6)?, row.get::<_,bool>(7)?)))?
+        ELSE 0 END, {scope_columns}
+        FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value JOIN blocks block ON block.id=page.block_id JOIN block_properties work ON work.block_id=page.block_id AND work.property_key='work' LEFT JOIN data_source_page_memberships membership ON membership.page_block_id=page.block_id AND membership.data_source_id=page.parent_id AND page.parent_kind='data_source' AND membership.removed_at IS NULL LEFT JOIN data_source_property_values status ON status.data_source_id=membership.data_source_id AND status.membership_id=membership.id AND status.property_id='status' LEFT JOIN page_active_chats active ON active.page_id=page.block_id {observation_join} LEFT JOIN project_session_pages report ON report.page_id=page.block_id AND report.session_id=active.session_id {report_filter}"))?
+        .query_map([json!(ids).to_string()], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,Option<String>>(2)?, row.get::<_,Option<String>>(3)?, row.get::<_,Option<i64>>(4)?, row.get::<_,Option<String>>(5)?, row.get::<_,Option<String>>(6)?, row.get::<_,bool>(7)?, row.get::<_,Option<String>>(8)?, row.get::<_,Option<String>>(9)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     rows.into_iter()
         .map(
-            |(id, work, stage, active, selected_at, observation, report, report_awaits_quiet)| {
+            |(
+                id,
+                work,
+                stage,
+                active,
+                selected_at,
+                observation,
+                report,
+                report_awaits_quiet,
+                scope_kind,
+                scope_id,
+            )| {
                 let work = crate::library::parse_page_work(&decode(work)?)?;
-                let active_agent = active
-                    .as_deref()
-                    .map(|session| super::page_chat::session_agent_selection(connection, session))
-                    .transpose()?
-                    .flatten()
-                    .map(|agent| PageAssignee::Agent {
-                        instance_id: agent.instance_id,
-                        model: agent.model,
-                        effort: agent.effort,
-                    });
+                let observation: Option<SessionExecutionObservation> =
+                    observation.map(decode).transpose()?;
+                let borrowed = scope_kind.is_some();
+                let awaiting_delivery = scope_kind.as_deref() == Some("delivery") && observation.is_none();
+                let selection = if borrowed {
+                    observation.as_ref().and_then(|observation| observation.agent.clone())
+                } else if let Some(session) = &active {
+                    super::page_chat::session_agent_selection(connection, session)?
+                } else {
+                    None
+                };
+                let active_agent = selection.map(|agent| PageAssignee::Agent {
+                    instance_id: agent.instance_id,
+                    model: agent.model,
+                    effort: agent.effort,
+                });
                 let blocker = blockers
                     .get(&id)
                     .and_then(|summary| summary.blockers.first())
                     .cloned();
-                let observation: Option<SessionExecutionObservation> =
-                    observation.map(decode).transpose()?;
+                let observed_run = observation.as_ref().and_then(|o| o.run_id.as_deref());
+                let question_member = match (active.as_deref(), scope_kind.as_deref(), scope_id.as_deref()) {
+                    (Some(session), Some("delivery"), Some(message)) => connection.query_row(
+                        "SELECT member_id FROM session_requesting_members WHERE session_id=?1 AND message_id=?2",
+                        params![session,message],
+                        |r| r.get(0),
+                    ).optional()?,
+                    (Some(session), Some("run"), _) => connection.query_row(
+                        "SELECT member_id FROM session_run_members WHERE session_id=?1 AND run_id=?2 AND message_id IS NOT NULL",
+                        params![session,observed_run],
+                        |r| r.get(0),
+                    ).optional()?,
+                    (Some(session), _, _) => crate::infrastructure::actors::session_requester(
+                        connection, session, observed_run,
+                    )?,
+                    _ => None,
+                };
                 Ok((
                     id.clone(),
                     Facts {
@@ -286,22 +343,14 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
                         delivery_attempt: intake
                             .get(&id)
                             .and_then(|(_, _, attempt)| attempt.clone()),
-                        question_member: active
-                            .as_ref()
-                            .map(|session| {
-                                crate::infrastructure::actors::session_requester(
-                                    connection,
-                                    session,
-                                    observation.as_ref().and_then(|o| o.run_id.as_deref()),
-                                )
-                            })
-                            .transpose()?
-                            .flatten(),
+                        question_member,
                         holds: holds.remove(&id).unwrap_or_default(),
                         work,
                         stage,
                         active: active.map(|id| (id, selected_at)),
                         active_agent,
+                        borrowed,
+                        awaiting_delivery,
                         observation,
                         report,
                         report_awaits_quiet,
@@ -369,6 +418,16 @@ fn signature(actor: &TurnActor, reason: Option<TurnReason>, facts: &Facts) -> St
         let session_id = facts.active.as_ref().map(|(id, _)| id);
         let run_id = facts.observation.as_ref().and_then(|o| o.run_id.as_ref());
         return json!([actor, reason, hold, [session_id, run_id]]).to_string();
+    }
+    if facts.borrowed && matches!(reason, Some(TurnReason::Question | TurnReason::Approval)) {
+        let observation = facts.observation.as_ref();
+        return json!([
+            actor,
+            reason,
+            hold,
+            observation.map(|o| (&o.run_id, &o.pending_request_ids))
+        ])
+        .to_string();
     }
     json!([actor, reason, hold]).to_string()
 }
@@ -624,10 +683,46 @@ pub(super) fn observer(
             revision,
             observation: observation.map(decode).transpose()?,
             managed,
+            scopes: scope_observers(connection, id)?,
         })
     })
     .transpose()
 }
+fn scope_observers(
+    connection: &Connection,
+    session: &str,
+) -> Result<Vec<SessionScopedObserver>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT active.borrowed_scope_kind, active.borrowed_scope_id, active.observed_json,
+                json_extract(handoff.question_response_json,'$.request_id'),
+                json_extract(handoff.question_response_json,'$.run_id')
+         FROM page_active_chat_execution active
+         LEFT JOIN inbox_handoffs handoff ON active.borrowed_scope_kind='delivery'
+           AND handoff.message_id=active.borrowed_scope_id
+         LEFT JOIN inbox_proposals proposal USING(proposal_id)
+         WHERE active.session_id=?1 AND active.borrowed_scope_id IS NOT NULL
+           AND (proposal.state IS NULL OR proposal.state IN ('dispatching','completed'))
+         ORDER BY active.borrowed_scope_kind,active.borrowed_scope_id",
+    )?;
+    Ok(statement
+        .query_map([session], |r| {
+            let kind: String = r.get(0)?;
+            let id = r.get(1)?;
+            let scope = if kind == "run" {
+                SessionExecutionScope::Run { id }
+            } else {
+                SessionExecutionScope::Delivery { id }
+            };
+            Ok(SessionScopedObserver {
+                scope,
+                observation: r.get::<_, Option<String>>(2)?.map(decode).transpose()?,
+                question_request_id: r.get(3)?,
+                question_run_id: r.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 pub(super) fn observers(
     connection: &Connection,
     after: Option<&str>,
@@ -662,6 +757,8 @@ mod tests {
             },
             stage: Some("plan".into()),
             active: None,
+            borrowed: false,
+            awaiting_delivery: false,
             active_agent: None,
             observation: None,
             report: None,

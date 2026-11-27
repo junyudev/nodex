@@ -2,6 +2,7 @@ import type { components } from "@nodex/core-protocol";
 
 export const MANAGED_CHAT_STALL_MS = 20 * 60 * 1000;
 export type ManagedChatObservation = components["schemas"]["SessionExecutionObservation"];
+export type ManagedChatScope = components["schemas"]["SessionExecutionScope"];
 
 export const replyExcerpt = (text: string | null | undefined) =>
   Array.from(text?.trim() ?? "")
@@ -19,6 +20,10 @@ export interface ManagedChatRequest {
   }[];
 }
 export interface ManagedChatFacts {
+  readonly scoped?: readonly {
+    readonly scope: ManagedChatScope;
+    readonly facts: ManagedChatFacts;
+  }[];
   readonly agent?: NonNullable<ManagedChatObservation["agent"]>;
   readonly waitingAdmissions?: readonly {
     readonly runId: string;

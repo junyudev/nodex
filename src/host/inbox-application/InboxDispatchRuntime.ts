@@ -182,6 +182,7 @@ export const make = Effect.gen(function* () {
         submissionId: work.message_id,
         responseFingerprint: inboxDispatchFingerprint(work),
         requirePending: true,
+        queueAnswer: true,
         answers: { [response.question_id]: response.answer },
       });
       return yield* inbox.completeDispatch(

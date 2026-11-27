@@ -148,31 +148,69 @@ export const SIDE_CHAT_SOURCE_ROOT = `SELECT json_extract(source.payload_json, '
       WHERE source.thread_id = json_extract(owner.payload_json, '$.sideChat.sourceThreadId')
         AND source.deleted_at IS NULL`;
 
+/** One Run and the Runs of tasks it actually delegated, including nested tasks. */
+export const runScope = (sql: SqlClient.SqlClient, threadId: string, runId: string) => sql`
+  scoped_runs(thread_id, run_id) AS (
+    VALUES (${threadId}, ${runId})
+    UNION
+    SELECT child.thread_id, child.run_id
+    FROM scoped_runs parent
+    JOIN orchestration_v2_projection_subagents task
+      ON task.thread_id = parent.thread_id AND task.run_id = parent.run_id
+    JOIN orchestration_v2_projection_runs child ON child.thread_id = task.child_thread_id
+      AND json_extract(child.payload_json, '$.delegatedTaskId') = task.subagent_id
+  )`;
+
 /** Root Session details use exactly the activity tree policy, starting only from live requests. */
 export const readTreeSessionAttention = Effect.fn("SessionAttention.readTree")(function* (
   threadId: string,
+  runId?: string,
 ) {
   const sql = yield* SqlClient.SqlClient;
+  const ownsAttention =
+    runId === undefined
+      ? sql.literal(OWN_ATTENTION_PREDICATE)
+      : sql`
+    facts.thread_id = ${threadId} AND (facts.kind <> 'question' OR NOT EXISTS (
+      SELECT 1 FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}
+        AND run_id = ${runId} AND ${sql.literal(WORKING_RUN_PREDICATE)}))`;
   return yield* sql<{
     readonly id: string;
     readonly threadId: string;
     readonly kind: "question" | "approval";
   }>`
-    WITH RECURSIVE facts(thread_id, request_id, kind) AS MATERIALIZED (
+    WITH RECURSIVE ${runId === undefined ? sql`` : sql`${runScope(sql, threadId, runId)},`}
+    facts(thread_id, request_id, kind) AS MATERIALIZED (
       SELECT thread_id, runtime_request_id, ${sql.literal(REQUEST_ATTENTION_KIND_SQL)}
-      FROM orchestration_v2_projection_runtime_requests
+      FROM orchestration_v2_projection_runtime_requests request
       WHERE ${sql.literal(PENDING_ATTENTION_REQUEST_PREDICATE)}
+        ${
+          runId === undefined
+            ? sql``
+            : sql`AND EXISTS (
+          SELECT 1 FROM orchestration_v2_projection_nodes node
+          JOIN scoped_runs scope ON scope.thread_id=node.thread_id AND scope.run_id=node.run_id
+          WHERE node.node_id=request.node_id AND node.thread_id=request.thread_id
+        )`
+        }
       UNION ALL
       SELECT secret.thread_id, secret.turn_item_id, 'input'
       ${sql.literal(SECRET_CARD_ATTENTION_FACT_FROM_SQL)}
+        ${
+          runId === undefined
+            ? sql``
+            : sql`AND EXISTS (
+          SELECT 1 FROM scoped_runs scope WHERE scope.thread_id=secret.thread_id AND scope.run_id=secret.run_id
+        )`
+        }
     ), rooted(root_thread_id, thread_id, request_id, kind) AS (
       SELECT json_extract(thread.payload_json, '$.lineage.rootThreadId'), facts.thread_id, facts.request_id, facts.kind
       FROM facts CROSS JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = facts.thread_id
-      WHERE thread.deleted_at IS NULL AND ((${sql.literal(OWN_ATTENTION_PREDICATE)}) OR (${sql.literal(CHILD_ATTENTION_PREDICATE)}))
+      WHERE thread.deleted_at IS NULL AND ((${ownsAttention}) OR (${sql.literal(CHILD_ATTENTION_PREDICATE)}))
       UNION
       SELECT (${sql.literal(SIDE_CHAT_SOURCE_ROOT)}), rooted.thread_id, rooted.request_id, rooted.kind
       FROM rooted CROSS JOIN orchestration_v2_projection_threads AS owner ON owner.thread_id = rooted.root_thread_id
-      WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
+      WHERE ${runId === undefined ? sql`json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL` : sql`0`}
     ) SELECT request_id AS id, thread_id AS threadId,
       CASE WHEN kind = 'approval' THEN 'approval' ELSE 'question' END AS kind
     FROM rooted WHERE root_thread_id = ${threadId} ORDER BY thread_id, request_id, kind`;

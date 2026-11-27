@@ -3708,6 +3708,8 @@ export const OrchestrationV2Command = Schema.Union([
     /** Agent question tools cannot revise a resolved asynchronous request. */
     requirePending: Schema.optional(Schema.Boolean),
     inboundMessage: Schema.optional(Schema.Struct({ id: MessageId, text: Schema.String })),
+    /** The Inbox keeps an asynchronous answer out of any unrelated active Run. */
+    queueAnswer: Schema.optional(Schema.Boolean),
     responseFingerprint: Schema.optional(Schema.String),
     commandId: CommandId,
     threadId: ThreadId,

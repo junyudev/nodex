@@ -5472,6 +5472,7 @@ export interface components {
             readonly delivery_error?: string | null;
             readonly options: readonly string[];
             readonly pull_request_url?: string | null;
+            readonly scoped_run_id?: string | null;
             readonly turn: components["schemas"]["PageTurn"];
         };
         readonly InboxTurnNotification: {
@@ -8566,6 +8567,7 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "record_session_execution";
                 readonly observation: components["schemas"]["SessionExecutionObservation"];
+                readonly scoped_observations?: readonly components["schemas"]["SessionScopedObservation"][];
                 readonly session_id: string;
             } | {
                 readonly base_commit_oid: string;
@@ -12025,6 +12027,7 @@ export interface components {
             /** @enum {string} */
             readonly kind: "record_session_execution";
             readonly observation: components["schemas"]["SessionExecutionObservation"];
+            readonly scoped_observations?: readonly components["schemas"]["SessionScopedObservation"][];
             readonly session_id: string;
         } | {
             readonly base_commit_oid: string;
@@ -15375,6 +15378,7 @@ export interface components {
             readonly observation?: components["schemas"]["SessionExecutionObservation"] | null;
             /** Format: int64 */
             readonly revision: number;
+            readonly scopes?: readonly components["schemas"]["SessionScopedObserver"][];
             readonly session_id: string;
             readonly since: string;
         };
@@ -15396,6 +15400,15 @@ export interface components {
             readonly runId: string;
             /** Format: int64 */
             readonly startedAt: number;
+        };
+        readonly SessionExecutionScope: {
+            readonly id: string;
+            /** @enum {string} */
+            readonly kind: "delivery";
+        } | {
+            readonly id: string;
+            /** @enum {string} */
+            readonly kind: "run";
         };
         /** @enum {string} */
         readonly SessionExecutionState: "working" | "queued" | "waiting" | "idle" | "failed" | "unavailable";
@@ -15474,6 +15487,16 @@ export interface components {
             /** @description Whether the reader may edit the message that opened this Run. */
             readonly edit: components["schemas"]["SessionMessageEdit"];
             readonly run_id: string;
+        };
+        readonly SessionScopedObservation: {
+            readonly observation: components["schemas"]["SessionExecutionObservation"];
+            readonly scope: components["schemas"]["SessionExecutionScope"];
+        };
+        readonly SessionScopedObserver: {
+            readonly observation?: components["schemas"]["SessionExecutionObservation"] | null;
+            readonly question_request_id?: string | null;
+            readonly question_run_id?: string | null;
+            readonly scope: components["schemas"]["SessionExecutionScope"];
         };
         readonly ShutdownRequest: {
             /** @enum {string} */

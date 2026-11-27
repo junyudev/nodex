@@ -344,7 +344,7 @@ fn hand_back(
             ));
         }
 
-        let valid=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND EXISTS(SELECT 1 FROM inbox_intake intake WHERE intake.page_id=entry.page_id AND intake.stage IN ('triage','doing','plan')) AND EXISTS(SELECT 1 FROM page_active_chats active WHERE active.page_id=entry.page_id AND active.session_id=?3) AND entry.current_proposal_id IS ?2 AND NOT EXISTS(SELECT 1 FROM inbox_answers WHERE question_page_id=entry.page_id))",params![id,proposal,session],|r|r.get::<_,bool>(0))?;
+        let valid=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND EXISTS(SELECT 1 FROM inbox_intake intake WHERE intake.page_id=entry.page_id AND intake.stage IN ('triage','doing','plan')) AND EXISTS(SELECT 1 FROM page_active_chats active WHERE active.page_id=entry.page_id AND active.session_id=?3 AND (active.borrowed_scope_id IS NULL OR (active.borrowed_scope_kind='delivery' AND active.borrowed_scope_id=?4) OR (active.borrowed_scope_kind='run' AND active.borrowed_scope_id=?5))) AND entry.current_proposal_id IS ?2 AND NOT EXISTS(SELECT 1 FROM inbox_answers WHERE question_page_id=entry.page_id))",params![id,proposal,session,input.delivery_id,provenance.authority.turn_id],|r|r.get::<_,bool>(0))?;
         if !valid || super::super::inbox_read::message_basis(connection, id)?.content_hash != *hash
         {
             return Err(conflict(

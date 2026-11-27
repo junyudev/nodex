@@ -102,6 +102,7 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
         &w.module,
         "host:observe-approval",
         ProjectWorkspaceIntent::RecordSessionExecution {
+            scoped_observations: vec![],
             session_id: "session:standalone".into(),
             expected_revision: observers[0].revision,
             observation,
@@ -371,6 +372,7 @@ fn remote_members_read_and_reply_to_turns_with_member_bound_receipts() {
                 &w.module,
                 "question",
                 ProjectWorkspaceIntent::RecordSessionExecution {
+                    scoped_observations: vec![],
                     session_id: format!("chat:{page}"),
                     expected_revision: 0,
                     observation,

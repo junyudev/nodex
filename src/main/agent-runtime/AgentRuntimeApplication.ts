@@ -3888,7 +3888,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   });
 
   const respond = Effect.fn("AgentRuntimeApplication.respond")(function* (
-    input: AgentRuntimeResponseInput,
+    input: AgentRuntimeResponseInput & { readonly queueAnswer?: boolean },
   ) {
     yield* assertWritableChat(input.sessionId, "response");
     const connection = yield* options.connect;
@@ -4019,6 +4019,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       {
         type: "runtime-request.respond",
         ...(inboundMessage ? { inboundMessage } : {}),
+        ...(input.queueAnswer ? { queueAnswer: true } : {}),
         commandId: commandId("response", {
           threadId: loaded.threadId,
           requestId: input.requestId,
@@ -5313,6 +5314,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     observeSessionMetadata: (input: {
       readonly sessionId: string;
       readonly includeLastReply?: boolean;
+      readonly scopeRunId?: string;
+      readonly scopes?: readonly components["schemas"]["SessionScopedObserver"][];
     }) =>
       owned(
         "observe-session-metadata",
@@ -5328,12 +5331,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           if (!metadata) return null;
           const execution = yield* connection.request("thread.execution", {
             threadId,
-            ...(metadata.activeRunId ? { runId: metadata.activeRunId } : {}),
+            ...((input.scopeRunId ?? metadata.activeRunId)
+              ? { runId: input.scopeRunId ?? metadata.activeRunId }
+              : {}),
           });
           const details = yield* connection.request("thread.read-details", {
             threadId,
             runLimit: 1,
             ...(execution.runId ? { runId: execution.runId } : {}),
+            ...(input.scopeRunId ? { scoped: true } : {}),
           });
           const activity = yield* connection.request("execution.activity", {
             rootThreadIds: [threadId],
@@ -5348,8 +5354,67 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                   .request("threads.latest-replies", { threadIds: [threadId] })
                   .pipe(Effect.orElseSucceed(() => [])))[0]
               : null;
+          const scoped = yield* Effect.forEach(
+            input.scopes ?? [],
+            ({ scope, question_request_id: requestId, question_run_id: answerRunId }) =>
+              Effect.gen(function* () {
+                // An admitted live answer resumes its existing Run. Async answers
+                // project a user message in the same transaction as the receipt.
+                let addressed: { messageId: string } | { runId: string } =
+                  scope.kind === "delivery" ? { messageId: scope.id } : { runId: scope.id };
+                if (scope.kind === "delivery" && requestId && answerRunId) {
+                  const receipt = yield* connection.request("command.receipt", {
+                    threadId,
+                    commandId: commandId("response", {
+                      threadId,
+                      requestId,
+                      submissionId: scope.id,
+                    }),
+                  });
+                  if (receipt?.status !== "accepted") return null;
+                  const carrying = yield* connection.request("thread.message-turn", {
+                    threadId,
+                    messageId: scope.id,
+                  });
+                  addressed = { runId: carrying?.runId ?? answerRunId };
+                }
+                const execution = yield* connection.request("thread.execution", {
+                  threadId,
+                  ...addressed,
+                });
+                if (!execution.runId) return null;
+                const details = yield* connection.request("thread.read-details", {
+                  threadId,
+                  runId: execution.runId,
+                  runLimit: 1,
+                  scoped: true,
+                });
+                if (
+                  execution.status === "queued" &&
+                  !details.waitingAdmissions.some((queued) => queued.runId === execution.runId)
+                )
+                  return null;
+                const progress =
+                  execution.status === "completed" && !execution.continuationPending
+                    ? yield* connection
+                        .request("thread.progress", {
+                          threadId,
+                          runId: execution.runId,
+                        })
+                        .pipe(Effect.orElseSucceed(() => null))
+                    : null;
+                return {
+                  scope,
+                  execution,
+                  details,
+                  lastReply: progress?.latestReply?.text ?? null,
+                };
+              }).pipe(Effect.orElseSucceed(() => null)),
+            { concurrency: 4 },
+          );
           return {
             metadata,
+            scoped: scoped.filter((observation) => observation !== null),
             execution,
             details,
             activity: activity.items[0] ?? null,

@@ -515,10 +515,13 @@ export const make = Effect.gen(function* () {
         dispatch: thread && !thread.archived && !waiting ? { type: "send" as const } : null,
       };
     }
-    const control = yield* runtime.control({ sessionId, requireActive: true }).pipe(Effect.result);
+    const scopeRunId = row?.turn?.scoped_run_id ?? undefined;
+    const control = yield* runtime
+      .control({ sessionId, requireActive: true, runId: scopeRunId })
+      .pipe(Effect.result);
     if (control._tag === "Failure") return { chat, dispatch: null };
     const metadata = yield* runtime
-      .observeSessionMetadata({ sessionId })
+      .observeSessionMetadata({ sessionId, scopeRunId })
       .pipe(Effect.orElseSucceed(() => null));
     const dispatch: ReplyDispatch | null = metadata
       ? decideInboxReply(

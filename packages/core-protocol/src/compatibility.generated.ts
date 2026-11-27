@@ -21,7 +21,7 @@ export const CORE_CLIENT_REQUIREMENTS = {
     },
     {
       "module": "project_workspace",
-      "contract_version": 90
+      "contract_version": 91
     },
     {
       "module": "automation",
@@ -39,8 +39,8 @@ export const CORE_CLIENT_REQUIREMENTS = {
   "accepted_store_formats": [
     {
       "lineage": "nodex-rust-core",
-      "version": 225,
-      "schema_fingerprint": "643f4606720506e36251cc9914e54105e9744629b0cff7a680f7f6120b021d9f"
+      "version": 226,
+      "schema_fingerprint": "ae7e314ac8cc0d53654c31e1e35241e5a220b5b67ef9dafbde217857fdf6f304"
     }
   ]
 } as const satisfies components["schemas"]["CoreClientRequirements"];

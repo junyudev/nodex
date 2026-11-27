@@ -801,6 +801,8 @@ pub enum InboxRowKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct InboxTurn {
     pub turn: crate::workspace::PageTurn,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scoped_run_id: Option<String>,
     pub active_chat: Option<ProjectWorkspaceInboxChat>,
     pub options: Vec<String>,
     pub pull_request_url: Option<String>,

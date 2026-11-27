@@ -1,0 +1,1 @@
+A Page sent to an existing chat now follows the work that chat does for the Page. A later, unrelated question or failure in the same chat no longer changes the Page’s Turn, Status, or Inbox notification.

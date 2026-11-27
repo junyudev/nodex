@@ -958,7 +958,8 @@ instructions.
   The window that confirmed it puts the message Pages in the new chat's right
   panel, the first message's active and the rest as tabs after it, while the
   Inbox stays in view; opening the chat then shows what it was started from
-  beside it. `Settings → Inbox` can turn this off.
+  beside it. `Settings → Inbox` can turn this off. The new chat owns the
+  Pages’ work for its whole conversation.
 - A chat message sent from the Inbox carries the Library images of its messages
   with the text, each image once and in reading order. Core freezes them with
   the text at confirmation. Up to 20 images are sent, each fitted to what an
@@ -969,7 +970,11 @@ instructions.
 - **Send to chat:** the destination picker ranks eligible started chats by title
   and opening preview using [chat search text matching](command-palette-behavior.md#text-matching).
   A local chat receives the message into its Runtime queue even while busy.
-  Its own queue controls when execution starts.
+  Its own queue controls when execution starts. The Page borrows that chat for
+  the Run that receives the message. An explicit work report or declaration of the
+  Page’s own pull request moves the scope to the Run that made it. Later unrelated
+  Runs leave the Page’s Turn and Status alone. Continue here and Send back use this
+  same delivery.
 - **Fork chat:** for a message an Agent sent, starts a new chat forked from the
   chat that sent it, so the work keeps that chat's conversation without
   interrupting it. Core creates the fork's Session with the confirmation, in the
@@ -979,7 +984,8 @@ instructions.
   new managed worktree when the sending chat's directory is a Git repository, and
   in the same directory otherwise, unless the decision names one. A sending chat
   that was deleted, cannot be forked, or has no finished Run to fork from fails
-  the delivery with that reason.
+  the delivery with that reason. The fork owns the Pages’ work for its whole
+  conversation.
 - All three make every message Page a Linked Page of the receiving chat in the same
   transaction. If the Page has no Assignee, that transaction assigns it to the
   receiving chat's Agent instance, model and effort, without automatic-start consent.

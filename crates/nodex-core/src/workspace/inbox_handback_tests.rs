@@ -188,19 +188,6 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
         None,
     );
     let work = outbox(&w.module).remove(0);
-    let message_id = work.message_id.clone();
-    w.kernel
-        .writer()
-        .call(move |c| {
-            let member = crate::infrastructure::actors::local_member(c, "library-1")?;
-            c.execute(
-            "INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at)
-             VALUES('worker',?1,?2,'2026-11-01T00:00:00Z')",
-            rusqlite::params![message_id, member],
-        )?;
-            Ok(())
-        })
-        .unwrap();
     crate::library::LibraryMembership::new(&w.kernel, "library-1".into())
         .record_agent_run(
             "worker",

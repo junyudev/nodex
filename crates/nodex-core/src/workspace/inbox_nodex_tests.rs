@@ -588,6 +588,7 @@ fn observe(w: &TestWorkspace, id: &str, revision: i64, state: SessionExecutionSt
         &w.module,
         &format!("observe:{id}:{revision}"),
         ProjectWorkspaceIntent::RecordSessionExecution {
+            scoped_observations: vec![],
             session_id: format!("chat:{id}"),
             expected_revision: revision,
             observation,
@@ -755,6 +756,198 @@ fn mixed_inbox_counts_scope_pagination_and_episode_reentry_share_one_membership(
     );
     assert!(mixed(&w, project_scope(), None, 10).items.is_empty());
 }
+#[test]
+fn borrowed_chat_follows_deliveries_and_explicit_work_reports() {
+    use nodex_core_contracts::inbox::InboxReplyDispatch;
+    use nodex_core_contracts::workspace::{
+        SessionExecutionScope, SessionScopedObservation, TurnReason,
+    };
+    let w = seeded_workspace();
+    let m = &w.module;
+    let page = "page:followup";
+    let chat = "target";
+    runtime_session(m, chat, None);
+    let mut existing_run = super::chat_execution("working", "already-running", None, false);
+    existing_run.agent = Some(super::selection().model_selection.agent_selection());
+    super::observe_chat(m, chat, 0, existing_run, vec![]);
+    super::send(m, "followup", "Check the release notes");
+    let entry = pending(m).remove(0);
+    propose(
+        m,
+        "proposal:send",
+        &entry,
+        ProjectWorkspaceInboxDispatchAction::SendToChat {
+            session_id: chat.into(),
+            prompt: "Check the release notes".into(),
+            skills: vec![],
+            additions: vec![],
+        },
+    );
+    confirm_proposal(m, "proposal:send", None);
+    let first = outbox(m).remove(0);
+    let turn = || {
+        let ProjectWorkspaceReadValue::PageTurn { turn, .. } = read_workspace(
+            m,
+            ProjectWorkspaceRead::PageTurn {
+                page_id: page.into(),
+            },
+        ) else {
+            panic!("Page Turn")
+        };
+        turn
+    };
+    let complete =
+        |operation: &str, work: &nodex_core_contracts::inbox::ProjectWorkspaceInboxDispatchWork| {
+            super::apply_host(
+                m,
+                operation,
+                ProjectWorkspaceIntent::CompleteInboxDispatch {
+                    proposal_id: work.proposal_id.clone(),
+                    expected_revision: work.revision,
+                    message_id: work.message_id.clone(),
+                    dispatched_thread_id: Some("thread:target".into()),
+                    unavailable_skill_names: vec![],
+                },
+            )
+        };
+    let capture = |revision, whole, scope, scoped| {
+        super::observe_chat(
+            m,
+            chat,
+            revision,
+            whole,
+            vec![SessionScopedObservation {
+                scope,
+                observation: scoped,
+            }],
+        )
+    };
+    let unrelated =
+        || super::chat_execution("waiting", "unrelated", Some("Unrelated question"), false);
+    let delivery = |id: &str| SessionExecutionScope::Delivery { id: id.into() };
+    let ready = |run: &str, summary: &str| {
+        let ProjectWorkspaceIntent::AgentCommand {
+            mut provenance,
+            intent,
+        } = agent_command(
+            chat,
+            ProjectWorkspaceIntent::ReportPageWork {
+                page_id: Some(page.into()),
+                outcome: nodex_core_contracts::workspace::WorkReportOutcome::Ready,
+                summary: summary.into(),
+            },
+        )
+        else {
+            unreachable!()
+        };
+        provenance.authority.turn_id = run.into();
+        ProjectWorkspaceIntent::AgentCommand { provenance, intent }
+    };
+    assert_eq!(turn().reason, Some(TurnReason::Queued));
+    complete("complete-first", &first);
+    super::observe_chat(m, chat, 1, unrelated(), vec![]);
+    assert_eq!(turn().reason, Some(TurnReason::Queued));
+
+    let completed = || super::chat_execution("idle", "run:test", None, true);
+    capture(2, unrelated(), delivery(&first.message_id), completed());
+    assert_eq!(turn().reason, Some(TurnReason::Reply));
+    apply_host(m, "ready", ready("run:test", "The release notes are ready"));
+    let review = turn();
+    assert_eq!(review.reason, Some(TurnReason::Review));
+    assert_eq!(item(m, page).body, "The release notes are ready");
+
+    super::observe_chat(m, chat, 3, unrelated(), vec![]);
+    assert_eq!(turn(), review);
+    assert_eq!(status_of(&w, page).as_deref(), Some("review"));
+    assert_eq!(item(m, page).body, "The release notes are ready");
+    let reply = |episode| ProjectWorkspaceIntent::ReplyToPageTurn {
+        page_id: page.into(),
+        episode,
+        body: "Check Windows too".into(),
+        dispatch: Some(InboxReplyDispatch::Send),
+    };
+    apply_host(m, "refused-reply", reply(review.episode));
+    let refused = outbox(m).remove(0);
+    apply_host(
+        m,
+        "reply-rejected",
+        ProjectWorkspaceIntent::FailInboxDispatch {
+            proposal_id: refused.proposal_id,
+            expected_revision: refused.revision,
+            message_id: refused.message_id,
+            failure_kind: nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind::Rejected,
+            message: "The chat refused the reply".into(),
+        },
+    );
+    assert_eq!(turn().reason, Some(TurnReason::Review));
+    assert_eq!(
+        item(m, page).turn.unwrap().delivery_error.as_deref(),
+        Some("The chat refused the reply")
+    );
+    apply_host(m, "continue", reply(turn().episode));
+    let second = outbox(m).remove(0);
+    assert_ne!(second.message_id, first.message_id);
+    complete("complete-second", &second);
+    assert_eq!(turn().reason, Some(TurnReason::Queued));
+    capture(4, unrelated(), delivery(&first.message_id), unrelated());
+    assert_eq!(turn().reason, Some(TurnReason::Queued));
+    capture(
+        5,
+        unrelated(),
+        delivery(&second.message_id),
+        super::chat_execution("waiting", "second", Some("Which Windows build?"), false),
+    );
+    assert_eq!(turn().reason, Some(TurnReason::Question));
+    assert_eq!(status_of(&w, page).as_deref(), Some("doing"));
+    assert_eq!(item(m, page).body, "Which Windows build?");
+
+    // The person continued in the chat. The new Run can claim the Page without
+    // an Inbox delivery, even if the Host hasn't captured that Run yet.
+    let continued = "run:continue";
+    apply_host(
+        m,
+        "continue-ready",
+        ready(continued, "Checked the Windows build"),
+    );
+    assert_eq!(status_of(&w, page).as_deref(), Some("review"));
+    assert_ne!(turn().reason, Some(TurnReason::Question));
+    capture(
+        6,
+        unrelated(),
+        delivery(&second.message_id),
+        super::chat_execution("waiting", "second", Some("Old question"), false),
+    );
+    assert_ne!(turn().reason, Some(TurnReason::Question));
+    capture(
+        7,
+        unrelated(),
+        SessionExecutionScope::Run {
+            id: continued.into(),
+        },
+        super::chat_execution("idle", continued, None, true),
+    );
+    let review = turn();
+    assert_eq!(review.reason, Some(TurnReason::Review));
+    let row = item(m, page);
+    assert_eq!(row.body, "Checked the Windows build");
+    assert_eq!(row.turn.unwrap().scoped_run_id.as_deref(), Some(continued));
+    super::observe_chat(
+        m,
+        chat,
+        8,
+        super::chat_execution(
+            "waiting",
+            "run:further",
+            Some("Another unrelated question"),
+            false,
+        ),
+        vec![],
+    );
+    assert_eq!(turn(), review);
+    assert_eq!(status_of(&w, page).as_deref(), Some("review"));
+    assert_eq!(item(m, page).body, "Checked the Windows build");
+}
+
 #[test]
 fn turn_reply_is_durable_unchanged_and_never_creates_intake_and_stale_episode_fails() {
     let w = seeded_workspace();
@@ -1136,6 +1329,7 @@ fn record_request(w: &TestWorkspace, page: &str, revision: i64, kind: &str) {
         &w.module,
         &format!("observe-request:{revision}"),
         ProjectWorkspaceIntent::RecordSessionExecution {
+            scoped_observations: vec![],
             session_id: format!("chat:{page}"),
             expected_revision: revision,
             observation,
@@ -1192,6 +1386,7 @@ fn phones_hear_of_each_current_turn_whether_or_not_a_desktop_claimed_it() {
             &w.module,
             &format!("phone:observe:{revision}"),
             ProjectWorkspaceIntent::RecordSessionExecution {
+                scoped_observations: vec![],
                 session_id: format!("chat:{page}"),
                 expected_revision: revision,
                 observation,

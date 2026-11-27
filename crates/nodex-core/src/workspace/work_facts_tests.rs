@@ -885,6 +885,7 @@ fn review_waits_for_a_quiet_tree_and_later_runs_supersede_the_active_claim() {
                 });
             }
             let intent = ProjectWorkspaceIntent::RecordSessionExecution {
+                scoped_observations: vec![],
                 session_id: "work".into(),
                 expected_revision: revision,
                 observation,
@@ -1121,6 +1122,7 @@ fn blocked_and_review_turns_notify_without_additional_input() {
     check(TurnReason::Blocked);
     apply(&w.module, "ready", outcome_report(WorkReportOutcome::Ready));
     apply(&w.module, "quiet", ProjectWorkspaceIntent::RecordSessionExecution {
+        scoped_observations: vec![],
         session_id: "work".into(), expected_revision: 0,
         observation: serde_json::from_value(serde_json::json!({
             "state":"idle","runId":"run:work","runStartedAt":0,"pendingRequestIds":[],

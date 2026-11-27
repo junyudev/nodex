@@ -1425,8 +1425,10 @@ fn release_failed_delivery(
         "SELECT active.page_id,active.session_id,link.status_fence
          FROM inbox_proposals proposal JOIN inbox_entries entry ON entry.current_proposal_id=proposal.proposal_id
          JOIN page_active_chats active ON active.page_id=entry.page_id AND active.session_id=proposal.dispatch_session_id
+         LEFT JOIN inbox_handoffs handoff USING(proposal_id)
          JOIN project_session_pages link ON link.page_id=active.page_id AND link.session_id=active.session_id
          WHERE (proposal.state='failed' OR (proposal.state='dispatching' AND proposal.failure_kind='unknown'))
+           AND (active.borrowed_scope_id IS NULL OR (active.borrowed_scope_kind='delivery' AND active.borrowed_scope_id=handoff.message_id))
            AND proposal.proposal_id IN (
            SELECT current_proposal_id FROM inbox_entries WHERE page_id IN (SELECT value FROM json_each(?1)))",
     )?.query_map([selected], |r| Ok((r.get::<_, String>(0)?,r.get::<_, String>(1)?,r.get::<_, Option<i64>>(2)?)))?
@@ -1649,7 +1651,15 @@ fn apply_confirmation(
             let authority =
                 super::session_mutation::require_session(connection, library_id, target)?;
             super::page_chat::link_pages(connection, target, page_ids, now)?;
-            super::page_chat::set_active_chats(connection, target, page_ids, now)?;
+            let message = reliable::handoff_identity(proposal_id, "message", commit.store_epoch());
+            super::page_chat::bind_active_chats(connection, target, page_ids, Some(&message), now)?;
+            super::session_mutation::record_requesting_member(
+                connection,
+                target,
+                &message,
+                &crate::infrastructure::actors::requesting_member(connection, context)?,
+                now,
+            )?;
             super::thread_follows::origin_on_dispatch(connection, library_id, page_ids, now)?;
             start_dispatch(
                 connection,

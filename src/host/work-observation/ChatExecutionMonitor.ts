@@ -14,7 +14,7 @@ import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifie
 import { getLogger } from "../../main/logging/logger";
 import { AgentRuntimeSessionActivity } from "../../main/agent-runtime/AgentRuntimeSessionActivity";
 import { ManagedChatFacts, live as factsLive } from "./ManagedChatFacts";
-import { observeManagedChat } from "./managed-chat-observation";
+import { observeManagedChat, unavailableManagedChatFacts } from "./managed-chat-observation";
 
 type Observer = components["schemas"]["SessionExecutionObserver"];
 const BATCH_SIZE = 50;
@@ -25,31 +25,44 @@ export const make = Effect.gen(function* () {
   const observed = new Map<string, string>();
   const logger = getLogger({ component: "chat-execution-monitor" });
   const capture = Effect.fn("ChatExecutionMonitor.capture")(function* (observer: Observer) {
-    const current = yield* facts.read(observer.session_id, observer.managed);
+    const current = yield* facts.read(observer.session_id, observer.managed, observer.scopes);
     const previous = observer.observation ?? null;
-    const observation = observeManagedChat({
-      previous,
-      facts: current,
-      now: yield* Clock.currentTimeMillis,
-      restartStallClock: observed.get(observer.session_id) !== observer.since,
-    });
-    if (isDeepStrictEqual(observation, previous)) {
-      observed.set(observer.session_id, observer.since);
-      return;
-    }
-    yield* core.workspace.apply(
-      {
-        operationId: `chat-execution:observe:${createUuidV7()}`,
-        intent: {
-          kind: "record_session_execution",
-          session_id: observer.session_id,
-          expected_revision: observer.revision,
-          observation,
-        },
-      },
-      undefined,
-      null,
+    const now = yield* Clock.currentTimeMillis;
+    const restartStallClock = observed.get(observer.session_id) !== observer.since;
+    const observation = observeManagedChat({ previous, facts: current, now, restartStallClock });
+    const scopedFacts = new Map(
+      current.scoped?.map(({ scope, facts }) => [`${scope.kind}:${scope.id}`, facts]),
     );
+    const scopedObservations = (observer.scopes ?? []).flatMap(
+      ({ scope, observation: recorded }) => {
+        const previous = recorded ?? null;
+        const facts =
+          scopedFacts.get(`${scope.kind}:${scope.id}`) ??
+          (previous && current.state === "unavailable" ? unavailableManagedChatFacts : null);
+        if (!facts) return [];
+        const observation = observeManagedChat({ previous, facts, now, restartStallClock });
+        return isDeepStrictEqual(observation, previous) ? [] : [{ scope, observation }];
+      },
+    );
+    if (scopedObservations.length || !isDeepStrictEqual(observation, previous)) {
+      // Each batch must stay within Core's observation limit and use the next revision.
+      for (let offset = 0; offset < Math.max(1, scopedObservations.length); offset += BATCH_SIZE) {
+        yield* core.workspace.apply(
+          {
+            operationId: `chat-execution:observe:${createUuidV7()}`,
+            intent: {
+              kind: "record_session_execution",
+              session_id: observer.session_id,
+              expected_revision: observer.revision + offset / BATCH_SIZE,
+              observation,
+              scoped_observations: scopedObservations.slice(offset, offset + BATCH_SIZE),
+            },
+          },
+          undefined,
+          null,
+        );
+      }
+    }
     observed.set(observer.session_id, observer.since);
   });
   const attempt = (observer: Observer) =>

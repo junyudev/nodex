@@ -6,9 +6,38 @@ import type { AgentWire } from "../nodex/Interface.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { readWaiting, type WaitingAdmission } from "./RunAdmission.ts";
-import { readSessionAttention, readTreeSessionAttention } from "./SessionAttention.ts";
+import { readSessionAttention, readTreeSessionAttention, runScope } from "./SessionAttention.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
+import { LIVE_SUBAGENT_TASK_PREDICATE } from "./ProjectionRecoveryQueries.ts";
+
+const readScopedActivity = Effect.fnUntraced(function* (threadId: string, runId: string) {
+  const sql = yield* SqlClient.SqlClient;
+  const [row] = yield* sql<{ tasks: number; commands: number; updatedAt: string | null }>`
+    WITH RECURSIVE ${runScope(sql, threadId, runId)}, work(kind, updated_at) AS (
+      SELECT 'task', max(subagent.updated_at,coalesce(child.updated_at,subagent.updated_at))
+      FROM scoped_runs scope
+      JOIN orchestration_v2_projection_subagents subagent
+        ON subagent.thread_id=scope.thread_id AND subagent.run_id=scope.run_id
+      LEFT JOIN orchestration_v2_projection_threads child ON child.thread_id=subagent.child_thread_id
+      WHERE ${sql.literal(LIVE_SUBAGENT_TASK_PREDICATE)}
+      UNION ALL
+      SELECT 'command', tool.updated_at
+      FROM scoped_runs scope
+      JOIN orchestration_v2_projection_turn_items tool
+        ON tool.thread_id=scope.thread_id AND tool.run_id=scope.run_id
+      WHERE tool.type='command_execution' AND tool.status IN ('pending','running','waiting')
+    )
+    SELECT count(CASE WHEN kind='task' THEN 1 END) AS tasks,
+           count(CASE WHEN kind='command' THEN 1 END) AS commands,
+           max(updated_at) AS updatedAt
+    FROM work`;
+  return {
+    hasWork: (row?.tasks ?? 0) + (row?.commands ?? 0) > 0,
+    awaitingCommands: (row?.commands ?? 0) > 0 && !row?.tasks,
+    progressAt: row?.updatedAt ?? null,
+  };
+});
 
 export type SessionRunSummary = Pick<
   AgentWire<OrchestrationV2Run>,
@@ -20,6 +49,11 @@ export type SessionRunSummary = Pick<
   readonly failureMessage?: string | null;
 };
 export interface SessionReadDetails {
+  readonly scopedActivity?: {
+    readonly hasWork: boolean;
+    readonly awaitingCommands: boolean;
+    readonly progressAt: string | null;
+  };
   readonly waitingAdmissions: readonly WaitingAdmission[];
   /** A later queued or canceled-before-start Run must not hide an executed round. */
   readonly latestStartedRun: { readonly runId: string; readonly startedAt: string } | null;
@@ -40,6 +74,7 @@ export const readSessionDetails = Effect.fn("SessionReadDetails.read")(function*
   limit: number,
   beforeOrdinal?: number,
   runId?: string,
+  scoped = false,
 ) {
   const sql = yield* SqlClient.SqlClient;
   return yield* sql.withTransaction(
@@ -80,10 +115,11 @@ export const readSessionDetails = Effect.fn("SessionReadDetails.read")(function*
         FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}`;
       const attention =
         threads[0]?.root === threadId
-          ? yield* readTreeSessionAttention(threadId)
-          : ((yield* readSessionAttention([threadId])).get(threadId)?.requests ?? []).map(
-              (request) => ({ ...request, threadId }),
-            );
+          ? yield* readTreeSessionAttention(threadId, scoped ? runId : undefined)
+          : (
+              (yield* readSessionAttention([threadId], scoped ? runId : undefined)).get(threadId)
+                ?.requests ?? []
+            ).map((request) => ({ ...request, threadId }));
       const pendingRequests = yield* Effect.forEach(attention, (request) =>
         Effect.gen(function* () {
           // Select only the question envelope, never transcript or tool-result bodies.
@@ -104,6 +140,7 @@ export const readSessionDetails = Effect.fn("SessionReadDetails.read")(function*
         }),
       );
       return {
+        ...(scoped && runId ? { scopedActivity: yield* readScopedActivity(threadId, runId) } : {}),
         waitingAdmissions: yield* readWaiting(threadId),
         latestStartedRun: latestStartedRun ?? null,
         runCount: counts[0]?.runCount ?? 0,

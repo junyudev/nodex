@@ -775,7 +775,18 @@ pub(in crate::workspace) fn apply_reliable(
                         "failed"
                     };
                     connection.execute("UPDATE inbox_proposals SET state=?2,failure_kind=?3,failure_message=?4,revision=revision+1,updated_at=?5 WHERE proposal_id=?1",params![proposal_id,state,kind,failure_text(&message),now])?;
-                    super::chat_start_effects(connection, "inbox_fail_dispatch", &proposal_id, &now)
+                    let mut effects = super::chat_start_effects(
+                        connection,
+                        "inbox_fail_dispatch",
+                        &proposal_id,
+                        &now,
+                    )?;
+                    if state == "failed" {
+                        effects
+                            .page_ids
+                            .extend(restore_refused_reply(connection, Some(&proposal_id))?);
+                    }
+                    Ok(effects)
                 }
                 ProjectWorkspaceIntent::UndoInboxDecision { undo_token } => undo_decision(
                     connection,
@@ -2152,9 +2163,34 @@ fn require_epoch(actual: &str, expected: &str) -> Result<(), StoreError> {
     Ok(())
 }
 
+/// Recover the prior Turn for a refused reply only while that reply still owns the scope.
+fn restore_refused_reply(
+    connection: &Connection,
+    proposal: Option<&str>,
+) -> Result<Vec<String>, StoreError> {
+    let mut statement = connection.prepare(
+        "UPDATE page_active_chats AS active SET borrowed_scope_id=reply.previous_scope_id,
+          borrowed_scope_kind=reply.previous_scope_kind,
+          revision=active.revision+1
+         FROM page_turn_replies reply JOIN inbox_proposals proposal USING(proposal_id)
+         JOIN inbox_handoffs handoff USING(proposal_id)
+         WHERE (?1 IS NULL OR reply.proposal_id=?1) AND proposal.state='failed'
+           AND reply.page_id=active.page_id AND active.session_id=proposal.dispatch_session_id
+           AND active.borrowed_scope_kind='delivery' AND active.borrowed_scope_id=handoff.message_id
+           AND reply.previous_scope_id IS NOT NULL
+           AND NOT EXISTS(SELECT 1 FROM session_scoped_observations observed
+             WHERE observed.session_id=active.session_id AND observed.scope_kind='delivery' AND observed.scope_id=handoff.message_id)
+         RETURNING page_id",
+    )?;
+    Ok(statement
+        .query_map([proposal], |r| r.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 /// A replaced Store cannot authorize another delivery with old confirmation evidence.
 pub(crate) fn discard_replaced_dispatches(connection: &Connection) -> Result<(), StoreError> {
     connection.execute("UPDATE inbox_proposals SET state='failed',failure_kind='rejected',failure_message='The Store was restored; review this decision again',revision=revision+1 WHERE state='dispatching'",[])?;
+    restore_refused_reply(connection, None)?;
     connection.execute("DELETE FROM inbox_handoffs WHERE proposal_id IN (SELECT proposal_id FROM inbox_proposals WHERE state='failed' AND failure_kind='rejected')",[])?;
     connection.execute("DELETE FROM inbox_decision_undo", [])?;
     Ok(())

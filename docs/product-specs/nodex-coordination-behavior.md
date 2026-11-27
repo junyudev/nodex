@@ -98,6 +98,15 @@ A chat that Nodex hands work to is managed: every chat an Inbox dispatch starts 
 every chat a Page start or plan step opens. It stays managed for its life. A managed chat's Page
 Turn speaks for it, so the person hears from the Page, not from each finished turn.
 
+A Page’s active chat covers its whole conversation when it was started for the
+Page. Sending the Page to an existing chat borrows that chat for the Run that
+takes the delivery. The Page stays queued until that Run starts. Its Turn,
+Status, notes and notifications follow work from that delivery. Sending a
+reply to a borrowed chat gives the Page the Run that takes the new reply. A live
+answer can resume the Run that asked. An explicit `report_work` or
+`follow_thread` with role `own_pr` moves the scope to the Run that reported.
+The linked chat still shows its current chat-wide activity. See [ADR 0091](../adr/0091-borrowed-chats-work-on-the-runs-they-are-given.md).
+
 The root Agent of a managed chat receives work instructions on each turn. It reports
 when the Page's work is ready for review, blocked, failed or unnecessary. Delegated
 Agents return their results to the Agent that delegated the task. The root calls
@@ -105,8 +114,9 @@ Agents return their results to the Agent that delegated the task. The root calls
 
 Ready attempts In Progress → In Review. Review becomes the person's turn after the
 chat and its execution tree go quiet. An unavailable chat keeps the last confirmed
-quiet Run. When the active chat starts a later Run, including
-a continuation after delegated work, its ready report stops being current. A Page that
+quiet Run. When a whole-chat binding starts a later Run, including
+a continuation after delegated work, its ready report stops being current. In a
+borrowed chat, only a later Run for that Page can supersede the report. A Page that
 entered In Review on that report returns to In Progress. The root Agent reports again
 when the new round is done. Dropped attempts Triage/Todo/In Progress → Canceled. Blocked
 and failed leave Status unchanged. Each automatic move requires the expected predecessor
@@ -119,8 +129,9 @@ chat that means:
 - a report of its work;
 - a question or approval waiting on the person, including a question that remains answerable
   after its turn ends;
-- a completed Run that began after the chat became active on an In Progress Page assigned to
-  an Agent, with nothing reported and nothing waiting, which makes the Owner's reply next;
+- a completed Run for an In Progress Page assigned to an Agent, with nothing
+  reported and nothing waiting, which makes the Owner's reply next. In a whole
+  chat the Run must have begun after the chat became active on the Page;
 - a failure;
 - an apparent stall: an Agent in its work owes the next step but has shown no progress for twenty
   minutes, with nothing waiting on the person.

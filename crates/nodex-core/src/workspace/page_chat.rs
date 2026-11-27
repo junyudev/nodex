@@ -99,6 +99,16 @@ pub(super) fn set_active_chats(
     pages: &[String],
     now: &str,
 ) -> Result<(), StoreError> {
+    bind_active_chats(connection, session, pages, None, now)
+}
+
+pub(super) fn bind_active_chats(
+    connection: &Connection,
+    session: &str,
+    pages: &[String],
+    borrowed_message_id: Option<&str>,
+    now: &str,
+) -> Result<(), StoreError> {
     if !pages.is_empty() && super::decision_run::read(connection, session)?.is_some() {
         return Err(invalid("Decision runs cannot work on Pages"));
     }
@@ -106,10 +116,40 @@ pub(super) fn set_active_chats(
         // An ordinary link starts its first work attempt here. Re-selecting an existing
         // attempt must retain its original fence against old Runs reporting later.
         connection.execute("UPDATE project_session_pages SET status_fence=(SELECT status_person_revision FROM pages WHERE block_id=?1) WHERE page_id=?1 AND session_id=?2 AND status_fence IS NULL",params![page,session])?;
-        connection.execute("INSERT INTO page_active_chats(page_id,session_id,revision,set_at) VALUES(?1,?2,1,?3) ON CONFLICT(page_id) DO UPDATE SET session_id=excluded.session_id,revision=page_active_chats.revision+1,set_at=excluded.set_at",params![page,session,now])?;
+        connection.execute("INSERT INTO page_active_chats(page_id,session_id,revision,set_at,borrowed_scope_id,borrowed_scope_kind) VALUES(?1,?2,1,?3,?4,CASE WHEN ?4 IS NOT NULL THEN 'delivery' END) ON CONFLICT(page_id) DO UPDATE SET session_id=excluded.session_id,revision=page_active_chats.revision+1,set_at=excluded.set_at,borrowed_scope_id=excluded.borrowed_scope_id,borrowed_scope_kind=excluded.borrowed_scope_kind",params![page,session,now,borrowed_message_id])?;
         super::thread_follows::route_unresolved(connection, page, session)?;
     }
     Ok(())
+}
+
+/// An authorized explicit claim focuses a borrowed binding on its reporting Run.
+pub(super) fn scope_borrowed_chat_to_run(
+    connection: &Connection,
+    page: &str,
+    session: &str,
+    run: &str,
+) -> Result<bool, StoreError> {
+    // Seed from the current scoped facts when they already match the reporting Run.
+    // Leave a Run already watched by another Page to its existing observer.
+    connection.execute(
+        "INSERT INTO session_scoped_observations(session_id,scope_kind,scope_id,observed_json)
+         SELECT session_id,'run',?3,observed_json FROM page_active_chat_execution
+         WHERE page_id=?1 AND session_id=?2 AND borrowed_scope_id IS NOT NULL
+           AND json_extract(observed_json,'$.runId')=?3
+         ON CONFLICT(session_id,scope_kind,scope_id) DO UPDATE SET observed_json=excluded.observed_json
+         WHERE NOT EXISTS (SELECT 1 FROM page_active_chats
+           WHERE session_id=?2 AND borrowed_scope_kind='run' AND borrowed_scope_id=?3)",
+        params![page, session, run],
+    )?;
+    // The delivery destination stays the same. Its routing revision fences a
+    // change of destination or a new delivery, while the scope keys fence captures.
+    let changed = connection.execute(
+        "UPDATE page_active_chats SET borrowed_scope_kind='run',borrowed_scope_id=?3
+         WHERE page_id=?1 AND session_id=?2 AND borrowed_scope_id IS NOT NULL
+           AND NOT (borrowed_scope_kind='run' AND borrowed_scope_id=?3)",
+        params![page, session, run],
+    )?;
+    Ok(changed != 0)
 }
 
 /// Execution observations carry the current Agent; admitted work retains its choice before
