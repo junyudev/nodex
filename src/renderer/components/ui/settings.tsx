@@ -25,6 +25,24 @@ export const CODEX_SETTINGS_SHELL_STYLE = {
 /** One size for a settings row's text input or picker, so the fields in a section line up. */
 export const NODEX_SETTINGS_FIELD_CLASS_NAME = "h-8 w-64 max-w-full text-sm";
 
+/**
+ * A row people click or select in a flat Settings list. Its content keeps the column's edges,
+ * while the hover and selected plate reaches into the gutter, so text never meets the plate's
+ * edge and the dividers between rows stay visible.
+ */
+export const NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME = cn(
+  "relative isolate",
+  "before:pointer-events-none before:absolute before:-inset-x-2 before:inset-y-px before:-z-10 before:rounded-lg before:content-['']",
+  "hover:before:bg-(--color-background-secondary-ghost-hover)",
+);
+
+/** The plate of a selected interactive row. */
+export const NODEX_SETTINGS_SELECTED_ROW_CLASS_NAME =
+  "before:bg-(--color-background-secondary-ghost-hover)";
+
+/** A scrolling Settings list leaves room for its rows' plates and an overlay scrollbar. */
+export const NODEX_SETTINGS_LIST_SCROLLER_CLASS_NAME = "-mx-2 px-2";
+
 export type NodexSettingsNumberInputProps = Omit<ComponentProps<"input">, "type">;
 
 export function NodexSettingsNumberInput({
@@ -725,7 +743,6 @@ export function NodexSettingsPageSurface({
   backSlot,
   subtitle,
   children,
-  fullWidth = false,
   contentClassName,
   action,
   className,
@@ -734,7 +751,6 @@ export function NodexSettingsPageSurface({
   backSlot?: ReactNode;
   subtitle?: ReactNode;
   children: ReactNode;
-  fullWidth?: boolean;
   contentClassName?: string;
   action?: ReactNode;
   className?: string;
@@ -751,8 +767,7 @@ export function NodexSettingsPageSurface({
       <div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <div
           className={cn(
-            "mx-auto flex w-full min-w-0 flex-col px-panel pt-4 pb-panel",
-            fullWidth ? null : "max-w-3xl",
+            "mx-auto flex w-full max-w-3xl min-w-0 flex-col px-panel pt-4 pb-panel",
             contentClassName,
           )}
         >

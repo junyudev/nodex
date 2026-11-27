@@ -21,7 +21,12 @@ import {
   NodexSettingsDropdownTrigger,
   type NodexOptionPickerOption,
 } from "../ui/dropdown";
-import { NodexCheckbox } from "../ui/settings";
+import {
+  NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME,
+  NODEX_SETTINGS_LIST_SCROLLER_CLASS_NAME,
+  NODEX_SETTINGS_SELECTED_ROW_CLASS_NAME,
+  NodexCheckbox,
+} from "../ui/settings";
 import { NodexTooltip } from "../ui/tooltip";
 
 export const conversationTitle = (title: string, intl: IntlShape = getIntl()) =>
@@ -228,9 +233,9 @@ export function ConversationImportRow({
       role="group"
       aria-labelledby={titleId}
       className={cn(
-        // Inset so the tint sits evenly in the card whether or not a scrollbar holds its gutter.
         "relative flex min-w-0 flex-col gap-0.5 border-b border-(--color-border) py-2 last:border-b-0",
-        selected ? "bg-token-foreground/5" : selectable && "hover:bg-token-list-hover-background",
+        selectable && NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME,
+        selected && NODEX_SETTINGS_SELECTED_ROW_CLASS_NAME,
       )}
     >
       <div className="flex min-h-6 min-w-0 items-center gap-3">
@@ -403,7 +408,10 @@ export function ConversationImportRows<Row>({
   return (
     <div
       ref={scroller}
-      className="flex h-full min-h-0 flex-col overflow-y-auto py-1 [scrollbar-gutter:stable]"
+      className={cn(
+        "flex h-full min-h-0 flex-col overflow-y-auto py-1 [scrollbar-gutter:stable]",
+        NODEX_SETTINGS_LIST_SCROLLER_CLASS_NAME,
+      )}
     >
       {children}
       {rows.slice(0, rendered).map(renderRow)}

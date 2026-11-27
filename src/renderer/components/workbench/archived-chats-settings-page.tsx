@@ -425,7 +425,6 @@ export function ArchivedChatsSettingsPage({
               defaultMessage: "Restore archived chats this Space lets you change.",
             })
       }
-      fullWidth
       action={
         deletable && chats.length > 0 ? (
           <NodexButton
@@ -573,7 +572,7 @@ export function ArchivedChatsSettingsPage({
                     return (
                       <div
                         key={chat.threadId}
-                        className="group flex items-center justify-between gap-3 border-t border-(--color-border) py-2 first:border-t-0 hover:bg-token-list-hover-background"
+                        className="group flex items-center justify-between gap-3 border-t border-(--color-border) py-2 first:border-t-0"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium text-token-text-primary">

@@ -31,7 +31,10 @@ import {
   NodexDialogHeader,
   NodexDialogTitle,
 } from "@/components/ui/dialog";
-import { NodexSettingsSection } from "@/components/ui/settings";
+import {
+  NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME,
+  NodexSettingsSection,
+} from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import type { Project } from "../../lib/types";
@@ -216,10 +219,15 @@ function HookSourceRow({
   const summary = sourceSummary(entry);
 
   return (
-    <div className="group flex w-full items-center hover:bg-token-list-hover-background focus-within:bg-token-list-hover-background">
+    <div
+      className={cn(
+        "group flex w-full items-center has-[:focus-visible]:before:ring-2 has-[:focus-visible]:before:ring-token-focus-border",
+        NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME,
+      )}
+    >
       <button
         type="button"
-        className="focus-visible:outline-token-focus-border flex min-w-0 flex-1 cursor-interaction items-center gap-6 px-4 py-3 text-left disabled:cursor-default disabled:opacity-60"
+        className="flex min-w-0 flex-1 cursor-interaction items-center gap-6 py-2.5 text-left outline-none disabled:cursor-default disabled:opacity-60"
         onClick={() => onSelect(entry.selection)}
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">

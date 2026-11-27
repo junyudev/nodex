@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { NodexButton } from "@/components/ui/button";
-import { NodexCheckbox, NodexSettingsSection } from "@/components/ui/settings";
+import {
+  NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME,
+  NODEX_SETTINGS_SELECTED_ROW_CLASS_NAME,
+  NodexCheckbox,
+  NodexSettingsSection,
+} from "@/components/ui/settings";
 import { ActivitySpinnerIcon, AgentProviderIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import { ConversationImportPlacement } from "./conversation-import-list";
@@ -147,14 +152,14 @@ export function AutomationImportSection({
       })}
     >
       {failed ? (
-        <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+        <div className="flex items-center justify-between gap-2 py-2">
           <span role="alert" className="text-sm text-danger">
             {intl.formatMessage({
               id: "settings.automationImport.catalogFailed",
               defaultMessage: "Couldn’t read scheduled tasks.",
             })}
           </span>
-          <NodexButton size="sm" variant="ghost" onClick={refresh}>
+          <NodexButton size="toolbar" variant="ghost" onClick={refresh}>
             {intl.formatMessage({
               id: "settings.automationImport.tryAgain",
               defaultMessage: "Try again",
@@ -163,7 +168,7 @@ export function AutomationImportSection({
         </div>
       ) : null}
       {rows.length ? (
-        <ul className="flex flex-col py-1.5">
+        <ul className="flex flex-col">
           {rows.map((row) => {
             const outcome = outcomes.get(row.id);
             const automationId = automationIdOf(row);
@@ -195,10 +200,9 @@ export function AutomationImportSection({
               <li
                 key={row.id}
                 className={cn(
-                  "mx-1.5 flex min-w-0 flex-col gap-0.5 rounded-lg px-2.5 py-1.5",
-                  checked
-                    ? "bg-token-foreground/5"
-                    : ready && "hover:bg-token-list-hover-background",
+                  "flex min-w-0 flex-col gap-0.5 border-b border-(--color-border) py-2 last:border-b-0",
+                  ready && NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME,
+                  checked && NODEX_SETTINGS_SELECTED_ROW_CLASS_NAME,
                 )}
               >
                 <div className="flex min-h-6 min-w-0 items-center gap-3">
@@ -239,7 +243,7 @@ export function AutomationImportSection({
                   ) : automationId ? (
                     onOpen ? (
                       <NodexButton
-                        size="xs"
+                        size="toolbar"
                         variant="secondary"
                         onClick={() => onOpen(buildAutomationsPath({ automationId }))}
                       >
@@ -275,7 +279,7 @@ export function AutomationImportSection({
         </ul>
       ) : null}
       {importable.length ? (
-        <div className="flex min-w-0 items-center gap-3 border-t-[0.5px] border-token-border px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-3 border-t border-(--color-border) py-2">
           <span className="min-w-0 flex-1 text-xs text-token-text-secondary">
             {selected.length
               ? intl.formatMessage(
@@ -288,7 +292,7 @@ export function AutomationImportSection({
               : null}
           </span>
           <NodexButton
-            size="sm"
+            size="toolbar"
             variant="primary"
             disabled={busy || !selected.length}
             onClick={() => void submit()}
