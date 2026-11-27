@@ -3,6 +3,7 @@
 #include <cstring>
 #include <vector>
 #import <AppKit/AppKit.h>
+#import <objc/message.h>
 
 namespace {
 constexpr NSUInteger kFormatLimit = 8 * 1024 * 1024;
@@ -166,6 +167,21 @@ NSWindow *MiniPanel(napi_env env, napi_callback_info info) {
   return (window.styleMask & NSWindowStyleMaskNonactivatingPanel) != 0 ? window : nil;
 }
 
+// Electron's panel only reports the nonactivating style; the window server still activates Nodex
+// on a click, and AppKit then raises a Workbench window. Codex and other floating panels set the
+// window's own activation prevention. Mini also stays on screen when the person hides Nodex.
+napi_value ConfigureMiniPanel(napi_env env, napi_callback_info info) {
+  NSWindow *window = MiniPanel(env, info);
+  if (!window) return Fail(env, "Expected a nonactivating window");
+  SEL prevents = NSSelectorFromString(@"_setPreventsActivation:");
+  const bool preventing = [window respondsToSelector:prevents];
+  if (preventing) ((void (*)(id, SEL, BOOL))objc_msgSend)(window, prevents, YES);
+  window.canHide = NO;
+  napi_value result;
+  NAPI_CHECK(napi_get_boolean(env, preventing, &result));
+  return result;
+}
+
 napi_value MakeMiniPanelKey(napi_env env, napi_callback_info info) {
   NSWindow *window = MiniPanel(env, info);
   if (!window) return Fail(env, "Expected a nonactivating window");
@@ -193,6 +209,7 @@ napi_value IsPrimaryMouseDown(napi_env env, napi_callback_info) {
 
 napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor properties[] = {
+    {"configureMiniPanel", nullptr, ConfigureMiniPanel, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"isPrimaryMouseDown", nullptr, IsPrimaryMouseDown, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"makeMiniPanelKey", nullptr, MakeMiniPanelKey, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"orderMiniPanelOut", nullptr, OrderMiniPanelOut, nullptr, nullptr, nullptr, napi_default, nullptr},

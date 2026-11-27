@@ -18,6 +18,7 @@ import { useChooseMiniLocation } from "./mini-location-menu";
 import { miniHost } from "./mini-host";
 import { miniAttentionCount, miniCoverage, type MiniCard as MiniCardModel } from "./mini-model";
 import { useMiniActivity } from "./use-mini-activity";
+import { startMiniDrag } from "./mini-drag";
 
 /** Pointer targets Mini draws; everywhere else the pointer reaches the app beneath. */
 const DRAWN_SELECTOR = [
@@ -173,6 +174,7 @@ export function MiniPanel() {
   return (
     <div
       data-mini-frame
+      onPointerDown={(event) => startMiniDrag(event, DRAWN_SELECTOR)}
       className={cn(
         "fixed inset-0 flex gap-2 overflow-hidden p-4 select-none",
         bottom ? "flex-col-reverse" : "flex-col",

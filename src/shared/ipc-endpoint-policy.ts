@@ -454,6 +454,7 @@ type ControlEndpointPolicy =
   | "git-worker:message-from-view"
   | "mini:ready"
   | "mini:pointer"
+  | "mini:drag"
   | "mini:activity"
   | "mini:focus"
   | "mini:release"

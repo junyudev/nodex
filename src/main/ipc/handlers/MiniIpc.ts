@@ -25,6 +25,11 @@ const Coverage = z.strictObject({
   notice: z.boolean(),
 });
 const Generation = z.number().int().nonnegative();
+const ScreenCoordinate = z.number().finite();
+const Drag = z.discriminatedUnion("phase", [
+  z.strictObject({ phase: z.literal("start"), x: ScreenCoordinate, y: ScreenCoordinate }),
+  z.strictObject({ phase: z.literal("end") }),
+]);
 const Open = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inbox"), scope: InboxScopeSchema }),
   z.strictObject({ kind: z.literal("page"), pageId: Id }),
@@ -73,6 +78,13 @@ export const live = Layer.effectDiscard(
     );
     yield* ipc.handleControl("mini:pointer", (event, input) =>
       run(event, "pointer", (panel) => panel.pointer(z.boolean().parse(input))),
+    );
+    yield* ipc.handleControl("mini:drag", (event, input) =>
+      run(event, "drag", (panel) => {
+        const drag = Drag.parse(input);
+        if (drag.phase === "start") panel.beginDrag({ x: drag.x, y: drag.y });
+        else panel.endDrag();
+      }),
     );
     yield* ipc.handleControl("mini:activity", (event, input) =>
       run(event, "activity", (panel) =>

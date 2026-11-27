@@ -94,6 +94,10 @@ export const EMPTY_MINI_COVERAGE: MiniCoverage = { chats: [], turns: [], notice:
 export const miniCoverageIsEmpty = (coverage: MiniCoverage): boolean =>
   coverage.chats.length === 0 && coverage.turns.length === 0 && !coverage.notice;
 
+export type MiniDrag =
+  | { readonly phase: "start"; readonly x: number; readonly y: number }
+  | { readonly phase: "end" };
+
 /** What Mini can bring forward in a Nodex window. */
 export type MiniOpenTarget =
   | { readonly kind: "inbox"; readonly scope: import("./inbox").InboxScope }
@@ -144,6 +148,11 @@ export interface MiniIpcApi {
   "mini:pointer": { args: [overContent: boolean]; result: void };
   /** What Mini is showing now; see `MiniCoverage`. */
   "mini:activity": { args: [coverage: MiniCoverage]; result: void };
+  /**
+   * Move Mini with the pointer: `start` once it is held past a small threshold, from the screen
+   * point where it was grabbed; `end` when it is released, to settle at the nearest placement.
+   */
+  "mini:drag": { args: [drag: MiniDrag]; result: void };
   /** Take the keyboard, for the composer or a card's reply. */
   "mini:focus": { args: []; result: void };
   /** Give the keyboard back, from the presentation that held it. */

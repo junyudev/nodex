@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { MINI_SURFACE_CLASS } from "./mini-card";
 
 const DOCK_BUTTON_CLASS =
-  "cursor-interaction relative flex size-8 items-center justify-center rounded-full text-token-text-secondary [-webkit-app-region:no-drag] hover:bg-token-foreground/[0.08] hover:text-token-foreground";
+  "cursor-interaction relative flex size-8 items-center justify-center rounded-full text-token-text-secondary hover:bg-token-foreground/[0.08] hover:text-token-foreground";
 
 /**
  * Mini at rest: start a chat, start one by voice, and how your chats stand. The count is only what
@@ -41,10 +41,7 @@ export function MiniDock({
     <div
       data-mini-drawn
       data-mini-dock
-      className={cn(
-        "flex h-10 items-center gap-0.5 rounded-full px-1 [-webkit-app-region:drag]",
-        MINI_SURFACE_CLASS,
-      )}
+      className={cn("flex h-10 items-center gap-0.5 rounded-full px-1", MINI_SURFACE_CLASS)}
     >
       <DockButton
         label={intl.formatMessage({ id: "mini.dock.newChat", defaultMessage: "New chat" })}

@@ -77,9 +77,10 @@ system notification already shown, and chat snooze notifications follow their us
 - Mini can be hidden, resting without the keyboard, or focused for typing.
   The shortcut toggles keyboard focus. Releasing the keyboard or clicking out
   returns Mini to its resting visibility. A native picker keeps Mini focused
-  when the picker closes. On macOS, Mini takes the keyboard without activating
-  Nodex and gives it back to the other app when released. Global Dictation
-  can use a focused Mini composer.
+  when the picker closes. On macOS, clicking Mini never activates Nodex or
+  brings a Workbench window forward; Mini takes the keyboard without activating
+  Nodex and gives it back to the other app when released, and it stays on
+  screen when Nodex is hidden. Global Dictation can use a focused Mini composer.
 - The Profile's Mini visibility is **Always**, **When active** (the default),
   or **On demand**. When active follows the activity reported by the panel.
   On demand shows Mini only when focused. A resting Mini steps aside while a
@@ -87,9 +88,11 @@ system notification already shown, and chat snooze notifications follow their us
   setting. Opening a Page, Inbox, or chat from Mini brings the personal
   Workbench forward.
 - Mini sits a short distance from the edge of its display's work area. Its
-  first placement is bottom center. Dragging the dock snaps the panel to the
-  nearest top or bottom left, center, or right position on the display it mostly
-  occupies. Nodex remembers the anchor for each display and uses an available
+  first placement is bottom center. Holding anywhere on Mini outside a text
+  field and dragging moves it with the pointer, onto any display; a press that
+  travels less than a few pixels stays a click, and the click that ends a move
+  is dropped. On release Mini settles at the nearest top or bottom left, center,
+  or right position on the display it mostly occupies. Nodex remembers the anchor for each display and uses an available
   display if the last one disappears. The panel stays within the work area when
   display geometry changes. The pointer reaches the app beneath transparent
   areas outside Mini's content.

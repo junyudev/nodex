@@ -22,6 +22,8 @@ export interface NativeClipboardBridge {
 }
 
 export interface NativeMiniPanelBridge {
+  /** Keeps clicks on the panel from activating Nodex; false when macOS offers no such switch. */
+  readonly configureMiniPanel: (handle: Buffer) => boolean;
   readonly isPrimaryMouseDown: () => boolean;
   readonly makeMiniPanelKey: (handle: Buffer) => boolean;
   readonly orderMiniPanelOut: (handle: Buffer) => void;

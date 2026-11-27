@@ -1,5 +1,5 @@
 import { BrowserWindow, screen } from "electron";
-import type { Display, Rectangle } from "electron";
+import type { Display, Point, Rectangle } from "electron";
 import {
   DEFAULT_MINI_ANCHOR,
   EMPTY_MINI_COVERAGE,
@@ -35,8 +35,8 @@ export class MiniWindowController {
   #focusLifetime = 0;
   #displayId: number | null;
   #lastPlacement: MiniPlacementSettings;
-  #manualMove = false;
-  #settleDrag: ReturnType<typeof setTimeout> | null = null;
+  /** While a drag is in progress, the timer moving the panel after the pointer. */
+  #drag: ReturnType<typeof setInterval> | null = null;
   #snapAnimation: ReturnType<typeof setInterval> | null = null;
   #blurHolds = new Map<symbol, number>();
 
@@ -100,6 +100,9 @@ export class MiniWindowController {
     this.#window = window;
     this.options.windows.registerAuxiliary(window, "mini");
     if (mac) {
+      if (!this.options.native?.configureMiniPanel(window.getNativeWindowHandle())) {
+        logger.warn("Mini could not prevent activation; clicks on it may bring Nodex forward");
+      }
       window.excludedFromShownWindowsMenu = true;
       window.setVisibleOnAllWorkspaces(true, {
         visibleOnFullScreen: true,
@@ -122,11 +125,6 @@ export class MiniWindowController {
       this.syncWorkbenchFocus();
       this.apply({ kind: "blur", dialogOpen: this.#isHoldingBlur() });
     });
-    window.on("will-move", () => {
-      this.#cancelSnapAnimation();
-      this.#manualMove = true;
-    });
-    window.on("moved", () => this.#finishMove(window));
     window.webContents.once("render-process-gone", () => {
       if (!window.isDestroyed()) window.destroy();
     });
@@ -276,16 +274,30 @@ export class MiniWindowController {
     this.#place(window);
   };
 
-  #finishMove(window: BrowserWindow): void {
-    if (!this.#manualMove || window !== this.#window || !window.isVisible()) return;
-    if (this.#settleDrag) clearTimeout(this.#settleDrag);
-    // AppKit emits moved during the drag. Wait for the button to come up before snapping.
-    if (this.options.native?.isPrimaryMouseDown()) {
-      this.#settleDrag = setTimeout(() => this.#finishMove(window), 32);
-      return;
-    }
-    this.#settleDrag = null;
-    this.#manualMove = false;
+  /**
+   * The renderer saw the pointer leave a threshold while held on Mini: the panel follows the
+   * pointer, holding it where it was grabbed, until the button comes up.
+   */
+  beginDrag(grabbed: Point): void {
+    const window = this.#window;
+    if (!window || !window.isVisible() || this.#state.event.kind === "hidden") return;
+    this.#cancelMove();
+    const bounds = window.getBounds();
+    const offset = { x: grabbed.x - bounds.x, y: grabbed.y - bounds.y };
+    this.#drag = setInterval(() => {
+      if (this.#window !== window || window.isDestroyed()) return this.#cancelMove();
+      // The renderer reports the release; a button already up ends a drag it could not report.
+      if (this.options.native && !this.options.native.isPrimaryMouseDown()) return this.endDrag();
+      const cursor = screen.getCursorScreenPoint();
+      window.setPosition(cursor.x - offset.x, cursor.y - offset.y);
+    }, 16);
+  }
+
+  /** The button came up: Mini settles at the placement nearest where it was dropped. */
+  endDrag(): void {
+    const window = this.#window;
+    if (!this.#drag || !window || window.isDestroyed()) return this.#cancelMove();
+    this.#cancelMove();
     const dropped = window.getBounds();
     const display = screen.getDisplayMatching(dropped);
     const current = this.#lastPlacement.anchors[display.id] ?? this.#state.anchor;
@@ -327,9 +339,8 @@ export class MiniWindowController {
   }
 
   #cancelMove(): void {
-    this.#manualMove = false;
-    if (this.#settleDrag) clearTimeout(this.#settleDrag);
-    this.#settleDrag = null;
+    if (this.#drag) clearInterval(this.#drag);
+    this.#drag = null;
     this.#cancelSnapAnimation();
   }
 

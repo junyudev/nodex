@@ -10,6 +10,7 @@ import {
   type MiniCompanionEvent,
   type MiniCompanionMethod,
   type MiniCoverage,
+  type MiniDrag,
   type MiniOpenTarget,
   type MiniPresentationEvent,
 } from "../../../shared/mini";
@@ -41,6 +42,7 @@ export const miniHost = {
     void invokeRendererControl("mini:pointer", overContent).catch(ignore),
   activity: (coverage: MiniCoverage) =>
     void invokeRendererControl("mini:activity", coverage).catch(ignore),
+  drag: (drag: MiniDrag) => void invokeRendererControl("mini:drag", drag).catch(ignore),
   focus: () => void invokeRendererControl("mini:focus").catch(ignore),
   release: (generation: number) =>
     void invokeRendererControl("mini:release", generation).catch(ignore),
