@@ -377,12 +377,16 @@ export type InboxDecision = z.infer<typeof InboxDecisionSchema>;
 export const ChatStatusSchema = z.enum(["idle", "running", "waiting", "background", "failed"]);
 export type ChatStatus = z.infer<typeof ChatStatusSchema>;
 
+/** A short line describing live work or the last assistant reply, when available. */
+const chatProgress = z.string().nullable().optional();
+
 export const ChatActivitySchema = z.looseObject({
   sessionId: z.string(),
   status: ChatStatusSchema,
   pendingRequestCount: z.number().int(),
   /** A one-line ask suitable for a list row, when something needs the person. */
   attention: z.string().nullable(),
+  progress: chatProgress,
 });
 export type ChatActivity = z.infer<typeof ChatActivitySchema>;
 
@@ -396,6 +400,7 @@ export const ChatSummarySchema = z.looseObject({
   status: ChatStatusSchema,
   pendingRequestCount: z.number().int(),
   attention: z.string().nullable(),
+  progress: chatProgress,
   unread: z.boolean(),
   pinned: z.boolean(),
   archived: z.boolean(),

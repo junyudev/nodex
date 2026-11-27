@@ -46,7 +46,8 @@ export const live = (
           if (event.ports.length !== 1) throw new Error("Dictation streaming requires one port");
           if (event.sender.isDestroyed()) throw new Error("Dictation renderer is unavailable");
           const global = dictation.ownsGlobalRenderer(event.sender.id);
-          if (!global && !windows.has(event.sender.id)) throw new Error("Unknown Nodex window");
+          if (!global && !windows.hasAppRenderer(event.sender.id))
+            throw new Error("Unknown Nodex window");
           const active = attempts.get(event.sender.id) ?? new Set<() => void>();
           const port = event.ports[0];
           if (!port) return;

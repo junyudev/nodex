@@ -9,7 +9,7 @@ import {
 } from "@nodex/mobile-protocol";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { HostInvocation } from "../HostInvocation";
+import { HostInvocation, LocalCompanionInvocation } from "../HostInvocation";
 import type * as Scope from "effect/Scope";
 import type { PushTargets } from "./push-delivery";
 
@@ -71,16 +71,22 @@ export const requirePhoneInvocation = Effect.flatMap(HostInvocation, (credential
     : Effect.fail(rpcError("rejected", "A verified Member invocation is required.")),
 );
 
+export const requireCompanionInvocation = Effect.flatMap(LocalCompanionInvocation, (local) =>
+  local ? Effect.void : Effect.asVoid(requirePhoneInvocation),
+);
+
 export const invokeMobileRpc = (
-  handlers: MobileHandlers,
+  handlers: Partial<MobileHandlers>,
   method: string,
   input: unknown,
 ): Effect.Effect<unknown, RpcError> =>
   Effect.gen(function* () {
-    yield* requirePhoneInvocation;
+    yield* requireCompanionInvocation;
     if (!Object.hasOwn(mobileMethods, method))
       return yield* Effect.fail(rpcError("unknown_method", "This method is unavailable."));
     const key = method as MobileMethod;
+    if (!handlers[key])
+      return yield* Effect.fail(rpcError("unknown_method", "This method is unavailable."));
     const contract = mobileMethods[key];
     const parsed = contract.params.safeParse(input);
     if (!parsed.success) return yield* Effect.fail(invalid("The request parameters are invalid."));

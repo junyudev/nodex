@@ -41,7 +41,7 @@ export const live: Layer.Layer<
           if (
             !isTrustedAppRendererIpcSender({
               developmentOrigin: config.rendererUrl,
-              hasOwnerWindow: windows.has(event.sender.id),
+              hasOwnerWindow: windows.hasAppRenderer(event.sender.id),
               senderType: event.sender.getType(),
               senderUrl: event.senderFrame?.url ?? "",
               isMainFrame: event.senderFrame === event.sender.mainFrame,

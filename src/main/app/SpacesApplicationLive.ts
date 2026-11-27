@@ -1,4 +1,6 @@
+import type { IpcApi } from "../../shared/ipc-api";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
+import { miniInboxChannels } from "../ipc/handlers/InboxIpc";
 import * as ApplicationWindowIpc from "../ipc/handlers/ApplicationWindowIpc";
 import { formatAppVersion } from "../../shared/app-version";
 import {
@@ -34,6 +36,22 @@ import type { SpaceConnectionSummary } from "../../shared/space-connection";
 import { personalStateKeyMatches } from "../../shared/space-personal-state";
 import { DEVICE_CAPABILITY_CHANNELS, rendererSpaceParameter } from "../../shared/space-ipc-policy";
 import { CoreRuntimeError, coreRuntimeError } from "../core-runtime/CoreRuntimeError";
+
+const miniSpaceChannels: ReadonlySet<keyof IpcApi> = new Set([
+  "persisted-atom:sync-request",
+  "persisted-atom:update",
+  "projects:list",
+  "library-module:read",
+  "library-module:apply",
+  "files:prepare",
+  "files:read",
+  "composer:pick-files",
+  "clipboard:read-paste",
+  "local-commit-audience:subscribe",
+  "local-commit-audience:unsubscribe",
+  "recipient-delivery:admit",
+  "settings:inbox:get",
+]);
 
 const registry = Layer.unwrap(
   Effect.gen(function* () {
@@ -102,11 +120,11 @@ export const live = Layer.effectDiscard(
     });
     const observers = yield* FiberMap.make<string>();
     const tracked = new Set<string>();
-    const authorize = (event: Electron.IpcMainInvokeEvent) =>
+    const authorize = (event: Electron.IpcMainInvokeEvent, allowMini = false) =>
       Effect.try({
         try: () => {
           requireTrustedAppRendererSender(event, "Space connections", config.rendererUrl);
-          if (!windows.has(event.sender.id))
+          if (!(allowMini ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id)))
             throw new Error("Space connections require an active application window");
         },
         catch: () => new Error("Space connections require an active application window"),
@@ -114,13 +132,14 @@ export const live = Layer.effectDiscard(
     const findSenderSpace = (event: Electron.IpcMainInvokeEvent) =>
       SubscriptionRef.get(spaces.summaries).pipe(
         Effect.map((entries) => {
-          const spaceId =
-            rendererSpaceParameter(event.senderFrame?.url ?? "") ?? spaces.personalSpaceId;
+          const spaceId = windows.hasAuxiliaryRole(event.sender.id, "mini")
+            ? spaces.personalSpaceId
+            : (rendererSpaceParameter(event.senderFrame?.url ?? "") ?? spaces.personalSpaceId);
           return { spaceId, space: entries.find((entry) => entry.spaceId === spaceId) };
         }),
       );
-    const contextFor = (event: Electron.IpcMainInvokeEvent) =>
-      authorize(event).pipe(
+    const contextFor = (event: Electron.IpcMainInvokeEvent, allowMini = false) =>
+      authorize(event, allowMini).pipe(
         Effect.andThen(findSenderSpace(event)),
         Effect.map(({ space }) => {
           if (!space) throw new Error("This Space is no longer connected");
@@ -179,7 +198,10 @@ export const live = Layer.effectDiscard(
         ),
       dispatch: ({ channel, event, request, personal }) =>
         Effect.gen(function* () {
-          const senderSpace = yield* contextFor(event);
+          const senderSpace = yield* contextFor(
+            event,
+            miniInboxChannels.has(channel) || miniSpaceChannels.has(channel),
+          );
           const bound = yield* spaces.validateRequest(request, senderSpace.spaceId);
           if (channel.startsWith("persisted-atom:")) {
             if (channel === "persisted-atom:update") {

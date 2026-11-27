@@ -13,7 +13,7 @@ interface OwnershipRecord {
   readonly token: string;
 }
 
-export interface GlobalDictationOwnershipLease {
+export interface DesktopShortcutOwnershipLease {
   readonly dispose: () => void;
   readonly isOwner: () => boolean;
 }
@@ -46,22 +46,24 @@ const readOwner = (lockPath: string): OwnershipRecord | null => {
   }
 };
 
-const hasFreshIncompleteOwner = (lockPath: string): boolean => {
+const ownerIsStale = (lockPath: string, owner: OwnershipRecord | null): boolean => {
+  if (owner !== null) return !isProcessAlive(owner.pid);
   try {
-    return Date.now() - statSync(lockPath).mtimeMs < INCOMPLETE_OWNER_GRACE_MS;
+    const directory = statSync(lockPath, { throwIfNoEntry: false });
+    // Creating a nested recovery claim changes mtime, while the incomplete owner's age stays fixed.
+    return (
+      directory !== undefined && Date.now() - directory.birthtimeMs >= INCOMPLETE_OWNER_GRACE_MS
+    );
   } catch {
     return false;
   }
 };
 
-const ownerIsStale = (lockPath: string, owner: OwnershipRecord | null): boolean =>
-  owner === null ? !hasFreshIncompleteOwner(lockPath) : !isProcessAlive(owner.pid);
-
 const createOwnership = (lockPath: string, owner: OwnershipRecord): boolean => {
   try {
     mkdirSync(lockPath, { mode: 0o700, recursive: false });
   } catch (error) {
-    if (errorCode(error) === "EEXIST") return false;
+    if (errorCode(error) === "EEXIST" || errorCode(error) === "ENOENT") return false;
     throw error;
   }
   try {
@@ -78,18 +80,18 @@ const createOwnership = (lockPath: string, owner: OwnershipRecord): boolean => {
 const sameOwner = (left: OwnershipRecord | null, right: OwnershipRecord | null): boolean =>
   left?.token === right?.token;
 
-const acquireOwnership = (lockPath: string, owner: OwnershipRecord): boolean => {
+const acquireOwnership = (
+  lockPath: string,
+  owner: OwnershipRecord,
+  claimPath = `${lockPath}${CLAIM_SUFFIX}`,
+): boolean => {
   if (createOwnership(lockPath, owner)) return true;
   const observedOwner = readOwner(lockPath);
   if (!ownerIsStale(lockPath, observedOwner)) return false;
 
-  const claimPath = `${lockPath}${CLAIM_SUFFIX}`;
-  try {
-    mkdirSync(claimPath, { mode: 0o700, recursive: false });
-  } catch (error) {
-    if (errorCode(error) === "EEXIST") return false;
-    throw error;
-  }
+  // Each stale claim is recovered under its own claim. Contenders only remove a
+  // stale directory after they have claimed recovery for that specific path.
+  if (!acquireOwnership(claimPath, owner, join(claimPath, CLAIM_SUFFIX))) return false;
   try {
     const currentOwner = readOwner(lockPath);
     if (!sameOwner(observedOwner, currentOwner) || !ownerIsStale(lockPath, currentOwner)) {
@@ -98,7 +100,7 @@ const acquireOwnership = (lockPath: string, owner: OwnershipRecord): boolean => 
     rmSync(lockPath, { force: true, recursive: true });
     return createOwnership(lockPath, owner);
   } finally {
-    rmSync(claimPath, { force: true, recursive: true });
+    if (sameOwner(readOwner(claimPath), owner)) rmSync(claimPath, { force: true, recursive: true });
   }
 };
 
@@ -109,8 +111,17 @@ export const resolveGlobalDictationOwnershipLockPath = (): string =>
 export function acquireGlobalDictationOwnership(options: {
   readonly lockPath?: string;
   readonly onLost: () => void;
-}): GlobalDictationOwnershipLease | null {
-  const lockPath = options.lockPath ?? resolveGlobalDictationOwnershipLockPath();
+}): DesktopShortcutOwnershipLease | null {
+  return acquireDesktopShortcutOwnership(
+    options.lockPath ?? resolveGlobalDictationOwnershipLockPath(),
+    options.onLost,
+  );
+}
+
+export function acquireDesktopShortcutOwnership(
+  lockPath: string,
+  onLost: () => void,
+): DesktopShortcutOwnershipLease | null {
   const owner = { pid: process.pid, token: randomUUID() } satisfies OwnershipRecord;
   mkdirSync(dirname(lockPath), { mode: 0o700, recursive: true });
   if (!acquireOwnership(lockPath, owner)) return null;
@@ -119,7 +130,7 @@ export function acquireGlobalDictationOwnership(options: {
   const timer = setInterval(() => {
     if (isOwner()) return;
     clearInterval(timer);
-    options.onLost();
+    onLost();
   }, OWNER_POLL_INTERVAL_MS);
   timer.unref?.();
 

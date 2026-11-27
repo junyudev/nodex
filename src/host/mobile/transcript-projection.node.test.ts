@@ -238,6 +238,7 @@ describe("Mobile transcript", () => {
       status: "waiting",
       pendingRequestCount: 1,
       attention: "Run git status?",
+      progress: null,
     });
   });
 });

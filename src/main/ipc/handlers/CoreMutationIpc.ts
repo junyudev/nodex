@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
+import { isSupportedComposerImageMimeType } from "../../../shared/composer-image-input";
 import type { IpcApi } from "../../../shared/ipc-api";
 import {
   additionalDocumentCommandFailure,
@@ -92,6 +93,17 @@ const documentHistoryUnavailable = <A>(error: unknown): DocumentHistoryCommandRe
   ),
 });
 
+const CAPTURE_IMPORT_CLEANUP_LIMIT = 1_024;
+
+const miniFileChangeDenied = () =>
+  Effect.succeed({
+    ok: false as const,
+    error: libraryModuleFailure(
+      "invalid_request",
+      "Mini can import images or discard its own image imports",
+    ),
+  });
+
 const make = (allowDocumentOwnerCommands: boolean) => {
   const register = Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -103,10 +115,13 @@ const make = (allowDocumentOwnerCommands: boolean) => {
     const rendererClients = yield* RendererClientRuntime;
     const windows = yield* WindowRuntime;
 
-    const trustedTarget = (event: IpcMainInvokeEvent): WebContents | null => {
+    const trustedTarget = (event: IpcMainInvokeEvent, allowMini = false): WebContents | null => {
       try {
         requireTrustedAppRendererSender(event, "Core mutation authority", config.rendererUrl);
-        return windows.has(event.sender.id) ? event.sender : null;
+        const ownsWindow = allowMini
+          ? windows.hasAppRenderer(event.sender.id)
+          : windows.has(event.sender.id);
+        return ownsWindow ? event.sender : null;
       } catch {
         return null;
       }
@@ -123,6 +138,55 @@ const make = (allowDocumentOwnerCommands: boolean) => {
       } catch {
         return null;
       }
+    };
+
+    // Core still checks the current revision and whether anything uses the File.
+    // These grants only authorize cleanup of imports made by this Mini renderer.
+    const miniImports = new WeakMap<
+      WebContents,
+      Map<string, { readonly storeEpoch: string; readonly revision: number }>
+    >();
+    const applyMiniFileChange = (
+      target: WebContents,
+      access: ReturnType<typeof parseContentRoutingContext>,
+      request: ReturnType<typeof bindLibraryModuleApply>,
+    ) => {
+      const operation = request.operation;
+      if (operation.kind !== "apply_file_change" || operation.turn_id != null)
+        return miniFileChangeDenied();
+      const { change } = operation;
+      if (change.kind === "trash") {
+        const imported = miniImports.get(target)?.get(change.file_id);
+        if (
+          !imported ||
+          imported.storeEpoch !== request.storeEpoch ||
+          imported.revision !== change.expected_revision
+        )
+          return miniFileChangeDenied();
+        return library.apply(access, request);
+      }
+      if (change.kind !== "create" || !isSupportedComposerImageMimeType(change.mime_type))
+        return miniFileChangeDenied();
+
+      return library.apply(access, request).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            if (!result.ok || !result.value.didMutate || result.value.duplicate) return;
+            const imported = result.value.fileMutation;
+            if (!imported || imported.file_id !== change.file_id) return;
+            const imports = miniImports.get(target) ?? new Map();
+            imports.set(imported.file_id, {
+              storeEpoch: result.value.storeEpoch,
+              revision: imported.revision,
+            });
+            if (imports.size > CAPTURE_IMPORT_CLEANUP_LIMIT) {
+              const oldest = imports.keys().next().value;
+              if (oldest !== undefined) imports.delete(oldest);
+            }
+            miniImports.set(target, imports);
+          }),
+        ),
+      );
     };
 
     yield* ipc.handleLocalCommitCommand(
@@ -249,7 +313,7 @@ const make = (allowDocumentOwnerCommands: boolean) => {
     yield* ipc.handleQuery(
       "library-module:read",
       (event, rawAccess: unknown, rawRequest: IpcApi["library-module:read"]["args"][1]) => {
-        if (!trustedTarget(event)) {
+        if (!trustedTarget(event, true)) {
           return Effect.succeed({
             ok: false as const,
             error: libraryModuleFailure(
@@ -290,7 +354,7 @@ const make = (allowDocumentOwnerCommands: boolean) => {
     yield* ipc.handleLocalCommitCommand(
       "library-module:apply",
       (event, rawAccess: unknown, rawRequest: IpcApi["library-module:apply"]["args"][1]) => {
-        const target = trustedTarget(event);
+        const target = trustedTarget(event, true);
         if (!target) {
           return Effect.succeed({
             ok: false as const,
@@ -315,10 +379,11 @@ const make = (allowDocumentOwnerCommands: boolean) => {
           });
         }
         const operation = request.operation.kind;
-        const apply =
-          operation === "apply_structural_edit" ||
-          operation === "reverse_structural_edit" ||
-          operation === "create_page_mention"
+        const apply = windows.hasAuxiliaryRole(event.sender.id, "mini")
+          ? applyMiniFileChange(target, access, request)
+          : operation === "apply_structural_edit" ||
+              operation === "reverse_structural_edit" ||
+              operation === "create_page_mention"
             ? editorHistory.apply(target, access, request)
             : library.apply(access, request);
         return apply.pipe(

@@ -684,3 +684,48 @@ test("Browser annotation toggle has a platform default and follows rebinding", (
     ),
   ).toBe(true);
 });
+
+describe("Open Mini", () => {
+  test.each(["macOS", "windows", "linux"] as const)(
+    "shows the editable OS-wide default on supported platforms (%s)",
+    (platform) => {
+      const state = createCommandKeymapState({}, platform);
+      const entry = state.entries.find(({ id }) => id === "openMini");
+      expect(entry?.available).toBe(platform !== "linux");
+      expect(entry?.shortcutScope).toBe("os-global");
+      expect(getPrimaryCommandAccelerator(state, "openMini")).toBe("Alt+Shift+Space");
+    },
+  );
+
+  test("uses Electron modifier aliases on Windows without admitting bare keys", () => {
+    const set = (key: string) =>
+      applyCommandKeybindingUpdate({}, "openMini", { type: "set", keybinding: { key } }, "windows");
+    expect(set("CommandOrControl+Alt+Space")).toEqual({ openMini: ["CmdOrCtrl+Alt+Space"] });
+    expect(() => set("Alt")).toThrow(/non-modifier/);
+    expect(() => set("Space")).toThrow(/Cmd\/Ctrl or Alt/);
+    expect(() => set("Alt+K Alt+L")).toThrow(/single keyboard shortcut/);
+  });
+
+  test("rejects Mini and Dictation collisions across aliases and when restoring defaults", () => {
+    const overrides = { openMini: ["CmdOrCtrl+Shift+F8"] };
+    expect(() =>
+      applyCommandKeybindingUpdate(
+        overrides,
+        "globalDictationHold",
+        {
+          type: "set",
+          keybinding: { key: "Command+Shift+F8" },
+        },
+        "macOS",
+      ),
+    ).toThrow(/Open Mini/);
+    expect(() =>
+      applyCommandKeybindingUpdate(
+        { ...overrides, globalDictationToggle: ["Alt+Shift+Space"] },
+        "openMini",
+        { type: "reset" },
+        "macOS",
+      ),
+    ).toThrow(/Single-tap shortcut/);
+  });
+});

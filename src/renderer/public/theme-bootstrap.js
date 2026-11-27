@@ -10,7 +10,10 @@ root.dataset.theme = isDark ? "dark" : "light";
 root.classList.toggle("dark", isDark);
 root.classList.toggle("electron-dark", isDark);
 root.classList.toggle("electron-light", !isDark);
-const isCompactWindow = initialRoute === "/global-dictation" || initialRoute === "/avatar-overlay";
+const isCompactWindow =
+  initialRoute === "/global-dictation" ||
+  initialRoute === "/avatar-overlay" ||
+  initialRoute === "/mini";
 root.classList.toggle("compact-window", isCompactWindow);
 root.classList.toggle("hide-startup-shell", isCompactWindow);
 root.classList.toggle("electron-opaque", parameters.get("opaqueWindowSurface") === "true");

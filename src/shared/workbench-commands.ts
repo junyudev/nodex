@@ -1,4 +1,5 @@
 import type { BrowserSidebarTabIdentity } from "./browser-sidebar";
+import type { InboxScope } from "./inbox";
 import type { CommandId } from "./command-keybindings";
 
 export const TOGGLE_BOTTOM_PANEL_COMMAND_ID = "toggleBottomPanel";
@@ -13,6 +14,7 @@ export const FIND_PREVIOUS_COMMAND_ID = "findPrevious";
 export type WorkbenchCommandId =
   | Extract<
       CommandId,
+      | "openInbox"
       | "settings"
       | "focusBrowserAddressBar"
       | "newThread"
@@ -37,6 +39,7 @@ export interface WorkbenchCommandInvocation {
   source: WorkbenchCommandSource;
   /** The Browser page that had focus, so Browser commands act on its own group. */
   browserTab?: BrowserSidebarTabIdentity;
+  inboxScope?: InboxScope;
 }
 
 export interface WorkbenchCommandRequest extends WorkbenchCommandInvocation {

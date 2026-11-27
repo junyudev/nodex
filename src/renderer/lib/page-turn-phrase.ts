@@ -137,6 +137,10 @@ const quiet = (text: string, detail: string | null = null): PageTurnPhrase => ({
   detail,
 });
 
+/** What a Turn that is the reader's move asks of them, such as `Needs your answer`. */
+export const pageTurnAskOfReader = (reason: TurnReason): string | null =>
+  ASKS[reason]?.({ you: true, name: "" }) ?? null;
+
 /**
  * Whose move a Page waits for, in the words every surface uses: the Page's Status row, Board cards,
  * List rows and Inbox rows. It formats Core's decision and never decides whose turn comes next.

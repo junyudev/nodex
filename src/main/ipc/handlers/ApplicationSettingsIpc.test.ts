@@ -1,3 +1,5 @@
+import type { CommandKeybindingRejection } from "../../../shared/command-keybindings";
+import { MiniRuntime } from "../../mini/MiniRuntime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -97,6 +99,8 @@ it.effect("validates and persists settings with the owning window authority", ()
       bindHistory: () => Effect.succeed(1),
       publishHistory: () => Effect.void,
     });
+    let miniRegistrationIssue: CommandKeybindingRejection | null = null;
+    let restoredDictationKeymaps = 0;
     let keymapAdmissionsInFlight = 0;
     let peakKeymapAdmissions = 0;
     const dictation = DictationRuntime.of({
@@ -108,23 +112,29 @@ it.effect("validates and persists settings with the owning window authority", ()
           keymapAdmissionsInFlight -= 1;
           return null;
         }),
-      restoreCommandKeymap: () => Effect.void,
+      restoreCommandKeymap: () =>
+        Effect.sync(() => {
+          restoredDictationKeymaps += 1;
+        }),
     } as unknown as DictationRuntime["Service"]);
     const schedulers = StoreAdministrationSchedulerRuntime.of({
       configureBackup: () => Effect.void,
     } as unknown as StoreAdministrationSchedulerRuntime["Service"]);
     const broadcasts: Array<{ channel: string; value: unknown }> = [];
-    const windows = WindowRuntime.of({
-      all: () => [
-        {
+    const appRenderers = () => [
+      {
+        isDestroyed: () => false,
+        webContents: {
           isDestroyed: () => false,
-          webContents: {
-            isDestroyed: () => false,
-            send: (channel: string, value: unknown) => broadcasts.push({ channel, value }),
-          },
+          send: (channel: string, value: unknown) => broadcasts.push({ channel, value }),
         },
-      ],
+      },
+    ];
+    const windows = WindowRuntime.of({
+      all: appRenderers,
+      appRenderers,
       has: () => true,
+      hasAppRenderer: () => true,
     } as unknown as WindowRuntime["Service"]);
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
@@ -160,6 +170,14 @@ it.effect("validates and persists settings with the owning window authority", ()
               }),
             }),
             Layer.succeed(DictationRuntime, dictation),
+            Layer.succeed(MiniRuntime, {
+              panel: null,
+              restingCoverage: () => ({ chats: [], turns: [], notice: false }),
+              syncCommandKeymap: () => Effect.sync(() => miniRegistrationIssue),
+              restoreCommandKeymap: () => Effect.void,
+              decorateKeymap: (state) => state,
+              withDialog: (_, open) => open(),
+            }),
             Layer.succeed(DesktopNotificationRuntime, {
               authorization: {
                 read: Effect.succeed("authorized"),
@@ -358,6 +376,20 @@ it.effect("validates and persists settings with the owning window authority", ()
       [{ channel: "composer-prediction-settings-changed", value: { enabled: false } }],
     );
     assert.strictEqual(providerRefreshes, 1);
+    const readVisibility = handlers.get("settings:mini-visibility:get")!;
+    const updateVisibility = handlers.get("settings:mini-visibility:update")!;
+    assert.strictEqual(yield* readVisibility(event), "active");
+    assert.strictEqual(
+      (yield* Effect.result(updateVisibility(untrustedEvent, "always")))._tag,
+      "Failure",
+    );
+    assert.strictEqual(
+      (yield* Effect.result(updateVisibility(event, "automatic")))._tag,
+      "Failure",
+    );
+    assert.strictEqual(yield* updateVisibility(event, "on-demand"), "on-demand");
+    assert.strictEqual(yield* readVisibility(event), "on-demand");
+
     const readProfiles = handlers.get("settings:agent-profiles:get")!;
     const saveProfiles = handlers.get("settings:agent-profiles:update")!;
     assert.strictEqual((yield* Effect.result(readProfiles(event, "unknown")))._tag, "Failure");
@@ -458,6 +490,24 @@ it.effect("validates and persists settings with the owning window authority", ()
             message: "Shortcut must include Cmd/Ctrl or Alt.",
           },
     );
+    miniRegistrationIssue = {
+      kind: "shortcut-unavailable",
+      message: "The Mini shortcut is already in use or unavailable.",
+    };
+    const savedKeymap = (yield* settings.snapshot()).commandKeymap;
+    const miniBinding = yield* handlers.get("set-codex-command-keybinding")!(event, "openMini", {
+      type: "set",
+      keybinding: { key: "Alt+Shift+F8" },
+    });
+    assert.deepEqual(miniBinding, {
+      type: "rejected",
+      state: savedKeymap,
+      reason: miniRegistrationIssue,
+    });
+    assert.deepEqual((yield* settings.snapshot()).commandKeymap, savedKeymap);
+    assert.strictEqual(restoredDictationKeymaps, 1);
+    miniRegistrationIssue = null;
+
     const keybindingResults = yield* Effect.all(
       [
         handlers.get("set-codex-command-keybinding")!(event, "settings", {

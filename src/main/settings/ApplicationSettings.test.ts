@@ -99,6 +99,33 @@ it.effect("persists disabled components without changing other Profile settings"
   }),
 );
 
+it.effect("persists Mini visibility and the last-used anchor for each display", () =>
+  Effect.gen(function* () {
+    const { root, settingsPath } = fixture('[server]\nmini_visibility = "unknown"\n');
+    const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+    const settings = yield* makeApplicationSettings(input);
+    assert.strictEqual((yield* settings.snapshot()).miniVisibility, "active");
+    const first = { vertical: "top", horizontal: "right" } as const;
+    const second = { vertical: "bottom", horizontal: "left" } as const;
+    yield* settings.update({
+      type: "update-mini-placement",
+      input: { displayId: 11, anchor: first },
+    });
+    yield* settings.update({
+      type: "update-mini-placement",
+      input: { displayId: 22, anchor: second },
+    });
+    yield* settings.update({ type: "update-mini-visibility", input: "on-demand" });
+    const reopened = yield* makeApplicationSettings(input);
+    const snapshot = yield* reopened.snapshot();
+    assert.strictEqual(snapshot.miniVisibility, "on-demand");
+    assert.deepEqual(snapshot.miniPlacement, {
+      lastDisplayId: 22,
+      anchors: { 11: first, 22: second },
+    });
+  }),
+);
+
 describe("update channel continuity", () => {
   const previousNightly = "0.5.5-nightly.20261110.2523";
 

@@ -1,3 +1,9 @@
+import type { MiniOpenTarget } from "../../shared/mini";
+import type { InboxScope } from "../../shared/inbox";
+import {
+  EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL,
+  type WorkbenchCommandInvocation,
+} from "../../shared/workbench-commands";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -6,6 +12,8 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import {
+  buildPageDeepLink,
+  buildSessionDeepLink,
   parsePageDeepLink,
   parseSessionDeepLink,
   parseViewDeepLink,
@@ -24,6 +32,7 @@ export class DeepLinkRuntimeError extends Schema.TaggedError<DeepLinkRuntimeErro
 
 export interface DeepLinkRuntimeOptions {
   readonly focusWindow: () => void;
+  readonly focusPersonalWindow?: () => void;
   readonly windows: WindowRuntimeService;
 }
 interface SpaceLinkResolver {
@@ -44,6 +53,7 @@ export class DeepLinkRuntime extends Context.Service<
     ) => Effect.Effect<string | null, DeepLinkRuntimeError>;
     readonly flush: Effect.Effect<void>;
     readonly handle: (value: string) => Effect.Effect<boolean, DeepLinkRuntimeError>;
+    readonly openMiniTarget: (target: MiniOpenTarget) => Effect.Effect<void, DeepLinkRuntimeError>;
     readonly markReady: Effect.Effect<void, DeepLinkRuntimeError>;
   }
 >()("nodex/main/host-runtime/DeepLinkRuntime") {}
@@ -58,6 +68,7 @@ export const live = (options: DeepLinkRuntimeOptions) =>
         pending: [] as NodexDeepLinkTarget[],
         resolved: [] as QualifiedSpaceDeepLink[],
       });
+      let pendingInbox: InboxScope | null = null;
       let spaces: SpaceLinkResolver | null = null;
       const fail = (cause: unknown) =>
         new DeepLinkRuntimeError({ operation: "resolve-link", cause });
@@ -71,15 +82,15 @@ export const live = (options: DeepLinkRuntimeOptions) =>
       };
       const flush = Effect.gen(function* () {
         const snapshot = yield* Ref.get(state);
-        for (const target of snapshot.resolved) {
+        const readyWindow = (spaceId: string, allowOtherSpace: boolean) => {
           const focused = options.windows.getLastFocused();
           const matches = (window: NonNullable<typeof focused>) =>
             (rendererSpaceParameter(window.webContents.getURL?.() ?? "") ??
-              spaces?.personalSpaceId) === target.spaceId;
+              spaces?.personalSpaceId) === spaceId;
           const window =
             focused && matches(focused)
               ? focused
-              : (options.windows.all().find(matches) ?? focused);
+              : (options.windows.all().find(matches) ?? (allowOtherSpace ? focused : null));
           if (
             !window ||
             window.isDestroyed() ||
@@ -87,7 +98,26 @@ export const live = (options: DeepLinkRuntimeOptions) =>
             window.webContents.isLoadingMainFrame() ||
             !options.windows.isRendererInitialized(window.webContents.id)
           )
-            continue;
+            return null;
+          return window;
+        };
+        if (pendingInbox && spaces) {
+          const inbox = pendingInbox;
+          const window = readyWindow(spaces.personalSpaceId, false);
+          if (
+            safeSendToWindow(window, EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL, [
+              {
+                commandId: "openInbox",
+                source: "toolbar",
+                inboxScope: inbox,
+              } satisfies WorkbenchCommandInvocation,
+            ])
+          )
+            pendingInbox = null;
+        }
+        for (const target of snapshot.resolved) {
+          const window = readyWindow(target.spaceId, true);
+          if (!window) continue;
           const { kind, ...payload } = target;
           const channel = `deeplink:open-${kind}` satisfies keyof IpcEvents;
           if (!safeSendToWindow(window, channel, [payload])) continue;
@@ -117,7 +147,7 @@ export const live = (options: DeepLinkRuntimeOptions) =>
         }
         yield* flush;
       });
-      const handle = (value: string) => {
+      const handle = (value: string, focusWindow = options.focusWindow) => {
         const page = parsePageDeepLink(value);
         const session = parseSessionDeepLink(value);
         const view = parseViewDeepLink(value);
@@ -133,7 +163,7 @@ export const live = (options: DeepLinkRuntimeOptions) =>
           ...current,
           pending: [...current.pending.filter((entry) => entry.kind !== target.kind), target],
         })).pipe(
-          Effect.andThen(Effect.sync(() => options.focusWindow())),
+          Effect.andThen(Effect.sync(focusWindow)),
           Effect.andThen(resolvePending),
           Effect.as(true),
         );
@@ -156,6 +186,25 @@ export const live = (options: DeepLinkRuntimeOptions) =>
           }),
         flush,
         handle,
+        openMiniTarget: (target) =>
+          Effect.gen(function* () {
+            if (!spaces) return yield* fail(new Error("Space routing is not ready"));
+            const spaceId = spaces.personalSpaceId;
+            const focus = options.focusPersonalWindow ?? options.focusWindow;
+            if (target.kind === "inbox") {
+              pendingInbox = target.scope;
+              yield* Effect.sync(focus);
+              return yield* flush;
+            }
+            const link = yield* Effect.try({
+              try: () =>
+                target.kind === "page"
+                  ? buildPageDeepLink({ pageId: target.pageId, spaceId })
+                  : buildSessionDeepLink({ sessionId: target.sessionId, spaceId }),
+              catch: fail,
+            });
+            yield* handle(link, focus);
+          }),
         markReady: Ref.update(state, (current) => ({ ...current, ready: true })).pipe(
           Effect.andThen(resolvePending),
         ),

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import { automationNotificationDecision } from "../../shared/automation-notification-policy";
 import type {
   DesktopNotificationActionInvocation,
@@ -100,22 +100,15 @@ describe("codex-thread-notification-handler", () => {
     const dispatched: DesktopNotificationActionInvocation[] = [];
     let foregrounded = false;
     let presented = false;
-    const focusTargetClient = vi.fn();
     const handle = makeCodexThreadNotificationHandler({
       getSettings: () => settings,
       isAppForegrounded: () => foregrounded,
       isConversationSeen: () => presented,
-      resolveTargetClientId: () => "renderer-1",
-      showNotification: (notification, _targetClientId, onAction) => {
+      showNotification: (notification, resolveAction) => {
         shown.push(notification);
-        actions.push(onAction);
+        actions.push((action) => dispatched.push(resolveAction(action)));
       },
       dismissNotification: (selector) => dismissed.push(selector),
-      dispatchAction: (_targetClientId, action) => {
-        dispatched.push(action);
-        return true;
-      },
-      focusTargetClient,
     });
     source.eventListener = handle;
     source.presentedListener = (conversationId) => dismissed.push({ conversationId });
@@ -124,7 +117,6 @@ describe("codex-thread-notification-handler", () => {
       actions,
       dismissed,
       dispatched,
-      focusTargetClient,
       setForegrounded: (value: boolean) => {
         foregrounded = value;
       },
@@ -169,7 +161,6 @@ describe("codex-thread-notification-handler", () => {
       expect(approval.replyPlaceholder).toBeUndefined();
       expect(approval.occurrenceId).not.toBe(runtime.shown[1]?.occurrenceId);
       runtime.actions[0]?.({ notificationId: approval.id, actionType: "open", actionId: null });
-      expect(runtime.focusTargetClient).toHaveBeenCalledWith("renderer-1");
       expect(runtime.dispatched[0]).toMatchObject({
         actionType: "open",
         hostId: "local",
@@ -185,6 +176,60 @@ describe("codex-thread-notification-handler", () => {
         family: "approval",
       });
       expect(runtime.dismissed).toEqual([{ occurrenceId: approval.occurrenceId }]);
+    });
+
+    test("resting Mini covers chat turns and requests while keeping resolution and snooze delivery", () => {
+      const runtime = setup({ turnMode: "always", questionsEnabled: true, readbackEnabled: true });
+      const facts = conversation({ runtimeSessionId: "session-1" });
+      const chat = { hostId: "local", conversation: facts, turnId: "turn-1" };
+      const request = {
+        ...chat,
+        type: "user-input-requested",
+        requestId: 73,
+        questionCount: 1,
+      } as const;
+      const approval = {
+        ...chat,
+        type: "approval-requested",
+        requestId: 74,
+        prompt: null,
+      } as const;
+      runtime.handle(request);
+      const original = runtime.shown[0];
+      const covered = { coveredByMini: true };
+      runtime.handle(request, covered);
+      runtime.handle(approval, covered);
+      runtime.handle(
+        {
+          ...chat,
+          type: "turn-completed",
+          status: "completed",
+          lastAgentMessage: "Done",
+          heartbeatAssistantMessage: null,
+          automationNotificationDecision: null,
+          hasPendingContinuation: false,
+        },
+        covered,
+      );
+      expect(runtime.shown).toEqual([original]);
+
+      runtime.handle({
+        type: "request-resolved",
+        hostId: "local",
+        conversationId: facts.conversationId,
+        requestId: 73,
+      });
+      expect(runtime.dismissed).toEqual([{ occurrenceId: original?.occurrenceId }]);
+      runtime.handle({
+        type: "session-snooze",
+        hostId: "local",
+        conversation: facts,
+        snoozedUntil: "2026-11-27T00:00:00Z",
+        memberId: "member",
+      });
+      expect(runtime.shown[1]?.kind).toBe("chat-snooze");
+      runtime.handle(approval);
+      expect(runtime.shown[2]?.id).toBe("approval-local-74");
     });
 
     test("approval requests share request preferences and foreground suppression", () => {
@@ -356,7 +401,6 @@ describe("codex-thread-notification-handler", () => {
         actionId: null,
         actionType: "open",
       });
-      expect(runtime.focusTargetClient).toHaveBeenCalledWith("renderer-1");
       expect(runtime.dispatched[0]).toMatchObject({
         conversationId: "side-1",
         navigationPath: "project:p/session:s/thread:parent",
@@ -398,7 +442,6 @@ describe("codex-thread-notification-handler", () => {
         navigationPath: "session:session%3Asource/thread:thread%3Asource",
         activateTabId: "sidechat-session:session:side",
       });
-      expect(runtime.focusTargetClient).toHaveBeenCalledWith("renderer-1");
     });
 
     test("opens an async question without a blocking request or reply action, then dismisses the same occurrence", () => {

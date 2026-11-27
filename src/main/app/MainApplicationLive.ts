@@ -217,7 +217,8 @@ const phone = MobileApplication.live.pipe(
 );
 /** A Space serves only channels the process routes, so routing starts once every route exists. */
 const spaces = SpacesApplicationLive.live.pipe(Layer.provideMerge(RendererIngressLive.live));
-const applicationGraph = Layer.mergeAll(windowsTrayIntegrationLive, spaces, phone).pipe(
+const applicationGraph = Layer.mergeAll(windowsTrayIntegrationLive, spaces).pipe(
+  Layer.provideMerge(phone),
   Layer.provideMerge(sourcesGraph),
   Layer.provide(CodexConversationPeerRuntime.live),
   Layer.provideMerge(

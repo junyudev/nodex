@@ -5,6 +5,9 @@ import type { IpcApi } from "./ipc-api";
  * Everything else must carry a Space, including native execution and cleanup commands. */
 const desktopPrefixes = [
   "app:",
+  "capture:",
+  // The registered Mini renderer is already bound to this desktop's personal Space.
+  "mini:",
   "window-sessions:",
   "window:",
   "electron-window:",
@@ -14,7 +17,6 @@ const desktopPrefixes = [
   "spaces:",
   "app-update:",
   "app-components:",
-  "windows-startup:",
   "nodex-account:",
   "keyboard:",
   "command-keybindings:",

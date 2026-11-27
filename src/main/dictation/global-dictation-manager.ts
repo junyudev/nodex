@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import {
   DEFAULT_KEYBOARD_LAYOUT_SNAPSHOT,
-  areGlobalDictationShortcutsEqual,
+  areOsGlobalShortcutsEqual,
   getPrimaryCommandAccelerator,
   type CommandKeybindingRejection,
   type CommandKeymapState,
@@ -27,7 +27,7 @@ import type { ClipboardSafePasteService } from "./clipboard-safe-paste-service";
 import type { GlobalDictationWindowController } from "./global-dictation-window-controller";
 import {
   acquireGlobalDictationOwnership,
-  type GlobalDictationOwnershipLease,
+  type DesktopShortcutOwnershipLease,
 } from "./global-dictation-ownership-lock";
 
 const IN_APP_ACCEPT_TIMEOUT_MS = 150;
@@ -117,7 +117,7 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   >;
   readonly #openAccessibilitySettings: () => Promise<void>;
   readonly #openRecording: (recordingId: string) => Promise<void>;
-  readonly #acquireOwnership: (onLost: () => void) => GlobalDictationOwnershipLease | null;
+  readonly #acquireOwnership: (onLost: () => void) => DesktopShortcutOwnershipLease | null;
   readonly #getFocusedAppWindow: () => BrowserWindow | null;
   readonly #getAppWindowByWebContentsId: (webContentsId: number) => BrowserWindow | null;
   readonly #onRecoveryNeeded: () => void;
@@ -148,7 +148,7 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   #keyboardLayout = DEFAULT_KEYBOARD_LAYOUT_SNAPSHOT;
   #configurationGeneration = 0;
   #configurationTail: Promise<void> = Promise.resolve();
-  #ownership: GlobalDictationOwnershipLease | null = null;
+  #ownership: DesktopShortcutOwnershipLease | null = null;
   #disposed = false;
   readonly #rendererDestruction: Pick<WebContentsDestructionSubscriptions["Service"], "subscribe">;
   readonly #unsubscribeHelper: () => void;
@@ -165,7 +165,7 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
     >;
     readonly openAccessibilitySettings: () => Promise<void>;
     readonly openRecording: (recordingId: string) => Promise<void>;
-    readonly acquireOwnership?: (onLost: () => void) => GlobalDictationOwnershipLease | null;
+    readonly acquireOwnership?: (onLost: () => void) => DesktopShortcutOwnershipLease | null;
     readonly getFocusedAppWindow: () => BrowserWindow | null;
     readonly getAppWindowByWebContentsId: (webContentsId: number) => BrowserWindow | null;
     readonly onRecoveryNeeded?: () => void;
@@ -546,7 +546,7 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
     | { readonly type: "rejected"; readonly reason: CommandKeybindingRejection } {
     const hold = getPrimaryCommandAccelerator(state, "globalDictationHold");
     const toggle = getPrimaryCommandAccelerator(state, "globalDictationToggle");
-    if (areGlobalDictationShortcutsEqual(hold, toggle, state.platform)) {
+    if (areOsGlobalShortcutsEqual(hold, toggle, state.platform)) {
       return {
         type: "rejected",
         reason: {
@@ -841,7 +841,12 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
     this.#active = session;
     this.#syncEscapeRegistration();
     const focused = this.#getFocusedAppWindow();
-    if (focused && !focused.isDestroyed() && !focused.webContents.isDestroyed()) {
+    if (
+      focused &&
+      !focused.isDestroyed() &&
+      focused.isVisible() &&
+      !focused.webContents.isDestroyed()
+    ) {
       session.owner = "pending-in-app";
       session.senderWebContentsId = focused.webContents.id;
       const cancel = (): void => {

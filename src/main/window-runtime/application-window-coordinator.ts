@@ -6,6 +6,7 @@ import type {
   WindowSessionRecord,
   WindowSessionSaveLayoutInput,
 } from "../../shared/window-session";
+import { rendererSpaceParameter } from "../../shared/space-ipc-policy";
 import { REQUEST_NEW_WINDOW_HOST_CHANNEL } from "../../shared/window-navigation";
 import { safeSendToWindow } from "../ipc-safe-send";
 import type { AcquiredWindowSession } from "../window-session-state";
@@ -24,6 +25,7 @@ export interface ApplicationWindowCoordinatorOptions {
     readonly operation: "acquire" | "rollback";
     readonly windowSessionId?: string;
   }) => void;
+  readonly restoreInitial: (target?: "personal") => BrowserWindow | null;
   readonly windows: WindowRuntimeService;
 }
 
@@ -31,6 +33,7 @@ export interface ApplicationWindowCoordinator {
   readonly beginApplicationQuit: () => void;
   readonly bootstrap: (webContentsId: number) => { readonly session: WindowSessionRecord };
   readonly focusLast: () => void;
+  readonly focusPersonal: () => BrowserWindow | null;
   readonly openDictationRecording: (recordingId: string) => boolean;
   readonly flushDictationRecording: (webContentsId: number) => void;
   readonly openForRequest: (
@@ -92,8 +95,16 @@ export const createApplicationWindowCoordinator = (
       return null;
     }
   };
+  const restoreInitial = (target?: "personal"): BrowserWindow | null => {
+    try {
+      return options.restoreInitial(target);
+    } catch (cause) {
+      options.reportFailure({ cause, operation: "acquire" });
+      return null;
+    }
+  };
   const focusLast = (): void => {
-    if (!accepting) return;
+    if (!accepting || restoreInitial()) return;
     const existing = options.windows.getLastFocused();
     if (!existing) {
       openNew();
@@ -103,12 +114,14 @@ export const createApplicationWindowCoordinator = (
     show(existing);
   };
   const requestNew = (): void => {
-    if (!accepting) return;
+    if (!accepting || restoreInitial()) return;
     if (options.windows.hasClosedSessionAvailable()) {
       openNew();
       return;
     }
-    const source = options.focusedWindow() ?? options.windows.getLastFocused();
+    const focused = options.focusedWindow();
+    const source =
+      (focused && options.windows.get(focused.webContents.id)) ?? options.windows.getLastFocused();
     if (!source || source.isDestroyed()) {
       openNew();
       return;
@@ -154,10 +167,26 @@ export const createApplicationWindowCoordinator = (
     },
     bootstrap: (webContentsId) => ({ session: options.windows.bootstrap(webContentsId) }),
     focusLast,
+    focusPersonal: () => {
+      if (!accepting) return null;
+      const restored = restoreInitial("personal");
+      if (restored) return restored;
+      const focused = options.windows.getLastFocused();
+      const personal = (window: BrowserWindow) =>
+        !rendererSpaceParameter(window.webContents.getURL());
+      const existing =
+        focused && personal(focused) ? focused : options.windows.all().find(personal);
+      if (existing) {
+        if (existing.isMinimized()) existing.restore();
+        return show(existing);
+      }
+      return show(options.create(options.windows.createFreshSession()));
+    },
     openDictationRecording: (recordingId) => {
       if (!accepting) return false;
-      const existing = options.windows.getLastFocused();
-      const window = existing ?? openNew();
+      const restored = restoreInitial();
+      const existing = restored ? null : options.windows.getLastFocused();
+      const window = restored ?? existing ?? openNew();
       if (!window || window.isDestroyed()) return false;
       if (existing) {
         if (window.isMinimized()) window.restore();

@@ -6,6 +6,8 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent, IpcMainEvent, BrowserWindow } from "electron";
 import type { BlockTransferIntent } from "../../../shared/block-transfer";
+import type { LibraryFileChange } from "../../../shared/library-files";
+import { createUuidV7 } from "../../../shared/uuid-v7";
 import { blockTransferFailure } from "../../../shared/block-transfer-transport";
 import type { DocumentMutationRequest } from "../../../shared/block-documents/document-operations";
 import { documentMutationFailure } from "../../../shared/block-documents/document-operation-transport";
@@ -119,6 +121,45 @@ describe("CoreMutationIpc", () => {
       const transferOwners: number[] = [];
       const abandonedTransfers: BlockTransferIntent[] = [];
       const historyReads: unknown[] = [];
+      const library = {
+        apply: (_access, request) =>
+          Effect.sync(() => {
+            const operation = request.operation;
+            if (operation.kind !== "apply_file_change") throw new Error("Unexpected Library write");
+            return {
+              ok: true,
+              localCommit: {
+                status: "committed",
+                commit: {
+                  store_epoch: request.storeEpoch,
+                  commit_seq: 1,
+                  manifest_hash: "a".repeat(64),
+                },
+                delivery: null,
+              },
+              value: {
+                operationId: request.operationId,
+                profileId: "profile",
+                storeEpoch: request.storeEpoch,
+                libraryId: "library",
+                operationKind: operation.kind,
+                duplicate: false,
+                didMutate: true,
+                createdTarget: null,
+                canvasMutation: null,
+                structuralEdit: null,
+                fileMutation: { file_id: operation.change.file_id, revision: 1 },
+                affectedParentKeys: [],
+                affectedPageIds: [],
+                affectedDatabaseIds: [],
+                affectedViewIds: [],
+                committedRevisions: {},
+                commitSeq: 1,
+                committedAt: "2026-01-01",
+              },
+            };
+          }),
+      } satisfies Pick<LibraryModule["Service"], "apply">;
       const documents = {
         applyDocumentMutation: (request: DocumentMutationRequest) => {
           documentMutations.push(request);
@@ -159,7 +200,7 @@ describe("CoreMutationIpc", () => {
               Layer.succeed(ElectronIpc, ipc),
               Layer.succeed(DesktopDocumentSessionRuntime, documents),
               Layer.succeed(RendererClientRuntime, rendererClients),
-              Layer.succeed(LibraryModule, LibraryModule.of({} as LibraryModule["Service"])),
+              Layer.succeed(LibraryModule, library as unknown as LibraryModule["Service"]),
               Layer.succeed(
                 EditorHistoryRuntime,
                 EditorHistoryRuntime.of({
@@ -183,6 +224,9 @@ describe("CoreMutationIpc", () => {
               mainConfigLayer(),
               Layer.succeed(WindowRuntime, {
                 has: (id: number) => id === 7,
+                hasAppRenderer: (id: number) => id === 7 || id === 9 || id === 10,
+                hasAuxiliaryRole: (id: number, role: string) =>
+                  role === "mini" && (id === 9 || id === 10),
               } as unknown as WindowRuntime["Service"]),
             ),
           ),
@@ -231,6 +275,36 @@ describe("CoreMutationIpc", () => {
       assert.deepStrictEqual(historyReads, [
         { projectId: "project:one", documentId: "document:one", limit: 25 },
       ]);
+
+      const capture = rendererEvent(9);
+      const replacementCapture = rendererEvent(10);
+      const apply = handlers.get("library-module:apply")!;
+      const applyFile = (sender: IpcMainInvokeEvent, change: LibraryFileChange) =>
+        apply(
+          sender,
+          { kind: "library" },
+          {
+            operationId: createUuidV7(),
+            storeEpoch: "epoch:one",
+            operation: { kind: "apply_file_change", change },
+          },
+        ).pipe(Effect.map((result) => (result as { readonly ok: boolean }).ok));
+      const image = {
+        kind: "create",
+        file_id: "file:one",
+        default_name: "image.png",
+        mime_type: "image/png",
+        prepared_blob_receipt_id: "prepared",
+      } as const;
+      const trash = { kind: "trash", file_id: image.file_id, expected_revision: 1 } as const;
+      assert.isFalse(yield* applyFile(capture, { ...image, mime_type: "text/plain" }));
+      assert.isFalse(yield* applyFile(capture, trash));
+      assert.isTrue(yield* applyFile(capture, image));
+      assert.isFalse(yield* applyFile(replacementCapture, trash));
+      assert.isFalse(yield* applyFile(capture, { ...trash, expected_revision: 2 }));
+      assert.isFalse(yield* applyFile(capture, { ...trash, kind: "purge" }));
+      assert.isTrue(yield* applyFile(capture, trash));
+      assert.isTrue(yield* applyFile(trusted, { ...trash, kind: "purge" }));
 
       yield* Scope.close(scope, Exit.void);
       assert.strictEqual(handlers.size, 0);
@@ -281,6 +355,8 @@ describe("CodexRendererIpc", () => {
               Layer.succeed(RendererClientRuntime, rendererClients),
               Layer.succeed(WindowRuntime, {
                 has: () => true,
+                hasAppRenderer: () => true,
+                hasAuxiliaryRole: () => false,
               } as unknown as WindowRuntime["Service"]),
             ),
           ),
@@ -391,6 +467,8 @@ describe("StoreAdministrationIpc", () => {
               Layer.succeed(StoreAdministration, administration),
               Layer.succeed(WindowRuntime, {
                 has: () => true,
+                hasAppRenderer: () => true,
+                hasAuxiliaryRole: () => false,
               } as unknown as WindowRuntime["Service"]),
             ),
           ),
@@ -454,6 +532,8 @@ describe("ApplicationWindowIpc", () => {
       const windows = WindowRuntime.of({
         get: () => focusedWindow,
         has: () => true,
+        hasAppRenderer: () => true,
+        hasAuxiliaryRole: () => false,
         bootstrap: () => ({ activeSpaceId: undefined }),
         resolveRendererGeneration,
       } as unknown as WindowRuntime["Service"]);

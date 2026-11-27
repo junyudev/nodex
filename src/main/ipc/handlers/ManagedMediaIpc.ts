@@ -1,3 +1,4 @@
+import { MiniRuntime } from "../../mini/MiniRuntime";
 import { getMainIntl } from "../../i18n/main-intl";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -25,21 +26,30 @@ export class ManagedMediaIpcError extends Schema.TaggedError<ManagedMediaIpcErro
 export const live: Layer.Layer<
   never,
   never,
-  ElectronDesktop | ElectronClipboard | ElectronIpc | MainConfig | TemporaryAssets | WindowRuntime
+  | ElectronDesktop
+  | MiniRuntime
+  | ElectronClipboard
+  | ElectronIpc
+  | MainConfig
+  | TemporaryAssets
+  | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const assets = yield* TemporaryAssets;
     const clipboard = yield* ElectronClipboard;
+    const mini = yield* MiniRuntime;
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
     const { handleControl, handlePlainCommand, handleQuery } = ipc;
-    const authorize = (event: IpcMainInvokeEvent) =>
+    const authorize = (event: IpcMainInvokeEvent, allowMini = false) =>
       Effect.try({
         try: () => {
           requireTrustedAppRendererSender(event, "Managed media", config.rendererUrl);
-          if (!windows.has(event.sender.id)) {
+          if (
+            !(allowMini ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id))
+          ) {
             throw new Error("Managed media access requires an active Nodex window");
           }
         },
@@ -118,14 +128,14 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleQuery("clipboard:read-paste", (event) =>
-      authorize(event).pipe(Effect.andThen(clipboard.readPaste)),
+      authorize(event, true).pipe(Effect.andThen(clipboard.readPaste)),
     );
     yield* handlePlainCommand("composer:pick-files", (event, input) =>
-      authorize(event).pipe(
+      authorize(event, true).pipe(
         Effect.andThen(
           run("pick-composer-files", async () => {
             const imagesOnly = input?.imagesOnly === true;
-            const owner = windows.get(event.sender.id);
+            const owner = windows.getRegisteredWindow(event.sender.id);
             const dialogOptions: OpenDialogOptions = {
               title:
                 typeof input?.title === "string"
@@ -154,9 +164,11 @@ export const live: Layer.Layer<
                   }
                 : {}),
             };
-            const result = owner
-              ? await desktop.dialog.showOpenDialog(owner, dialogOptions)
-              : await desktop.dialog.showOpenDialog(dialogOptions);
+            const result = await mini.withDialog(event.sender.id, () =>
+              owner
+                ? desktop.dialog.showOpenDialog(owner, dialogOptions)
+                : desktop.dialog.showOpenDialog(dialogOptions),
+            );
             if (result.canceled || result.filePaths.length === 0) return [];
             return prepareComposerPickedFiles(result.filePaths);
           }),

@@ -8,7 +8,7 @@ import {
   APP_INITIALIZATION_STEP_CHANNEL,
   APP_RESTART_CHANNEL,
   RENDERER_INITIALIZATION_PHASES,
-  type WindowBootstrap,
+  type AppRendererBootstrap,
 } from "../../../shared/app-startup";
 import { parseDevelopmentFeatureEnvironment } from "../../../shared/development-features";
 import {
@@ -91,11 +91,17 @@ export const live: Layer.Layer<
     const runtimeCapabilities = yield* Effect.try((): AppRuntimeCapabilities => ({
       enabledDevelopmentFeatures: [...parseDevelopmentFeatureEnvironment(config.environment)],
     })).pipe(Effect.orElseSucceed(() => FAIL_CLOSED_RUNTIME_CAPABILITIES));
-    const authorize = (event: IpcMainEvent | IpcMainInvokeEvent, capabilityName: string) =>
+    const authorize = (
+      event: IpcMainEvent | IpcMainInvokeEvent,
+      capabilityName: string,
+      allowMini = false,
+    ) =>
       Effect.try({
         try: () => {
           requireTrustedAppRendererSender(event, capabilityName, config.rendererUrl);
-          if (!windows.has(event.sender.id)) {
+          if (
+            !(allowMini ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id))
+          ) {
             throw new Error(`${capabilityName} requires an active Nodex window`);
           }
         },
@@ -121,40 +127,47 @@ export const live: Layer.Layer<
     );
     // One reply carries everything the renderer needs to start, so a window binds and mounts
     // after a single round trip rather than a chain of dependent reads.
-    const windowBootstrap = (event: IpcMainInvokeEvent) =>
+    const rendererBootstrap = (event: IpcMainInvokeEvent, mini: boolean) =>
       Effect.all(
         {
           space: spaces.context(event),
-          windowSession: parse("bootstrap-window-session", () =>
-            windows.bootstrap(
-              event.sender.id,
-              rendererSpaceParameter(event.senderFrame?.url ?? ""),
-            ),
-          ),
-          runtimeCapabilities: Effect.succeed(runtimeCapabilities),
           diagnostics: settings.snapshot().pipe(
             Effect.map((snapshot) => snapshot.diagnostics),
             Effect.orElseSucceed(() => null),
           ),
         },
         { concurrency: "unbounded" },
-      ) satisfies Effect.Effect<WindowBootstrap, unknown>;
+      ).pipe(
+        Effect.flatMap((base) => {
+          if (mini)
+            return Effect.succeed<AppRendererBootstrap>({
+              ...base,
+              runtimeCapabilities,
+              kind: "mini",
+            });
+          return parse("bootstrap-window-session", () => ({
+            ...base,
+            runtimeCapabilities,
+            kind: "window-session" as const,
+            windowSession: windows.bootstrap(
+              event.sender.id,
+              rendererSpaceParameter(event.senderFrame?.url ?? ""),
+            ),
+          }));
+        }),
+      );
     yield* ipc.handleQuery("app:await-initialization", (event) =>
-      authorize(event, "Application initialization").pipe(
-        Effect.andThen(
-          initialization.current.pipe(
-            Effect.map((step) => {
-              safeSendToWebContents(event.sender, APP_INITIALIZATION_STEP_CHANNEL, [step]);
-            }),
-          ),
-        ),
-        Effect.andThen(
-          Effect.all([initialization.awaitDone, shell.awaitActivation(event.sender.id)], {
-            discard: true,
-          }),
-        ),
-        Effect.andThen(() => windowBootstrap(event)),
-      ),
+      Effect.gen(function* () {
+        yield* authorize(event, "Application initialization", true);
+        const mini = windows.hasAuxiliaryRole(event.sender.id, "mini");
+        const step = yield* initialization.current;
+        safeSendToWebContents(event.sender, APP_INITIALIZATION_STEP_CHANNEL, [step]);
+        yield* Effect.all(
+          [initialization.awaitDone, mini ? Effect.void : shell.awaitActivation(event.sender.id)],
+          { discard: true },
+        );
+        return yield* rendererBootstrap(event, mini);
+      }),
     );
     yield* ipc.on("app:renderer-initialization-finished", (event, input: unknown) =>
       authorize(event, "Renderer initialization report").pipe(

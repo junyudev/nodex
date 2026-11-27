@@ -104,6 +104,7 @@ const buildHarness = (input: {
     } as unknown as ElectronWindowHost["Service"]);
     const scope = yield* Scope.make();
     const settings = ApplicationSettings.of({
+      miniVisibilityChanges: Stream.empty,
       terminalShellSettingsChanges: Stream.empty,
       modelPolicyChanges: Stream.never,
       usageMeterSettingsChanges: Stream.empty,

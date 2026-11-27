@@ -73,6 +73,15 @@ renderer state, cold snapshots, and repeated projections cannot create another
 OS notification. Re-showing the same native ID replaces the existing native
 record; replacement is lifecycle behavior, not producer deduplication.
 
+## Mini
+
+While [Mini](mini-behavior.md) is resting on screen, Main skips desktop banners for
+chat completion, failure, interruption, approval and questions, and for Page Turns
+in the personal Space. Resolving a request still withdraws its existing banner.
+Snooze notifications and Team Space Page Turns continue to follow their usual rules.
+When Mini is focused, hidden, set to On demand, or the screen is locked, the usual
+desktop rules apply. Phone delivery follows its own presence and notification rules.
+
 ## Presence
 
 A conversation is **seen** while it is in front of someone:
@@ -271,9 +280,12 @@ Main selects one live renderer for each notification:
 2. the last-focused live Workbench window;
 3. the first remaining live Workbench window.
 
-If no live renderer exists, the occurrence is dropped and logged. Only an
-`open` click restores, shows, and focuses the target window. Inline buttons and
-reply navigate and act without forcing focus.
+Main can show notifications while Nodex is running without a Workbench window,
+including after a background login. Clicking one opens or focuses a personal
+Workbench and waits for it to be ready before opening the notification's
+target in the original Space. When a notification already has a target window,
+an `open` click restores, shows, and focuses it. Inline reply is available for
+turn notifications with a target window and acts without forcing focus.
 
 ## Navigation and Actions
 

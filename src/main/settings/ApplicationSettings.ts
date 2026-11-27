@@ -1,3 +1,4 @@
+import { DEFAULT_MINI_VISIBILITY, type MiniVisibility } from "../../shared/mini";
 import type { AgentProfile, AgentProfilesUpdate } from "../../shared/agents/profiles";
 import type { ProfileAgentDriver } from "../../shared/agents/registry";
 import type { CodexExecutablePreference } from "../../shared/codex-executable-settings";
@@ -103,6 +104,8 @@ import {
   getTelemetrySettings,
   getThreadNotificationSettings,
   getWindowRestoreSettings,
+  getMiniVisibility,
+  getMiniPlacementSettings,
   getLanguagePreference,
   getTerminalShellSettings,
   updateTerminalShellSettings,
@@ -131,6 +134,10 @@ import {
   updateTelemetrySettings,
   updateThreadNotificationSettings,
   updateWindowRestoreSettings,
+  updateMiniVisibility,
+  updateMiniPlacement,
+  type MiniPlacement,
+  type MiniPlacementSettings,
   updateLanguagePreference,
   updateComposerPredictionSettings,
   updateInboxSettings,
@@ -159,6 +166,8 @@ export interface ApplicationSettingsSnapshot {
   readonly disabledAppComponents: readonly AppComponentId[];
   readonly terminalShell: TerminalShellSettings;
   readonly windowRestore: WindowRestoreSettings;
+  readonly miniVisibility: MiniVisibility;
+  readonly miniPlacement: MiniPlacementSettings;
   readonly languagePreference: AppLocalePreference;
   readonly inbox: InboxSettings;
   readonly composerPredictions: ComposerPredictionSettings;
@@ -214,6 +223,8 @@ export type ApplicationSettingsCommand =
   | { readonly type: "reset-command-keybindings" }
   | { readonly type: "update-app-update"; readonly input: UpdateAppUpdateSettingsInput }
   | { readonly type: "update-app-component"; readonly input: SetAppComponentEnabledInput }
+  | { readonly type: "update-mini-visibility"; readonly input: MiniVisibility }
+  | { readonly type: "update-mini-placement"; readonly input: MiniPlacement }
   | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
   | { readonly type: "update-language"; readonly input: AppLocalePreference }
   | { readonly type: "update-agent-runtime"; readonly input: UpdateAgentRuntimeSettingsInput }
@@ -236,7 +247,8 @@ export class ApplicationSettingsConflictError extends Schema.TaggedError<Applica
 export class ApplicationSettings extends Context.Service<
   ApplicationSettings,
   {
-    /** Current Profile meter choices and subsequent saved changes. */
+    /** Current Profile Mini visibility and subsequent saved changes. */
+    readonly miniVisibilityChanges: Stream.Stream<MiniVisibility>;
     readonly terminalShellSettingsChanges: Stream.Stream<TerminalShellSettings>;
     readonly linkOpeningSettingsChanges: Stream.Stream<LinkOpeningSettings>;
     readonly modelPolicyChanges: Stream.Stream<ModelPolicy>;
@@ -358,6 +370,8 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     appUpdate: getAppUpdateSettings(snapshotSource),
     disabledAppComponents: getDisabledAppComponents(snapshotSource),
     windowRestore: getWindowRestoreSettings(snapshotSource),
+    miniVisibility: getMiniVisibility(snapshotSource),
+    miniPlacement: getMiniPlacementSettings(snapshotSource),
     languagePreference: getLanguagePreference(snapshotSource),
     terminalShell: getTerminalShellSettings(snapshotSource),
     inbox: getInboxSettings(snapshotSource),
@@ -439,6 +453,12 @@ function applyCommand(
     case "update-terminal-shell":
       updateTerminalShellSettings(command.input, source);
       return;
+    case "update-mini-visibility":
+      updateMiniVisibility(command.input, source);
+      return;
+    case "update-mini-placement":
+      updateMiniPlacement(command.input, source);
+      return;
     case "update-window-restore":
       updateWindowRestoreSettings(command.input, source);
       return;
@@ -484,6 +504,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   };
   const writes = yield* Semaphore.make(1);
   const terminalShell = yield* SubscriptionRef.make(DEFAULT_TERMINAL_SHELL_SETTINGS);
+  const miniVisibility = yield* SubscriptionRef.make(DEFAULT_MINI_VISIBILITY);
   const modelPolicy = yield* SubscriptionRef.make(DEFAULT_MODEL_POLICY);
   const usageMeters = yield* SubscriptionRef.make(DEFAULT_USAGE_METER_SETTINGS);
   const linkOpening = yield* SubscriptionRef.make(DEFAULT_LINK_OPENING_SETTINGS);
@@ -516,6 +537,9 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     });
   const readUnlocked = Effect.fn("ApplicationSettings.readUnlocked")(function* () {
     const snapshot = yield* attempt("read", () => makeSnapshot(source));
+    if ((yield* SubscriptionRef.get(miniVisibility)) !== snapshot.miniVisibility) {
+      yield* SubscriptionRef.set(miniVisibility, snapshot.miniVisibility);
+    }
     if (!sameModelPolicy(yield* SubscriptionRef.get(modelPolicy), snapshot.modelPolicy)) {
       yield* SubscriptionRef.set(modelPolicy, snapshot.modelPolicy);
     }
@@ -565,6 +589,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     usageMeterSettingsChanges: SubscriptionRef.changes(usageMeters),
     modelPolicyChanges: SubscriptionRef.changes(modelPolicy),
     linkOpeningSettingsChanges: SubscriptionRef.changes(linkOpening),
+    miniVisibilityChanges: SubscriptionRef.changes(miniVisibility),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
     inboxSettingsChanges: Stream.fromPubSub(inboxChanges),
     threadNotificationSettingsChanges: Stream.fromPubSub(threadNotificationChanges),

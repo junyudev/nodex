@@ -52,7 +52,7 @@ declare global {
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
       on: (event: string, callback: (...args: unknown[]) => void) => () => void;
       onAppUpdateStatus?: (callback: (status: AppUpdateStatus) => void) => () => void;
-      awaitInitialization?: () => Promise<import("../shared/app-startup").WindowBootstrap>;
+      awaitInitialization?: () => Promise<import("../shared/app-startup").AppRendererBootstrap>;
       getStartupFailureEvidence?: () => Promise<
         import("../shared/app-startup").AppStartupFailureEvidence | null
       >;

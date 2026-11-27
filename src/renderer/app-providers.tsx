@@ -1,6 +1,14 @@
 import { useIntl } from "@/lib/i18n";
 import { isRemoteSpace } from "./lib/renderer-space";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { NodexHoverCardProvider } from "./components/ui/hover-card";
 import { NodexTooltipProvider } from "./components/ui/tooltip";
@@ -29,6 +37,8 @@ import "./globals.css";
 interface AppProvidersProps {
   children: ReactNode;
   runtimeCapabilities?: AppRuntimeCapabilities;
+  /** Mini's panel leaves out what only a Workbench window runs. */
+  surface?: "workbench" | "mini";
 }
 
 const AppUpdateStatusContext = createContext<AppUpdateStatus | null>(null);
@@ -104,7 +114,9 @@ export function useAppUpdateStatus(): AppUpdateStatus | null {
 export function AppProviders({
   children,
   runtimeCapabilities = FAIL_CLOSED_RUNTIME_CAPABILITIES,
+  surface = "workbench",
 }: AppProvidersProps) {
+  const ThreadSettingsProvider = surface === "workbench" ? CodexThreadSettingsProvider : Fragment;
   return (
     <DevelopmentFeaturesProvider capabilities={runtimeCapabilities}>
       <NodexQueryProvider>
@@ -114,7 +126,7 @@ export function AppProviders({
               <AppUpdateStatusProvider>
                 <KeyboardLayoutProvider>
                   <InAppDictationRouter>
-                    {!isRemoteSpace() ? (
+                    {surface === "workbench" && !isRemoteSpace() ? (
                       <>
                         <BrowserSidebarRuntimeSynchronizer />
                         <BrowserSidebarThemeSynchronizer />
@@ -123,11 +135,11 @@ export function AppProviders({
                     <TypographyProvider>
                       <FileLinkOpenerProvider>
                         <CodexServiceTierSettingsProvider>
-                          <CodexThreadSettingsProvider>
+                          <ThreadSettingsProvider>
                             <NodexHoverCardProvider>
                               <NodexTooltipProvider>{children}</NodexTooltipProvider>
                             </NodexHoverCardProvider>
-                          </CodexThreadSettingsProvider>
+                          </ThreadSettingsProvider>
                         </CodexServiceTierSettingsProvider>
                       </FileLinkOpenerProvider>
                     </TypographyProvider>

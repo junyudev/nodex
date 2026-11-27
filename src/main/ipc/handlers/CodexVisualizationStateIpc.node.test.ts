@@ -54,7 +54,7 @@ it.effect(
           ),
           Layer.succeed(WindowRuntime, {
             has: () => registered,
-            all: () => [
+            appRenderers: () => [
               {
                 isDestroyed: () => false,
                 webContents: {
