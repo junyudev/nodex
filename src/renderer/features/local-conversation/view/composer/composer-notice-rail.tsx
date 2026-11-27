@@ -38,9 +38,10 @@ export function ComposerNoticeRail({
         "relative flex min-w-0 animate-in items-center gap-2 text-size-chat-sm leading-5 duration-150 select-none fade-in-0 slide-in-from-bottom-1",
         notice.tone === "progress"
           ? "bg-[var(--color-background-composer-action-bar)]"
-          : notice.tone === "danger"
-            ? "bg-[color-mix(in_srgb,var(--color-background-danger-surface)_32%,var(--color-background-composer-action-bar))]"
-            : "bg-[color-mix(in_srgb,var(--color-background-warning-surface)_32%,var(--color-background-composer-action-bar))]",
+          : // An attached notice sits over the transcript, so its faint tint lies on the opaque bar.
+            notice.tone === "danger"
+            ? "bg-[var(--color-background-composer-action-bar)] surface-tint [--surface-tint:color-mix(in_srgb,var(--color-background-danger-surface)_32%,transparent)]"
+            : "bg-[var(--color-background-composer-action-bar)] surface-tint [--surface-tint:color-mix(in_srgb,var(--color-background-warning-surface)_32%,transparent)]",
         placement === "attached"
           ? cn(COMPOSER_ATTACHED_TAB_CLASS, "pr-1 pl-3")
           : // Concentric with the floating card: its 22px corner less this 8px inset.

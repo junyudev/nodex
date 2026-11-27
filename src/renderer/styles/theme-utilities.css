@@ -12,6 +12,12 @@
   background-color: var(--accent);
 }
 
+/* Tone surfaces are translucent tints. A surface that floats over content lays its tint, set in
+   --surface-tint, over its own opaque background so nothing beneath shows through. */
+@utility surface-tint {
+  background-image: linear-gradient(var(--surface-tint), var(--surface-tint));
+}
+
 @utility h-toolbar-pane {
   height: var(--height-toolbar-pane);
 }

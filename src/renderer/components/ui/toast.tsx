@@ -194,6 +194,7 @@ export function useToaster() {
   return toast;
 }
 
+// A toast floats over content, so each tone's tint lies over the opaque elevated surface.
 const TOAST_TONE: Record<
   ToastLevel,
   { surface: string; description: string; icon: typeof InfoCircle16Icon }
@@ -205,19 +206,19 @@ const TOAST_TONE: Record<
   },
   success: {
     surface:
-      "border-(--color-text-success)/20 bg-(--color-background-success-surface) text-(--color-text-success)",
+      "border-(--color-text-success)/20 bg-surface-elevated-secondary surface-tint [--surface-tint:var(--color-background-success-surface)] text-(--color-text-success)",
     description: "text-(--color-text-success)/80",
     icon: SuccessCircle16Icon,
   },
   warning: {
     surface:
-      "border-(--color-border-warning-outline) bg-(--color-background-warning-surface) text-(--color-text-warning)",
+      "border-(--color-border-warning-outline) bg-surface-elevated-secondary surface-tint [--surface-tint:var(--color-background-warning-surface)] text-(--color-text-warning)",
     description: "text-(--color-text-warning)/80",
     icon: AlertCircle16Icon,
   },
   danger: {
     surface:
-      "border-(--color-border-danger-outline) bg-(--color-background-danger-surface) text-(--color-text-danger)",
+      "border-(--color-border-danger-outline) bg-surface-elevated-secondary surface-tint [--surface-tint:var(--color-background-danger-surface)] text-(--color-text-danger)",
     description: "text-(--color-text-danger)/80",
     icon: AlertCircle16Icon,
   },

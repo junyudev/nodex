@@ -381,6 +381,11 @@ describe("shared floating ui", () => {
         description.getBoundingClientRect().bottom,
       );
 
+      // The danger tint lies over an opaque surface, so content never shows through the toast.
+      const surface = getComputedStyle(view.getByRole("alert"));
+      expect(parseComputedColor(surface.backgroundColor).alpha).toBe(1);
+      expect(surface.backgroundImage).toContain("gradient");
+
       const item = view.getByRole("alert").closest("[data-sonner-toast]");
       if (!item) throw new Error("Expected the toast to sit in the notification stack.");
       expect(getComputedStyle(item).transitionDuration.split(", ")[0]).toBe("0.3s");
