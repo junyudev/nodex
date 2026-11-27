@@ -17,6 +17,10 @@ import { WorkbenchRailEdge } from "./workbench-app-rail";
 export const WORKBENCH_SIDEBAR_ROW_METRICS_CLASS =
   "[--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]";
 
+/** Keyboard focus on a sidebar row: a 2px accent ring drawn just inside the row's rounded edge. */
+export const WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS =
+  "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]";
+
 export type SidebarResizePhase = "live" | "end" | "reset";
 export type SidebarResizeSurface = "inline" | "floating";
 

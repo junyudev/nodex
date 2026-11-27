@@ -9,6 +9,7 @@ import {
   useSidebarScrollChrome,
 } from "@/components/workbench/sidebar-new-chat-controls";
 import {
+  WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS,
   WORKBENCH_SIDEBAR_ROW_METRICS_CLASS,
   WorkbenchSidebarFrame,
   type WorkbenchSidebarFrameProps,
@@ -33,8 +34,7 @@ const SEARCH_MESSAGE = defineMessage({
 });
 
 /** One row: a 30px pill whose leading 16px icon and label sit 8px apart. */
-const CUSTOMIZE_ROW_CLASS =
-  "relative flex h-(--height-token-nav-row) w-full shrink-0 cursor-interaction items-center overflow-hidden rounded-lg text-start text-sm outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-token-focus-border";
+const CUSTOMIZE_ROW_CLASS = `relative flex h-(--height-token-nav-row) w-full shrink-0 cursor-interaction items-center overflow-hidden rounded-lg text-start text-sm outline-none ${WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS}`;
 const CUSTOMIZE_ROW_CONTENT_CLASS = "flex min-w-0 flex-1 items-center gap-2 text-base";
 
 function CustomizeNavRow({

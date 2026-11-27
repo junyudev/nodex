@@ -24,7 +24,10 @@ import {
 } from "./workbench-settings-sections";
 import { buildSettingsPath } from "./workbench-settings-routes";
 import { WorkbenchRailEdge } from "./workbench-app-rail";
-import { WORKBENCH_SIDEBAR_ROW_METRICS_CLASS } from "./workbench-sidebar-frame";
+import {
+  WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS,
+  WORKBENCH_SIDEBAR_ROW_METRICS_CLASS,
+} from "./workbench-sidebar-frame";
 import { WorkbenchSidebarTitleRow } from "./sidebar-new-chat-controls";
 
 interface SettingsSidebarProps {
@@ -59,7 +62,8 @@ function SettingsSidebarItem({
   sectionId: SettingsSectionId;
 }) {
   const className = cn(
-    "relative flex h-(--height-token-nav-row) w-full shrink-0 cursor-interaction items-center gap-2 overflow-hidden rounded-(--radius-token-row) px-row-x py-row-y text-left text-base text-token-text-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-token-focus-border",
+    "relative flex h-(--height-token-nav-row) w-full shrink-0 cursor-interaction items-center gap-2 overflow-hidden rounded-(--radius-token-row) px-row-x py-row-y text-left text-base text-token-text-primary outline-none",
+    WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS,
     active
       ? "bg-(--color-background-secondary-ghost-hover)"
       : "hover:bg-(--color-background-secondary-ghost-hover)",
@@ -223,7 +227,8 @@ function SettingsSearchResults({
               )}
               onClick={() => onSelectResult(result)}
               className={cn(
-                "flex h-(--height-token-nav-row) cursor-interaction items-center rounded-(--radius-token-row) pe-2 ps-8 text-left text-base text-token-text-primary outline-none hover:bg-(--color-background-secondary-ghost-hover) focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-token-focus-border",
+                "flex h-(--height-token-nav-row) cursor-interaction items-center rounded-(--radius-token-row) pe-2 ps-8 text-left text-base text-token-text-primary outline-none hover:bg-(--color-background-secondary-ghost-hover)",
+                WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS,
                 highlightedIndex === index
                   ? "bg-(--color-background-secondary-ghost-hover)"
                   : undefined,

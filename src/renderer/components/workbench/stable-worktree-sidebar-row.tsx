@@ -1,5 +1,7 @@
 import { WorktreeStatusIcon } from "@/components/shared/icons";
+import { cn } from "@/lib/utils";
 import type { StableWorktreeEntry } from "./stable-worktree-production";
+import { WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS } from "./workbench-sidebar-frame";
 
 export function StableWorktreeSidebarRows({
   entries,
@@ -16,11 +18,14 @@ export function StableWorktreeSidebarRows({
         <div
           key={`pending-stable-root:${entry.id}`}
           role="listitem"
-          className="group/folder-row flex h-[var(--height-token-nav-row)] items-center justify-between overflow-x-hidden rounded-[var(--radius-token-row)] text-sm text-token-foreground electron:opacity-75 hover:bg-token-list-hover-background focus-visible:outline focus-visible:outline-offset-2"
+          className="group/folder-row flex h-[var(--height-token-nav-row)] items-center justify-between overflow-x-hidden rounded-[var(--radius-token-row)] text-sm text-token-foreground electron:opacity-75 hover:bg-token-list-hover-background"
         >
           <button
             type="button"
-            className="flex min-w-0 flex-1 items-center gap-1 pr-1.5 pl-1 text-left"
+            className={cn(
+              "flex h-full min-w-0 flex-1 items-center gap-1 rounded-[inherit] pr-1.5 pl-1 text-left",
+              WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS,
+            )}
             aria-label={entry.label}
             onClick={() => onOpen(entry.id)}
           >

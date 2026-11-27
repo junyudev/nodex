@@ -161,14 +161,14 @@ import type {
 } from "../../../shared/native-context-menu";
 import type { SidebarSectionsCatalog } from "./sidebar-custom-sections";
 import { SidebarSectionNameDialog } from "./sidebar-section-name-dialog";
+import { WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS } from "./workbench-sidebar-frame";
 
 type SidebarRowActionEvent =
   | MouseEvent<HTMLElement>
   | PointerEvent<HTMLElement>
   | KeyboardEvent<HTMLElement>;
 
-export const CODEX_SIDEBAR_GROUP_ROW_CLASS =
-  "group/folder-row group relative flex h-token-nav-row cursor-interaction items-center justify-between overflow-x-hidden rounded-lg text-sm text-token-foreground hover:bg-token-list-hover-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]";
+export const CODEX_SIDEBAR_GROUP_ROW_CLASS = `group/folder-row group relative flex h-token-nav-row cursor-interaction items-center justify-between overflow-x-hidden rounded-lg text-sm text-token-foreground hover:bg-token-list-hover-background ${WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS}`;
 export const CODEX_SIDEBAR_DISCLOSURE_CHEVRON_CLASS =
   "icon-2xs shrink-0 opacity-0 transition-transform";
 export const CODEX_SIDEBAR_SECTION_ACTIONS_CLASS =
@@ -176,8 +176,7 @@ export const CODEX_SIDEBAR_SECTION_ACTIONS_CLASS =
 export const CODEX_SIDEBAR_SECTION_ACTION_BUTTON_CLASS =
   "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-full electron:rounded-md enabled:hover:bg-token-list-hover-background aria-expanded:bg-token-list-hover-background border-transparent electron:p-1 electron:[&>svg]:icon-sm flex items-center justify-center p-0.5 h-6 w-6 rounded-md !p-1 text-(--color-text-secondary-ghost) hover:text-(--color-text-secondary-ghost-hover)";
 export const CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS = SIDEBAR_PROJECT_NEW_CHAT_BUTTON_CLASS;
-export const CODEX_SIDEBAR_THREAD_ROW_CLASS =
-  "group relative h-token-nav-row cursor-interaction rounded-lg py-row-y text-sm hover:bg-token-list-hover-background focus-visible:outline-offset-[-2px]";
+export const CODEX_SIDEBAR_THREAD_ROW_CLASS = `group relative h-token-nav-row cursor-interaction rounded-lg py-row-y text-sm hover:bg-token-list-hover-background ${WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS}`;
 export const CODEX_SIDEBAR_THREAD_ACTION_RAIL_CLASS =
   "pointer-events-none absolute right-0 top-0 z-10 mr-0.5 flex h-full w-(--sidebar-row-actions-width,52px) items-center justify-end gap-2 pr-0.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [&:has(:focus-visible)]:opacity-100";
 const CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS =
@@ -364,7 +363,7 @@ export function CodexSidebarSection({
                   ref={headingButtonRef}
                   type="button"
                   data-app-action-sidebar-section-toggle=""
-                  className="group/section-toggle flex min-w-0 flex-1 cursor-interaction items-center gap-1 rounded-md py-0.5 pr-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  className="group/section-toggle flex min-w-0 flex-1 cursor-interaction items-center gap-1 rounded-md py-0.5 pr-1 text-left focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring"
                   aria-expanded={!collapsed}
                   onClick={(event) => {
                     headingButtonProps?.onClick?.(event);
@@ -1418,7 +1417,7 @@ export function CodexProjectRow({
                           defaultMessage: "Expand project",
                         })
                   }
-                  className="pointer-events-none absolute inset-0 flex h-6 w-6 cursor-interaction items-center justify-center rounded-md text-token-foreground opacity-0 group-hover/folder-row:pointer-events-auto group-hover/folder-row:opacity-100 hover:bg-token-list-hover-background focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+                  className={`pointer-events-none absolute inset-0 flex h-6 w-6 cursor-interaction items-center justify-center rounded-md text-token-foreground opacity-0 group-hover/folder-row:pointer-events-auto group-hover/folder-row:opacity-100 hover:bg-token-list-hover-background focus-visible:pointer-events-auto focus-visible:opacity-100 ${WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS}`}
                   data-app-action-sidebar-project-toggle-chevron=""
                   onPointerDown={stopCodexSidebarRowActionPropagation}
                   onMouseDown={stopCodexSidebarRowActionPropagation}

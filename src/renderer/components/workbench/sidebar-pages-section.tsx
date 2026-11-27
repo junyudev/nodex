@@ -32,6 +32,7 @@ import {
 import { SidebarPaginatedItems, SidebarPaginatedRows } from "./sidebar-paginated-items";
 import { cn } from "@/lib/utils";
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
+import { WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS } from "./workbench-sidebar-frame";
 
 type LibraryRootsValue = Extract<LibraryReadValue, { readonly kind: "children" }>;
 type LibraryRoot = Exclude<LibraryNavigationNode, LibraryViewNavigationNode>;
@@ -342,7 +343,10 @@ export function SidebarPagesSection({
         ) : query.isError ? (
           <button
             type="button"
-            className="flex h-token-nav-row w-full items-center rounded-lg px-1 text-left text-base text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+            className={cn(
+              "flex h-token-nav-row w-full items-center rounded-lg px-1 text-left text-base text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-text-primary",
+              WORKBENCH_SIDEBAR_ROW_FOCUS_CLASS,
+            )}
             onClick={() => void query.refetch()}
           >
             <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
