@@ -333,6 +333,8 @@ export function classifyThreadAgentActivityItem<TItem extends ThreadClassifiable
       return classifyThreadAutomaticApprovalReviewActivityItem(item);
     // A Thought belongs to the work around it, in the order it happened.
     case "reasoning":
+    // A picture the Agent viewed is work like any other; its group keeps the picture in view.
+    case "imageView":
       return createThreadAgentActivityItem(item, "groupable");
     case "toolCall":
     case "assistantMessage":
@@ -340,7 +342,6 @@ export function classifyThreadAgentActivityItem<TItem extends ThreadClassifiable
     case "contextCompaction":
     case "delegatedTask":
     case "hook":
-    case "imageView":
     case "multiAgentAction":
     case "runtimeNotice":
     case "realtimeTranscript":

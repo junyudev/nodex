@@ -44,6 +44,7 @@ import {
   resolveDynamicToolRegistryLabel,
   type DynamicToolRegistryEntry,
 } from "./dynamic-tool-call-utils";
+import { NO_STEP_IMAGES, StepImageStrip } from "../step-images";
 
 function AutomationUpdateToolCall({
   call,
@@ -676,12 +677,14 @@ function DynamicToolFallbackRow({ item }: ToolComponentProps) {
   const call = item.dynamicToolCall!;
   return (
     <ThreadActivityDisclosure
+      // Pictures show on the row itself; it opens for what else the call wrote or returned.
       canExpand={
         call.outputOmitted === true ||
-        (call.contentItems?.length ?? 0) > 0 ||
+        (call.contentItems ?? []).some((content) => content.type !== "inputImage") ||
         buildDynamicToolAuthoredPanels(call).length > 0
       }
       icon={<ToolActivityIcon descriptor={resolveDynamicToolFallbackIcon(call)} />}
+      media={<StepImageStrip images={item.stepImages ?? NO_STEP_IMAGES} />}
       inspector={
         <ToolCallInspector
           item={item}

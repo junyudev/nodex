@@ -342,9 +342,8 @@ export async function runDesktopSmoke(
         (await groupToggle.getAttribute("aria-expanded")) !== "true"
       )
         await groupToggle.click();
-      const row = page.getByRole("button", { name: script.browser[1]!.title, exact: true });
-      await expect(row).toBeVisible();
-      await row.click();
+      // The screenshot shows on its step without opening it.
+      await expect(page.getByText(script.browser[1]!.title, { exact: true })).toBeVisible();
       const image = page.getByRole("img", { name: "Tool output", exact: true });
       await expect(image).toBeVisible();
       await expect

@@ -1,11 +1,12 @@
 import { FolderIcon20 } from "./plugin-detail-icons";
 import {
+  DocumentText20Glyph,
+  Globe20Glyph,
+  Photo20Glyph,
+  Skills20Glyph,
+  SquareAndPencil20Glyph,
   Terminal20Glyph,
   WebBrowserCursor16Glyph,
-  SquareAndPencil20Glyph,
-  DocumentText20Glyph,
-  Skills20Glyph,
-  Globe20Glyph,
 } from "./outline-glyphs";
 import { MagnifyingGlassIcon } from "./customize-action-icons";
 import { cn } from "@/lib/utils";
@@ -229,6 +230,10 @@ export function ActivitySearchIcon(props: IconProps) {
 
 export function ActivityListFilesIcon(props: IconProps) {
   return <FolderIcon20 aria-hidden={undefined} {...props} />;
+}
+
+export function ViewImageActivityIcon(props: IconProps) {
+  return <Photo20Glyph aria-hidden={undefined} {...props} />;
 }
 
 export function ReadFilesIcon(props: IconProps) {

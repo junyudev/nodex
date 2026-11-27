@@ -1,51 +1,33 @@
 import { useIntl, type IntlShape } from "@/lib/i18n";
-import { useState } from "react";
-import { ImageEditorTabIcon } from "@/components/shared/icons";
-import type { CodexUnavailableImage } from "@/lib/types";
+import type { CodexStepImage, CodexUnavailableImage } from "@/lib/types";
 import { ThreadActivityShell, ThreadRichActivityHeader } from "./tools/tool-primitives";
-import { NO_UNAVAILABLE_IMAGES, UnavailableImageTile } from "./unavailable-image";
-import { ContentImageViewer, useViewableContentImage } from "./content-image-viewer";
-import { ConversationImageThumbnail } from "./user-message-attachments";
+import { NO_UNAVAILABLE_IMAGES } from "./unavailable-image";
+import { StepImageStrip } from "./step-images";
+import { semanticToolIcon, ToolActivityIcon } from "./tools/tool-call-icons";
 
-function InspectedImageThumbnail({ source }: { source: string }) {
-  const intl = useIntl();
-  const alt = intl.formatMessage({
-    id: "conversation.imageViewSurface.alt",
-    defaultMessage: "Inspected image",
-  });
-  const { src, isLoading, isError, bindTrigger, open, onContextMenu, onImageError } =
-    useViewableContentImage(source, alt);
-
-  return (
-    <span className="contents" onContextMenu={onContextMenu}>
-      <ConversationImageThumbnail
-        src={src}
-        isLoading={isLoading}
-        isError={isError}
-        alt={alt}
-        previewLabel={intl.formatMessage({
-          id: "conversation.imageViewSurface.previewLabel",
-          defaultMessage: "Inspected image",
-        })}
-        buttonRef={bindTrigger}
-        onOpenPreview={() => open?.()}
-        onImageError={onImageError}
-      />
-    </span>
-  );
-}
-
-function imageViewSummary(intl: IntlShape, viewed: number, missing: number): string {
-  const total = viewed + missing;
-  const summary = intl.formatMessage(
-    {
-      id: "conversation.imageViewSurface.viewedImages",
-      defaultMessage: "{count, plural, one {Viewed an image} other {Viewed # images}}",
-    },
-    { count: total },
-  );
+/** What an inspection says: the file it viewed by name, or how many it viewed. */
+export function imageViewSummary(
+  intl: IntlShape,
+  images: readonly CodexStepImage[],
+  unavailableImages: readonly CodexUnavailableImage[],
+): string {
+  const total = images.length + unavailableImages.length;
+  const name = total === 1 ? (images[0]?.name ?? unavailableImages[0]?.name) : undefined;
+  const summary = name
+    ? intl.formatMessage(
+        { id: "conversation.imageViewSurface.viewedNamedImage", defaultMessage: "Viewed {name}" },
+        { name },
+      )
+    : intl.formatMessage(
+        {
+          id: "conversation.imageViewSurface.viewedImages",
+          defaultMessage: "{count, plural, one {Viewed an image} other {Viewed # images}}",
+        },
+        { count: total },
+      );
+  const missing = unavailableImages.length;
   if (missing === 0) return summary;
-  if (viewed > 0)
+  if (images.length > 0)
     return intl.formatMessage(
       {
         id: "conversation.imageViewSurface.someMissing",
@@ -62,56 +44,28 @@ function imageViewSummary(intl: IntlShape, viewed: number, missing: number): str
   );
 }
 
+/** A step that inspected pictures: what it viewed, with the pictures themselves beside it. */
 export function ImageViewSurface({
-  imagePaths,
+  images,
   unavailableImages = NO_UNAVAILABLE_IMAGES,
 }: {
-  imagePaths: readonly string[];
+  images: readonly CodexStepImage[];
   unavailableImages?: readonly CodexUnavailableImage[];
 }) {
   const intl = useIntl();
-  const [expanded, setExpanded] = useState(false);
-  const canExpand = imagePaths.length + unavailableImages.length > 0;
-  const summary = imageViewSummary(intl, imagePaths.length, unavailableImages.length);
-
   return (
     <ThreadActivityShell
-      className="overflow-clip"
+      testId="image-view-activity"
       header={
         <ThreadRichActivityHeader
-          icon={
-            <ImageEditorTabIcon
-              aria-hidden="true"
-              className="icon-xs shrink-0 text-token-conversation-body"
-            />
-          }
+          icon={<ToolActivityIcon descriptor={semanticToolIcon("view-image")} />}
           summary={
             <span className="block truncate text-token-conversation-summary-trailing">
-              {summary}
+              {imageViewSummary(intl, images, unavailableImages)}
             </span>
           }
-          disclosure={
-            canExpand ? { expanded, onToggle: () => setExpanded((current) => !current) } : undefined
-          }
+          media={<StepImageStrip images={images} unavailableImages={unavailableImages} />}
         />
-      }
-      body={
-        expanded ? (
-          <div className="min-w-0">
-            <div className="hide-scrollbar flex max-w-full overflow-x-auto pb-1">
-              <div className="flex min-w-max gap-2">
-                <ContentImageViewer>
-                  {imagePaths.map((source, index) => (
-                    <InspectedImageThumbnail key={`${source}:${index}`} source={source} />
-                  ))}
-                </ContentImageViewer>
-                {unavailableImages.map((image, index) => (
-                  <UnavailableImageTile key={`${image.sourcePath}:${index}`} image={image} />
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null
       }
     />
   );

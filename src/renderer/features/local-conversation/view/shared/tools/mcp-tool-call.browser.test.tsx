@@ -58,6 +58,7 @@ describe("mcp tool call", () => {
         },
       },
     },
+    stepImages: [{ source: `data:image/svg+xml;base64,${preview}` }],
   };
 
   beforeEach(() => {
@@ -71,7 +72,7 @@ describe("mcp tool call", () => {
   });
 
   test.each(["light", "dark"] as const)(
-    "JavaScript results expand by keyboard and fit a narrow chat in %s mode",
+    "JavaScript results show their picture on the row and expand by keyboard in a narrow chat in %s mode",
     async (theme) => {
       await page.viewport(420, 620);
       applyRendererThemeForTest(theme);
@@ -88,19 +89,27 @@ describe("mcp tool call", () => {
       try {
         const disclosure = await view.findByRole("button", { name: title });
         expect(disclosure).toHaveAttribute("aria-expanded", "false");
+        // The picture is on the row before anything opens, beside the truncated title.
+        const thumbnail = await view.findByRole("button", { name: "Open tool output" });
+        const image = await waitFor(() => {
+          const candidate = within(thumbnail).getByRole<HTMLImageElement>("img");
+          expect(candidate.naturalWidth).toBe(240);
+          return candidate;
+        });
+        expect(image).toBeVisible();
+        expect(thumbnail.getBoundingClientRect().height).toBe(20);
+        const surface = view.container.querySelector<HTMLElement>("[style]")!;
+        expect(thumbnail.getBoundingClientRect().right).toBeLessThanOrEqual(
+          surface.getBoundingClientRect().right,
+        );
         await act(async () => {
           disclosure.focus();
           await userEvent.keyboard("{Enter}");
         });
         await waitFor(() => expect(disclosure).toHaveAttribute("aria-expanded", "true"));
         expect(await view.findByText("Preview captured.")).toBeVisible();
-        const image = await waitFor(() => {
-          const candidate = view.container.querySelector<HTMLImageElement>("img");
-          expect(candidate?.naturalWidth).toBe(240);
-          return candidate!;
-        });
-        expect(image).toBeVisible();
-        const surface = view.container.querySelector<HTMLElement>("[style]")!;
+        // Opening the row adds what else the call returned, never the picture again.
+        expect(view.getAllByRole("img", { name: "Tool output" })).toEqual([image]);
         await waitFor(() => expect(surface.scrollWidth).toBeLessThanOrEqual(surface.clientWidth));
         const rawButton = view.getByRole("button", { name: "Inspect tool call" });
         await waitFor(() =>
@@ -113,8 +122,8 @@ describe("mcp tool call", () => {
           await userEvent.keyboard("{Enter}");
         });
         await waitFor(() => expect(disclosure).toHaveAttribute("aria-expanded", "false"));
-        // The result leaves with its closing body, then unmounts.
-        await waitFor(() => expect(view.container.querySelector("img")).toBeNull());
+        await waitFor(() => expect(view.queryByText("Preview captured.")).toBeNull());
+        expect(image).toBeVisible();
       } finally {
         view.unmount();
       }
@@ -143,6 +152,9 @@ describe("mcp tool call", () => {
           raw: { content, structuredContent: null, _meta: null },
         },
       },
+      stepImages: content.flatMap((block) =>
+        block.type === "image" ? [{ source: `data:${block.mimeType};base64,${block.data}` }] : [],
+      ),
     };
     const renderIn = (scope: ContentImageScope) => (
       <TestQueryProvider>
@@ -157,16 +169,12 @@ describe("mcp tool call", () => {
     const shown = (dialog: HTMLElement) =>
       within(dialog).getByRole("img", { name: "Tool output" }).getAttribute("src");
     try {
-      const disclosure = await view.findByRole("button", { name: title });
-      await act(async () => {
-        await userEvent.click(disclosure);
-      });
       const [first, last] = await waitFor(() => {
-        const images = view.getAllByRole("button", { name: "Tool output" });
+        const images = view.getAllByRole("button", { name: "Open tool output" });
         expect(images).toHaveLength(2);
         return images;
       });
-      expect(view.getByText("Image unavailable")).toHaveAttribute("role", "status");
+      expect(view.getByRole("img", { name: "Image failed to load" })).toBeVisible();
       await act(async () => {
         await userEvent.click(first!);
       });

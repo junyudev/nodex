@@ -1430,12 +1430,9 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
             (await groupToggle.getAttribute("aria-expanded")) !== "true"
           )
             await groupToggle.click();
-          const tool = page.getByRole("button", {
-            name: toolTitle,
-            exact: true,
-          });
+          // The tool's picture shows on its step without opening it.
+          const tool = page.getByText(toolTitle, { exact: true });
           await expect(tool, await page.locator("body").ariaSnapshot()).toBeVisible();
-          await tool.click();
           const image = page.getByRole("img", { name: "Tool output", exact: true });
           await expect(image).toHaveCount(1);
           await expect(image).toBeVisible();

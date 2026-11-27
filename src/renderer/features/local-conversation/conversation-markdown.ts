@@ -1,5 +1,6 @@
 import type { CodexConversationItem } from "@/lib/types";
 import { visibleCodexUserInputAnswerValues } from "../../../shared/codex-user-input-answer-values";
+import { parseAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
 import type { VisibleConversationTurnEntry } from "./selectors";
 import { delegatedTaskMarkdownLines } from "./delegated-task-presentation";
 import { formatDisplayPath, isAbsoluteDisplayPath, normalizeDisplayPath } from "@/lib/display-path";
@@ -302,19 +303,32 @@ function renderSystemEvent(item: CodexConversationItem, cwd: string | null): str
         : null;
     case "webSearch":
       return `Searched the web for ${inlineCode(item.webSearch?.query ?? item.markdownText ?? "")}`;
-    case "generatedImage":
-      return item.generatedImage?.src
-        ? `Generated image\n\n![Generated image](${item.generatedImage.src})`
+    case "generatedImage": {
+      const src = item.generatedImage?.src;
+      // A copy the chat keeps has no address outside it; the copied text says what was made.
+      if (src && parseAgentRuntimeAttachmentSource(src)) return "Generated image";
+      return src
+        ? `Generated image\n\n![Generated image](${src})`
         : titledLines("Generated image", [
             `Status: ${item.generatedImage?.status ?? item.status ?? "pending"}`,
           ]);
+    }
     case "imageView": {
+      const images = item.stepImages ?? [];
       const missing = item.unavailableImages ?? [];
-      const count = (item.imageViewPaths?.length ?? 0) + missing.length;
-      return titledLines(count === 1 ? "Viewed an image" : `Viewed ${count} images`, [
-        missing.length > 0 ? "Missing when imported:" : null,
-        ...missing.map((image) => `- ${inlineCode(image.sourcePath)}`),
-      ]);
+      const count = images.length + missing.length;
+      const name = count === 1 ? (images[0]?.name ?? missing[0]?.name) : undefined;
+      return titledLines(
+        name
+          ? `Viewed ${inlineCode(name)}`
+          : count === 1
+            ? "Viewed an image"
+            : `Viewed ${count} images`,
+        [
+          missing.length > 0 ? "Missing when imported:" : null,
+          ...missing.map((image) => `- ${inlineCode(image.sourcePath)}`),
+        ],
+      );
     }
     case "mcpToolCall":
       return renderMcpContent(item);

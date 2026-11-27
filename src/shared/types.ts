@@ -3194,6 +3194,17 @@ export interface CodexUnavailableImage {
   readonly sourcePath: string;
 }
 
+/**
+ * A picture a step brought back for its Agent: a file it inspected, or an image its tool returned.
+ * Every step shows its pictures the same way, whichever tool brought them.
+ */
+export interface CodexStepImage {
+  /** Where the picture's bytes are read from when it shows. */
+  readonly source: string;
+  /** The file's name, when the step inspected a named file. */
+  readonly name?: string;
+}
+
 /** An imported Markdown image destination and the owned copy that replaces it. */
 export interface CodexImportedMarkdownImage {
   /** The mdast URL: Markdown entities decoded, percent encoding and `file:` kept. */
@@ -3557,7 +3568,8 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   markdownText?: string;
   goal?: boolean;
   hookFeedback?: boolean;
-  imageViewPaths?: string[];
+  /** Pictures the step brought back, in the order its tool returned them. */
+  stepImages?: readonly CodexStepImage[];
   userAttachments?: CodexUserAttachment[];
   unavailableImages?: readonly CodexUnavailableImage[];
   importedImages?: readonly CodexImportedMarkdownImage[];
@@ -3629,7 +3641,8 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   markdownText?: string;
   goal?: boolean;
   hookFeedback?: boolean;
-  imageViewPaths?: string[];
+  /** Pictures the step brought back, in the order its tool returned them. */
+  stepImages?: readonly CodexStepImage[];
   userAttachments?: CodexUserAttachment[];
   unavailableImages?: readonly CodexUnavailableImage[];
   importedImages?: readonly CodexImportedMarkdownImage[];

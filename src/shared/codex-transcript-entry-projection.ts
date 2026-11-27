@@ -62,7 +62,7 @@ export function projectCodexItemViewToTranscriptEntry(
     markdownText: item.markdownText,
     goal: item.goal,
     hookFeedback: item.hookFeedback,
-    imageViewPaths: item.imageViewPaths,
+    stepImages: item.stepImages,
     userAttachments: item.userAttachments,
     unavailableImages: item.unavailableImages,
     importedImages: item.importedImages,

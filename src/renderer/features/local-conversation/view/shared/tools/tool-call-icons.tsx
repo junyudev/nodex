@@ -49,6 +49,7 @@ import {
   ChatIcon,
   TerminalActivityIcon,
   DeniedCircleIcon,
+  ViewImageActivityIcon,
   withActivityIconClass,
 } from "@/components/shared/icons";
 
@@ -77,6 +78,7 @@ export type ToolActivityIconId =
   | "settings"
   | "skill"
   | "stopped"
+  | "view-image"
   | "visualization"
   | "web"
   | "workspace";
@@ -166,6 +168,8 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
       return <SkillIcon aria-hidden className={iconClassName} />;
     case "stopped":
       return <StopIcon aria-hidden className={iconClassName} />;
+    case "view-image":
+      return <ViewImageActivityIcon aria-hidden className={iconClassName} />;
     case "visualization":
       return <Sparkles aria-hidden className={iconClassName} />;
     case "web":
@@ -488,6 +492,7 @@ export function resolveToolActivityEntryIcon(
     );
   }
   if (block.type === "hook") return semanticToolIcon("hooks");
+  if (block.type === "imageView") return semanticToolIcon("view-image");
   if (block.type === "mcpToolCall") return resolveMcpSourceIcon(block.entry, resolvedApps);
   if (block.type === "dynamicToolCall") {
     const call = block.entry.dynamicToolCall;

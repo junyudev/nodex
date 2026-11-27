@@ -263,6 +263,42 @@ describe("generic v2 agent activity group projection", () => {
     expect(block.header.kind).toBe("summary");
   });
 
+  test("keeps every step's pictures on the group and names inspections in its summary", () => {
+    const inspection = buildBlock("inspection", "imageView", {
+      kind: "systemEvent",
+      semanticKind: "imageView",
+      stepImages: [
+        { source: "copy-a", name: "before.png" },
+        { source: "copy-b", name: "after.png" },
+      ],
+    });
+    const screenshot = mcpBlock("screenshot", {
+      server: "node_repl",
+      tool: "js",
+      status: "completed",
+      completed: true,
+    });
+    screenshot.entry = { ...screenshot.entry, stepImages: [{ source: "tool-result-1" }] };
+    const command = buildBlock("command", "exec", { command: "pnpm build" });
+    const block = buildV2AgentActivityGroupBlock(
+      [inspection, screenshot, command],
+      "agent-activity-group:inspection",
+    );
+
+    // The group's pictures keep the order the steps brought them back in.
+    expect(block.stepImages.map((image) => image.source)).toEqual([
+      "copy-a",
+      "copy-b",
+      "tool-result-1",
+    ]);
+    // A script that took a screenshot still ran a command; the inspection is named as viewing.
+    expect(block.completedHeader.parts).toEqual([
+      { kind: "viewedImages", count: 2 },
+      { kind: "commands", count: 2 },
+    ]);
+    expect(block.completedHeader.iconItem?.type).toBe("imageView");
+  });
+
   test("keeps active state and completed header evidence on separate paths", () => {
     const runningCommand = buildBlock("run", "exec", {
       status: "inProgress",

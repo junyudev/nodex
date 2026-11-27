@@ -282,6 +282,7 @@ function projectRuntimeMcpToolCall(
 ): Extract<CodexCanonicalItem, { type: "mcpToolCall" }> {
   const call = item.mcpToolCall!;
   const app = call.appContext;
+  const images = resultImageSources(item);
   return {
     type: "mcpToolCall",
     id: item.id,
@@ -333,6 +334,7 @@ function projectRuntimeMcpToolCall(
     error: call.error ? { message: call.error.message } : null,
     durationMs: call.durationMs ?? durationMs,
     ...(item.outputOmitted ? { outputOmitted: true } : {}),
+    ...(images ? { resultImageSources: images } : {}),
   };
 }
 
@@ -634,18 +636,72 @@ function importedMarkdownImages(
   });
 }
 
-/** Steps whose picture is the step itself: a picture viewed, including on import, or generated. */
-const PICTURE_TOOLS: ReadonlySet<string> = new Set(["imageView", "imageGeneration"]);
+type RuntimeDynamicTool = Extract<AgentTurnItem, { type: "dynamic_tool" }>;
 
 /**
- * A picture step is recognized by its typed picture record (an owned copy or a missing source),
- * which survives output omission on the wire; its output body is never consulted.
+ * A step that inspected a picture file: a file read the Runtime recognized as a picture, or a
+ * native picture view. It shows as one only once its picture is kept or known to be gone; until
+ * then it stays the file read it was.
  */
-const isPictureStep = (item: Extract<AgentTurnItem, { type: "dynamic_tool" }>) =>
-  item.toolName !== null &&
-  PICTURE_TOOLS.has(item.toolName) &&
-  (Boolean(item.unavailableImages?.length) ||
-    Boolean(item.attachments?.some((attachment) => attachment.type === "image")));
+function projectInspectedPicture(
+  item: RuntimeDynamicTool,
+): Extract<CodexCanonicalItem, { type: "imageView" }> | null {
+  // A generation is never an inspection, whatever path its record names.
+  if (item.status !== "completed" || item.toolName === "imageGeneration") return null;
+  if (item.viewedImagePath === undefined && item.toolName !== "imageView") return null;
+  const copy = item.attachments?.find((attachment) => attachment.type === "image");
+  if (copy)
+    return {
+      type: "imageView",
+      id: item.id,
+      path: attachmentSource(item, copy.id),
+      name: copy.name,
+    };
+  const missing = unavailableImages(item);
+  return missing[0]
+    ? { type: "imageView", id: item.id, path: missing[0].sourcePath, unavailableImages: missing }
+    : null;
+}
+
+/**
+ * A generated picture joins the turn's image gallery: pending while it is made, then from the copy
+ * the Runtime kept. A failed generation, or one whose picture was not kept, stays a tool step that
+ * says what happened.
+ */
+function projectGeneratedPicture(
+  item: RuntimeDynamicTool,
+  status: CodexItemStatus,
+): Extract<CodexCanonicalItem, { type: "imageGeneration" }> | null {
+  if (item.toolName !== "imageGeneration") return null;
+  const copy = item.attachments?.find((attachment) => attachment.type === "image");
+  if (status !== "inProgress" && !(status === "completed" && copy)) return null;
+  const input = item.input;
+  const prompt =
+    input !== null && typeof input === "object" && !Array.isArray(input) && "prompt" in input
+      ? input.prompt
+      : null;
+  return {
+    type: "imageGeneration",
+    id: item.id,
+    status,
+    revisedPrompt: typeof prompt === "string" && prompt.trim() ? prompt : null,
+    failure: null,
+    generationId: null,
+    result: "",
+    src: copy ? attachmentSource(item, copy.id) : null,
+  };
+}
+
+/**
+ * The pictures a tool returned, as the Runtime names them on every read of the step, or else the
+ * pictures the step kept as its own attachments.
+ */
+function resultImageSources(item: RuntimeDynamicTool): readonly string[] | undefined {
+  if (item.resultImages?.length)
+    return item.resultImages.map(({ attachmentId }) => attachmentSource(item, attachmentId));
+  const kept = item.attachments?.filter((attachment) => attachment.type === "image") ?? [];
+  return kept.length ? kept.map((attachment) => attachmentSource(item, attachment.id)) : undefined;
+}
 
 interface QuestionProjectionContext {
   readonly sessionId: string;
@@ -824,26 +880,13 @@ export function projectAgentRuntimeItem(
         presentation: { kind: "fileSearch", pattern: item.pattern || null },
       });
     case "dynamic_tool": {
-      // A file inspection shows the copy of what the Agent saw, or else the provider's path.
-      if (item.status === "completed" && item.viewedImagePath) {
-        const copy = item.attachments?.find((attachment) => attachment.type === "image");
-        return {
-          type: "imageView",
-          id,
-          path: copy ? attachmentSource(item, copy.id) : item.viewedImagePath,
-        };
-      }
-      if (isPictureStep(item)) {
-        const copy = item.attachments?.find((attachment) => attachment.type === "image");
-        if (copy) return { type: "imageView", id, path: attachmentSource(item, copy.id) };
-        const missing = unavailableImages(item);
-        if (missing[0])
-          return { type: "imageView", id, path: missing[0].sourcePath, unavailableImages: missing };
-      }
+      const picture = projectInspectedPicture(item) ?? projectGeneratedPicture(item, status);
+      if (picture) return picture;
       const { namespace, tool } = parseAgentRuntimeToolName(item.toolName);
       const toolStatus = status === "inProgress" || status === "completed" ? status : "failed";
       if (item.mcpToolCall && (namespace !== "nodex_app" || tool === "automations_update"))
         return projectRuntimeMcpToolCall(item, toolStatus, durationMs);
+      const images = resultImageSources(item);
       return {
         type: "dynamicToolCall",
         outputVersion: agentRuntimeItemVersion(item),
@@ -855,6 +898,7 @@ export function projectAgentRuntimeItem(
         arguments: jsonValue(item.input),
         status: toolStatus,
         contentItems: dynamicToolOutputContent(item),
+        ...(images ? { resultImageSources: images } : {}),
         success: status === "inProgress" ? null : status === "completed",
         durationMs,
       };

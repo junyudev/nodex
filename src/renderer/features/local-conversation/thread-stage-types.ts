@@ -33,6 +33,7 @@ import type {
   CodexConversationSnapshot,
   CodexConversationTurn,
   CodexConversationTurnPagination,
+  CodexStepImage,
   AgentModelOption,
   CodexPersonality,
   CodexProtocolRequestId,
@@ -873,8 +874,6 @@ export interface ThreadTranscriptBlockModel extends ThreadRenderKeyedBlockFields
   hookFeedbackSources?: Array<
     NonNullable<CodexConversationTurn["hookRuns"]>[number]["run"]["source"]
   >;
-  imageViewPaths?: string[];
-  unavailableImages?: CodexConversationItem["unavailableImages"];
   subagentActivityAnchorItemId?: string | null;
   subagentActivityRows?: ThreadSubagentActivityInlineRowModel[];
   subagentActivityStatusLabel?: string;
@@ -920,6 +919,7 @@ export type ThreadAgentActivityCompletedSummaryPart<
   | { kind: "fileChanges"; count: number }
   | { kind: "stoppedFileCreation"; count: number }
   | { kind: "exploration" }
+  | { kind: "viewedImages"; count: number }
   | {
       kind: "visualization";
       activity: {
@@ -989,6 +989,8 @@ export interface ThreadAgentActivityGroupBlockModel extends ThreadRenderKeyedBlo
   entries: readonly ThreadAgentActivityGroupEntryModel[];
   /** Rows visible only inside the expanded disclosure body. */
   bodyEntries: readonly ThreadAgentActivityGroupEntryModel[];
+  /** The pictures the group's steps brought back, in the order they came. */
+  stepImages: readonly CodexStepImage[];
   completedHeader: ThreadAgentActivityCompletedHeader;
   header: ThreadAgentActivityGroupHeader;
   mcpApps?: readonly ProtocolAppInfo[];

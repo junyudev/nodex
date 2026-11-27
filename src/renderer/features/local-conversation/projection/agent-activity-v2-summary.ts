@@ -66,6 +66,7 @@ export type ThreadAgentActivitySummaryFact =
       source: Omit<ThreadAgentActivityGroupMcpSourceStats, "count" | "runningCount"> | null;
     } & ThreadAgentActivityFactWithApprovalFailures)
   | (ThreadAgentActivityApprovalFailure & { type: "automaticApprovalReview" })
+  | { type: "imageView"; count: number }
   | { type: "webSearch"; count: number; runningCount: number }
   | { type: "other" };
 
@@ -87,6 +88,7 @@ export interface ThreadAgentActivitySummaryFacts {
   runningSearchCount: number;
   listCount: number;
   runningListCount: number;
+  viewedImageCount: number;
   deniedRequestCount: number;
   timedOutRequestCount: number;
   commandCount: number;
@@ -337,6 +339,15 @@ export function formatThreadAgentActivityCompletedSummaryPart<TDynamicItem>(
         },
         { position },
       );
+    case "viewedImages":
+      return getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityV2Summary.viewedImages",
+          defaultMessage:
+            "{position, select, leading {{count, plural, one {Viewed an image} other {Viewed images}}} other {{count, plural, one {viewed an image} other {viewed images}}}}",
+        },
+        { position, count: part.count },
+      );
     case "visualization":
       return part.activity.kind === "create"
         ? getIntl().formatMessage(
@@ -571,6 +582,7 @@ function appendPositiveCountPart<TDynamicItem>(
     | { kind: "unnamedMcpCalls"; count: number }
     | { kind: "fileChanges"; count: number }
     | { kind: "stoppedFileCreation"; count: number }
+    | { kind: "viewedImages"; count: number }
     | { kind: "commands"; count: number },
 ): void {
   if (part.count <= 0) return;
@@ -616,6 +628,7 @@ export function buildThreadAgentActivityCompletedSummaryParts<TDynamicItem = unk
   if (facts.exploredFileCount > 0 || facts.searchCount > 0 || facts.listCount > 0) {
     parts.push({ kind: "exploration" });
   }
+  appendPositiveCountPart(parts, { kind: "viewedImages", count: facts.viewedImageCount });
   if (facts.visualizationActivity != null) {
     parts.push({ kind: "visualization", activity: facts.visualizationActivity });
   }
@@ -666,6 +679,7 @@ interface ThreadAgentActivitySummaryFactAccumulator {
   runningSearchCount: number;
   listCount: number;
   runningListCount: number;
+  viewedImageCount: number;
   automaticApprovalReviewFailureIds: Set<string>;
   deniedRequestCount: number;
   timedOutRequestCount: number;
@@ -703,6 +717,7 @@ export function createThreadAgentActivitySummaryFactAccumulator(): ThreadAgentAc
     runningSearchCount: 0,
     listCount: 0,
     runningListCount: 0,
+    viewedImageCount: 0,
     automaticApprovalReviewFailureIds: new Set(),
     deniedRequestCount: 0,
     timedOutRequestCount: 0,
@@ -820,6 +835,9 @@ export function accumulateThreadAgentActivitySummaryFact(
       });
       return;
     }
+    case "imageView":
+      accumulator.viewedImageCount += fact.count;
+      return;
     case "webSearch":
       accumulator.webSearchCount += fact.count;
       accumulator.runningWebSearchCount += fact.runningCount;
@@ -866,6 +884,7 @@ export function materializeThreadAgentActivitySummaryFacts(
     runningSearchCount: accumulator.runningSearchCount,
     listCount: accumulator.listCount,
     runningListCount: accumulator.runningListCount,
+    viewedImageCount: accumulator.viewedImageCount,
     deniedRequestCount: accumulator.deniedRequestCount,
     timedOutRequestCount: accumulator.timedOutRequestCount,
     commandCount: accumulator.commandCount,

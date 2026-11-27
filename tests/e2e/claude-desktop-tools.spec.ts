@@ -614,12 +614,10 @@ for (const mode of ["full-access", "approval-required"] as const) {
           (await groupToggle.getAttribute("aria-expanded")) !== "true"
         )
           await groupToggle.click();
-        const row = page.getByRole("button", {
-          name: "Open the Claude Browser fixture",
-          exact: true,
-        });
-        await expect(row).toBeVisible();
-        await row.click();
+        // The screenshot shows on its step without opening it.
+        await expect(
+          page.getByText("Open the Claude Browser fixture", { exact: true }),
+        ).toBeVisible();
         const image = page.getByRole("img", { name: "Tool output", exact: true });
         await expect(image).toBeVisible();
         await expect
