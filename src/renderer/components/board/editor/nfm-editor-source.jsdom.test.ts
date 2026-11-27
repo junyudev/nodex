@@ -42,7 +42,7 @@ describe("NfmEditor source boundary", () => {
     const modeOptions = createNfmEditorModeOptions(source);
 
     expect(collaboration.fragment).toBe(fragment);
-    expect(collaboration.user.name).toBe("Local editor");
+    expect(collaboration.user?.name).toBe("Local editor");
     expect(modeOptions.disableExtensions).toContain("history");
     expect(modeOptions.initialContent).toEqual([{ type: "paragraph", id: "initialBlockId" }]);
     expect(createNfmEditorCollaborationOptions(source).transactionOrigin).toBe(

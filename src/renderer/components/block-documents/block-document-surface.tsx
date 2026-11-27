@@ -34,6 +34,7 @@ import {
   type BlockDocumentSurfaceRuntimeOptions,
   type BlockDocumentSurfaceStatus,
 } from "@/lib/block-document-surface-runtime";
+import { useDocumentMemberPresence } from "@/lib/document-member-presence";
 import type { DocumentSyncAdapter } from "@/lib/nodex-y-provider";
 import type { EditorSurfaceAwarenessLease } from "@/lib/document-session-registry";
 import type { ReadyPageBlockDocumentDescriptor } from "@/lib/owned-block-document";
@@ -306,26 +307,33 @@ const useSurfaceAwareness = (
   awarenessLease?: EditorSurfaceAwarenessLease,
 ): void => {
   const retainedStateRef = useRef<Record<string, unknown> | null>(null);
+  const member = useDocumentMemberPresence();
+  const name = member?.name;
+  const color = member?.color;
   const readConfigured = useEffectEvent(() => configured);
+
+  useEffect(() => () => awarenessLease?.release(), [awarenessLease]);
 
   useEffect(() => {
     const awareness = runtime.awareness;
     const localClientId = runtime.document.clientID;
 
-    if (isActive) {
+    if (isActive && name !== undefined && color !== undefined) {
+      const user = { name, color };
+      const current = awareness.getLocalState();
       const activeState = makeActiveAwarenessState(
         runtime,
         routingContext,
         descriptor,
-        readConfigured(),
-        awarenessLease?.getRetainedState() ?? retainedStateRef.current,
+        { ...readConfigured(), user },
+        current?.user ? current : (awarenessLease?.getRetainedState() ?? retainedStateRef.current),
       );
       if (awarenessLease) {
         awarenessLease.publish(activeState);
       } else {
         awareness.setLocalState(activeState);
       }
-      return () => awarenessLease?.release();
+      return;
     }
 
     awarenessLease?.release();
@@ -350,7 +358,7 @@ const useSurfaceAwareness = (
     awareness.on("update", handleAwarenessUpdate);
     clearPresence();
     return () => awareness.off("update", handleAwarenessUpdate);
-  }, [routingContext, awarenessLease, descriptor, isActive, runtime]);
+  }, [routingContext, awarenessLease, descriptor, isActive, name, color, runtime]);
 };
 
 export interface OwnedBlockDocumentRuntimeSurfaceProps {

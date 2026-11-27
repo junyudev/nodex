@@ -27,6 +27,8 @@ import { NfmFormattingToolbarController } from "./nfm-formatting-toolbar-control
 import { NfmSideMenuOpenProvider } from "./nfm-side-menu";
 import { Activity, Component, StrictMode, Suspense, useLayoutEffect, type ReactNode } from "react";
 import * as Y from "yjs";
+import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
+import { memberIdentity } from "@/lib/member-identity";
 import { createPageDocumentGenesis } from "../../../../shared/block-documents/block-document-codec";
 import type { OwnedDocumentDescriptor } from "../../../../shared/block-documents";
 import type { BlockDocumentSurfaceRuntime } from "@/lib/block-document-surface-runtime";
@@ -805,6 +807,54 @@ describe("nfm editor owner", () => {
       expect(destroy).toHaveBeenCalledTimes(1);
       document.destroy();
     });
+
+  test("shows the remote Member's name and selection and refreshes their mounted cursor after a rename", async () => {
+    const { document, input } = fixture(false, "Shared text");
+    const awareness = new Awareness(document);
+    const remoteDoc = new Y.Doc();
+    Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(document));
+    const remote = new Awareness(remoteDoc);
+    const local = memberIdentity({ id: "member:ada", display_name: "Ada Lovelace" });
+    const teammate = memberIdentity({ id: "member:grace", display_name: "Grace Hopper" });
+    const paragraph = remoteDoc.getXmlFragment("body").querySelector("paragraph");
+    const text = paragraph instanceof Y.XmlElement ? paragraph.get(0) : null;
+    if (!(text instanceof Y.XmlText)) throw new Error("The fixture requires a text selection");
+    const cursor = {
+      anchor: Y.createRelativePositionFromTypeIndex(text, 0),
+      head: Y.createRelativePositionFromTypeIndex(text, "Shared".length),
+    };
+    const source = { ...input.source, user: undefined, provider: { awareness } };
+    awareness.setLocalState({ user: local, cursor });
+    const view = renderForNfmEditorOwner(
+      <NfmEditorOwnerBoundary input={{ ...input, source }}>
+        {(owner) => <EditorView owner={owner} onBind={() => {}} />}
+      </NfmEditorOwnerBoundary>,
+    );
+
+    try {
+      await view.findByText("Shared text");
+      expect(awareness.getLocalState()?.user).toEqual(local);
+      const publish = async (user: { name: string; color: string }) => {
+        await act(async () => {
+          remote.setLocalState({ user, cursor });
+          applyAwarenessUpdate(awareness, encodeAwarenessUpdate(remote, [remote.clientID]), remote);
+        });
+      };
+      await publish(teammate);
+      const label = await view.findByText("Grace Hopper", { exact: true });
+      const selection = view.container.querySelector<HTMLElement>(".ProseMirror-yjs-selection");
+      expect(selection?.textContent).toBe("Shared");
+      expect(selection?.style.backgroundColor).toBeTruthy();
+      expect(view.queryByText("Ada Lovelace", { exact: true })).toBeNull();
+
+      await publish({ ...teammate, name: "Grace Murray Hopper" });
+      expect(await view.findByText("Grace Murray Hopper", { exact: true })).toBe(label);
+    } finally {
+      view.unmount();
+      remoteDoc.destroy();
+      document.destroy();
+    }
+  });
 
   test("initial image resolution sees the committed view callback port", async () => {
     const { document, input } = fixture(

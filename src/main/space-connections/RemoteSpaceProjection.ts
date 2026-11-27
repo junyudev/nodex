@@ -69,6 +69,8 @@ export const live = (spaceRenamed: Effect.Effect<void>) =>
                 yield* spaceRenamed.pipe(Effect.forkIn(scope, { startImmediately: true }));
               return;
             }
+            if (projected.kind === "space-members")
+              return yield* notifier.notifyMembersChanged(libraryId);
             if (projected.kind === "database")
               return yield* notifier.notifyDatabaseChanged(projected.value);
             if (projected.kind === "library-navigation") {
@@ -92,8 +94,9 @@ export const live = (spaceRenamed: Effect.Effect<void>) =>
               );
             if (projected.value.inboxChanged || planned.sessions) inbox = true;
           }),
-        publishResync: () =>
-          notifier.notifyProjectsChanged("update").pipe(
+        publishResync: ({ libraryId }) =>
+          notifier.notifyMembersChanged(libraryId).pipe(
+            Effect.andThen(notifier.notifyProjectsChanged("update")),
             Effect.andThen(
               Effect.sync(() => {
                 sessions = allProjectSessionInvalidation();

@@ -1,4 +1,5 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Activity } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import * as Y from "yjs";
@@ -21,6 +22,10 @@ import type {
 } from "../../../shared/block-documents/document-sync";
 import { populateBlockDocumentBodyFromBlockTree } from "../../../shared/block-documents/block-document-codec";
 import { render } from "@/test/dom";
+import { DocumentMemberPresenceProvider } from "@/lib/document-member-presence";
+import { spaceQueryKey } from "@/lib/renderer-space";
+import { memberIdentity } from "@/lib/member-identity";
+import type { Member } from "../../../shared/work-graph";
 import { BlockDocumentSurfaceRuntime } from "@/lib/block-document-surface-runtime";
 import type { DocumentSyncAdapter } from "@/lib/nodex-y-provider";
 import {
@@ -237,16 +242,30 @@ describe("block document surface", () => {
           }),
       };
       const ownedDescriptor = descriptor();
+      const member: Member = {
+        id: "member:ada",
+        display_name: "Ada Lovelace",
+        library_id: ownedDescriptor.libraryId,
+        lifecycle: "active",
+        role: "owner",
+        revision: 1,
+      };
+      const client = new QueryClient();
+      const memberKey = spaceQueryKey(["library", "localMember"]);
+      client.setQueryData(memberKey, member);
       const renderSurface = (isActive: boolean) => (
-        <BlockDocumentSurface
-          descriptor={ownedDescriptor}
-          isActive={isActive}
-          localAwarenessState={{ user: { name: "Ada" } }}
-          dependencies={dependencies}
-          runtimeRef={runtimeRef}
-        >
-          {(surface) => <div>{surface.title.toString()}</div>}
-        </BlockDocumentSurface>
+        <QueryClientProvider client={client}>
+          <DocumentMemberPresenceProvider>
+            <BlockDocumentSurface
+              descriptor={ownedDescriptor}
+              isActive={isActive}
+              dependencies={dependencies}
+              runtimeRef={runtimeRef}
+            >
+              {(surface) => <div>{surface.title.toString()}</div>}
+            </BlockDocumentSurface>
+          </DocumentMemberPresenceProvider>
+        </QueryClientProvider>
       );
       const view = render(renderSurface(true));
 
@@ -255,13 +274,25 @@ describe("block document surface", () => {
       if (!runtime) throw new Error("Expected a live Block Document runtime");
       expect(adapter.subscriptions).toBe(1);
 
-      const activeAwareness = {
-        nodex: { clientSessionId: runtime.clientSessionId },
-        user: { name: "Ada" },
-      };
-      // The title can commit before the presence effect runs.
+      // Presence names the Member, and the title can commit before the presence effect runs.
+      const color = memberIdentity(member).color;
       await waitFor(() => {
-        expect(runtime.awareness.getLocalState()).toMatchObject(activeAwareness);
+        expect(runtime.awareness.getLocalState()).toMatchObject({
+          user: { name: "Ada Lovelace", color },
+          nodex: { clientSessionId: runtime.clientSessionId },
+        });
+      });
+
+      const cursor = { anchor: { tname: "body" }, head: { tname: "body" } };
+      await act(async () => {
+        runtime.awareness.setLocalStateField("cursor", cursor);
+        client.setQueryData(memberKey, { ...member, display_name: "Ada Byron", revision: 2 });
+      });
+      await waitFor(() => {
+        expect(runtime.awareness.getLocalState()).toMatchObject({
+          user: { name: "Ada Byron", color },
+          cursor,
+        });
       });
 
       view.rerender(renderSurface(false));
@@ -273,7 +304,7 @@ describe("block document surface", () => {
 
       view.rerender(renderSurface(true));
       await waitFor(() => {
-        expect(runtime.awareness.getLocalState()).toMatchObject(activeAwareness);
+        expect(runtime.awareness.getLocalState()?.user).toEqual({ name: "Ada Byron", color });
       });
 
       await act(async () => {

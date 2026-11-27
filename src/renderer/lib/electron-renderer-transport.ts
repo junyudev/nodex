@@ -358,6 +358,12 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
+    subscribeMembersChanged(callback) {
+      return bridge.on("space-members-changed", (...args: unknown[]) => {
+        const [spaceId] = args;
+        if (typeof spaceId === "string") callback(spaceId);
+      });
+    },
     subscribeLibraryChanges(
       callback: (
         event: import("../../shared/library-events").LibraryNavigationChangedEvent,
