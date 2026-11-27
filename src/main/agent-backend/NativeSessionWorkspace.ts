@@ -22,6 +22,8 @@ import { readManagedWorktreeOwnerThread } from "../codex/git-worktree-service";
 
 export interface NativeSessionWorkspaceInput {
   readonly projectId: string | null;
+  /** Allocation scope for an existing projectless chat whose own directory contains Git. */
+  readonly projectlessWorktreeScope?: string;
   readonly targetId: string;
   readonly title: string;
   readonly prompt: string;
@@ -166,12 +168,7 @@ export const make = Effect.gen(function* () {
           operation: "workspace.environment",
           cause: new Error("A local Environment requires a new worktree"),
         });
-      if (input.projectId === null && runInTarget === "newWorktree")
-        return yield* new NativeSessionWorkspaceError({
-          operation: "workspace.projectless",
-          cause: new Error("A managed worktree requires a local Project"),
-        });
-      if (input.projectId === null) {
+      if (input.projectId === null && runInTarget !== "newWorktree") {
         const folder = yield* folders
           .ensure(input.targetId, { nameHint: input.prompt })
           .pipe(
@@ -238,6 +235,12 @@ export const make = Effect.gen(function* () {
           retain: Effect.void,
           attach: () => Effect.void,
         };
+      const worktreeScope = input.projectId ?? input.projectlessWorktreeScope;
+      if (worktreeScope === undefined)
+        return yield* new NativeSessionWorkspaceError({
+          operation: "workspace.projectless",
+          cause: new Error("A managed worktree requires a local Project"),
+        });
       const host = yield* hosts
         .resolve("local", "create")
         .pipe(
@@ -273,7 +276,7 @@ export const make = Effect.gen(function* () {
               managedRoot: input.pageWorkspace
                 ? path.dirname(path.dirname(input.pageWorkspace.worktreePath))
                 : host.descriptor.managedRoot,
-              projectId: input.projectId,
+              projectId: worktreeScope,
               targetId: input.targetId,
               threadTitle: input.title,
               startingState:

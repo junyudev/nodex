@@ -9,6 +9,9 @@ import { CHAT_REPLY_PREVIEW_BATCH_LIMIT } from "../../shared/chat-reply-preview"
 import { antigravityAgent } from "../../shared/agents/antigravity";
 import { isAbsolute } from "node:path";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
+import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
+import { INBOX_FORK_LAUNCH_PREFIX } from "../../shared/inbox";
+import { probeWorkspaceFolder } from "../platform/node/GitRepositoryProbe";
 import { AgentRuntimeWorkLedger, countingCoreReads } from "./AgentRuntimeWork";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import {
@@ -335,6 +338,8 @@ const failure = (operation: string, message: string, cause?: unknown) =>
     ...(readModelPolicyFailure(cause) ?? {}),
     ...(cause === undefined ? {} : { cause }),
   });
+const forkRefusal = (message: string) =>
+  new AgentRuntimeApplicationError({ operation: "fork", message, admissionRejected: true });
 const searchFailure = (cause: unknown) => {
   if (
     !Schema.is(AgentRuntimeProcessError)(cause) ||
@@ -1104,6 +1109,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         if (created) return created;
         if (binding.side_chat_source_session_id)
           return yield* failure("thread", "The captured side conversation is unavailable");
+        if (binding.launch_request_id.startsWith(INBOX_FORK_LAUNCH_PREFIX))
+          return yield* failure("fork", "The Inbox fork is waiting to be delivered");
         if (binding.launch_request_id.startsWith(NATIVE_IMPORT_LAUNCH_PREFIX))
           return yield* failure(
             "import",
@@ -3029,6 +3036,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const fork = Effect.fn("AgentRuntimeApplication.fork")(function* (
     input: import("../../shared/agent-runtime-api").AgentRuntimeForkInput & {
       readonly sideChat?: true;
+      /** Core already admitted the destination and its Inbox decision. */
+      readonly inbox?: { readonly newWorktree: boolean | null };
     },
   ) {
     if (
@@ -3045,7 +3054,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "fork",
         "A distinct destination Session and stable fork identity are required",
       );
-    yield* assertWritableChat(input.source.sessionId, "fork");
     const connection = yield* options.connect;
     const threadId = agentExecutionThreadId(
       hash({
@@ -3053,7 +3061,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         sessionId: input.sessionId,
       }),
     );
-    const replayBinding = input.sideChat ? yield* lookupDestinationBinding(input.sessionId) : null;
+    const worktreeCommandId = commandId("fork-workspace", { requestId: input.requestId });
+    const sameDirectoryCommandId = commandId("fork-same-directory", { requestId: input.requestId });
+    const previous = yield* lookupDestinationBinding(input.sessionId);
+    const replayBinding = input.sideChat ? previous : null;
     if (replayBinding) {
       if (
         replayBinding.launch_request_id !== input.requestId ||
@@ -3076,6 +3087,71 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           projectId: replayBinding.project_id ?? null,
         };
     }
+    const destination = input.inbox ? yield* workspace.getProjectSession(input.sessionId) : null;
+    const existing = yield* connection.request("thread.read", { threadId });
+    if (input.inbox) {
+      if (!destination || destination.archived)
+        return yield* forkRefusal("The destination chat is no longer available");
+      if (
+        (previous &&
+          (previous.launch_request_id !== input.requestId ||
+            previous.runtime_id !== connection.identity.runtimeId ||
+            previous.runtime_thread_id !== threadId)) ||
+        (existing && (!previous || existing.forkedFrom?.type !== "run" || existing.deletedAt))
+      )
+        return yield* forkRefusal("The destination chat belongs to another execution");
+      if (existing) {
+        // The fork already committed. Reuse its recorded workspace decision even if the
+        // source has moved, been deleted, or gained a Git repository since then.
+        const worktree =
+          input.inbox.newWorktree !== false
+            ? yield* connection.request("command.receipt", {
+                threadId,
+                commandId: worktreeCommandId,
+              })
+            : null;
+        const sameDirectory =
+          input.inbox.newWorktree === null && !worktree
+            ? yield* connection.request("command.receipt", {
+                threadId,
+                commandId: sameDirectoryCommandId,
+              })
+            : null;
+        if (worktree?.status === "accepted" && existing.worktreePath && options.reconcileWorkspace)
+          yield* options.reconcileWorkspace({ cwd: existing.worktreePath, threadId });
+        if (
+          input.inbox.newWorktree === false ||
+          worktree?.status === "accepted" ||
+          sameDirectory?.status === "accepted"
+        )
+          return {
+            sourceSessionId: input.source.sessionId,
+            sessionId: input.sessionId,
+            projectId: destination.projectId,
+            threadId,
+          };
+      }
+      const sourceSession = yield* workspace.getProjectSession(input.source.sessionId);
+      if (!sourceSession) return yield* forkRefusal("The source chat no longer exists");
+      if (sourceSession.archived) return yield* forkRefusal("The source chat is archived");
+      if (sourceSession.decisionRun || !sourceSession.executionRef)
+        return yield* forkRefusal(
+          sourceSession.thread?.backendBinding.driver === "codex" &&
+            sourceSession.thread.executionHostId !== CODEX_APP_LOCAL_HOST_ID
+            ? "Remote Codex chats cannot be forked"
+            : "The source chat does not run on Agent Runtime",
+        );
+      if (sourceSession.executionRef.runtimeId !== connection.identity.runtimeId)
+        return yield* forkRefusal("The source chat belongs to another Agent Runtime");
+      if (sourceSession.projectId !== destination.projectId)
+        return yield* forkRefusal("The source chat moved to another Project");
+      const sourceThread = yield* connection.request("thread.read", {
+        threadId: sourceSession.executionRef.threadId,
+      });
+      if (!sourceThread || sourceThread.deletedAt)
+        return yield* forkRefusal("The source chat's execution is no longer available");
+    }
+    yield* assertWritableChat(input.source.sessionId, "fork");
     const source = input.sideChat
       ? yield* sideChatSource(connection, input)
       : yield* targetInfo(connection, input.source, true);
@@ -3089,13 +3165,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* failure("fork", "interaction_mode_escalation_denied");
 
     const projectId = source.binding.project_id ?? null;
-    const sourceTitle = yield* host(readSession(input.source.sessionId, projectId)).pipe(
-      Effect.map((read) =>
-        read.value.kind === "session" ? read.value.session.display_title : null,
-      ),
-      Effect.orElseSucceed(() => null),
-    );
-    const title = input.sideChat ? SIDE_CHAT_DEFAULT_TITLE : forkTitle(sourceTitle);
+    const sourceTitle = destination
+      ? null
+      : yield* host(readSession(input.source.sessionId, projectId)).pipe(
+          Effect.map((read) =>
+            read.value.kind === "session" ? read.value.session.display_title : null,
+          ),
+          Effect.orElseSucceed(() => null),
+        );
+    const title =
+      destination?.displayTitle ??
+      (input.sideChat ? SIDE_CHAT_DEFAULT_TITLE : forkTitle(sourceTitle));
     const binding = {
       session_id: input.sessionId,
       project_id: projectId,
@@ -3105,7 +3185,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...(input.sideChat ? { side_chat_source_session_id: input.source.sessionId } : {}),
     };
     yield* validateCaller();
-    const previous = yield* lookupDestinationBinding(input.sessionId);
     if (
       previous &&
       (!matchesBinding(previous, binding) ||
@@ -3113,9 +3192,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           (binding.side_chat_source_session_id ?? null))
     )
       return yield* failure("fork", "Session is already bound to another fork request");
-    if (input.environment === "worktree" && !options.prepareWorkspace)
-      return yield* failure("workspace", "Worktree preparation is unavailable");
-    const existing = yield* connection.request("thread.read", { threadId });
     const sourceRunId = existing
       ? null
       : input.sideChat
@@ -3125,7 +3201,26 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             ...(input.sourceRunId === undefined ? {} : { runId: input.sourceRunId }),
           });
     if (!existing && !input.sideChat && sourceRunId === null)
-      return yield* failure("fork", "This chat has no finished Run to fork from");
+      return yield* forkRefusal("The source chat has no finished Run to fork from");
+    const inheritedDirectory = input.inbox
+      ? (existing?.executionLocation?.cwd ?? existing?.worktreePath)
+      : null;
+    const sourceDirectory =
+      inheritedDirectory ??
+      source.thread.executionLocation?.cwd ??
+      source.thread.worktreePath ??
+      (input.inbox ? (yield* projectScope(projectId, true, false)).workspaceRoot : null);
+    let createWorktree = input.environment === "worktree";
+    if (input.inbox && input.inbox.newWorktree !== false) {
+      const folder = sourceDirectory
+        ? yield* Effect.promise(() => probeWorkspaceFolder(sourceDirectory))
+        : null;
+      if (input.inbox.newWorktree === true && !folder?.repository)
+        return yield* forkRefusal("The source chat's execution directory is not a Git repository");
+      createWorktree = Boolean(folder?.repository);
+    }
+    if (createWorktree && !options.prepareWorkspace)
+      return yield* forkRefusal("Worktree preparation is unavailable");
     // The product Session is admitted before any Thread or worktree exists, and the fork owns
     // its root Thread until the Thread does.
     const scope = yield* creatingRootThread(
@@ -3183,11 +3278,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     // A worktree fork still sharing its source directory never finished relocating, including
     // a retry after the process stopped between the fork and the location update.
     const forked = existing ?? (yield* connection.request("thread.read", { threadId }));
-    const sourceDirectory = source.thread.worktreePath ?? scope.workspaceRoot;
+    const cwd = sourceDirectory ?? scope.workspaceRoot;
     if (
-      input.environment === "worktree" &&
+      createWorktree &&
       options.prepareWorkspace &&
-      (forked?.worktreePath ?? sourceDirectory) === sourceDirectory
+      (input.inbox || (forked?.worktreePath ?? cwd) === cwd)
     ) {
       const prepare = options.prepareWorkspace;
       yield* Effect.scoped(
@@ -3197,7 +3292,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             targetId: input.sessionId,
             title,
             prompt: title,
-            sourceCwd: sourceDirectory,
+            sourceCwd: cwd,
+            ...(input.inbox ? { projectlessWorktreeScope: scope.id } : {}),
             sourceRoots: scope.sourceRoots,
             runInTarget: "newWorktree",
             localEnvironmentConfigPath: input.runInEnvironmentPath ?? null,
@@ -3205,9 +3301,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               requestId: input.requestId,
             }),
           });
+          // A lost metadata reply may already have transferred ownership to the Thread.
+          if (input.inbox) yield* lease.retain;
           yield* dispatch(connection, {
             type: "thread.metadata.update",
-            commandId: commandId("fork-workspace", { requestId: input.requestId }),
+            commandId: worktreeCommandId,
             threadId,
             worktreePath: lease.location.cwd,
             executionLocation: localExecutionLocation(projectId, lease.location),
@@ -3217,6 +3315,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       );
     }
+    if (input.inbox?.newWorktree === null && !createWorktree)
+      yield* dispatch(connection, {
+        type: "thread.metadata.update",
+        commandId: sameDirectoryCommandId,
+        threadId,
+      });
     if ("nativeCapture" in source)
       yield* dispatch(connection, {
         type: "thread.delete",
@@ -5781,6 +5885,56 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       Stream.map(() => undefined),
       Stream.merge(options.providerCatalog?.invalidations ?? Stream.never),
     ),
+    inboxOriginChat: (sessionId: string) =>
+      owned(
+        "inbox-origin",
+        Effect.gen(function* () {
+          const session = yield* workspace.getProjectSession(sessionId);
+          if (!session) return null;
+          const reference = session.executionRef;
+          const bound = reference
+            ? yield* readBoundThread(reference.threadId).pipe(Effect.orElseSucceed(() => null))
+            : null;
+          const owned =
+            bound?.sessionId === sessionId &&
+            bound.connection.identity.runtimeId === reference?.runtimeId
+              ? bound
+              : null;
+          const cwd = owned
+            ? (owned.thread.executionLocation?.cwd ??
+              owned.thread.worktreePath ??
+              (yield* projectScope(session.projectId, false)).workspaceRoot)
+            : null;
+          const [live, folder] = yield* Effect.all(
+            [
+              owned && !session.archived && !owned.thread.archivedAt
+                ? owned.connection
+                    .request("thread.fork-source", { threadId: owned.thread.id })
+                    .pipe(Effect.orElseSucceed(() => null))
+                : Effect.succeed(null),
+              cwd ? Effect.promise(() => probeWorkspaceFolder(cwd)) : Effect.succeed(null),
+            ],
+            { concurrency: 2 },
+          );
+          return {
+            title: session.displayTitle,
+            project_id: session.projectId,
+            archived: session.archived || session.thread?.archived === true,
+            state: owned
+              ? owned.thread.activeRunId
+                ? ("working" as const)
+                : ("idle" as const)
+              : session.thread?.statusType === "active"
+                ? ("working" as const)
+                : session.thread?.statusType === "idle"
+                  ? ("idle" as const)
+                  : null,
+            can_fork: live !== null && !session.decisionRun,
+            workspace_exists: cwd ? folder !== null : null,
+            has_git: cwd ? Boolean(folder?.repository) : null,
+          };
+        }),
+      ),
     skillsForWorkspace: (input: AgentRuntimeOperations["providers.skills.read"]["input"]) =>
       owned(
         "workspace-skills",

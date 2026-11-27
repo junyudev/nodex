@@ -1,3 +1,4 @@
+import type { InboxRoutingOriginChat } from "./InboxRoutingContext";
 import { inboxSkillTokens, type InboxSkillOffer } from "./inbox-skills";
 import { createHash } from "node:crypto";
 import { countWords } from "../../shared/word-count";
@@ -55,8 +56,8 @@ export const inboxRoutingDeadline = (
   delivery.run_started_at_ms == null
     ? delivery.handed_over_at_ms + INBOX_ROUTING_HANDOVER_CAP_MS + (delivery.paused_ms ?? 0)
     : delivery.run_started_at_ms + INBOX_ROUTING_DEADLINE_MS + (delivery.paused_ms ?? 0);
-export const INBOX_PROMPT_VERSION = "inbox-routing-v15";
-export const INBOX_SCHEMA_VERSION = "inbox-routing-v10";
+export const INBOX_PROMPT_VERSION = "inbox-routing-v16";
+export const INBOX_SCHEMA_VERSION = "inbox-routing-v11";
 const MAX_PROMPT_CHARS = 2_000;
 const MAX_SUMMARY_CHARS = 200;
 const MAX_RATIONALE_CHARS = 600;
@@ -92,6 +93,7 @@ export interface InboxSuggestionAgents {
 /** JSON data cannot escape a fabricated XML message wrapper; the prompt is not a permissions boundary. */
 export const renderInboxRoutingRequest = (input: {
   readonly context: CoreInboxDispatchContext;
+  readonly originChats?: ReadonlyMap<string, InboxRoutingOriginChat>;
   readonly instructions: string;
   readonly request: InboxSuggestionRequestIdentity;
   readonly agents: InboxSuggestionAgents | null;
@@ -112,6 +114,9 @@ export const renderInboxRoutingRequest = (input: {
         handback: entry.handback ?? null,
         body: entry.body,
         source: entry.source,
+        ...(entry.source.kind === "agent" && entry.source.session_id
+          ? { origin_chat: input.originChats?.get(entry.source.session_id) ?? null }
+          : {}),
         kind: entry.kind,
         submitted_at: entry.submitted_at,
         scope: entry.scope,
@@ -139,13 +144,14 @@ export const renderInboxRoutingRequest = (input: {
       time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       allowed_actions:
         context.scope.kind === "project"
-          ? ["keep", "save_to_notes", "snooze", "new_chat", "send_to_chat", "plan"]
+          ? ["keep", "save_to_notes", "snooze", "new_chat", "send_to_chat", "fork_chat", "plan"]
           : [
               "keep",
               "save_to_notes",
               "snooze",
               "new_chat",
               "send_to_chat",
+              "fork_chat",
               "move_to_project",
               "plan",
             ],
@@ -177,8 +183,8 @@ export const renderInboxRoutingRequest = (input: {
   };
   const prompt = (routingData: typeof data) => `Routing request
 Submit with inbox_suggest; echo request_id and generation exactly. Cover all page_ids exactly once, using only the supplied actions and target IDs. grouped/refine requires one action; a correction revises only its supplied proposal and members.
-save_to_notes: use for notes, references and fragments that ask for no work. Set parent_page_id to a fitting Page in notes_outline or null for the Inbox’s Notes page. Never create sections. Use null Project, chat and prompt fields and explicit_request false. keep means Add to Todo: hold work without a time, with null targets/prompt; snooze: null targets/prompt, explicit_request false, and required snoozed_until as a future offset-bearing ISO 8601 instant. Propose snooze only when the message says to wait until a resolvable time. Use keep with kind todo for someday or when no time can be resolved. Use the request clock and time zone to resolve relative dates. new_chat: project_id (nullable in Library) and prompt; send_to_chat: only session_id and prompt; move_to_project: only project_id. Only new_chat sets chat_instance_id/chat_model/chat_effort, using an offered choice; otherwise these are null. Only chat actions have additions; otherwise []. explicit_request is a required boolean on every suggestion. plan: null targets/prompt/chat fields, no additions, explicit_request false, and steps [{key,project_id,title,body,agent:{instance_id,model,effort}|null,blocked_by:[key]}]. Plans have 2–8 unique step keys, only eligible Projects (a Project Inbox stays in its Project), offered Agent choices or null for the chat default, and acyclic prerequisites naming other steps. Step titles are at most 120 characters and bodies at most 4000. Only plans carry steps. Plans always wait for the user.
-${agents === null ? "No Agent choices are offered for this request. chat_instance_id, chat_model and chat_effort must all be null, including for new_chat; every plan step agent must also be null. Choices from earlier requests or list_agent_models do not apply.\n" : ""}For explicit_request true, use at most 30 words in prompt and no additions or skills.
+save_to_notes: use for notes, references and fragments that ask for no work. Set parent_page_id to a fitting Page in notes_outline or null for the Inbox’s Notes page. Never create sections. Use null Project, chat and prompt fields and explicit_request false. keep means Add to Todo: hold work without a time, with null targets/prompt; snooze: null targets/prompt, explicit_request false, and required snoozed_until as a future offset-bearing ISO 8601 instant. Propose snooze only when the message says to wait until a resolvable time. Use keep with kind todo for someday or when no time can be resolved. Use the request clock and time zone to resolve relative dates. new_chat: project_id (nullable in Library) and prompt; send_to_chat: session_id and prompt; fork_chat: the origin session_id, prompt, and optional new_worktree (true when the origin has Git, false for the same directory, null to choose at delivery). Forks use the source Agent and always have explicit_request false. move_to_project: only project_id. Only new_chat sets chat_instance_id/chat_model/chat_effort, using an offered choice; otherwise these are null. Only chat actions have additions; otherwise []. explicit_request is a required boolean on every suggestion. plan: null targets/prompt/chat fields, no additions, explicit_request false, and steps [{key,project_id,title,body,agent:{instance_id,model,effort}|null,blocked_by:[key]}]. Plans have 2–8 unique step keys, only eligible Projects (a Project Inbox stays in its Project), offered Agent choices or null for the chat default, and acyclic prerequisites naming other steps. Step titles are at most 120 characters and bodies at most 4000. Only plans carry steps. Plans always wait for the user.
+${agents === null ? "No Agent choices are offered for this request. chat_instance_id, chat_model and chat_effort must all be null, including for new_chat; every plan step agent must also be null. Choices from earlier requests or list_agent_models do not apply.\n" : ""}Each chat prompt is a routing note of at most 30 words, since the chat receives the messages unchanged. For explicit_request true, use no additions or skills.
 For other chat actions, propose at most three useful skills as {name,reason}. Match an exact name in skill_offers for that project_id and chat_instance_id (null is the Inbox default), or for that session_id. Keep dollar invocations from the user in the prompt; for explicit requests the unchanged original carries them. Never repeat them as optional skills. Put all skill advice in skills, never as dollar or slash invocations in prompt or additions. Use [] for other actions or when no skill fits.
 Budgets: at most 16 suggestions/titles/members; prompt 2000, summary 200, rationale 600, provisional message title 80 characters; at most 12 additions of 600 characters. summary is nonempty; rationale may be null. Titles name only provisional messages. The whole response is at most 48 KiB.
 Bodies use Nodex Markdown. [Image #N] marks its position. Attached images follow attached_images in message order; unavailable_images have no attachment. This request's data and scope supersede historical routing data.
@@ -229,6 +235,7 @@ export const validateInboxSuggestions = (
   request: InboxSuggestionRequestIdentity,
   candidates: readonly InboxAgentCandidate[] = [],
   skillOffers: readonly InboxSkillOffer[] = [],
+  originChats: ReadonlyMap<string, InboxRoutingOriginChat> = new Map(),
 ): InboxSuggestionValidation => {
   if (Buffer.byteLength(JSON.stringify(supplied) ?? "", "utf8") > INBOX_SUGGESTION_MAX_OUTPUT_BYTES)
     throw new Error("Invalid Inbox suggestion: output exceeds the 48 KiB budget");
@@ -242,7 +249,7 @@ export const validateInboxSuggestions = (
     reject("request identity changed");
   if (request.mode !== "auto" && output.suggestions.length !== 1)
     reject("a selected group needs one decision");
-  const entryIds = new Set(entries.map((entry) => entry.page_id));
+  const entriesById = new Map(entries.map((entry) => [entry.page_id, entry]));
   const projectIds = new Set(context.projects.map((project) => project.project_id));
   const projectId = context.scope.kind === "project" ? context.scope.project_id : null;
   const sessionIds = new Set(
@@ -265,13 +272,15 @@ export const validateInboxSuggestions = (
   };
   for (const raw of output.suggestions) {
     for (const id of raw.page_ids) {
-      if (!entryIds.has(id) || claimed.has(id)) reject("unknown or duplicate member");
+      if (!entriesById.has(id) || claimed.has(id)) reject("unknown or duplicate member");
       claimed.add(id);
     }
     if (!raw.summary.trim()) reject("missing summary");
     const prompt = raw.prompt?.trim();
     // The chat receives the messages themselves beneath the prompt, so a prompt only routes them.
-    if (raw.action === "new_chat" || raw.action === "send_to_chat") {
+    const chat =
+      raw.action === "new_chat" || raw.action === "send_to_chat" || raw.action === "fork_chat";
+    if (chat) {
       const count = countWords(prompt ?? "");
       if (count > MAX_ROUTING_NOTE_WORDS)
         reject(
@@ -283,11 +292,24 @@ export const validateInboxSuggestions = (
     const chooses =
       raw.chat_instance_id !== null || raw.chat_model !== null || raw.chat_effort !== null;
     if (raw.action !== "new_chat" && chooses) reject("only a new chat chooses Agents");
+    const members = raw.page_ids.map((id) => entriesById.get(id)!);
+    if (
+      raw.explicit_request &&
+      (raw.action === "fork_chat" || members.some((entry) => entry.source.kind === "agent"))
+    )
+      reject("an Agent's follow-up or a fork requires the person's confirmation");
+    const origin =
+      raw.session_id &&
+      members.some(({ source }) => source.kind === "agent" && source.session_id === raw.session_id)
+        ? originChats.get(raw.session_id)
+        : undefined;
+    const eligibleOrigin =
+      origin?.exists && !origin.archived && (projectId === null || origin.project_id === projectId)
+        ? origin
+        : undefined;
     const additions = raw.additions.map((addition) => addition.trim());
     if (additions.some((addition) => !addition)) reject("an empty addition");
-    if (raw.action !== "new_chat" && raw.action !== "send_to_chat" && additions.length > 0)
-      reject("only a chat prompt has additions");
-    const chat = raw.action === "new_chat" || raw.action === "send_to_chat";
+    if (!chat && additions.length) reject("only a chat prompt has additions");
     if ((!chat || raw.explicit_request) && raw.skills.length)
       reject("this decision cannot suggest skills");
     if (chat) {
@@ -298,7 +320,7 @@ export const validateInboxSuggestions = (
       );
       const promptNames = new Set(inboxSkillTokens(prompt ?? "", "$"));
       const offered = skillOffers.find((offer) =>
-        raw.action === "send_to_chat"
+        raw.action !== "new_chat"
           ? offer.session_id === raw.session_id
           : offer.session_id == null &&
             offer.project_id === raw.project_id &&
@@ -437,12 +459,29 @@ export const validateInboxSuggestions = (
           !prompt ||
           raw.project_id !== null ||
           raw.session_id === null ||
-          !sessionIds.has(raw.session_id)
+          (!sessionIds.has(raw.session_id) && !eligibleOrigin)
         )
           reject("invalid existing chat destination or prompt");
         action = {
           type: "send_to_chat",
           sessionId: raw.session_id!,
+          prompt: prompt!,
+          additions,
+          ...(raw.skills.length ? { skills: raw.skills } : {}),
+        };
+        break;
+      case "fork_chat":
+        if (
+          !prompt ||
+          raw.project_id !== null ||
+          !eligibleOrigin?.can_fork ||
+          (raw.new_worktree === true && eligibleOrigin.has_git !== true)
+        )
+          reject("fork_chat needs a forkable origin chat and a prompt; a new worktree needs Git");
+        action = {
+          type: "fork_chat",
+          sessionId: raw.session_id!,
+          newWorktree: raw.new_worktree ?? null,
           prompt: prompt!,
           additions,
           ...(raw.skills.length ? { skills: raw.skills } : {}),
@@ -469,7 +508,7 @@ export const validateInboxSuggestions = (
       rationale: raw.rationale?.trim() || null,
     });
   }
-  if (claimed.size !== entryIds.size) reject("missing members");
+  if (claimed.size !== entriesById.size) reject("missing members");
   const provisional = new Set(
     entries.filter((entry) => entry.title_provisional).map((entry) => entry.page_id),
   );

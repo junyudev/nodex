@@ -402,6 +402,124 @@ it.effect("reconciles durable acceptance after lost replies and archive without 
   }),
 );
 
+it.effect(
+  "recovers a lost fork reply and a lost send reply using the same handoff identities",
+  () =>
+    Effect.gen(function* () {
+      const confirmed = {
+        ...work({ type: "fork_chat", session_id: "session:origin", prompt: "Follow up" }),
+        execution_selection: null,
+      };
+      const forks = new Map<string, string>();
+      const fork = vi.fn<Runtime["fork"]>((input) =>
+        Effect.suspend(() => {
+          const existing = forks.get(input.requestId);
+          if (!existing) {
+            forks.set(input.requestId, "thread:fork");
+            return Effect.fail(applicationError());
+          }
+          return Effect.succeed({
+            sourceSessionId: input.source.sessionId,
+            sessionId: input.sessionId,
+            projectId: "project:one",
+            threadId: existing,
+          });
+        }),
+      );
+      let accepted = false;
+      let pending = true;
+      const sendMessage = vi.fn<Runtime["sendMessage"]>(() =>
+        Effect.suspend(() => {
+          accepted = true;
+          return Effect.fail(applicationError());
+        }),
+      );
+      const complete = vi.fn(() =>
+        Effect.sync(() => {
+          pending = false;
+        }),
+      );
+      const input = {
+        session: () => session(),
+        runtime: {
+          fork,
+          sendMessage,
+          messageAdmission: () =>
+            Effect.succeed(
+              accepted
+                ? {
+                    status: "accepted" as const,
+                    sequence: 1,
+                    error: null,
+                    threadId: "thread:fork",
+                    runtimeId: "runtime:one",
+                    messageId: confirmed.message_id,
+                    commandId: "command:message",
+                  }
+                : null,
+            ),
+        },
+        inbox: {
+          outbox: () => Effect.succeed(pending ? [confirmed] : []),
+          completeDispatch: complete,
+        },
+      };
+      const drain = delivery(input).pipe(Effect.flatMap(({ drain }) => drain));
+      yield* drain;
+      assert.isTrue(pending);
+      yield* drain;
+      yield* drain;
+      assert.strictEqual(forks.size, 1);
+      assert.strictEqual(fork.mock.calls.length, 2);
+      assert.deepEqual(fork.mock.calls[0], fork.mock.calls[1]);
+      assert.deepInclude(fork.mock.calls[0]?.[0], {
+        requestId: confirmed.launch_id,
+        sessionId: confirmed.session_id,
+        source: { sessionId: "session:origin" },
+        inbox: { newWorktree: null },
+      });
+      assert.strictEqual(sendMessage.mock.calls.length, 1);
+      assert.deepInclude(sendMessage.mock.calls[0]?.[0], {
+        threadId: "thread:fork",
+        messageFingerprint: inboxDispatchFingerprint(confirmed),
+      });
+      assert.strictEqual(sendMessage.mock.calls[0]?.[0].message.messageId, confirmed.message_id);
+      assert.deepEqual(complete.mock.calls, [[confirmed, "thread:fork"]]);
+    }),
+);
+
+it.effect("a definite fork refusal returns the readable reason with Retry and sends nothing", () =>
+  Effect.gen(function* () {
+    const confirmed = work({
+      type: "fork_chat",
+      session_id: "session:origin",
+      prompt: "Follow up",
+      new_worktree: true,
+    });
+    const reason = "The source chat's execution directory is not a Git repository";
+    const failDispatch = vi.fn(() => Effect.void);
+    const sendMessage = vi.fn(() => Effect.die("a refused fork cannot send"));
+    const { drain } = yield* delivery({
+      session: () => session(),
+      runtime: {
+        fork: () =>
+          Effect.fail(
+            new AgentRuntimeApplicationError({
+              operation: "fork",
+              message: reason,
+              admissionRejected: true,
+            }),
+          ),
+        sendMessage,
+      },
+      inbox: { outbox: () => Effect.succeed([confirmed]), failDispatch },
+    });
+    yield* drain;
+    assert.deepEqual(failDispatch.mock.calls, [[confirmed, reason, "unavailable"]]);
+    assert.isEmpty(sendMessage.mock.calls);
+  }),
+);
+
 it.effect("a dispatched chat receives the messages' Library images with their text", () =>
   Effect.gen(function* () {
     const calls: AgentRuntimeLaunch[] = [];

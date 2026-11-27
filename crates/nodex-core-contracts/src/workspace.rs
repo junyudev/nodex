@@ -12,11 +12,11 @@ use crate::inbox::{
     ProjectWorkspaceInboxSuggestedDispatch, ProjectWorkspaceInboxSuggestionInput,
     ProjectWorkspaceInboxSuggestionMode, ProjectWorkspaceInboxSuggestionRequest,
     ProjectWorkspaceInboxSuggestionTitle, ProjectWorkspaceInboxSummary,
-    ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxWindowFilter, SessionFollowUp,
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 89;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 90;
 
 /// Retry-key admission shared by the application tools and native CLI.
 pub const RETRY_KEY_MAX_SCALARS: usize = 128;
@@ -421,6 +421,10 @@ pub enum ProjectWorkspaceRead {
         filter: ProjectWorkspaceInboxWindowFilter,
         window: CollectionWindowRequest,
     },
+    /// The newest 50 active Agent messages from this Session that the requesting Member can see.
+    SessionFollowUps {
+        session_id: String,
+    },
     /// Entries the suggestion Agent should consider, oldest first. One read never
     /// mixes Inboxes: it returns the oldest waiting entry's Inbox only.
     InboxChatTargets {
@@ -726,6 +730,10 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxWindow {
         items: CollectionWindow<ProjectWorkspaceInboxItem>,
+    },
+    /// Newest first, using the Store epoch of the enclosing read snapshot.
+    SessionFollowUps {
+        items: Vec<SessionFollowUp>,
     },
     InboxChatTargets {
         window: CollectionWindow<crate::inbox::ProjectWorkspaceInboxChat>,

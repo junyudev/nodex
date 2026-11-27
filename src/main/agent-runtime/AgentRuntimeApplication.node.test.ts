@@ -1429,6 +1429,7 @@ const setup = (
       projectId: binding?.project_id ?? "project",
       archived: state.archived,
       noThreadFallbackTitle: titles.get(sessionId) ?? "Task",
+      displayTitle: titles.get(sessionId) ?? "Task",
       executionRef: binding
         ? { runtimeId: binding.runtime_id, threadId: binding.runtime_thread_id }
         : null,
@@ -5254,6 +5255,105 @@ it.effect("head forks freeze the Runtime-selected non-Git source before binding 
         ),
     );
   }),
+);
+
+it.effect(
+  "Inbox forks preserve their destination title and settle a nullable workspace choice once",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-inbox-fork-" });
+        const worktreePath = join(directory, "worktree");
+        const worktreeSources: Array<string | null> = [];
+        const fixture = setup({
+          prepareWorkspace: ({ sourceCwd, runInTarget }) =>
+            Effect.sync(() => {
+              const createsWorktree = runInTarget === "newWorktree";
+              if (createsWorktree) worktreeSources.push(sourceCwd);
+              const cwd = createsWorktree ? worktreePath : directory;
+              return {
+                location: {
+                  cwd,
+                  workspaceRoots: [cwd],
+                  managedWorktreePath: createsWorktree ? cwd : null,
+                  projectlessOutputDirectory: null,
+                  projectlessWorkspaceBrowserRoot: null,
+                },
+                retain: Effect.void,
+                attach: () => Effect.void,
+              };
+            }),
+        });
+        const owner = yield* fixture.owner;
+        const source = yield* owner.launch(launch);
+        const current = fixture.snapshots.get(source.threadId)!;
+        fixture.snapshots.set(source.threadId, {
+          ...current,
+          projection: {
+            ...current.projection,
+            thread: {
+              ...current.projection.thread,
+              worktreePath: directory,
+              ...(current.projection.thread.executionLocation
+                ? {
+                    executionLocation: {
+                      ...current.projection.thread.executionLocation,
+                      cwd: directory,
+                    },
+                  }
+                : {}),
+            },
+            runs: [{ id: "run:finished", ordinal: 1, status: "completed" }] as never,
+          },
+        });
+        fixture.titles.set("session:inbox-destination", "Reviewed follow-up");
+        const input = {
+          source: { sessionId: source.sessionId },
+          sessionId: "session:inbox-destination",
+          requestId: "inbox-fork:durable",
+          acceptedAt: launch.acceptedAt,
+          environment: "same-directory" as const,
+        };
+        const result = yield* owner
+          .fork({ ...input, inbox: { newWorktree: true } })
+          .pipe(Effect.result);
+        assert.strictEqual(result._tag, "Failure");
+        if (result._tag === "Failure") {
+          assert.isTrue(result.failure.admissionRejected);
+          assert.strictEqual(
+            result.failure.message,
+            "The source chat's execution directory is not a Git repository",
+          );
+        }
+        const fork = yield* owner.fork({ ...input, inbox: { newWorktree: null } });
+        const thread = fixture.snapshots.get(fork.threadId)!.projection.thread;
+        assert.strictEqual(thread.title, "Reviewed follow-up");
+        assert.strictEqual(thread.worktreePath, directory);
+        assert.deepInclude(thread.forkedFrom, { type: "run", runId: "run:finished" });
+        yield* Effect.promise(() => promisify(execFile)("git", ["init", directory]));
+        // The execution directory changing while Inbox admission is retried cannot change the fork.
+        assert.deepEqual(yield* owner.fork({ ...input, inbox: { newWorktree: null } }), fork);
+        assert.strictEqual(
+          [...fixture.commands.values()].filter(({ type }) => type === "thread.fork").length,
+          1,
+        );
+        assert.isEmpty(worktreeSources);
+        const withGit = {
+          ...input,
+          sessionId: "session:inbox-worktree",
+          requestId: "inbox-fork:worktree",
+          inbox: { newWorktree: null },
+        };
+        const isolated = yield* owner.fork(withGit);
+        assert.strictEqual(
+          fixture.snapshots.get(isolated.threadId)?.projection.thread.worktreePath,
+          worktreePath,
+        );
+        assert.deepEqual(yield* owner.fork(withGit), isolated);
+        assert.deepEqual(worktreeSources, [directory]);
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
 );
 
 it.effect.each(["conflict", "transport-loss"] as const)(

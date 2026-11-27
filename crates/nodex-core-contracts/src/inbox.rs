@@ -12,6 +12,46 @@ use utoipa::ToSchema;
 use crate::collection::CollectionWindow;
 use crate::workspace::{ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceThreadStatus};
 
+/// A message the Session's Agent sent to the Inbox, as its Page stands now.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionFollowUp {
+    pub page_id: String,
+    pub page_key: Option<String>,
+    /// The current Page title, bounded to 512 characters for this list.
+    pub title: String,
+    /// The sending Run, when the Agent's provider proved it.
+    pub run_id: Option<String>,
+    pub submitted_at: String,
+    pub status: Option<ProjectWorkspaceInboxPageStatus>,
+    pub state: SessionFollowUpState,
+    /// The current message content fence for a direct dispatch.
+    pub basis: ProjectWorkspaceInboxPageBasis,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SessionFollowUpState {
+    Waiting,
+    Snoozed {
+        until: String,
+    },
+    Delivering {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+    },
+    InChat {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+    },
+    Held,
+    Notes,
+    Done,
+    Failed {
+        message: String,
+    },
+}
+
 /// Which Inbox owns an entry's decision. It is fixed at capture and does not follow
 /// the Page: a message filed into another Project stays in its own Inbox's History.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -153,6 +193,17 @@ pub enum ProjectWorkspaceInboxDispatchAction {
         session_id: String,
         prompt: String,
         /// Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver.
+        #[serde(default)]
+        additions: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        skills: Vec<InboxSuggestedSkill>,
+    },
+    /// Fork the source chat before sending a follow-up as the destination's first message.
+    ForkChat {
+        session_id: String,
+        /// When absent, use a new managed worktree if the source directory has Git.
+        new_worktree: Option<bool>,
+        prompt: String,
         #[serde(default)]
         additions: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]

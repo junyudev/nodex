@@ -91,7 +91,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::InboxDispatchContext { .. }
         | ProjectWorkspaceRead::InboxDispatchOutbox { .. }
         | ProjectWorkspaceRead::InboxSnoozeNotifications { .. }
-        | ProjectWorkspaceRead::InboxCounts => ReadBudgetPolicy::BoundedBatch,
+        | ProjectWorkspaceRead::InboxCounts
+        | ProjectWorkspaceRead::SessionFollowUps { .. } => ReadBudgetPolicy::BoundedBatch,
         // Each of at most four lanes is an ordinary budgeted collection window.
         ProjectWorkspaceRead::TaskWindows { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::NativeSessionBindings { .. }

@@ -94,6 +94,7 @@ export const live: Layer.Layer<
     yield* query("inbox:entry", (_, pageId) => inbox.entry(pageId));
     yield* query("inbox:summary", (_, input) => inbox.summary(input));
     yield* query("inbox:counts", () => inbox.counts);
+    yield* query("inbox:session-follow-ups", (_, input) => inbox.sessionFollowUps(input));
     yield* query("inbox:activity", (_, input) => inbox.activity(input));
     yield* command("inbox:retry-problem", (_, input) => committed(inbox.retryProblem(input)));
     // A window reads only what still needs the user; handled messages are Activity's.

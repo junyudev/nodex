@@ -109,6 +109,10 @@ fn handled_message(
                 quoted(labels.automation_name.as_deref().unwrap_or(message))
             ),
             "new_chat" => format!("Sent {subject} to a new chat{request}"),
+            "fork_chat" => match chat {
+                Some(chat) => format!("Sent {subject} to forked chat {}", quoted(chat)),
+                None => format!("Sent {subject} to a forked chat"),
+            },
             _ => match chat {
                 Some(chat) => format!("Sent {subject} to {}{request}", quoted(chat)),
                 None => format!("Sent {subject} to a chat{request}"),

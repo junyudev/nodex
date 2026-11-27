@@ -16,7 +16,10 @@ import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { readDecisionRun } from "../../host/nodex-decisions/decision-run-role";
 import { InboxApplication } from "../../host/inbox-application/InboxApplication";
-import { make as makeRoutingContext } from "../../host/inbox-application/InboxRoutingContext";
+import {
+  make as makeRoutingContext,
+  makeOriginChats,
+} from "../../host/inbox-application/InboxRoutingContext";
 import { validateInboxSuggestions } from "../../host/inbox-application/inbox-suggestions";
 import { inboxDispatchActionToCore } from "../core-client/inbox-adapter";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -50,6 +53,7 @@ export const makeWithCapture = (
     const core = yield* CoreModules;
     const identity = yield* CoreAuthority;
     const prepare = yield* makeRoutingContext;
+    const originChats = yield* makeOriginChats;
     const admit = yield* makeAppToolOperation;
     const assessment = yield* makeAssessmentDelivery;
     const rememberArgumentRefusal = Effect.fn("DecisionRunAppTools.rememberArgumentRefusal")(
@@ -241,6 +245,7 @@ export const makeWithCapture = (
         }
         const current = (yield* settings.snapshot()).inbox;
         const context = yield* prepare(current);
+        const origins = yield* originChats(request.context);
         const validated = yield* Effect.try({
           try: () =>
             validateInboxSuggestions(
@@ -255,6 +260,7 @@ export const makeWithCapture = (
               },
               context.agents?.candidates ?? [],
               request.delivery?.skill_offers ?? [],
+              origins,
             ),
           catch: (cause) =>
             cause instanceof Error ? cause : new Error("Invalid Inbox suggestion"),

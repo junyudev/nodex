@@ -77,6 +77,76 @@ const output = (suggestions: unknown[], titles: unknown[] = []) =>
   }) as Parameters<typeof validateInboxSuggestions>[0];
 
 describe("validateInboxSuggestions", () => {
+  it("offers an Agent's forkable origin outside ranked chat results and keeps forks reviewable", () => {
+    const followUp: CoreInboxSuggestionInput = {
+      ...entry("1", "Follow up on the design investigation"),
+      source: {
+        kind: "agent",
+        session_id: "session:origin",
+        thread_id: "thread:origin",
+        run_id: "run:origin",
+        project_id: "project:nodex",
+        label: "Original investigation",
+      },
+    };
+    const routing = context([followUp]);
+    const origin = {
+      session_id: "session:origin",
+      title: "Original investigation",
+      project_id: "project:nodex",
+      exists: true,
+      archived: false,
+      state: "working" as const,
+      can_fork: true,
+      workspace_exists: true,
+      has_git: true,
+    };
+    const origins = new Map([[origin.session_id, origin]]);
+    const prompt = renderInboxRoutingRequest({
+      context: routing,
+      originChats: origins,
+      request,
+      instructions: "",
+      agents: null,
+    });
+    const payload = JSON.parse(
+      prompt.slice(prompt.lastIndexOf("JSON data:\n") + "JSON data:\n".length),
+    );
+    expect(payload.messages[0].origin_chat).toEqual(origin);
+    const proposal = raw({
+      action: "fork_chat",
+      session_id: origin.session_id,
+      new_worktree: true,
+      prompt: "Continue the investigation in a fork",
+    });
+    const validate = (suggestion: unknown, available = origins) =>
+      validateInboxSuggestions(
+        output([suggestion]),
+        routing,
+        [followUp],
+        request,
+        [],
+        [],
+        available,
+      );
+    expect(validate(proposal).suggestions[0]?.action).toEqual({
+      type: "fork_chat",
+      sessionId: origin.session_id,
+      newWorktree: true,
+      prompt: proposal.prompt,
+      additions: [],
+    });
+    expect(() => validate({ ...proposal, prompt: "investigate ".repeat(31).trim() })).toThrow(
+      /31-word routing note/,
+    );
+    expect(() => validate({ ...proposal, explicit_request: true })).toThrow(
+      /person's confirmation/,
+    );
+    expect(() =>
+      validate(proposal, new Map([[origin.session_id, { ...origin, archived: true }]])),
+    ).toThrow(/forkable origin chat/);
+  });
+
   it("keeps scheduled firings out of suggestion context and refuses decisions for them", () => {
     const held = {
       ...entry("held", "Do not suggest this automationDecision"),

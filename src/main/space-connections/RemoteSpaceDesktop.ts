@@ -57,6 +57,7 @@ import {
   inboxDecisionFromCore,
   activityWindowFromCore,
   inboxItemFromCore,
+  sessionFollowUpsFromCore,
   inboxScopeToCore,
   inboxSummaryFromCore,
   inboxPageBasisToCore,
@@ -65,6 +66,7 @@ import {
   ActivityWindowInputSchema,
   InboxSummaryInputSchema,
   InboxWindowInputSchema,
+  SessionFollowUpsInputSchema,
   InboxEditInputSchema,
   InboxPageIdsInputSchema,
   InboxSetSnoozeInputSchema,
@@ -350,6 +352,18 @@ const readModels = Layer.effectDiscard(
           projectionRevision: rows.authority.projection_revision,
           storeEpoch: snapshot.store_epoch,
         };
+      }),
+    );
+    yield* ipc.handleQuery("inbox:session-follow-ups", (_, input) =>
+      Effect.gen(function* () {
+        const { sessionId } = SessionFollowUpsInputSchema.parse(input);
+        const snapshot = yield* core.workspace.read(
+          { kind: "session_follow_ups", session_id: sessionId },
+          undefined,
+          null,
+        );
+        if (snapshot.value.kind !== "session_follow_ups") throw new Error("Invalid Inbox response");
+        return sessionFollowUpsFromCore(snapshot.value.items, snapshot.store_epoch);
       }),
     );
     yield* ipc.handleQuery("inbox:entry", (_, pageId) =>

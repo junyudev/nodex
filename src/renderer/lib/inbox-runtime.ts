@@ -19,6 +19,7 @@ import type {
   InboxSetSnoozeInput,
   InboxSummaryInput,
   InboxStreamInput,
+  SessionFollowUpsInput,
   UpdateInboxSettingsInput,
 } from "../../shared/inbox";
 import {
@@ -104,6 +105,8 @@ export async function ensureInboxNotes(
 export const readInboxCounts = () => invokeRendererQuery("inbox:counts");
 export const readInboxWindow = (input: InboxStreamInput) =>
   invokeRendererQuery("inbox:window", input);
+export const readSessionFollowUps = (input: SessionFollowUpsInput) =>
+  invokeRendererQuery("inbox:session-follow-ups", input);
 export const readInboxSnoozeWindow = (input: Omit<InboxStreamInput, "filter">) =>
   readInboxWindow({ ...input, filter: "snoozed" });
 export const sendInboxMessage = (input: InboxSendInput) =>

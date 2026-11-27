@@ -303,6 +303,14 @@ describe("compactDynamicToolOutput content results", () => {
     ).toEqual({ data: { pageId: "copy" } });
   });
 
+  it("keeps the Page an Inbox message became", () => {
+    const sent = { content: [{ type: "text", text: JSON.stringify({ operationId: "op", pageId: "inbox-page" }) }] };
+
+    expect(compactDynamicToolOutput(sent, "nodex_app.send_to_inbox")).toEqual({
+      pageId: "inbox-page",
+    });
+  });
+
   it("yields the same digest when compacted again", () => {
     const digest = compactDynamicToolOutput(
       envelope({ results: [{ id: "a" }], view: { name: "Roadmap" } }),

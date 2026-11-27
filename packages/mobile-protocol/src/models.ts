@@ -143,6 +143,18 @@ export const InboxProposalActionSchema = z.discriminatedUnion("type", [
       .default([]),
   }),
   z.looseObject({
+    type: z.literal("fork_chat"),
+    sessionId: z.string(),
+    chatTitle: z.string().nullable(),
+    newWorktree: z.boolean().nullish(),
+    prompt: z.string(),
+    additions: z.array(z.string()).default([]),
+    skills: z
+      .array(z.object({ name: z.string(), reason: z.string() }))
+      .max(3)
+      .default([]),
+  }),
+  z.looseObject({
     type: z.literal("move_to_project"),
     projectId: z.string(),
     projectName: z.string().nullable(),

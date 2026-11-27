@@ -10624,6 +10624,10 @@ export interface components {
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
+                readonly kind: "session_follow_ups";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "inbox_chat_targets";
                 readonly query: string;
                 readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
@@ -11614,6 +11618,15 @@ export interface components {
             readonly skills?: readonly components["schemas"]["InboxSuggestedSkill"][];
             /** @enum {string} */
             readonly type: "send_to_chat";
+        } | {
+            readonly additions?: readonly string[];
+            /** @description When absent, use a new managed worktree if the source directory has Git. */
+            readonly new_worktree?: boolean | null;
+            readonly prompt: string;
+            readonly session_id: string;
+            readonly skills?: readonly components["schemas"]["InboxSuggestedSkill"][];
+            /** @enum {string} */
+            readonly type: "fork_chat";
         } | {
             readonly project_id: string;
             /** @enum {string} */
@@ -15177,6 +15190,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "inbox_window";
                 } | {
+                    readonly items: readonly components["schemas"]["SessionFollowUp"][];
+                    /** @enum {string} */
+                    readonly kind: "session_follow_ups";
+                } | {
                     /** @enum {string} */
                     readonly kind: "inbox_chat_targets";
                     readonly window: components["schemas"]["CollectionWindow_ProjectWorkspaceInboxChat"];
@@ -15384,6 +15401,49 @@ export interface components {
         readonly SessionExecutionState: "working" | "queued" | "waiting" | "idle" | "failed" | "unavailable";
         /** @enum {string} */
         readonly SessionExecutionTerminalStatus: "completed" | "failed" | "interrupted";
+        /** @description A message the Session's Agent sent to the Inbox, as its Page stands now. */
+        readonly SessionFollowUp: {
+            /** @description The current message content fence for a direct dispatch. */
+            readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+            readonly pageId: string;
+            readonly pageKey?: string | null;
+            /** @description The sending Run, when the Agent's provider proved it. */
+            readonly runId?: string | null;
+            readonly state: components["schemas"]["SessionFollowUpState"];
+            readonly status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
+            readonly submittedAt: string;
+            /** @description The current Page title, bounded to 512 characters for this list. */
+            readonly title: string;
+        };
+        readonly SessionFollowUpState: {
+            /** @enum {string} */
+            readonly kind: "waiting";
+        } | {
+            /** @enum {string} */
+            readonly kind: "snoozed";
+            readonly until: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "delivering";
+            readonly sessionId: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "inChat";
+            readonly sessionId: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "held";
+        } | {
+            /** @enum {string} */
+            readonly kind: "notes";
+        } | {
+            /** @enum {string} */
+            readonly kind: "done";
+        } | {
+            /** @enum {string} */
+            readonly kind: "failed";
+            readonly message: string;
+        };
         /**
          * @description A chat's Runs as the reading Member may act on them, from Core's own records. Whether they may
          *     manage the chat or interrupt its current Run comes with every session read.

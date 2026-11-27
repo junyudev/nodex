@@ -63,6 +63,7 @@ impl RemoteAdmission for ProjectWorkspaceRead {
             | Self::InboxSummary { .. }
             | Self::InboxCounts { .. }
             | Self::InboxWindow { .. }
+            | Self::SessionFollowUps { .. }
             | Self::InboxChatTargets { .. }
             | Self::InboxMessageEdit { .. }
             | Self::SessionMemberActions { .. } => true,

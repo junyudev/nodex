@@ -73,7 +73,7 @@ export const makeInboxSkills = Effect.gen(function* () {
     action: InboxDispatchAction | InboxSkillTarget,
     instanceId: string | undefined,
   ): Effect.Effect<SkillDestination | null> => {
-    if (action.type === "send_to_chat")
+    if (action.type === "send_to_chat" || action.type === "fork_chat")
       return Effect.suspend(() => runtime.skillDestinationForSession(action.sessionId)).pipe(
         Effect.catch(() => Effect.succeed(null)),
       );
@@ -117,13 +117,19 @@ export const makeInboxSkills = Effect.gen(function* () {
       context.scope.kind === "project"
         ? [context.scope.project_id]
         : [...context.projects.map((project) => project.project_id), null];
+    const sessionIds = new Set(
+      context.entries.flatMap(({ source }) =>
+        source.kind === "agent" && source.session_id ? [source.session_id] : [],
+      ),
+    );
+    for (const session of context.sessions) sessionIds.add(session.session_id);
     const choices = [
       ...projects
         .slice(0, 4)
         .map((projectId) => ({ projectId, instanceId: null, sessionId: null })),
-      ...context.sessions
+      ...[...sessionIds]
         .slice(0, 4)
-        .map((session) => ({ projectId: null, instanceId: null, sessionId: session.session_id })),
+        .map((sessionId) => ({ projectId: null, instanceId: null, sessionId })),
       ...projects.flatMap((projectId) =>
         otherInstances.map((instanceId) => ({ projectId, instanceId, sessionId: null })),
       ),
