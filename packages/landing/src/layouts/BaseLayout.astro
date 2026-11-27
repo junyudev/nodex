@@ -37,7 +37,8 @@ const {
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const card = SOCIAL_CARDS[socialCard];
 const preview = image ?? {
-  url: new URL(card.file, Astro.site).href,
+  // The card's content hash makes a re-recorded card a new URL, which link previews fetch again.
+  url: new URL(`${card.file}?v=${__SOCIAL_CARD_VERSIONS__[card.file]}`, Astro.site).href,
   width: SOCIAL_CARD_VIEWPORT.width * SOCIAL_CARD_SCALE,
   height: SOCIAL_CARD_VIEWPORT.height * SOCIAL_CARD_SCALE,
   alt: imageAlt ?? card.alt,

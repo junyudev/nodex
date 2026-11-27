@@ -343,8 +343,11 @@ People see a card in a feed at about 500px wide, not at its 1200×630 design siz
   change, not with each release. Anything a card shows follows the demos' rule and must have shipped.
 
 After changing a card or the replica it shows, record it again with `vp run capture:landing --og`,
-compare the result at 500px wide, and commit the images. Platforms cache previews, so a replaced
-image can take days to reach a link that was already shared.
+compare the result at 500px wide, and commit the images. Each page names its card with a hash of
+the image's bytes (`og.png?v=…`), so a card recorded again is a new image URL and a platform that
+reads the page again fetches it rather than an image it cached. A platform still keeps the preview
+of a link it already read for a while, about a week on X; a link with a query of its own, such as
+`https://nodex.jyu.app/?utm_source=x`, is read afresh at once.
 
 Release CTA contract:
 

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -333,8 +334,10 @@ test("every public page shares a complete preview, declaring its image's real si
     const tag = (name: string) =>
       page.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.getAttribute("content");
     const card = SOCIAL_CARDS[id];
-    const image = `https://nodex.jyu.app/${card.file}`;
     const png = readFileSync(join(outputDir, card.file));
+    // The URL carries the image's own hash, so a recorded-again card is one previews fetch again.
+    const version = createHash("sha256").update(png).digest("hex").slice(0, 12);
+    const image = `https://nodex.jyu.app/${card.file}?v=${version}`;
 
     expect(tag("og:site_name"), route).toBe("Nodex");
     expect(tag("og:url"), route).toBe(
