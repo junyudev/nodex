@@ -35,9 +35,6 @@
   <img src=".github/assets/readme/aerial-zh-light.avif" alt="鸟瞰视图里三个正在工作的对话：Claude Code 带着 Codex、Antigravity 和 OpenCode 子智能体，Codex 请 Claude 审查后收到结果，Antigravity 的 Codex 子智能体又把截图交给 DeepSeek，每条连线都是对应服务商的颜色" width="100%">
 </picture>
 
-编程智能体已经很会干活了。活儿以外的部分还得你自己来：把想法整理成 prompt、给每件事挑模型、
-记住哪个对话在做哪件事、再把结果归档。**Nodex 负责的就是这部分**，而且所有数据都留在你的电脑上。
-
 ### 谁都能带队，谁都能帮忙
 
 1. **用最适合这件事的智能体开一个对话**：Claude Code、Codex、Antigravity、DeepSeek，或者另外 40 多个。

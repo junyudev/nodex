@@ -35,10 +35,6 @@
   <img src=".github/assets/readme/aerial-light.avif" alt="Aerial view of three chats at work: a Claude Code lead with Codex, Antigravity and OpenCode subagents, a Codex lead whose Claude reviewer reports back, and an Antigravity lead whose Codex subagent hands its screenshots to DeepSeek, each line in its harness's color" width="100%">
 </picture>
 
-Coding agents are good at the work. The part around it is still yours: turning ideas into prompts,
-picking a model for each, tracking which chat owns what, and filing the results. **Nodex does that
-part**, and everything stays on your computer.
-
 ### Any agent can lead. Any agent can help.
 
 1. **Start a chat with whichever agent suits the job:** Claude Code, Codex, Antigravity, DeepSeek
