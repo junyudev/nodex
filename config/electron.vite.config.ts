@@ -1,3 +1,4 @@
+import { createVisualGuestAssetsPlugin } from "./visual-guest-assets";
 import { resolve } from "path";
 import { defineConfig, type UserConfig } from "electron-vite";
 import type { BuildEnvironmentOptions, Plugin, Rollup } from "vite";
@@ -127,13 +128,14 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
           resolveNodexAccountBuildConfiguration(process.env),
         ),
       },
-      plugins: createSentryPlugins(),
+      plugins: [createVisualGuestAssetsPlugin(repositoryRoot), ...createSentryPlugins()],
       build: {
         ...buildOptimization,
         rollupOptions: {
           input: {
             bootstrap: resolve(repositoryRoot, "src/main/bootstrap.ts"),
             "main-process": resolve(repositoryRoot, "src/main/main-process.ts"),
+            "visual-worker": resolve(repositoryRoot, "src/main/visual-worker/entry.ts"),
             serve: resolve(repositoryRoot, "src/host/serve-entry.ts"),
             "chat-search-worker": resolve(repositoryRoot, "src/main/chat-search-worker/entry.ts"),
             "file-index-worker": resolve(repositoryRoot, "src/main/file-index-worker/entry.ts"),

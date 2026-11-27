@@ -4,6 +4,7 @@
     "tsBuildInfoFile": "../.cache/typescript/tooling.tsbuildinfo"
   },
   "include": [
+    "../src/main/guests/visual-assets.d.ts",
     "./**/*.ts",
     "./**/*.mts",
     "./**/*.cts",

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { PreloadConfigFactory } from "electron-vite";
-import { build, type ConfigEnv, type Rollup } from "vite";
+import { build, normalizePath, type ConfigEnv, type Rollup } from "vite";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vite-plus/test";
 import electronConfig from "./electron.vite.config";
 
@@ -163,28 +163,37 @@ contextBridge.exposeInMainWorld("${name}", runtimeNames);
   },
 );
 
-test("keeps renderer name and preload helpers inside the lightweight bootstrap boundary", async () => {
+test("keeps late Visual compilation outside the lightweight bootstrap boundary", async () => {
   const renderer = (await electronConfig({ command: "build", mode: "production" })).renderer;
   if (!renderer?.build) throw new Error("Expected a renderer build");
   await writeFile(
     join(fixtureDirectory, "index.html"),
     '<script type="module" src="/renderer.js"></script>',
   );
+  const visualSource = normalizePath(
+    join(import.meta.dirname, "../src/renderer/features/visual/visual-source.ts"),
+  );
+  await writeFile(join(fixtureDirectory, "state.js"), "export const startup = { started: false };");
   await writeFile(
     join(fixtureDirectory, "renderer.js"),
-    `const openFeature = () => import("./feature.js");
+    `import { startup } from "./state.js";
+startup.started = true;
+const openFeature = () => import("./feature.js");
 globalThis.startRenderer = openFeature;
 `,
   );
   await writeFile(
     join(fixtureDirectory, "feature.js"),
-    `export const initializeFeature = () => initializeFeature.name;
+    `import { startup } from "./state.js";
+import { inspectVisualSource } from ${JSON.stringify(visualSource)};
+export const initializeFeature = (source) => startup.started && inspectVisualSource(source);
 `,
   );
   const result = await build({
     configFile: false,
     root: fixtureDirectory,
     logLevel: "silent",
+    worker: renderer.worker,
     build: {
       ...renderer.build,
       write: false,

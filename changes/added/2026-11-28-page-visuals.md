@@ -1,0 +1,1 @@
+Charts and diagrams live in Pages as Visuals. Nodex draws them from real data and checks them before writing, and you can hover a data point for its value, comment on it, edit the data or a label in place, and move a figure's controls. Visuals render offline, fit the width of the Page, and look right in light and dark.
