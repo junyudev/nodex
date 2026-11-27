@@ -40,10 +40,12 @@ function testModule(
     state = "passed",
     result = "passed",
     imports = [] as string[],
+    sharedImports = {} as Record<string, readonly string[]>,
     resolveId = (request: string, importer: string) =>
       path.resolve(path.dirname(importer), request),
   } = {},
 ): TestModule {
+  const moduleImports = { [path.join(root, file)]: imports, ...sharedImports };
   return {
     relativeModuleId: file,
     moduleId: path.join(root, file),
@@ -60,11 +62,12 @@ function testModule(
       moduleGraph: {
         getModulesByFile: () => [],
         getModuleById: (id: string) =>
-          id === path.join(root, file)
-            ? { importedModules: imports.map((edge) => ({ id: edge, url: edge })) }
+          Object.hasOwn(moduleImports, id)
+            ? { id, importedModules: moduleImports[id].map((edge) => ({ id: edge, url: edge })) }
             : undefined,
       },
       pluginContainer: {
+        getModuleInfo: () => undefined,
         resolveId: (request: string, importer: string) =>
           Promise.resolve({ id: resolveId(request, importer) }),
       },
@@ -434,6 +437,37 @@ describe("test result cache", () => {
       "/repo/eager.ts",
       "/repo/style.css",
     ]);
+  });
+
+  it("keeps shared stylesheet edges only when the implementation may have loaded", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "nodex-cache-mocked-styles-"));
+    const test = "card.test.ts";
+    const component = "card.ts";
+    const stylesheet = "card.css";
+    const componentId = path.join(root, component);
+    const files = {
+      [test]: 'import "./card.ts";',
+      [component]: 'import "./card.css";',
+      [stylesheet]: "body { color: red; }",
+    };
+    try {
+      await writeInputs(root, files);
+      const cold = testModule(root, test);
+      const warm = testModule(root, test, {
+        sharedImports: { [componentId]: [path.join(root, stylesheet)] },
+      });
+      const read = dependencyReader(root, new Set(Object.keys(files)));
+      const recorded = [componentId];
+      const mocked = await read(warm, recorded, [componentId]);
+      expect(mocked).toEqual(await read(cold, recorded, [componentId]));
+      expect(mocked.deps).toEqual([test, component].sort());
+      expect(mocked.local?.probes[component]).toBe("file");
+      const loaded = await read(warm, recorded, []);
+      expect(loaded.deps).toContain(stylesheet);
+      expect(await read(warm, recorded)).toEqual(loaded);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("recognizes only the locked Oxc virtual helper", () => {
