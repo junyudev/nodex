@@ -1938,6 +1938,8 @@ export function WorkbenchRuntime({
   );
   const shellCanNavigateBack = workbenchWindow.canNavigateBack;
   const shellCanNavigateForward = workbenchWindow.canNavigateForward;
+  /** Back always leaves Settings, even when it was the window's first destination. */
+  const windowCanNavigateBack = shellCanNavigateBack || settingsPath !== null;
   const isMacPlatform =
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
   const applicationMenuBarEnabled =
@@ -1991,13 +1993,14 @@ export function WorkbenchRuntime({
     sidebarLogicalCollapsed,
     sidebarMotion: realSidebarMotion,
     sidebarOpen,
+    settingsSidebarWidth: settingsPath === null ? null : sidebarWidth,
   });
   useEffect(() => {
     onNavigationStateChange?.({
-      canNavigateBack: shellCanNavigateBack,
+      canNavigateBack: windowCanNavigateBack,
       canNavigateForward: shellCanNavigateForward,
     });
-  }, [onNavigationStateChange, shellCanNavigateBack, shellCanNavigateForward]);
+  }, [onNavigationStateChange, windowCanNavigateBack, shellCanNavigateForward]);
 
   const [previousPendingWorktreeId, setPreviousPendingWorktreeId] = useState(
     pendingWorktreeClientThreadId,
@@ -3706,6 +3709,14 @@ export function WorkbenchRuntime({
     resizeRightPanel,
     resizeBottomPanel,
   } = chromeCommands;
+  // Back from Settings closes it like Escape, so its return hooks run and history steps back.
+  const navigateWindowHistory = (direction: "back" | "forward") => {
+    if (direction === "back" && settingsPath !== null) {
+      closeSettings();
+      return;
+    }
+    executeShellNavigation(direction);
+  };
   const activeSessionRightPanel = activeSessionPanelModel?.rightPanel ?? null;
   /** Shows the Chat in place of the content panel, keeping full view and every content tab. */
   const presentSessionConversationInFullView = () => {
@@ -4384,9 +4395,7 @@ export function WorkbenchRuntime({
   };
 
   const commandPort: WorkbenchCommandPort = (() => ({
-    navigate: (direction) => {
-      executeShellNavigation(direction);
-    },
+    navigate: navigateWindowHistory,
     toggleSidebar: () => {
       toggleSidebarCollapsed();
     },
@@ -4491,8 +4500,8 @@ export function WorkbenchRuntime({
           commandTitleMessage({ id: backCommand.id, title: backCommand.label }),
         )}
         shortcutLabel={backShortcutLabel}
-        disabled={!shellCanNavigateBack}
-        onClick={() => void executeShellNavigation("back")}
+        disabled={!windowCanNavigateBack}
+        onClick={() => navigateWindowHistory("back")}
       >
         <BackIcon className="icon-xs" />
       </WindowNavigationToolbarButton>
@@ -4502,7 +4511,7 @@ export function WorkbenchRuntime({
         )}
         shortcutLabel={forwardShortcutLabel}
         disabled={!shellCanNavigateForward}
-        onClick={() => void executeShellNavigation("forward")}
+        onClick={() => navigateWindowHistory("forward")}
       >
         <BackIcon className="icon-xs -scale-x-100" />
       </WindowNavigationToolbarButton>
@@ -5041,8 +5050,16 @@ export function WorkbenchRuntime({
     applicationMenuBarEnabled,
     workspaceHeaderVisible,
   );
+  // Settings keeps the history controls where the docked sidebar's row ends; Back leaves it.
+  const settingsHeaderActions = applicationMenuBarEnabled ? null : (
+    <HeaderAction actionId="workbench-window-history" slotPosition="left" align="end" order={105}>
+      <div className="flex items-center gap-1.5" data-testid="workbench-window-navigation-chrome">
+        {windowHistoryButtons}
+      </div>
+    </HeaderAction>
+  );
   const appShellHeaderActions = settingsPath
-    ? null
+    ? settingsHeaderActions
     : pendingWorktreeRouteShell
       ? null
       : destinationRouteShell || librarySceneOwner
@@ -5068,7 +5085,7 @@ export function WorkbenchRuntime({
       }
       activeSession={activeSession}
       recentPageSessions={recentPageSessions}
-      canNavigateBack={shellCanNavigateBack}
+      canNavigateBack={windowCanNavigateBack}
       canNavigateForward={shellCanNavigateForward}
       canOpenSessionInNewWindow={Boolean(onOpenProjectSessionInNewWindow)}
       commandKeymapState={commandKeymapState}
@@ -5089,7 +5106,7 @@ export function WorkbenchRuntime({
       }}
       sidebarCommands={sidebarController}
       setOpen={setCommandPaletteOpen}
-      executeNavigation={executeShellNavigation}
+      executeNavigation={navigateWindowHistory}
       executeWorkbenchCommand={executeWorkbenchCommand}
       toggleSidebar={toggleSidebarCollapsed}
       toggleSidePanel={toggleActiveSidePanel}
@@ -6782,7 +6799,9 @@ export function WorkbenchRuntime({
                         minWidth={headerLeftShellSlotMinWidth}
                         fallbackWidth={headerLeftFallbackWidth}
                         fallbackRailWidth={headerLeftFallbackRailWidth}
-                        dense={sidebarLogicalCollapsed && !applicationMenuBarEnabled}
+                        dense={
+                          sidebarLogicalCollapsed && !applicationMenuBarEnabled && !settingsPath
+                        }
                         onMeasuredWidthChange={setHeaderLeftWidth}
                         onMeasuredRailWidthChange={setHeaderLeftRailWidth}
                       />

@@ -69,7 +69,11 @@ describe("WorkbenchWindowState", () => {
       expect(getWorkbenchPrimaryDestination(settings.location)).toBe("home");
       expect(getWorkbenchSceneReturnLocation(settings.location)).toEqual({ kind: "inbox" });
       expect(settings.homeLocation).toEqual(home.location);
-      expect(closeWorkbenchRoute(settings).location).toEqual(home.location);
+      const closed = closeWorkbenchRoute(settings);
+      expect(closed.location).toEqual(home.location);
+      // Leaving for the Scene it opened over steps back: Back never reopens Settings; Forward does.
+      expect(closed.history.backStack).toEqual(home.history.backStack);
+      expect(navigateForwardInWorkbenchWindow(closed).location).toEqual(settings.location);
       const back = navigateBackInWorkbenchWindow(settings);
       expect(back.location).toEqual(home.location);
       expect(navigateForwardInWorkbenchWindow(back).location).toEqual(settings.location);

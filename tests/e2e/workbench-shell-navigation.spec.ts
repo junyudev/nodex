@@ -866,10 +866,43 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
 
           await openWorkbenchSettings(page);
           await expect(page.getByRole("link", { name: "General", exact: true })).toBeVisible();
+          const titlebarHistory = page
+            .locator("[data-workbench-titlebar]")
+            .getByTestId("workbench-window-navigation-chrome");
+          claim(
+            "Settings keeps Back and Forward at the end of its sidebar's titlebar row",
+            { backEnabled: true, historyEndInset: 10 },
+            await page.evaluate(() => {
+              const group = document.querySelector(
+                '[data-workbench-titlebar] [data-testid="workbench-window-navigation-chrome"]',
+              );
+              const sidebar = document.querySelector('[data-testid="settings-route-shell"] aside');
+              const buttons = Array.from(group?.querySelectorAll("button") ?? []);
+              const forward = buttons.at(-1);
+              if (!sidebar || !forward || buttons.length !== 2) {
+                throw new Error("Settings titlebar history is missing");
+              }
+              return {
+                backEnabled: !buttons[0]!.disabled,
+                historyEndInset: Math.round(
+                  sidebar.getBoundingClientRect().right - forward.getBoundingClientRect().right,
+                ),
+              };
+            }),
+          );
+          await titlebarHistory.getByRole("button", { name: "Back", exact: true }).click();
+          await expectSpacePage();
+          claim(
+            "Back in Settings returns to the existing Space content",
+            [PAGE_TITLE],
+            await readTabLabels(page),
+          );
+          await titlebarHistory.getByRole("button", { name: "Forward", exact: true }).click();
+          await expect(page.getByTestId("settings-route-shell")).toBeVisible();
           await closeWorkbenchSettings(page);
           await expectSpacePage();
           claim(
-            "Settings returns to the existing Space content",
+            "Forward reopens Settings, and Escape returns to the same Space content",
             [PAGE_TITLE],
             await readTabLabels(page),
           );
