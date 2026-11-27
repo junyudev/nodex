@@ -59,6 +59,7 @@ describe("block children policy", () => {
         "image",
         "callout",
         "prompt",
+        "pending",
         "page",
         "database",
         "canvas",

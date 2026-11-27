@@ -163,6 +163,7 @@ export interface RendererTransport {
     projectId: string,
     callback: (event: DatabaseChangeEvent) => void,
   ) => () => void;
+  subscribeMembersChanged?: (callback: (spaceId: string) => void) => () => void;
   subscribeLibraryChanges?: (
     callback: (event: import("../../shared/library-events").LibraryNavigationChangedEvent) => void,
   ) => () => void;

@@ -42,7 +42,7 @@ describe("editorCodeBlockOptions", () => {
       ({ name }) => name,
     );
 
-    expect(names).toHaveLength(88);
+    expect(names).toHaveLength(89);
     expect(names.at(0)).toBe("ABAP");
     expect(names.at(-1)).toBe("YAML");
     expect(names).toContain("Rocq");

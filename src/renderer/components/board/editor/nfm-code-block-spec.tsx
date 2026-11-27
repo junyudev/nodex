@@ -1,3 +1,11 @@
+import { lazy, Suspense, useState } from "react";
+import { useBlockReferenceHostRuntime } from "../../block-documents/block-reference-runtime-context";
+
+const VisualBlockArea = lazy(() =>
+  import("@/features/visual/visual-block-area").then((module) => ({
+    default: module.VisualBlockArea,
+  })),
+);
 import {
   createCodeBlockConfig,
   createCodeBlockSpec,
@@ -30,6 +38,8 @@ interface NfmCodeBlockSurfaceProps {
   readonly code: string;
   readonly mermaidMode: MermaidCodePreviewMode;
   readonly readOnlyCode?: string;
+  /** Replaces the block's source; absent where the block cannot be edited. */
+  readonly onWriteCode?: (next: string) => void;
 }
 
 function NfmCodeBlockSurface({
@@ -40,10 +50,14 @@ function NfmCodeBlockSurface({
   code,
   mermaidMode,
   readOnlyCode,
+  onWriteCode,
 }: NfmCodeBlockSurfaceProps) {
   const { resolved: theme } = useTheme();
+  const host = useBlockReferenceHostRuntime();
+  const [visualSourceShown, setVisualSourceShown] = useState(false);
+  const isVisual = language === "visual";
   const isMermaid = language === "mermaid";
-  const showCode = !isMermaid || mermaidMode !== "preview";
+  const showCode = (!isMermaid || mermaidMode !== "preview") && (!isVisual || visualSourceShown);
   const showPreview = isMermaid && mermaidMode !== "code";
 
   return (
@@ -53,11 +67,16 @@ function NfmCodeBlockSurface({
       data-language={language}
       data-wrapped={String(wrapped)}
       data-mermaid-preview-mode={isMermaid ? mermaidMode : undefined}
-      className="relative m-0 w-full overflow-hidden rounded-[10px] bg-[var(--code-block-bg)] py-6 text-[var(--foreground)]"
+      className={cn(
+        "relative m-0 w-full overflow-hidden rounded-[10px] text-[var(--foreground)]",
+        // A Visual reads as a figure on the Page; it wears the code surface only with its source.
+        (!isVisual || visualSourceShown) && "bg-[var(--code-block-bg)] py-6",
+      )}
     >
+      {/* A Visual shows its own controls; the code tools return with its source. */}
       <div
         contentEditable={false}
-        data-nfm-code-block-action-anchor
+        data-nfm-code-block-action-anchor={!isVisual || visualSourceShown ? "" : undefined}
         className="pointer-events-none absolute top-1 right-1 z-[2]"
       >
         {readOnlyCode === undefined ? null : (
@@ -85,6 +104,25 @@ function NfmCodeBlockSurface({
           />
         </pre>
       </div>
+      {isVisual ? (
+        <Suspense>
+          <VisualBlockArea
+            blockId={blockId}
+            source={code}
+            appearance={theme}
+            page={
+              host?.hostPageId
+                ? { pageId: host.hostPageId, routingContext: host.contentRoutingContext }
+                : null
+            }
+            snapshotKey={JSON.stringify([host?.documentSurfaceId, host?.hostPageId, blockId])}
+            editable={onWriteCode !== undefined && readOnlyCode === undefined}
+            sourceShown={visualSourceShown}
+            onToggleSource={() => setVisualSourceShown((shown) => !shown)}
+            onWriteSource={(next) => onWriteCode?.(next)}
+          />
+        </Suspense>
+      ) : null}
       {showPreview ? (
         <MermaidCodePreview
           source={code}
@@ -123,12 +161,15 @@ export const createNfmCodeBlockSpec = createReactBlockSpec(
     },
     parse: parsePreCode,
     parseContent: (options) => parsePreCodeContent(options, "codeBlock"),
-    render: ({ block, contentRef }) => {
+    render: ({ block, contentRef, editor }) => {
       const props = {
         blockId: block.id,
         language: block.props.language,
         contentRef,
         code: getCodeBlockPlainText(block),
+        ...(editor.isEditable
+          ? { onWriteCode: (next: string) => editor.updateBlock(block.id, { content: next }) }
+          : {}),
       };
       if (options.presentation === "readonly") {
         return (

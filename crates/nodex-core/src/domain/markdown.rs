@@ -105,6 +105,7 @@ fn assign_identity(
         block_type.as_str(),
         "image"
             | "divider"
+            | "pending"
             | "page"
             | "database"
             | "canvas"

@@ -43,6 +43,7 @@ const skillFiles = [
   "references/project-database-views.md",
   "references/queries-and-configuration.md",
   "references/troubleshooting.md",
+  "references/visuals.md",
 ] as const;
 
 const writeAgentSkills = (resources: string): { manifestSha256: string; treeSha256: string } => {

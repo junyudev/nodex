@@ -259,6 +259,32 @@ pub(crate) fn workspace(
     }
     let context = bind(c, context)?;
     if let W::CreateAgentRuntimeSession {
+        session_id,
+        project_id,
+        launch_request_id,
+        initial_page_ids,
+        decision_run,
+        pending_historical_run_id,
+        ..
+    } = intent
+        && let Some(member_id) = crate::library::discussions::asks::launch_requester(
+            c,
+            &context,
+            session_id,
+            project_id.as_deref(),
+            launch_request_id,
+            initial_page_ids,
+        )?
+    {
+        if decision_run.is_some() || pending_historical_run_id.is_some() {
+            return Err(denied());
+        }
+        return Ok(BoundModuleContext {
+            actor: Actor::Member { member_id },
+            ..context
+        });
+    }
+    if let W::CreateAgentRuntimeSession {
         decision_run: Some(_),
         session_id,
         ..

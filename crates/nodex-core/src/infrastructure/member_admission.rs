@@ -1,9 +1,7 @@
 //! Recheck remote authority inside the writer transaction, after queueing and
 //! before replay or canonical writes. Revocation and mutation are serialized.
 use super::sqlite::{StoreError, StoreErrorCode};
-use nodex_core_contracts::{
-    AdapterKind, BoundModuleContext, CoreErrorRecovery, library::MemberRole,
-};
+use nodex_core_contracts::{AdapterKind, BoundModuleContext, CoreErrorRecovery};
 use rusqlite::{Connection, params};
 pub(crate) fn require_current(
     connection: &Connection,
@@ -26,11 +24,7 @@ pub(crate) fn require_principal(
     if p.space_id != library {
         return Err(denied());
     }
-    let role = if p.role == MemberRole::Owner {
-        "owner"
-    } else {
-        "member"
-    };
+    let role = crate::library::membership::role_name(p.role);
     let present:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM member_sessions s JOIN member_devices d ON d.id=s.device_id JOIN members m ON m.id=d.member_id AND m.library_id=d.library_id WHERE s.id=?1 AND s.expires_at>unixepoch() AND d.id=?2 AND d.member_id=?3 AND d.library_id=?4 AND d.revoked_at IS NULL AND m.lifecycle='active' AND m.role=?5)",params![p.session_id,p.device_id,p.member_id,p.space_id,role],|r|r.get(0))?;
     if !present {
         // Writer admission cannot prove withdrawal to a Desktop. Renew the Device
@@ -86,4 +80,33 @@ pub(crate) fn admit_operation(
 ) -> Result<(), StoreError> {
     require_current(connection, context)?;
     require_operation_owner(connection, context, module, operation)
+}
+
+pub(crate) fn is_commenter(
+    connection: &Connection,
+    context: &BoundModuleContext,
+) -> Result<bool, StoreError> {
+    let member = context
+        .actor
+        .member_id()
+        .or(context.authorizing_member_id.as_deref());
+    Ok(connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM members WHERE id=?1 AND library_id=?2 AND role='commenter')",
+        params![member, context.library_id.0],
+        |row| row.get(0),
+    )?)
+}
+
+pub(crate) fn require_edit_authority(
+    connection: &Connection,
+    context: &BoundModuleContext,
+) -> Result<(), StoreError> {
+    if is_commenter(connection, context)? {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Commenters can participate in Discussions and offer Suggested edits",
+            false,
+        ));
+    }
+    Ok(())
 }

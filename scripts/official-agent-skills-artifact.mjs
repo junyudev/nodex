@@ -14,6 +14,7 @@ export const OFFICIAL_AGENT_SKILL_FILES = Object.freeze([
   "references/project-database-views.md",
   "references/queries-and-configuration.md",
   "references/troubleshooting.md",
+  "references/visuals.md",
 ]);
 
 export const OFFICIAL_AGENT_SKILLS_ARTIFACT_FILES = Object.freeze([

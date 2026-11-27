@@ -1,8 +1,8 @@
-use super::RemoteAdmission;
+use super::{RemoteAccess, RemoteAdmission};
 use crate::automation::{AutomationIntent, AutomationRead};
 
 impl RemoteAdmission for AutomationRead {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
             Self::DueWork { .. }
             | Self::AutomationDecisions { .. }
@@ -16,22 +16,22 @@ impl RemoteAdmission for AutomationRead {
             | Self::Inbox { .. }
             | Self::Occurrences { .. }
             | Self::ReminderLeases { .. }
-            | Self::ReminderSnoozes { .. } => true,
+            | Self::ReminderSnoozes { .. } => RemoteAccess::Participant,
             Self::AutomationExecutionAdmission { .. }
             | Self::AgentAutomations { .. }
-            | Self::AgentAutomation { .. } => false,
+            | Self::AgentAutomation { .. } => RemoteAccess::Denied,
         }
     }
 }
 
 impl RemoteAdmission for AutomationIntent {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
             Self::CreateAutomation { .. }
             | Self::SetAutomationStatus { .. }
             | Self::UpdateAutomation { .. }
             | Self::DeleteAutomation { .. }
-            | Self::DispatchNow { .. } => true,
+            | Self::DispatchNow { .. } => RemoteAccess::Member,
             Self::AgentCommand { .. }
             | Self::RescheduleAutomation { .. }
             | Self::ClaimDue { .. }
@@ -56,7 +56,7 @@ impl RemoteAdmission for AutomationIntent {
             | Self::FailReminderLease { .. }
             | Self::CompletePageOccurrence { .. }
             | Self::SkipPageOccurrence { .. }
-            | Self::UpdatePageOccurrence { .. } => false,
+            | Self::UpdatePageOccurrence { .. } => RemoteAccess::Denied,
         }
     }
 }

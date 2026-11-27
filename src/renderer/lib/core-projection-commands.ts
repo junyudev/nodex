@@ -201,7 +201,16 @@ const defineLibraryOperation = (kind: LibraryOperationKind): LibraryOperationCom
     protocol: { kind: "pending_operation" },
   });
 
+export const pageDiscussionCommand = defineLocalCommitRendererCommand({
+  key: "library.discussion",
+  channel: "library-module:apply",
+  authority: "core",
+  owner: "PageDiscussions",
+  protocol: { kind: "pending_operation" },
+});
+
 const libraryCommands = {
+  discussion: pageDiscussionCommand,
   apply_file_change: defineLibraryOperation("apply_file_change"),
   put_page_file_entry: defineLibraryOperation("put_page_file_entry"),
   apply_page_file_entries: defineLibraryOperation("apply_page_file_entries"),

@@ -15,6 +15,7 @@
     "types": ["node"]
   },
   "include": [
+    "../src/main/guests/visual-assets.d.ts",
     "../tests/**/*.ts",
     "../tests/**/*.tsx",
     "../tests/**/*.mts",

@@ -1,10 +1,12 @@
-use super::RemoteAdmission;
+use super::{RemoteAccess, RemoteAdmission};
 use crate::library::{LibraryIntent, LibraryRead};
 
 impl RemoteAdmission for LibraryRead {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
-            Self::Metadata { .. }
+            Self::Discussions { .. }
+            | Self::Discussion { .. }
+            | Self::Metadata { .. }
             | Self::LocalMember { .. }
             | Self::Members { .. }
             | Self::Files { .. }
@@ -37,26 +39,32 @@ impl RemoteAdmission for LibraryRead {
             | Self::PageBacklinks { .. }
             | Self::PageHistory { .. }
             | Self::StructuralHistoryStates { .. }
-            | Self::BlockTransferPresentationPlan { .. } => true,
-            Self::PreparePageOperation { .. }
+            | Self::BlockTransferPresentationPlan { .. } => RemoteAccess::Participant,
+            Self::DiscussionAskContext { .. }
+            | Self::DiscussionBlockWriters { .. }
+            | Self::DiscussionInbox { .. }
+            | Self::QueuedDiscussionAsks { .. }
+            | Self::PreparePageOperation { .. }
             | Self::PageProjectionFile { .. }
             | Self::PageDraftProjection { .. }
             | Self::AcquireSearchSnapshot { .. }
             | Self::ReleaseSearchSnapshot { .. }
+            | Self::BlockPage { .. }
             | Self::AgentBlockTarget { .. }
             | Self::AgentSurfaceDescription { .. }
             | Self::AuthorizeAgentSearch { .. }
             | Self::AgentSearch { .. }
             | Self::PrepareAgentPageCopy { .. }
             | Self::PrepareAgentCreatePages { .. }
-            | Self::PrepareAgentMovePages { .. } => false,
+            | Self::PrepareAgentMovePages { .. } => RemoteAccess::Denied,
         }
     }
 }
 
 impl RemoteAdmission for LibraryIntent {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
+            Self::Discussion { .. } => RemoteAccess::Participant,
             Self::PutPageFileEntry { .. }
             | Self::ApplyPageFileEntries { .. }
             | Self::TransferPageFileEntry { .. }
@@ -85,12 +93,12 @@ impl RemoteAdmission for LibraryIntent {
             | Self::ReverseStructuralEdit { .. }
             | Self::TransferBlocks { .. }
             | Self::UndoBlockTransfer { .. }
-            | Self::UndoPageRelocation { .. } => true,
+            | Self::UndoPageRelocation { .. } => RemoteAccess::Member,
             Self::CloseEditorHistoryOwner { .. }
             | Self::MovePages { .. }
             | Self::ExecutePreparedAgentPageCopy { .. }
             | Self::ExecutePreparedAgentCreatePages { .. }
-            | Self::ExecutePreparedAgentMovePages { .. } => false,
+            | Self::ExecutePreparedAgentMovePages { .. } => RemoteAccess::Denied,
         }
     }
 }

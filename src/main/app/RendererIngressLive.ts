@@ -1,3 +1,4 @@
+import * as VisualIpc from "../ipc/handlers/VisualIpc";
 import * as PluginAppIpc from "../ipc/handlers/PluginAppIpc";
 import * as SpaceAdministrationIpc from "../space-connections/SpaceAdministrationIpc";
 import * as SourcesIpc from "../ipc/handlers/SourcesIpc";
@@ -202,6 +203,8 @@ export const live = Layer.mergeAll(
   PageSearchIpc.live({}),
   FilesIpc.live,
   PageFileHtmlIpc.live,
+  VisualIpc.guestControls,
+  VisualIpc.sourceControls,
   ProjectWorkspaceIpc.live,
   InboxIpc.live,
   ProjectionDeliveryIpc.live,

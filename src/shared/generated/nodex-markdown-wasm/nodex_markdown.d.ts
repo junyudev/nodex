@@ -55,9 +55,9 @@ export function writeInline(inline_json: string): string;
 
 /**
  * Portable Markdown of Blocks, as JSON text `{"markdown": string, "exact": boolean}`.
- * `page_titles_json` maps Page ids to the titles that name mentions of them.
+ * `page_titles_json` names Page mentions. `block_projections_json` supplies portable Block replacements.
  */
-export function writePortable(blocks_json: string, line_breaks: string, page_titles_json: string): string;
+export function writePortable(blocks_json: string, line_breaks: string, page_titles_json: string, block_projections_json: string): string;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -73,7 +73,7 @@ export interface InitOutput {
     readonly write: (a: number, b: number) => [number, number, number, number];
     readonly writeAgentMessage: (a: number, b: number) => [number, number, number, number];
     readonly writeInline: (a: number, b: number) => [number, number, number, number];
-    readonly writePortable: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly writePortable: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

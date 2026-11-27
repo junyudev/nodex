@@ -9,7 +9,6 @@ import {
   nfmPromptStartsNewTurn,
   resolveNfmPromptSendAnchor,
   resolveNfmPromptSentPresentation,
-  turnCaretBlockIntoPrompt,
 } from "./nfm-prompt-block-model";
 
 describe("date mention inline content", () => {
@@ -174,19 +173,7 @@ describe("Prompt send anchor", () => {
   });
 });
 
-describe("Prompt turn and Nodex agent mention", () => {
-  test("turns the caret's block into a Prompt, keeping the block in place", () => {
-    const calls: unknown[][] = [];
-    turnCaretBlockIntoPrompt({
-      getTextCursorPosition: () => ({ block: { id: "b1" } }),
-      updateBlock: (...args: unknown[]) => {
-        calls.push(args);
-        return undefined;
-      },
-    });
-    expect(calls).toEqual([["b1", { type: "prompt" }]]);
-  });
-
+describe("Nodex agent mention", () => {
   test("offers Nodex for an empty query or a prefix of its name, and not for other text", () => {
     expect(matchesNodexAgentMention("")).toBe(true);
     expect(matchesNodexAgentMention("no")).toBe(true);

@@ -8,6 +8,7 @@
     reason = "`Self::Variant { .. }` keeps each decision independent of the variant's fields"
 )]
 
+use crate::library::MemberRole;
 use crate::{AdapterKind, BoundModuleContext, CoreError, CoreErrorCode, CoreErrorRecovery};
 
 mod administration;
@@ -24,7 +25,24 @@ mod tests;
 /// Decides whether a remote Member may invoke a command. Core's handlers still
 /// decide whose data an admitted command may touch.
 pub trait RemoteAdmission {
-    fn admits_remote_member(&self) -> bool;
+    fn remote_access(&self) -> RemoteAccess;
+}
+
+/// The remote roles permitted to invoke a command before its domain-specific checks.
+pub enum RemoteAccess {
+    Denied,
+    Member,
+    Participant,
+}
+
+impl RemoteAccess {
+    fn allows(self, role: MemberRole) -> bool {
+        match self {
+            Self::Denied => false,
+            Self::Member => matches!(role, MemberRole::Owner | MemberRole::Member),
+            Self::Participant => true,
+        }
+    }
 }
 
 pub fn authorize(
@@ -40,7 +58,7 @@ pub fn authorize(
     if principal.space_id != context.library_id.0 {
         return Err(denied());
     }
-    if !command.admits_remote_member() {
+    if !command.remote_access().allows(principal.role) {
         return Err(denied());
     }
     Ok(())

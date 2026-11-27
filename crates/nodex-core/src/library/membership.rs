@@ -54,18 +54,18 @@ fn secret() -> Result<String, StoreError> {
 fn hash(secret: &str) -> String {
     hex::encode(Sha256::digest(secret.as_bytes()))
 }
-fn role(value: &str) -> MemberRole {
-    if value == "owner" {
-        MemberRole::Owner
-    } else {
-        MemberRole::Member
+pub(crate) fn role(value: &str) -> MemberRole {
+    match value {
+        "owner" => MemberRole::Owner,
+        "commenter" => MemberRole::Commenter,
+        _ => MemberRole::Member,
     }
 }
-fn role_name(value: MemberRole) -> &'static str {
-    if value == MemberRole::Owner {
-        "owner"
-    } else {
-        "member"
+pub(crate) fn role_name(value: MemberRole) -> &'static str {
+    match value {
+        MemberRole::Owner => "owner",
+        MemberRole::Member => "member",
+        MemberRole::Commenter => "commenter",
     }
 }
 fn label(value: &str) -> Result<(), StoreError> {
@@ -152,7 +152,8 @@ fn bind_run_requester(
         return Ok(());
     };
     // An Automation's message speaks for its Owner's standing grant, whichever host dispatches it.
-    let member = match crate::automation::firing::message_requester(c, session, message)? {
+    let ask_requester = crate::library::discussions::asks::message_requester(c, session, message)?;
+    let member = match ask_requester.or(crate::automation::firing::message_requester(c, session, message)?) {
         Some(owner) => Some(owner),
         None => c.query_row("SELECT member_id FROM session_requesting_members WHERE session_id=?1 AND message_id=?2", params![session,message], |r| r.get(0)).optional()?,
     };
@@ -327,7 +328,7 @@ impl LibraryMembership {
         ))?;
         let at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let digest = hash(operation);
-        let _result = durable_mutation::run(
+        let _result = durable_mutation::run_membership(
             c,
             OperationIdentity {
                 module: ModuleName::StoreAdministration,

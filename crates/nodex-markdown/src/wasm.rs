@@ -110,12 +110,13 @@ pub fn write_agent_message(blocks_json: &str) -> Result<String, JsValue> {
 }
 
 /// Portable Markdown of Blocks, as JSON text `{"markdown": string, "exact": boolean}`.
-/// `page_titles_json` maps Page ids to the titles that name mentions of them.
+/// `page_titles_json` names Page mentions. `block_projections_json` supplies portable Block replacements.
 #[wasm_bindgen(js_name = writePortable)]
 pub fn write_portable(
     blocks_json: &str,
     line_breaks: &str,
     page_titles_json: &str,
+    block_projections_json: &str,
 ) -> Result<String, JsValue> {
     let titles: HashMap<String, String> = if page_titles_json.is_empty() {
         HashMap::new()
@@ -123,6 +124,16 @@ pub fn write_portable(
         serde_json::from_str(page_titles_json)
             .map_err(|error| JsValue::from_str(&error.to_string()))?
     };
+    let encoded: HashMap<String, serde_json::Value> = serde_json::from_str(block_projections_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let mut projections = HashMap::new();
+    for (id, value) in encoded {
+        projections.insert(
+            id,
+            crate::blocks_from_json(&value)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        );
+    }
     let page_title = |id: &str| titles.get(id).cloned();
     let options = PortableOptions {
         line_breaks: match line_breaks {
@@ -130,6 +141,7 @@ pub fn write_portable(
             _ => LineBreaks::Comment,
         },
         page_title: Some(&page_title),
+        block_projections: Some(&projections),
     };
     let portable = crate::write_portable(&blocks(blocks_json)?, &options);
     Ok(serde_json::json!({ "markdown": portable.markdown, "exact": portable.exact }).to_string())

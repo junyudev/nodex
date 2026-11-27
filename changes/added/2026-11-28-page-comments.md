@@ -1,0 +1,1 @@
+Comment on Pages. Select text and choose **Comment**, mention people with `@`, and reply, resolve or reopen in the margin. On narrow Pages, Discussions collapse to markers beside their lines. The Comments button in the Page toolbar lists every Discussion, including what waits for you and what Nodex is working on.

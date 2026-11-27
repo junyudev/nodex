@@ -1,4 +1,5 @@
 import { createSkillMentionInlineContentSpec } from "./skill-mention-chip";
+import { createPendingBlockSpec } from "./pending-block";
 import { skillBodyBlockTypes } from "../../../../shared/skill-document";
 import {
   BlockNoteSchema,
@@ -46,6 +47,7 @@ export const nfmSchema = BlockNoteSchema.create({
     image: imageBlockSpec(),
     callout: createCalloutBlock(),
     prompt: createPromptBlockSpec(),
+    pending: createPendingBlockSpec(),
     page: createPageBlockSpec(),
     database: createDatabaseBlockSpec(),
     canvas: createCanvasBlockSpec(),

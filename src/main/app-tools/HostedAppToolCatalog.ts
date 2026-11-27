@@ -1,3 +1,4 @@
+import { isDiscussionTool } from "../../shared/nodex-app-tools/discussion-schemas";
 import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
 import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { isContentTool } from "../../shared/nodex-app-tools/content-catalog";
@@ -7,6 +8,8 @@ import { sessionObservationSchemas } from "../../shared/nodex-app-tools/session-
 
 const commonNames = new Set([
   "load_workspace_dependencies",
+  "visual_check",
+  "visual_snapshot",
   "query_content",
   "describe_content_schema",
   "list_projects",
@@ -28,6 +31,7 @@ const commonNames = new Set([
 export const nativeAppToolCatalog = appToolCatalog.filter(
   (tool) =>
     commonNames.has(tool.name) ||
+    isDiscussionTool(tool.name) ||
     Object.hasOwn(sessionControlSchemas, tool.name) ||
     isContentTool(tool.name) ||
     Object.hasOwn(sidebarSchemas, tool.name) ||

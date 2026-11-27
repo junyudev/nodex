@@ -8,6 +8,7 @@ import {
   buildPageSearchUnavailableSuggestionItem,
   buildDateMentionSuggestionItems,
   buildNfmNodexAgentSuggestionItems,
+  buildNfmSlashMenuItems,
   buildNfmThreadMentionSuggestionItems,
   createNfmTypedSuggestionShouldOpen,
   createNfmTypedSuggestionControllerConfig,
@@ -211,6 +212,22 @@ function makeChatMatch(
 }
 
 describe("NfmSlashMenu", () => {
+  test("lists Ask Nodex first in the Agent group", () => {
+    const customItems = getNfmSlashMenuCustomItems(
+      {},
+      {
+        createCanvasAtEmptyParagraph: async () => ({ canvasBlockId: "canvas-1" }),
+        startMentionFlow: () => undefined,
+        openEmbedPagePicker: () => undefined,
+        openSubpageCreator: () => undefined,
+        openPageAsk: () => undefined,
+      },
+    );
+    // The menu silently drops an item that has no presentation entry.
+    const agent = buildNfmSlashMenuItems([], customItems).filter(({ group }) => group === "Agent");
+    expect(agent.map(({ title }) => title)).toEqual(["Ask Nodex", "Prompt", "Agent Config"]);
+  });
+
   test("turns the slash command into the normal visible @ mention flow", () => {
     const openSuggestionMenu = vi.fn();
 
@@ -467,15 +484,12 @@ describe("NfmSlashMenu", () => {
   });
 });
 
-test("offers Nodex in the @ menu, turning the caret's block into a Prompt", () => {
-  const updateBlock = vi.fn();
-  const editor = {
-    getTextCursorPosition: () => ({ block: { id: "block-1" } }),
-    updateBlock,
-  };
-  const [nodex] = buildNfmNodexAgentSuggestionItems(editor, "no");
+test("offers Nodex in the @ menu, opening the in-place Ask composer", () => {
+  const open = vi.fn();
+  const [nodex] = buildNfmNodexAgentSuggestionItems({ open }, "no");
   expect(nodex?.key).toBe("agent:nodex");
   nodex?.onItemClick();
-  expect(updateBlock).toHaveBeenCalledWith("block-1", { type: "prompt" });
-  expect(buildNfmNodexAgentSuggestionItems(editor, "landing")).toEqual([]);
+  expect(open).toHaveBeenCalledOnce();
+  expect(buildNfmNodexAgentSuggestionItems({ open }, "landing")).toEqual([]);
+  expect(buildNfmNodexAgentSuggestionItems(null, "no")).toEqual([]);
 });

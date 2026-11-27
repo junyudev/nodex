@@ -264,17 +264,6 @@ export function resolveNfmPromptSendAnchor(input: {
   return { placement: "below", left: 0, top: lastLine.bottom + NFM_PROMPT_SEND_GAP };
 }
 
-/** The Page editor surface a Prompt turns its caret block into. */
-interface PromptTurnEditor {
-  getTextCursorPosition: () => { block: { id: string } };
-  updateBlock: (blockId: string, update: { type: "prompt" }) => unknown;
-}
-
-/** Turns the block holding the caret into a Prompt, keeping its text and children. */
-export function turnCaretBlockIntoPrompt(editor: PromptTurnEditor): void {
-  editor.updateBlock(editor.getTextCursorPosition().block.id, { type: "prompt" });
-}
-
 export const NODEX_AGENT_MENTION_TITLE = "Nodex";
 
 /** `@` offers Nodex for an empty query or one that starts its name, so `@no` and `@age` find it. */

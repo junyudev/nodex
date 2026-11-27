@@ -1,3 +1,6 @@
+import { isDiscussionTool } from "../../shared/nodex-app-tools/discussion-schemas";
+import { make as makeDiscussionTools } from "./DiscussionAppTools";
+import { isVisualTool, makeVisualAppTools } from "./VisualAppTools";
 import { make as makeFollowThread } from "./FollowThreadAppTools";
 import { make as makeMessageHandback } from "./MessageHandbackAppTools";
 import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
@@ -54,7 +57,9 @@ export const make = Effect.gen(function* () {
   const git = yield* GitWorkerRuntime;
   const turns = yield* CodexTurnAuthority;
   const contentQueries = yield* makeContentQueries;
+  const discussionTools = yield* makeDiscussionTools;
   const contentTools = yield* makeContentTools;
+  const visualTools = yield* makeVisualAppTools((caller) => captureAppToolAuthority(caller, turns));
   const terminalTools = yield* makeTerminalTools;
   const accountTools = yield* makeAccountTools;
   const dependencyTools = yield* makeDependencyTools;
@@ -81,6 +86,8 @@ export const make = Effect.gen(function* () {
     if (native && !(yield* captureAppToolAuthority(input.caller, turns)))
       return failure("authority_unavailable");
     if (!appToolCatalog.some((tool) => tool.name === input.name)) return failure("unknown_tool");
+    if (isDiscussionTool(input.name)) return yield* discussionTools(input);
+    if (isVisualTool(input.name)) return yield* visualTools(input);
     if (input.name === "load_workspace_dependencies") return yield* dependencyTools(input);
     const isContentQuery =
       input.name === "query_content" || input.name === "describe_content_schema";

@@ -85,7 +85,11 @@ fn collect_blocks(blocks: &[Block], parts: &mut Vec<String>) {
             BlockKind::SyncedBlockRef { source } | BlockKind::TemplateRef { source, .. } => {
                 parts.push(source.clone())
             }
-            BlockKind::Divider | BlockKind::Page | BlockKind::Database | BlockKind::Canvas => {}
+            BlockKind::Pending { .. }
+            | BlockKind::Divider
+            | BlockKind::Page
+            | BlockKind::Database
+            | BlockKind::Canvas => {}
         }
         collect_blocks(&block.children, parts);
     }

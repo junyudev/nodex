@@ -63,6 +63,37 @@ fn provenance() -> AgentTurnProvenance {
 }
 
 #[test]
+fn commenters_can_participate_in_discussions_without_document_write_access() {
+    use crate::discussions::DiscussionCommand;
+    use crate::document::OwnedDocumentIntent;
+    use crate::library::LibraryIntent;
+
+    let context = remote(MemberRole::Commenter);
+    admitted(
+        &context,
+        &[LibraryRead::Discussion {
+            provenance: None,
+            discussion_id: "discussion".into(),
+        }],
+    );
+    admitted(
+        &context,
+        &[LibraryIntent::Discussion {
+            command: Box::new(DiscussionCommand::Resolve {
+                discussion_id: "discussion".into(),
+            }),
+            authorization: None,
+        }],
+    );
+    refused(
+        &context,
+        &[OwnedDocumentIntent::PrepareOwner {
+            owner_block_id: "page".into(),
+        }],
+    );
+}
+
+#[test]
 fn admission_requires_a_principal_for_the_bound_space_only_on_remote_adapters() {
     let command = Read::Thread {
         thread_id: "thread".into(),

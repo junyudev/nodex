@@ -27,6 +27,11 @@ pub fn parse_session_link(link: &str) -> Option<String> {
     parse_link(link, "sessions")
 }
 
+/// The Space Member a relative mention names.
+pub fn parse_member_link(link: &str) -> Option<String> {
+    parse_link(link, "members")
+}
+
 fn parse_link(link: &str, kind: &str) -> Option<String> {
     let rest = link
         .get(..8)?

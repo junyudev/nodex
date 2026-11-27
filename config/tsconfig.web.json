@@ -17,7 +17,8 @@
     "../src/renderer/**/*.d.ts",
     "../src/renderer/**/*.ts",
     "../src/renderer/**/*.tsx",
-    "../src/shared/**/*.ts"
+    "../src/shared/**/*.ts",
+    "../src/visual-guest/**/*.ts"
   ],
   "exclude": ["../src/shared/**/*.test.ts"]
 }

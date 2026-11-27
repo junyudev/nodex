@@ -1,3 +1,7 @@
+import { CoreClient } from "../../../src/main/core-client/core-client";
+import { enrollRemoteCore } from "../../../src/main/core-client/remote-http";
+import type { DiscussionCommand } from "../../../src/shared/discussions";
+import { PAGE_ASK_MESSAGE_PREFIX, pageAskConversationTitle } from "../../../src/shared/page-ask";
 import type { ProjectWorkspace } from "../../../src/main/project-application/ProjectWorkspace";
 import { seedDecisionRun } from "../seed/decision-run";
 import { agentAttributionLabel } from "../../../src/shared/agents/registry";
@@ -45,6 +49,7 @@ import type {
   ScenarioRelatedChatSeed,
   ScenarioRelatedChatSeedResult,
   ScenarioSeedPort,
+  ScenarioDiscussionSeedPort,
   ScenarioStandalonePageSeed,
 } from "../contracts";
 import { buildRecoveryDraftCapture } from "../seed/recovery-draft";
@@ -129,11 +134,121 @@ const linkScenarioThread = Effect.fnUntraced(function* (
 });
 
 export class CoreClientSeedAdapter implements ScenarioSeedPort {
+  readonly discussionSeed: ScenarioDiscussionSeedPort = this;
   readonly #runtime: RustDataAuthorityRuntime;
+  readonly #discussionMembers = new Map<string, CoreClient>();
   readonly #libraryIdsByProject = new Map<string, string>();
 
   constructor(runtime: RustDataAuthorityRuntime) {
     this.#runtime = runtime;
+  }
+
+  async enrollDiscussionMembers(ownerName: string, names: readonly string[]) {
+    const host = this.#runtime.launch.client;
+    const owner = await host.spaceRenameMember({ name: ownerName });
+    const listener = await host.listenSpace({ address: "127.0.0.1:0" });
+    const ids = [owner.id];
+    for (const name of names) {
+      const invite = await host.spaceInvite({ role: "member" });
+      const member = await enrollRemoteCore(listener, {
+        code: invite.code,
+        display_name: name,
+        device_label: `${name}'s fixture desktop`,
+      });
+      const client = await CoreClient.connectRemote({
+        ...listener,
+        buildId: "page-discussions-seed",
+        spaceId: member.space_id,
+        deviceCredential: member.device_credential,
+      });
+      this.#discussionMembers.set(member.member_id, client);
+      ids.push(member.member_id);
+    }
+    return ids;
+  }
+
+  async #writeDiscussion(command: DiscussionCommand, memberId?: string, agentAttribution?: string) {
+    const client = memberId ? this.#discussionMembers.get(memberId) : this.#runtime.rootClient;
+    if (!client) throw new Error(`Missing the scenario connection for Member ${memberId}`);
+    const committed = await client.libraryApply(
+      { operationId: createUuidV7(), intent: { kind: "discussion", command } },
+      { agentAttribution },
+    );
+    const result = committed.outcome.discussion;
+    if (!result) throw new Error(`Core omitted the ${command.kind} Discussion receipt`);
+    return result;
+  }
+
+  async createDiscussion(
+    ...[command, memberId]: Parameters<ScenarioDiscussionSeedPort["createDiscussion"]>
+  ) {
+    await this.#writeDiscussion(command, memberId);
+  }
+
+  async replyToDiscussion(discussionId: string, body: string, memberId: string) {
+    await this.#writeDiscussion({ kind: "reply", discussionId, comment: { body } }, memberId);
+  }
+
+  async seedAgentDiscussionReply(
+    input: Parameters<ScenarioDiscussionSeedPort["seedAgentDiscussionReply"]>[0],
+  ) {
+    const host = this.#runtime.rootClient;
+    const sessionId = createUuidV7();
+    const messageId = `${PAGE_ASK_MESSAGE_PREFIX}${createUuidV7()}`;
+    const reserved = await this.#writeDiscussion({
+      kind: "reserve_ask",
+      commentId: input.requestId,
+      messageId,
+      newSessionId: sessionId,
+    });
+    const request = reserved.kind === "comment" ? reserved.value : null;
+    const launchId = request?.ask?.dispatch?.launchId;
+    if (!request || !launchId) throw new Error("The scenario Ask did not reserve a new Session");
+    await host.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "create_agent_runtime_session",
+        session_id: sessionId,
+        project_id: input.projectId,
+        title: pageAskConversationTitle(request.body, "Ask from Page"),
+        initial_page_ids: [],
+        runtime_id: "scenario:page-discussions",
+        runtime_thread_id: createUuidV7(),
+        launch_request_id: launchId,
+      },
+    });
+    const runId = createUuidV7();
+    const run = {
+      session_id: sessionId,
+      run_id: runId,
+      driver: "codex",
+      label: agentAttributionLabel("codex"),
+    };
+    await host.recordAgentRun({ ...run, message_id: messageId });
+    const attribution = await host.issueAgentAttribution(run);
+    await this.#writeDiscussion(
+      { kind: "reply", discussionId: input.discussionId, comment: input.reply },
+      undefined,
+      attribution,
+    );
+    // Core settles to Answered or Needs you by inspecting the attributed reply.
+    await this.#writeDiscussion({
+      kind: "settle_ask",
+      commentId: input.requestId,
+      messageId,
+      runId,
+      state: "failed",
+      fallback: "",
+    });
+  }
+
+  async readDiscussion(projectId: string, discussionId: string) {
+    const read = await this.#runtime.clientForProject(projectId).libraryRead({
+      kind: "discussion",
+      discussion_id: discussionId,
+    });
+    if (read.value.kind !== "discussion") throw new Error(`Missing Discussion ${discussionId}`);
+    return read.value.value;
   }
 
   async assessAutomationCheck(sequence: number) {

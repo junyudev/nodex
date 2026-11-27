@@ -1,3 +1,5 @@
+import { makeWithCapture as makeDiscussions } from "../main/app-tools/DiscussionAppTools";
+import { makeVisualAppTools } from "../main/app-tools/VisualAppTools";
 import * as Effect from "effect/Effect";
 import { makeWithCapture as makeContent } from "../main/app-tools/ContentAppTools";
 import { makeWithCapture as makeQuery } from "../main/app-tools/ContentQueryAppTools";
@@ -17,6 +19,8 @@ import {
 
 export const hostContentToolGroups = [
   "content",
+  "discussions",
+  "visual",
   "query",
   "automations",
   "decisions",
@@ -34,7 +38,9 @@ export const hostContentToolCatalog = runtimeHostToolCatalog.filter(({ name }) =
 /** Shared semantic groups keep advertisement and execution on the same catalog. */
 export const make = Effect.gen(function* () {
   return {
+    visual: yield* makeVisualAppTools(captureHostedAppToolAuthority),
     content: yield* makeContent(captureHostedAppToolAuthority),
+    discussions: yield* makeDiscussions(captureHostedAppToolAuthority),
     query: yield* makeQuery(captureHostedAppToolAuthority),
     automations: yield* makeAutomations(captureHostedAppToolAuthority),
     decisions: yield* makeDecisions(captureHostedAppToolAuthority),

@@ -197,6 +197,7 @@ impl QueryContext<'_> {
         equalities: &BTreeMap<String, Value>,
     ) -> Result<Vec<Value>, StoreError> {
         match relation {
+            "discussions" | "comments" => self.discussion_rows(relation, equalities),
             "page_files" => self.page_files(equalities),
             "files" => self.files(equalities),
             "file_versions" | "file_usages" => self.file_details(relation, equalities),
@@ -207,6 +208,76 @@ impl QueryContext<'_> {
                 "Unknown Library query relation",
             )),
         }
+    }
+
+    fn discussion_rows(
+        &self,
+        relation: &str,
+        equalities: &BTreeMap<String, Value>,
+    ) -> Result<Vec<Value>, StoreError> {
+        let sql = if relation == "discussions" {
+            "SELECT p.block_id, json_object(
+                'id', d.id, 'page_id', d.page_id, 'status', CASE WHEN d.resolved_at IS NULL THEN 'open' ELSE 'resolved' END,
+                'anchor_kind', json_extract(d.anchor_json,'$.kind'),
+                'anchor_block_id', coalesce(json_extract(d.anchor_json,'$.blockId'),json_extract(d.anchor_json,'$.blockIds[0]')),
+                'anchor_state', d.anchor_state, 'quote', d.quote,
+                'created_by_member_id', coalesce(json_extract(d.created_by_json,'$.member_id'),json_extract(d.created_by_json,'$.on_behalf_of')),
+                'created_at', d.created_at, 'resolved_at', d.resolved_at, 'last_activity_at', d.last_activity_at,
+                'waiting_for_nodex', d.resolved_at IS NULL AND EXISTS (SELECT 1 FROM page_discussion_comments c
+                    WHERE c.discussion_id=d.id AND c.deleted_at IS NULL AND json_extract(c.ask_json,'$.state') IN ('queued','working')),
+                'question_for_member_id', CASE WHEN d.resolved_at IS NULL THEN (
+                    SELECT c.question_for FROM page_discussion_comments c WHERE c.discussion_id=d.id AND c.deleted_at IS NULL AND c.question_for IS NOT NULL
+                       AND NOT EXISTS (SELECT 1 FROM page_discussion_comments r WHERE r.discussion_id=d.id AND r.deleted_at IS NULL
+                         AND (r.created_at,r.id)>(c.created_at,c.id) AND json_extract(r.author_json,'$.member_id')=c.question_for)
+                     ORDER BY c.created_at DESC,c.id DESC LIMIT 1) END)
+             FROM page_discussions d JOIN pages p ON p.block_id=d.page_id JOIN blocks b ON b.id=p.block_id
+             WHERE p.library_id=?1 AND b.lifecycle='active' AND (?2 IS NULL OR p.block_id=?2)
+               AND (?3 IS NULL OR d.id=?3) AND (?4 IS NULL OR d.id=?4) LIMIT ?5"
+        } else {
+            "SELECT p.block_id, json_object(
+                'id', c.id, 'discussion_id', d.id, 'page_id', d.page_id,
+                'author_member_id', coalesce(json_extract(c.author_json,'$.member_id'),json_extract(c.author_json,'$.on_behalf_of')),
+                'author_is_agent', json_extract(c.author_json,'$.type')='agent',
+                'body', c.body, 'to_nodex', c.ask_json IS NOT NULL,
+                'ask_kind', json_extract(c.ask_json,'$.kind'), 'ask_state', json_extract(c.ask_json,'$.state'),
+                'verdict_result', json_extract(c.verdict_json,'$.result'),
+                'suggested_edit_state', json_extract(c.suggested_edit_json,'$.state'),
+                'created_at', c.created_at, 'edited_at', c.edited_at, 'deleted', c.deleted_at IS NOT NULL)
+             FROM page_discussion_comments c JOIN page_discussions d ON d.id=c.discussion_id
+             JOIN pages p ON p.block_id=d.page_id JOIN blocks b ON b.id=p.block_id
+             WHERE p.library_id=?1 AND b.lifecycle='active' AND (?2 IS NULL OR p.block_id=?2)
+               AND (?3 IS NULL OR c.id=?3) AND (?4 IS NULL OR d.id=?4) LIMIT ?5"
+        };
+        let mut rows = QueryRows::default();
+        let mut statement = self.connection.prepare(sql)?;
+        let mut source = statement.query(params![
+            self.library_id,
+            text_filter(equalities, "page_id"),
+            text_filter(equalities, "id"),
+            text_filter(equalities, "discussion_id"),
+            (MAX_ROWS + 1) as i64,
+        ])?;
+        let mut visibility = BTreeMap::new();
+        while let Some(row) = source.next()? {
+            let page: String = row.get(0)?;
+            let visible = match visibility.get(&page) {
+                Some(value) => *value,
+                None => {
+                    let value = self.page_visible(&page)?;
+                    visibility.insert(page, value);
+                    value
+                }
+            };
+            if visible {
+                let encoded: String = row.get(1)?;
+                rows.push(
+                    serde_json::from_str(&encoded).map_err(|_| {
+                        error(StoreErrorCode::StoreCorrupt, "Invalid Discussion row")
+                    })?,
+                )?;
+            }
+        }
+        Ok(rows.items)
     }
 
     fn project_id(&self) -> Option<&str> {

@@ -981,6 +981,7 @@ describe("RemoteSpaceProjection", () => {
           const inboxChanges: unknown[] = [];
           const notifier = DatabaseNotifierRuntime.of({
             notifyDatabaseChanged: () => Effect.void,
+            notifyMembersChanged: () => Effect.void,
             notifyLibraryNavigationChanged: () => Effect.void,
             notifyProjectsChanged: () =>
               Effect.die("Automation changes must not refresh Project metadata"),
@@ -992,6 +993,7 @@ describe("RemoteSpaceProjection", () => {
             projectSessionInvalidations: Stream.empty,
             inboxInvalidations: Stream.empty,
             workInvalidations: Stream.empty,
+            discussionAskInvalidations: Stream.empty,
             projectInvalidations: Stream.empty,
           });
           const context = yield* Layer.build(
@@ -1040,6 +1042,7 @@ describe("RemoteSpaceProjection", () => {
         const inboxChanges: unknown[] = [];
         const notifier = DatabaseNotifierRuntime.of({
           notifyDatabaseChanged: () => Effect.void,
+          notifyMembersChanged: () => Effect.void,
           notifyLibraryNavigationChanged: () => Effect.void,
           notifyProjectsChanged: () =>
             Effect.sync(() => {
@@ -1056,6 +1059,7 @@ describe("RemoteSpaceProjection", () => {
           projectSessionInvalidations: Stream.empty,
           inboxInvalidations: Stream.empty,
           workInvalidations: Stream.empty,
+          discussionAskInvalidations: Stream.empty,
           projectInvalidations: Stream.empty,
         });
         const context = yield* Layer.build(
@@ -1108,12 +1112,17 @@ describe("RemoteSpaceProjection", () => {
     ),
   );
 
-  it.effect("a Space rename on the host rereads the name a connected desktop shows", () =>
+  it.effect("projects the host’s Space name and Member directory changes independently", () =>
     Effect.scoped(
       Effect.gen(function* () {
         let rereads = 0;
+        const memberDirectoryChanges: string[] = [];
         const quiet = DatabaseNotifierRuntime.of({
           notifyDatabaseChanged: () => Effect.void,
+          notifyMembersChanged: (spaceId) =>
+            Effect.sync(() => {
+              memberDirectoryChanges.push(spaceId);
+            }),
           notifyLibraryNavigationChanged: () => Effect.void,
           notifyProjectsChanged: () => Effect.void,
           notifyProjectSessionInvalidation: () => Effect.void,
@@ -1121,6 +1130,7 @@ describe("RemoteSpaceProjection", () => {
           projectSessionInvalidations: Stream.empty,
           inboxInvalidations: Stream.empty,
           workInvalidations: Stream.empty,
+          discussionAskInvalidations: Stream.empty,
           projectInvalidations: Stream.empty,
         });
         const context = yield* Layer.build(
@@ -1131,7 +1141,13 @@ describe("RemoteSpaceProjection", () => {
           ).pipe(Layer.provide(Layer.succeed(DatabaseNotifierRuntime, quiet))),
         );
         const projection = Context.get(context, CoreApplicationProjectionRuntime);
-        for (const operation of ["create_backup", "rename_space"]) {
+        for (const operation of [
+          "create_backup",
+          "rename_space",
+          "enroll_device",
+          "rename_member",
+          "remove_member",
+        ]) {
           const packet = createCoreLocalCommitFixture({
             commitSeq: 10,
             storeEpoch: "epoch:test",
@@ -1150,6 +1166,7 @@ describe("RemoteSpaceProjection", () => {
         }
         yield* Effect.yieldNow;
         assert.strictEqual(rereads, 1);
+        assert.deepEqual(memberDirectoryChanges, ["team", "team", "team"]);
       }),
     ),
   );

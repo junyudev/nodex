@@ -42,6 +42,7 @@ export type CoreApplicationInvalidation =
       readonly kind: "store-administration";
       readonly value: CoreStoreAdministrationInvalidation;
     }
+  | { readonly kind: "space-members" }
   | { readonly kind: "automation"; readonly value: CoreAutomationInvalidation }
   | { readonly kind: "database"; readonly value: DatabaseChangeEvent }
   | { readonly kind: "library-navigation"; readonly value: LibraryNavigationChangedEvent }
@@ -169,6 +170,7 @@ export const projectCoreLibraryEvent = (
     storeEpoch: envelope.packet.manifest.identity.store_epoch,
     commitSeq: envelope.packet.manifest.identity.commit_seq,
     changeKind: "content",
+    ...(payload.event.kind === "discussion_ask_queued" ? { discussionAskQueued: true } : {}),
     affectedParentKeys: payload.event.parent_keys,
     affectedPageIds: payload.event.page_ids,
     affectedDatabaseIds: payload.event.database_ids.map(parseDatabaseId),
@@ -201,7 +203,16 @@ export const projectCoreApplicationEvent = (
   libraryId: string,
 ): CoreApplicationInvalidation | null => {
   const storeAdministration = projectCoreStoreAdministrationEvent(atom);
-  if (storeAdministration) return { kind: "store-administration", value: storeAdministration };
+  if (storeAdministration) {
+    switch (storeAdministration.operation) {
+      case "enroll_device":
+      case "remove_member":
+      case "rename_member":
+        return { kind: "space-members" };
+      default:
+        return { kind: "store-administration", value: storeAdministration };
+    }
+  }
 
   const automation = projectCoreAutomationEvent(atom);
   if (automation) return { kind: "automation", value: automation };

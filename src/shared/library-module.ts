@@ -1,3 +1,9 @@
+import type {
+  DiscussionCommand,
+  DiscussionCommandResult,
+  DiscussionRead,
+  DiscussionReadValue,
+} from "./discussions";
 import type { Member } from "./work-graph";
 import type {
   LibraryFileRead,
@@ -203,6 +209,7 @@ export interface LibraryPageRelocationDestinationEntry {
 }
 
 export type LibraryRead =
+  | DiscussionRead
   | LibraryFileRead
   | { readonly mode: "metadata" }
   | { readonly mode: "members" }
@@ -304,6 +311,7 @@ export type LibraryCanvasTarget =
   | { readonly status: "available"; readonly summary: LibraryCanvasSummary };
 
 export type LibraryReadValue =
+  | DiscussionReadValue
   | LibraryFileReadValue
   | { readonly kind: "metadata" }
   | { readonly kind: "members"; readonly items: readonly Member[] }
@@ -734,6 +742,7 @@ export interface ReverseLibraryStructuralEditOperation {
 }
 
 export type LibraryApplyOperation =
+  | { readonly kind: "discussion"; readonly command: DiscussionCommand }
   | LibraryFileOperation
   | CreateLibraryPageOperation
   | CreateLibraryPageMentionOperation
@@ -799,6 +808,7 @@ export interface LibraryModuleApplyReceipt {
   readonly createdTarget: LibraryResourceTarget | null;
   readonly canvasMutation: LibraryCanvasMutationResult | null;
   readonly structuralEdit: LibraryStructuralEditResult | null;
+  readonly discussion?: DiscussionCommandResult;
   readonly fileMutation?: LibraryFileMutationResult;
   readonly pageFileEntries?: readonly LibraryPageFileEntryReceipt[];
   readonly pageRelocation?: {

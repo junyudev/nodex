@@ -11,6 +11,8 @@ import { PageFileQueryCacheSync } from "./page-file-query-cache";
 import { useDevelopmentFeature } from "./development-features-context";
 import { subscribeComposerSkillInvalidation } from "./skill-inventory-adapter";
 import { queryKeys } from "./query-keys";
+import { DocumentMemberPresenceProvider } from "./document-member-presence";
+import { followMemberDirectory } from "./members-runtime";
 import { acquirePluginManagementSubscription } from "./plugin-management-cache";
 import { subscribeLinkFaviconSettings } from "./link-favicon-settings";
 
@@ -65,12 +67,13 @@ export function NodexQueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => createNodexQueryClient());
   useEffect(() => subscribeLinkFaviconSettings(queryClient), [queryClient]);
   const queryDevtoolsEnabled = useDevelopmentFeature("query-devtools");
+  useEffect(() => followMemberDirectory(queryClient), [queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
       <ProjectionInvalidationProvider>
         <PageFileQueryCacheBridge queryClient={queryClient} />
-        {children}
+        <DocumentMemberPresenceProvider>{children}</DocumentMemberPresenceProvider>
       </ProjectionInvalidationProvider>
       <CodexHostCatalogQuerySync queryClient={queryClient} />
       {import.meta.env.DEV && queryDevtoolsEnabled ? (

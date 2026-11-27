@@ -1,12 +1,15 @@
-use super::RemoteAdmission;
+use super::{RemoteAccess, RemoteAdmission};
 use crate::inbox::{InboxConfirmedBy, ProjectWorkspaceInboxSource};
 use crate::sources::{SourceCommand, SourceRead};
 use crate::workspace::{ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead};
 
 impl RemoteAdmission for ProjectWorkspaceRead {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
-            Self::InboxSnoozeNotifications { for_push, .. } => !*for_push,
+            Self::InboxSnoozeNotifications { for_push, .. } if !for_push => {
+                RemoteAccess::Participant
+            }
+            Self::InboxSnoozeNotifications { .. } => RemoteAccess::Denied,
             Self::Sources { read, .. } => match read {
                 SourceRead::Sources { .. }
                 | SourceRead::Positions { .. }
@@ -16,10 +19,10 @@ impl RemoteAdmission for ProjectWorkspaceRead {
                 | SourceRead::KnownPullRequests { .. }
                 | SourceRead::PageFollows { .. }
                 | SourceRead::GitHubThreadLinks { .. }
-                | SourceRead::Deliveries { .. } => true,
+                | SourceRead::Deliveries { .. } => RemoteAccess::Participant,
                 SourceRead::EventAutomationWatching { .. }
                 | SourceRead::ChannelOutbox { .. }
-                | SourceRead::DeliveryBatches { .. } => false,
+                | SourceRead::DeliveryBatches { .. } => RemoteAccess::Denied,
             },
             Self::InboxRoutingConsent { .. }
             | Self::InboxTurnNotifications { .. }
@@ -65,9 +68,9 @@ impl RemoteAdmission for ProjectWorkspaceRead {
             | Self::InboxWindow { .. }
             | Self::InboxChatTargets { .. }
             | Self::InboxMessageEdit { .. }
-            | Self::SessionMemberActions { .. } => true,
+            | Self::SessionMemberActions { .. } => RemoteAccess::Participant,
             // A Member's Dock counts their own unread chats in the Space.
-            Self::UnreadChatCount { .. } => true,
+            Self::UnreadChatCount { .. } => RemoteAccess::Participant,
             Self::AutomationAssessments { .. }
             | Self::HeldSessionWindow { .. }
             | Self::SessionExecutionObserver { .. }
@@ -106,25 +109,25 @@ impl RemoteAdmission for ProjectWorkspaceRead {
             | Self::InboxSuggestionRequests { .. }
             | Self::InboxPendingSuggestionRequestIds { .. }
             | Self::InboxPendingSuggestions { .. }
-            | Self::InboxDispatchOutbox { .. } => false,
+            | Self::InboxDispatchOutbox { .. } => RemoteAccess::Denied,
         }
     }
 }
 
 impl RemoteAdmission for ProjectWorkspaceIntent {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
             // Ingress additionally requires the exact live execution-owner message proof.
             Self::RecordChatDelivery { author, .. } => match author {
-                ProjectWorkspaceInboxSource::User { .. } => true,
+                ProjectWorkspaceInboxSource::User { .. } => RemoteAccess::Member,
                 ProjectWorkspaceInboxSource::Github { .. }
                 | ProjectWorkspaceInboxSource::Nodex { .. }
                 | ProjectWorkspaceInboxSource::Agent { .. }
                 | ProjectWorkspaceInboxSource::CommandLine { .. }
-                | ProjectWorkspaceInboxSource::Automation { .. } => false,
+                | ProjectWorkspaceInboxSource::Automation { .. } => RemoteAccess::Denied,
             },
             Self::Source { command, .. } => match command {
-                SourceCommand::RetryProblem { .. } | SourceCommand::ReplyToOrigin { .. } => true,
+                SourceCommand::RetryProblem { .. } | SourceCommand::ReplyToOrigin { .. } => RemoteAccess::Member,
                 SourceCommand::ClaimChannelSend { .. }
                 | SourceCommand::SettleChannelSend { .. }
                 | SourceCommand::RecordThreadDeliveryFailure { .. }
@@ -137,16 +140,18 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
                 | SourceCommand::ClaimSourcePartition { .. }
                 | SourceCommand::IngestSourceBatch { .. }
                 | SourceCommand::RecordSourceFailure { .. }
-                | SourceCommand::RecordSourceSuccess { .. } => false,
+                | SourceCommand::RecordSourceSuccess { .. } => RemoteAccess::Denied,
             },
-            Self::ClaimInboxSnoozeNotification { for_push, .. } => !*for_push,
+            Self::ClaimInboxSnoozeNotification { for_push, .. } if !for_push => RemoteAccess::Member,
+            Self::ClaimInboxSnoozeNotification { .. } => RemoteAccess::Denied,
             Self::ConfirmInboxDispatch { confirmed_by, .. } => match confirmed_by {
-                InboxConfirmedBy::User { .. } => true,
-                InboxConfirmedBy::Nodex { .. } => false,
+                InboxConfirmedBy::User { .. } => RemoteAccess::Member,
+                InboxConfirmedBy::Nodex { .. } => RemoteAccess::Denied,
             },
             // Core ingress additionally requires the exact live Host launch proof: a phone's new chat,
             // or a Member's fork or side chat through the Space host.
-            Self::CreateAgentRuntimeSession { decision_run, .. } => decision_run.is_none(),
+            Self::CreateAgentRuntimeSession { decision_run: None, .. } => RemoteAccess::Member,
+            Self::CreateAgentRuntimeSession { decision_run: Some(_), .. } => RemoteAccess::Denied,
             // Accepted messages additionally require their exact live execution-owner delivery proof;
             // renaming and archiving require the chat's owner or a Space Owner. Unread state,
             // pins, snoozes, settlement and a chat coming back to them are the requesting Member's own.
@@ -157,7 +162,7 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
                 | ProjectSessionIntent::RecordAttention { .. }
                 | ProjectSessionIntent::RecordUserMessage { .. }
                 | ProjectSessionIntent::SetArchived { .. }
-                | ProjectSessionIntent::Rename { .. } => true,
+                | ProjectSessionIntent::Rename { .. } => RemoteAccess::Member,
                 ProjectSessionIntent::RecordOpened { .. }
                 | ProjectSessionIntent::ConsumeSnooze { .. }
                 | ProjectSessionIntent::CompleteSnoozeDelivery { .. }
@@ -168,16 +173,16 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
                 | ProjectSessionIntent::UnlinkThread { .. }
                 | ProjectSessionIntent::LinkPage { .. }
                 | ProjectSessionIntent::HandOffPage { .. }
-                | ProjectSessionIntent::UnlinkPage { .. } => false,
+                | ProjectSessionIntent::UnlinkPage { .. } => RemoteAccess::Denied,
             },
             // Only the Member's own side chat, through its exact live Host delete call.
-            Self::DeleteSession { .. } => true,
+            Self::DeleteSession { .. } => RemoteAccess::Member,
             // Core's writer lets a remote Member place only their own pins.
-            Self::MoveSession { .. } | Self::PlaceSession { .. } => true,
+            Self::MoveSession { .. } | Self::PlaceSession { .. } => RemoteAccess::Member,
             // A Member opens a default draft of their own; Core keeps each Member's draft theirs.
-            Self::EnsureDefaultDraftSession { .. } => true,
+            Self::EnsureDefaultDraftSession { .. } => RemoteAccess::Member,
             // A Member finishes only their own idle chats.
-            Self::SettleIdleSessions { .. } | Self::SetSessionsSettled { .. } => true,
+            Self::SettleIdleSessions { .. } | Self::SetSessionsSettled { .. } => RemoteAccess::Member,
             Self::SetInboxRoutingConsent { .. }
             | Self::ClaimTurnNotification { .. }
             | Self::ReplyToPageTurn { .. }
@@ -201,7 +206,7 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
             | Self::SetInboxEntryImportant { .. }
             | Self::EditInboxMessage { .. }
             | Self::UndoInboxDecision { .. }
-            | Self::ReviseInboxMessage { .. } => true,
+            | Self::ReviseInboxMessage { .. } => RemoteAccess::Member,
             // Agent-authored context and Host interruption delivery never become Member commands.
             Self::AnswerInboxQuestion { .. }
             // Only the Host records that it could not prepare a requested start.
@@ -290,7 +295,7 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
             | Self::CompleteInboxDispatch { .. }
             | Self::FailInboxDispatch { .. }
             | Self::HoldAutomationDecision { .. }
-            | Self::RefreshAutomationDecision { .. } => false,
+            | Self::RefreshAutomationDecision { .. } => RemoteAccess::Denied,
         }
     }
 }

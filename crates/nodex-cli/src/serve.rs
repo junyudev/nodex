@@ -557,7 +557,7 @@ fn status(home: &Path) -> Result<HostStatus, CliError> {
     serde_json::from_value(descriptor).map_err(unavailable)
 }
 
-fn host_launch() -> Result<(PathBuf, PathBuf), CliError> {
+pub(crate) fn host_launch() -> Result<(PathBuf, PathBuf), CliError> {
     if env::var("NODE_ENV").as_deref() == Ok("test")
         && let (Some(binary), Some(entry)) = (
             env::var_os("NODEX_TEST_HOST_ELECTRON"),

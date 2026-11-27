@@ -102,9 +102,9 @@ const readCatalog = (value: unknown): readonly CodeLanguage[] => {
     ids.add(language.id);
     labels.add(language.label);
   }
-  if (languages.length !== 88) {
+  if (languages.length !== 89) {
     throw new CodeLanguageCatalogError(
-      `Code language catalog must contain exactly 88 entries; received ${languages.length}`,
+      `Code language catalog must contain exactly 89 entries; received ${languages.length}`,
     );
   }
   if (!ids.has("text")) {

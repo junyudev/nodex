@@ -34,6 +34,7 @@ import * as MemberMessages from "./MemberMessages";
 import * as ChatAttachments from "./ChatAttachments";
 import * as WorkDispatch from "./work-application/WorkDispatchRuntime";
 import { live as notificationIntents } from "./NotificationIntents";
+import * as PageAskDispatcher from "./PageAskDispatcher";
 import * as WorkScheduler from "./work-application/WorkScheduler";
 
 /** One Space's shared producers. Acquisition and rollback belong to the embedding process Scope. */
@@ -105,6 +106,7 @@ const workers = Layer.mergeAll(
   WorkScheduler.live,
   Holds.live,
   WorkDispatch.live,
+  PageAskDispatcher.live,
 );
 
 /** The embedding Scope supplies application and tool capabilities before starting producers. */

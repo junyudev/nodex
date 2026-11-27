@@ -10,10 +10,12 @@ name = "nodex"
 path = "src/main.rs"
 
 [dependencies]
+base64.workspace = true
 nodex-platform.workspace = true
 nodex-profile.workspace = true
 nodex-core-contracts.workspace = true
 nodex-core-protocol.workspace = true
+nodex-markdown.workspace = true
 clap.workspace = true
 fs2.workspace = true
 chrono.workspace = true

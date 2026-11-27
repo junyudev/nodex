@@ -20,7 +20,13 @@ export const rendererViteResolve = {
 
 /** Keep the worker and its back-importing lazy chunks at canonical ESM URLs. */
 export const rendererViteOptimizeDeps = {
-  exclude: ["@pierre/diffs/worker/worker.js"],
+  exclude: [
+    "@pierre/diffs/worker/worker.js",
+    "oxc-parser",
+    "oxc-transform",
+    "@oxc-parser/binding-wasm32-wasip1",
+    "@oxc-transform/binding-wasm32-wasip1",
+  ],
 };
 
 /** Workers ship as ES modules so their own dynamic imports (such as the highlighter) split normally. */

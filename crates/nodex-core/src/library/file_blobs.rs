@@ -116,6 +116,8 @@ impl LibraryModule {
         writer
             .call(move |connection| {
                 with_immediate_transaction(connection, |transaction| {
+                    let context = crate::infrastructure::actors::bind(transaction, &context)?;
+                    crate::infrastructure::member_admission::require_edit_authority(transaction, &context)?;
                     let store_epoch = crate::document::read_store_epoch(transaction)?;
                     if store_epoch != expected_store_epoch {
                         return Err(StoreError::new(

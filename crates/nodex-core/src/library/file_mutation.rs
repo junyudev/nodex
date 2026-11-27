@@ -261,6 +261,7 @@ pub(super) fn apply(
                     agent_page_copy: None,
                     agent_create_pages: None,
                     agent_move_pages: None,
+                    discussion: None,
                     change_payload: None,
                     committed_at: now.clone(),
                 },

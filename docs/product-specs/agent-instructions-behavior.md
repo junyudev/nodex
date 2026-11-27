@@ -21,6 +21,13 @@ chats that have Nodex tools. Chat context covers runtime details, the Nodex CLI 
 decision-run or managed-chat role. It depends on the chat, so Nodex describes it rather than
 showing a fixed text.
 
+A Page Ask adds request-specific context for its Discussion. Nodex guides the
+Agent to reply there, cite evidence for a Check, and use Suggested edits for
+changes outside its pending block or the requester's previous Ask output.
+A Commenter's Agent suggests every Page change. The bundled Nodex Skill
+describes how to reply and replace a pending block.
+See [Ask Nodex from a Page](page-ask-behavior.md).
+
 ## Your instructions
 
 Your instructions are a Profile setting, so they apply to every chat, Automation and delegated

@@ -25,6 +25,7 @@ const WRAPPED_TYPES: &[&str] = &[
     "image",
     "callout",
     "prompt",
+    "pending",
     "database",
     "pageRef",
     "databaseViewRef",

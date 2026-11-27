@@ -58,6 +58,13 @@ describe("resolveNodexToolActivity", () => {
     expect(callable.filter((name) => !NODEX_TOOL_ACTIVITY_TOOLS.includes(name))).toEqual([]);
   });
 
+  test("reports a stale Suggested edit from an accept receipt", () => {
+    const result = { data: { kind: "comment", value: { suggestedEdit: { state: "stale" } } } };
+    expect(label(call("discussions_accept", { commentId: PAGE_ID }, result))).toBe(
+      "Suggested edit became stale",
+    );
+  });
+
   test("never leaves an identity or a raw tool name in a sentence", () => {
     const identities = [PAGE_ID, PARENT_ID, SESSION_ID];
     const argumentsWithIdentities = {
@@ -122,6 +129,24 @@ describe("resolveNodexToolActivity", () => {
     );
 
     expect(label(read)).toBe("Read “Launch plan”");
+  });
+
+  test("drops inline markup from a title but keeps a comparison", () => {
+    const read = call(
+      "fetch",
+      { id: PAGE_ID },
+      {
+        data: {
+          resource: {
+            id: PAGE_ID,
+            type: "page",
+            title: { markdown: "Launch <b>plan</b> < 2 weeks" },
+          },
+        },
+      },
+    );
+
+    expect(label(read)).toBe("Read “Launch plan < 2 weeks”");
   });
 
   test("reads a non-Page resource as what it is", () => {

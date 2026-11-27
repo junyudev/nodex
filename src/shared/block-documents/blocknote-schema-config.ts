@@ -1,8 +1,16 @@
 import {
+  createExtension,
   defaultProps,
   type CustomBlockConfig,
   type CustomInlineContentConfig,
 } from "@blocknote/core";
+import { CommentMark } from "@blocknote/core/comments";
+
+export const documentCommentMark = createExtension({
+  key: "documentCommentMark",
+  tiptapExtensions: [CommentMark],
+});
+
 export const mathBlockConfig = {
   type: "mathBlock",
   propSchema: {},
@@ -32,6 +40,12 @@ export const promptBlockConfig = {
     sentMessageId: { default: "" },
   },
   content: "inline",
+} as const satisfies CustomBlockConfig;
+
+export const pendingBlockConfig = {
+  type: "pending",
+  propSchema: { intent: { default: "" }, discussion: { default: "" } },
+  content: "none",
 } as const satisfies CustomBlockConfig;
 
 export const pageRefBlockConfig = {
@@ -152,6 +166,7 @@ export const pageMentionInlineContentConfig = {
 export const blockDocumentCustomBlockConfigs = {
   callout: calloutBlockConfig,
   prompt: promptBlockConfig,
+  pending: pendingBlockConfig,
   page: pageBlockConfig,
   database: databaseBlockConfig,
   canvas: canvasBlockConfig,

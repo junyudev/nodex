@@ -538,6 +538,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 224,
         apply: migrate_v223_to_v224,
     },
+    MigrationStep {
+        from_revision: 224,
+        to_revision: 225,
+        apply: migrate_v224_to_v225,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2947,6 +2952,21 @@ fn migrate_v223_to_v224(
     Ok(())
 }
 
+fn migrate_v224_to_v225(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v224_to_v225.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"page_discussions":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v222_to_v223(
     connection: &Connection,
     context: &MigrationContext,
@@ -4493,6 +4513,10 @@ fn prepare_current_inbox_capture_columns(connection: &Connection) -> Result<(), 
     let mut current = Connection::open_in_memory()?;
     install_current_schema(&mut current)?;
     for name in [
+        "page_discussions",
+        "page_discussion_comments",
+        "page_discussion_anchor_blocks",
+        "page_run_block_changes",
         "inbox_routing_deliveries",
         "inbox_start_requests",
         "page_active_chats",
@@ -4536,7 +4560,11 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
         DROP TABLE inbox_note_saves;
         DROP TABLE inbox_answers;
         DROP TABLE problems;
-        DROP TABLE sources;",
+        DROP TABLE sources;
+        DROP TABLE page_run_block_changes;
+        DROP TABLE page_discussion_anchor_blocks;
+        DROP TABLE page_discussion_comments;
+        DROP TABLE page_discussions;",
     )?;
     finish_historical_actor_columns(connection)?;
     connection.execute_batch(
@@ -4568,7 +4596,30 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_page_discussions_to_v224(connection: &Connection) -> Result<(), StoreError> {
+    let present: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='page_discussions')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !present {
+        return Ok(());
+    }
+    let foreign_keys: bool =
+        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    let legacy: bool =
+        connection.pragma_query_value(None, "legacy_alter_table", |row| row.get(0))?;
+    connection.pragma_update(None, "foreign_keys", false)?;
+    let result =
+        connection.execute_batch(include_str!("../../tests/fixtures/rewind-v225-to-v224.sql"));
+    connection.pragma_update(None, "legacy_alter_table", legacy)?;
+    connection.pragma_update(None, "foreign_keys", foreign_keys)?;
+    Ok(result?)
+}
+
+#[cfg(test)]
 pub(crate) fn rewind_inbox_start_to_v223(connection: &Connection) -> Result<(), StoreError> {
+    rewind_page_discussions_to_v224(connection)?;
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v224-to-v223.sql"))?;
     Ok(())
 }
@@ -4661,6 +4712,7 @@ fn rewind_agent_identity_to_v215(connection: &Connection) -> Result<(), StoreErr
 
 #[cfg(test)]
 pub(crate) fn rewind_page_search_to_v212(connection: &Connection) -> Result<(), StoreError> {
+    rewind_page_discussions_to_v224(connection)?;
     let thread_schema: String = connection.query_row(
         "SELECT sql FROM sqlite_schema WHERE name='codex_threads'",
         [],
@@ -9585,7 +9637,52 @@ mod tests {
     }
 
     #[test]
-    fn inbox_start_migration_upgrades_v223_in_one_step() {
+    fn discussion_migration_upgrades_published_v224_store() {
+        let profile = tempdir().expect("Profile");
+        let mut connection = open_writer(&profile.path().join("nodex.db")).expect("Store");
+        prepare_profile_store(&mut connection, profile.path()).expect("prepare fresh Store");
+        rewind_page_discussions_to_v224(&connection).expect("rewind Discussions schema");
+        connection.pragma_update(None, "user_version", 224).unwrap();
+        validate_schema_identity(&connection, 224).expect("published v224 Store");
+        const NOW: &str = "2026-11-27T00:00:00.000Z";
+        connection
+            .execute("INSERT INTO profiles VALUES ('profile',?1,?1)", [NOW])
+            .expect("existing Profile");
+        connection
+            .execute(
+                "INSERT INTO libraries(id,profile_id,created_at,updated_at)
+                 VALUES ('library','profile',?1,?1)",
+                [NOW],
+            )
+            .expect("existing Space");
+        let owner = |connection: &Connection| {
+            connection
+                .query_row(
+                    "SELECT member_id FROM local_profile_members WHERE library_id='library'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("existing Space Owner")
+        };
+        let existing = owner(&connection);
+
+        let prepared =
+            prepare_profile_store(&mut connection, profile.path()).expect("upgrade Store");
+        assert_eq!(prepared.migrated_from_version, Some(224));
+        assert_eq!(prepared.schema_version, CURRENT_STORE_REVISION);
+        assert_eq!(owner(&connection), existing);
+        let history = connection
+            .query_row(
+                "SELECT source_revision, target_revision, evidence_json FROM core_store_migration_history",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)),
+            )
+            .unwrap();
+        assert_eq!(history, (224, 225, r#"{"page_discussions":true}"#.into()));
+    }
+
+    #[test]
+    fn inbox_start_migration_upgrades_published_v223_store() {
         let profile = tempdir().expect("Profile");
         let mut connection = open_writer(&profile.path().join("nodex.db")).expect("Store");
         prepare_profile_store(&mut connection, profile.path()).expect("prepare fresh Store");
@@ -9596,8 +9693,8 @@ mod tests {
         let prepared =
             prepare_profile_store(&mut connection, profile.path()).expect("upgrade Capture schema");
         assert_eq!(prepared.migrated_from_version, Some(223));
-        assert_eq!(prepared.schema_version, 224);
-        validate_schema_identity(&connection, 224).expect("published v224 Store");
+        assert_eq!(prepared.schema_version, CURRENT_STORE_REVISION);
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).expect("current Store");
         let history = connection
             .prepare("SELECT source_revision, target_revision FROM core_store_migration_history")
             .unwrap()
@@ -9605,7 +9702,7 @@ mod tests {
             .unwrap()
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(history, [(223, 224)]);
+        assert_eq!(history, [(223, 224), (224, 225)]);
     }
 
     #[test]

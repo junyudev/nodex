@@ -769,6 +769,15 @@
       "formatterKind": null
     },
     {
+      "id": "visual",
+      "label": "Visual",
+      "aliases": ["visual"],
+      "extensions": [],
+      "searchTerms": ["chart", "diagram"],
+      "shikiLanguage": "jsx",
+      "formatterKind": null
+    },
+    {
       "id": "visual-basic",
       "label": "Visual Basic",
       "aliases": ["visual-basic", "visual basic"],

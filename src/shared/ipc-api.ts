@@ -1,4 +1,15 @@
 import type {
+  VisualAppearance,
+  VisualCaptureResult,
+  VisualGrant,
+  VisualPageContext,
+  VisualPreviewInput,
+  VisualPreviewResult,
+  VisualQueryRefreshInput,
+  VisualQueryRefreshResult,
+} from "./visual/bridge";
+import type { VisualDiagnostic, VisualFigure, VisualRows } from "./visual/contract";
+import type {
   GitHubPullRequestFilesResult,
   GitHubThreadCommand,
   GitHubThreadCommandResult,
@@ -892,6 +903,23 @@ export interface IpcApi
   "files:prepare-local-drop": {
     args: [routingContext: ContentRoutingContext, input: PrepareDroppedFilesInput];
     result: PrepareDroppedFilesResult;
+  };
+  "app:visual:admit": { args: []; result: VisualGrant | null };
+  "app:visual:release": { args: [grant: string]; result: boolean };
+  "app:visual:render": { args: [input: VisualPreviewInput]; result: VisualPreviewResult };
+  "visual:capture": {
+    args: [source: string, page: VisualPageContext | null, appearances: VisualAppearance[]];
+    result: VisualCaptureResult;
+  };
+  "visual:refresh-query": {
+    args: [input: VisualQueryRefreshInput];
+    result: VisualQueryRefreshResult;
+  };
+  "visual:resolve-sources": {
+    args: [source: string, page: VisualPageContext | null];
+    result:
+      | { ok: true; rows: VisualRows; figures: VisualFigure[] }
+      | { ok: false; diagnostics: VisualDiagnostic[] };
   };
   "page-file-html:admit": {
     args: [input: import("./page-file-html").PageFileHtmlAdmissionInput];
@@ -3317,6 +3345,7 @@ export interface IpcEvents extends DeepLinkOpenEvents {
   "recipient-delivery:message": import("./recipient-delivery").RecipientDeliveryEnvelope;
   "board-changed": BoardChangeEvent;
   "database-changed": DatabaseChangeEvent;
+  "space-members-changed": string;
   "library-navigation-changed": import("./library-events").LibraryNavigationChangedEvent;
   "projects-changed": ProjectsChangeEvent;
   "project-sessions-changed": ProjectSessionsChangeEvent;

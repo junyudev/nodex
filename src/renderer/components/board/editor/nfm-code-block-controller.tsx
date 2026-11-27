@@ -13,6 +13,8 @@ import {
   type MermaidCodePreviewMode,
 } from "@/lib/editor-model/code-block-view-state";
 import { useTheme } from "@/lib/use-theme";
+import { useIntl } from "@/lib/i18n";
+import { usePageDiscussionsControllerContext } from "@/features/page-discussions/page-discussions-context";
 import { normalizeCodeLanguageId } from "../../../../shared/code-languages/code-language-catalog";
 import { NfmCodeBlockActionBar } from "./nfm-code-block-action-bar";
 import { createNfmSideMenuElementReference } from "./nfm-side-menu-anchor";
@@ -97,6 +99,8 @@ function getRenderedMermaidSvg(surface: HTMLElement): string | null {
 }
 
 export function NfmCodeBlockController() {
+  const intl = useIntl();
+  const discussions = usePageDiscussionsControllerContext();
   const blockNoteEditor = useBlockNoteEditor();
   const { resolved: theme } = useTheme();
   const editor = blockNoteEditor as unknown as CodeBlockControllerEditor;
@@ -312,6 +316,20 @@ export function NfmCodeBlockController() {
                 const svg = renderedSvg();
                 if (svg) void downloadMermaidDiagram({ svg, theme });
               },
+              ...(discussions?.binding.submitAsk
+                ? {
+                    onRedrawAsVisual: () =>
+                      discussions.createAnchoredDiscussion({
+                        anchor: { kind: "blocks", blockIds: [active.blockId] },
+                        body: intl.formatMessage({
+                          id: "editor.nfmCodeBlockController.redrawAsVisualRequest",
+                          defaultMessage:
+                            "Redraw this Mermaid diagram as a Visual and replace this code block with it.",
+                        }),
+                        toNodex: true,
+                      }),
+                  }
+                : {}),
             }
           : undefined
       }

@@ -440,6 +440,19 @@ fn persist_yjs_commit_inner(
             now: &now,
         },
     )?;
+    if input.authority.owner_type == "page" {
+        let page = &input.authority.owner_block_id;
+        let before = &input.base_materialization.block_tree;
+        let after = &input.materialization.block_tree;
+        crate::library::discussions::reconcile_anchors(connection, page, before, after)?;
+        crate::library::discussions::record_run_changes(
+            connection,
+            page,
+            context.actor(),
+            before,
+            after,
+        )?;
+    }
     persist_materialization(
         connection,
         &input.authority.head.id,
@@ -772,6 +785,15 @@ fn persist_yjs_genesis_inner(
             now: &now,
         },
     )?;
+    if input.authority.owner_type == "page" {
+        crate::library::discussions::record_run_changes(
+            connection,
+            &input.authority.owner_block_id,
+            context.actor(),
+            &[],
+            &input.materialization.block_tree,
+        )?;
+    }
     persist_materialization(
         connection,
         &input.authority.head.id,

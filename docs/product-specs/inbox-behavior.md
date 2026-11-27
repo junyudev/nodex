@@ -278,6 +278,15 @@ is rewritten, what Nodex made of the old text steps aside.
 - Handled messages are a record of what was decided and are not edited from
   Activity.
 
+## Discussion entries
+
+A Member's Inbox includes mentions, new replies in Discussions they started
+or replied to, Nodex waiting for their input, answers to their Asks, and open
+Suggested edits on Pages they own. Each Discussion has one entry per Member,
+with outstanding questions or Suggested edits taking precedence. Open the entry
+to go to the Discussion on the Page. The Page's current Project determines
+where it appears. See [Ask Nodex from a Page](page-ask-behavior.md).
+
 ## Inbox and Activity
 
 An active captured Page in Triage needs its Owner's decision while no chat or

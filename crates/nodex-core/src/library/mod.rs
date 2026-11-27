@@ -29,9 +29,10 @@ pub(crate) use file_restore::{
 };
 mod inbound_files;
 pub(crate) use inbound_files::publish as publish_inbound_files;
+pub(crate) mod discussions;
 mod files;
 pub(crate) mod members;
-mod membership;
+pub(crate) mod membership;
 pub(crate) use files::capture_snapshot as capture_file_snapshot;
 pub use membership::{DEVICE_SEEN_INTERVAL_SECONDS, LibraryMembership, default_owner_name};
 mod agent_surface;
@@ -935,6 +936,7 @@ fn core_error(error: StoreError) -> CoreError {
 mod tests {
     use std::collections::BTreeMap;
     mod agent_surface;
+    mod discussions;
     mod effective_view_query;
     mod manual_order;
     mod projectless_agent_authority;

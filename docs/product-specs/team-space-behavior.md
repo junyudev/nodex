@@ -54,14 +54,17 @@ before linking. Device form factor is metadata, supplied at redemption.
 
 An authenticated Owner can invite, list Members and all Devices, rename the
 Space, revoke any Device and remove another Member, locally or over HTTPS.
+Every active Member can read their Space's Library Member directory, including
+display names and roles. The directory updates as people join, rename themselves
+or are removed. Removed Members remain resolvable by name in existing references.
 Every Member can list and revoke their own Devices and link another Device of
-their own. These use the same Core administration commands. Role and revocation
-are checked again in the writer transaction; administrative writes retain Member
-Actor evidence.
+their own. Administration commands recheck role and revocation in the writer
+transaction and retain Member Actor evidence.
 
 - `nodex space invite --role member` returns a URL, certificate fingerprint and
   random one-time code. An invite expires after 24 hours. The code is returned
-  only when created, and Core keeps only its hash.
+  only when created, and Core keeps only its hash. Use `--role commenter` for
+  a Member who reviews Pages and suggests edits.
 - An Owner can add `--member <id>` to enroll another device for an existing active Member with the same role.
 - The recipient checks the fingerprint supplied by the Owner before sending
   `POST /enroll { code, device_label, display_name }` over HTTPS.
@@ -108,6 +111,15 @@ exact Automation Owner may change its mode or edit one set to Run, independent o
 Space role. An Agent has exactly its Member's rights, and suggests a change only another
 Member may make for that Owner to apply. Automation producers,
 scheduler and lease operations remain Host-only. New semantic commands are denied remotely until explicitly admitted.
+
+A Commenter reads the Library with the same access as a Member, including live
+Page updates. Opening a Page uses its existing Document and requires only read
+authority. Preparing or updating a Document requires edit authority. Commenters can
+open, resolve and reopen Discussions, start Asks, reply, edit and soft-delete
+their own Comments, and make Suggested edits. They can reject their own
+Suggested edits. Applying an edit or changing shared content requires edit
+authority. These permissions apply equally to an Agent acting for a Commenter.
+See [Page Discussions](page-discussions-behavior.md).
 
 ## Administration surfaces
 
@@ -212,6 +224,10 @@ states never request an application relaunch. The personal Core retains its
 existing recovery and fatal-authority policies.
 
 ## Remote Desktop capabilities
+
+In a shared Page document, a collaborator's cursor shows their Member display
+name. A Member keeps the same cursor and selection color across their Devices
+and after a rename. An editor shows the local caret as usual.
 
 Team Spaces support Library Pages, live collaborative Documents, Databases with
 Boards and Lists, authenticated attachment/image uploads and reads, Inbox reads,

@@ -11,7 +11,7 @@ export const readLocated: (a: number, b: number, c: number, d: number) => [numbe
 export const write: (a: number, b: number) => [number, number, number, number];
 export const writeAgentMessage: (a: number, b: number) => [number, number, number, number];
 export const writeInline: (a: number, b: number) => [number, number, number, number];
-export const writePortable: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+export const writePortable: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
 export const __wbindgen_externrefs: WebAssembly.Table;
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

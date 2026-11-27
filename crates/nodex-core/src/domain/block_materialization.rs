@@ -23,6 +23,7 @@ const INLINE_BLOCK_TYPES: &[&str] = &[
     "prompt",
 ];
 const NONE_BLOCK_TYPES: &[&str] = &[
+    "pending",
     "divider",
     "image",
     "page",
@@ -314,6 +315,31 @@ fn dematerialize_inline_content(
     Ok(output)
 }
 
+pub(crate) fn is_comment_mark(key: &str) -> bool {
+    key == "comment"
+        || key.strip_prefix("comment--").is_some_and(|hash| {
+            hash.len() == 8
+                && hash
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"+/=".contains(&c))
+        })
+}
+
+fn valid_comment_mark(value: &Value) -> bool {
+    value.as_object().is_some_and(|attrs| {
+        attrs
+            .keys()
+            .all(|key| matches!(key.as_str(), "threadId" | "orphan"))
+            && attrs
+                .get("threadId")
+                .and_then(Value::as_str)
+                .is_some_and(|id| {
+                    !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
+                })
+            && attrs.get("orphan").is_none_or(Value::is_boolean)
+    })
+}
+
 fn dematerialize_text_item(
     object: &Map<String, Value>,
     block_id: &str,
@@ -339,7 +365,9 @@ fn dematerialize_text_item(
         })?;
     let mut attributes = BTreeMap::new();
     for (key, value) in styles {
-        if !INLINE_STYLE_NAMES.contains(&key.as_str()) {
+        if !INLINE_STYLE_NAMES.contains(&key.as_str())
+            && !(is_comment_mark(key) && valid_comment_mark(value))
+        {
             return Err(invalid_materialized_field(
                 block_id,
                 format!("content[{index}].styles.{key}"),
@@ -607,6 +635,22 @@ fn materialize_block(
 ) -> Result<MaterializedBlockNode, BlockMaterializationError> {
     let block_type = block.content.name.clone();
     let props = materialize_attributes(&block.content.attributes)?;
+    if block_type == "pending"
+        && props.iter().any(|(key, value)| {
+            let maximum = match key.as_str() {
+                "intent" => 4096,
+                "discussion" => 512,
+                _ => return true,
+            };
+            value.as_str().is_none_or(|text| text.len() > maximum)
+        })
+    {
+        return Err(invalid_content(
+            block,
+            "props",
+            "pending requires bounded intent and discussion strings",
+        ));
+    }
     let content = if INLINE_BLOCK_TYPES.contains(&block_type.as_str()) {
         Some(Value::Array(materialize_inline_content(
             &block.content.children,
@@ -875,6 +919,18 @@ fn materialize_text_chunk(
                 });
             };
             link = Some(href.clone());
+            continue;
+        }
+        if is_comment_mark(key) {
+            let style = portable_value_to_json(value, false)?.unwrap_or(Value::Null);
+            if !valid_comment_mark(&style) {
+                return Err(invalid_materialized_field(
+                    block_id,
+                    key,
+                    "invalid comment mark",
+                ));
+            }
+            styles.insert(key.clone(), style);
             continue;
         }
         if !INLINE_STYLE_NAMES.contains(&key.as_str()) {

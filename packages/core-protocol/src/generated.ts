@@ -1135,6 +1135,7 @@ export interface components {
                 readonly block_transfer?: components["schemas"]["LibraryBlockTransferResult"] | null;
                 readonly block_transfer_undo?: components["schemas"]["LibraryBlockTransferUndoResult"] | null;
                 readonly canvas_mutation?: components["schemas"]["LibraryCanvasMutationResult"] | null;
+                readonly discussion?: components["schemas"]["DiscussionCommandResult"] | null;
                 readonly file_mutation?: components["schemas"]["LibraryFileMutationResult"] | null;
                 readonly page_copy?: components["schemas"]["LibraryPageCopyResult"] | null;
                 readonly page_create?: components["schemas"]["LibraryPageCreateResult"] | null;
@@ -1171,6 +1172,7 @@ export interface components {
                 readonly block_transfer?: components["schemas"]["LibraryBlockTransferResult"] | null;
                 readonly block_transfer_undo?: components["schemas"]["LibraryBlockTransferUndoResult"] | null;
                 readonly canvas_mutation?: components["schemas"]["LibraryCanvasMutationResult"] | null;
+                readonly discussion?: components["schemas"]["DiscussionCommandResult"] | null;
                 readonly file_mutation?: components["schemas"]["LibraryFileMutationResult"] | null;
                 readonly page_copy?: components["schemas"]["LibraryPageCopyResult"] | null;
                 readonly page_create?: components["schemas"]["LibraryPageCreateResult"] | null;
@@ -4786,6 +4788,264 @@ export interface components {
             readonly space_id: string;
             readonly space_name: string;
         };
+        readonly Discussion: {
+            readonly anchor: components["schemas"]["DiscussionAnchor"];
+            readonly anchorState: components["schemas"]["DiscussionAnchorState"];
+            readonly createdAt: string;
+            readonly createdBy: components["schemas"]["Actor"];
+            readonly id: string;
+            readonly lastActivityAt: string;
+            readonly pageId: string;
+            readonly quote: string;
+            readonly resolvedAt?: string | null;
+            readonly resolvedBy?: components["schemas"]["Actor"] | null;
+            readonly status: components["schemas"]["DiscussionStatus"];
+        };
+        readonly DiscussionAnchor: {
+            /** @enum {string} */
+            readonly kind: "page";
+        } | {
+            readonly blockIds: readonly string[];
+            /** @enum {string} */
+            readonly kind: "blocks";
+        } | {
+            readonly blockId: string;
+            /** @enum {string} */
+            readonly kind: "text";
+        } | {
+            readonly blockId: string;
+            readonly field?: string | null;
+            readonly key: unknown;
+            /** @enum {string} */
+            readonly kind: "datum";
+            readonly source: string;
+        };
+        /** @enum {string} */
+        readonly DiscussionAnchorState: "live" | "orphaned";
+        readonly DiscussionAsk: {
+            readonly agent?: components["schemas"]["DiscussionAskAgent"] | null;
+            readonly discussionSessionId?: string | null;
+            readonly dispatch?: components["schemas"]["DiscussionAskDispatch"] | null;
+            readonly kind: components["schemas"]["DiscussionAskKind"];
+            readonly requestedSessionId?: string | null;
+            readonly requesterId?: string | null;
+            readonly runId?: string | null;
+            readonly sessionId?: string | null;
+            readonly state: components["schemas"]["DiscussionAskState"];
+        };
+        readonly DiscussionAskAgent: {
+            readonly model: string;
+            readonly options: unknown;
+            readonly providerInstanceId: string;
+        };
+        readonly DiscussionAskContext: {
+            readonly canDispatch: boolean;
+            readonly commenter: boolean;
+            readonly detail: components["schemas"]["DiscussionDetail"];
+            readonly markdown: string;
+            readonly pageKey?: string | null;
+            readonly pendingBlockId?: string | null;
+            readonly projectId?: string | null;
+            readonly title: string;
+        };
+        readonly DiscussionAskDispatch: {
+            readonly agent?: components["schemas"]["DiscussionAskAgent"] | null;
+            readonly launchId?: string | null;
+            readonly messageId: string;
+            readonly stopRequested: boolean;
+        };
+        /** @enum {string} */
+        readonly DiscussionAskKind: "ask" | "check" | "check_page" | "in_place";
+        /** @enum {string} */
+        readonly DiscussionAskState: "queued" | "working" | "needs_you" | "answered" | "failed" | "stopped";
+        readonly DiscussionBlockWriter: {
+            readonly actor: components["schemas"]["Actor"];
+            readonly blockId: string;
+            readonly writtenAt: string;
+        };
+        readonly DiscussionCommand: {
+            readonly anchor: components["schemas"]["DiscussionAnchor"];
+            readonly discussionId?: string | null;
+            readonly firstComment: components["schemas"]["DiscussionCommentDraft"];
+            readonly firstCommentId?: string | null;
+            /** @enum {string} */
+            readonly kind: "create";
+            readonly pageId: string;
+            readonly quote?: string | null;
+            readonly textRange?: components["schemas"]["DiscussionTextRange"] | null;
+        } | {
+            readonly comment: components["schemas"]["DiscussionCommentDraft"];
+            readonly discussionId: string;
+            /** @enum {string} */
+            readonly kind: "reply";
+        } | {
+            readonly body: string;
+            readonly commentId: string;
+            /** @enum {string} */
+            readonly kind: "edit";
+        } | {
+            readonly commentId: string;
+            /** @enum {string} */
+            readonly kind: "delete";
+        } | {
+            readonly discussionId: string;
+            /** @enum {string} */
+            readonly kind: "resolve";
+        } | {
+            readonly discussionId: string;
+            /** @enum {string} */
+            readonly kind: "reopen";
+        } | {
+            readonly commentId: string;
+            /** @enum {string} */
+            readonly kind: "accept";
+        } | {
+            readonly commentId: string;
+            /** @enum {string} */
+            readonly kind: "reject";
+        } | {
+            readonly agent?: components["schemas"]["DiscussionAskAgent"] | null;
+            readonly commentId: string;
+            readonly expectedState: components["schemas"]["DiscussionAskState"];
+            /** @enum {string} */
+            readonly kind: "update_ask";
+            readonly runId?: string | null;
+            readonly sessionId?: string | null;
+            readonly state: components["schemas"]["DiscussionAskState"];
+        } | {
+            readonly agent?: components["schemas"]["DiscussionAskAgent"] | null;
+            readonly commentId: string;
+            /** @enum {string} */
+            readonly kind: "reserve_ask";
+            readonly messageId: string;
+            readonly newSessionId: string;
+        } | {
+            readonly commentId: string;
+            /** @enum {string} */
+            readonly kind: "observe_ask";
+            readonly messageId: string;
+            readonly runId: string;
+            readonly waiting: boolean;
+        } | {
+            readonly commentId: string;
+            readonly fallback: string;
+            /** @enum {string} */
+            readonly kind: "settle_ask";
+            readonly messageId: string;
+            readonly runId?: string | null;
+            readonly state: components["schemas"]["DiscussionAskState"];
+        } | {
+            readonly commentId: string;
+            /** @enum {string} */
+            readonly kind: "stop_ask";
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_page_setting";
+            readonly nodexAnswersQuestions: boolean;
+            readonly pageId: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "revert_run";
+            readonly pageId: string;
+            readonly runId: string;
+        };
+        readonly DiscussionCommandResult: {
+            /** @enum {string} */
+            readonly kind: "discussion";
+            readonly value: components["schemas"]["Discussion"];
+        } | {
+            /** @enum {string} */
+            readonly kind: "comment";
+            readonly value: components["schemas"]["DiscussionComment"];
+        } | {
+            /** @enum {string} */
+            readonly kind: "page_setting";
+            readonly nodexAnswersQuestions: boolean;
+            readonly pageId: string;
+        } | {
+            readonly conflicts: readonly components["schemas"]["RunRevertConflict"][];
+            /** @enum {string} */
+            readonly kind: "run_revert";
+            readonly reverted: readonly string[];
+        };
+        readonly DiscussionComment: {
+            readonly ask?: components["schemas"]["DiscussionAsk"] | null;
+            readonly author: components["schemas"]["Actor"];
+            readonly body: string;
+            readonly createdAt: string;
+            readonly deletedAt?: string | null;
+            readonly discussionId: string;
+            readonly editedAt?: string | null;
+            readonly id: string;
+            readonly mentions: readonly string[];
+            readonly questionFor?: string | null;
+            readonly suggestedEdit?: components["schemas"]["SuggestedEdit"] | null;
+            readonly toNodex: boolean;
+            readonly verdict?: components["schemas"]["DiscussionVerdict"] | null;
+        };
+        readonly DiscussionCommentDraft: {
+            readonly askAgent?: components["schemas"]["DiscussionAskAgent"] | null;
+            readonly askKind?: components["schemas"]["DiscussionAskKind"] | null;
+            readonly body: string;
+            readonly questionFor?: string | null;
+            readonly requestedSessionId?: string | null;
+            readonly suggestedEdit?: components["schemas"]["SuggestedEditDraft"] | null;
+            readonly toNodex?: boolean;
+            readonly verdict?: components["schemas"]["DiscussionVerdict"] | null;
+        };
+        readonly DiscussionCursor: {
+            readonly id: string;
+            readonly lastActivityAt: string;
+        };
+        readonly DiscussionDetail: components["schemas"]["Discussion"] & {
+            readonly comments: readonly components["schemas"]["DiscussionComment"][];
+        };
+        readonly DiscussionEvidence: {
+            readonly excerpt?: string | null;
+            readonly title: string;
+            readonly url?: string | null;
+        };
+        readonly DiscussionInboxEntry: {
+            readonly commentId: string;
+            readonly discussionId: string;
+            readonly excerpt: string;
+            readonly occurredAt: string;
+            readonly pageId: string;
+            readonly reason: components["schemas"]["DiscussionInboxReason"];
+            readonly title: string;
+        };
+        /** @enum {string} */
+        readonly DiscussionInboxReason: "needs_you" | "suggested_edit" | "mention" | "answered" | "reply";
+        readonly DiscussionInboxWindow: {
+            readonly items: readonly components["schemas"]["DiscussionInboxEntry"][];
+            readonly next?: components["schemas"]["DiscussionCursor"] | null;
+        };
+        /** @enum {string} */
+        readonly DiscussionStatus: "open" | "resolved";
+        readonly DiscussionTextRange: {
+            /** @description The selection observed by the reader. Core fences the selected text. */
+            readonly expectedText: string;
+            /**
+             * Format: int32
+             * @description UTF-16 offsets over inline text, with each inline atom counting as one.
+             */
+            readonly from: number;
+            /** Format: int32 */
+            readonly to: number;
+        };
+        readonly DiscussionVerdict: {
+            readonly evidence: readonly components["schemas"]["DiscussionEvidence"][];
+            readonly result: components["schemas"]["DiscussionVerdictResult"];
+        };
+        /** @enum {string} */
+        readonly DiscussionVerdictResult: "true" | "partly_true" | "false" | "unverifiable";
+        /** @enum {string} */
+        readonly DiscussionWaiting: "nodex" | "me";
+        readonly DiscussionWindow: {
+            readonly items: readonly components["schemas"]["DiscussionDetail"][];
+            readonly next?: components["schemas"]["DiscussionCursor"] | null;
+            readonly nodexAnswersQuestions?: boolean | null;
+        };
         readonly DocumentBlockOperation: {
             /** @enum {string} */
             readonly kind: "set_title";
@@ -6220,7 +6480,7 @@ export interface components {
             readonly view_ids: readonly string[];
         };
         /** @enum {string} */
-        readonly LibraryEventKind: "library_changed";
+        readonly LibraryEventKind: "library_changed" | "discussion_ask_queued";
         readonly LibraryFile: {
             readonly blob_etag: string;
             /** Format: int64 */
@@ -7994,7 +8254,7 @@ export interface components {
             readonly token: string;
         };
         /** @enum {string} */
-        readonly MemberRole: "owner" | "member";
+        readonly MemberRole: "owner" | "member" | "commenter";
         readonly ModuleApplyRequest_AutomationIntent: {
             /** Format: int32 */
             readonly contract_version: number;
@@ -8207,6 +8467,11 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: {
+                readonly authorization?: components["schemas"]["AgentExecutionAuthorization"] | null;
+                readonly command: components["schemas"]["DiscussionCommand"];
+                /** @enum {string} */
+                readonly kind: "discussion";
+            } | {
                 /** Format: int64 */
                 readonly expected_manifest_revision: number;
                 readonly file_id: string;
@@ -9903,6 +10168,41 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly read: {
+                readonly comment_id: string;
+                /** @enum {string} */
+                readonly kind: "discussion_ask_context";
+            } | {
+                /** @enum {string} */
+                readonly kind: "discussion_block_writers";
+                readonly page_id: string;
+            } | {
+                readonly cursor?: components["schemas"]["DiscussionCursor"] | null;
+                /** @enum {string} */
+                readonly kind: "discussion_inbox";
+                /** Format: int32 */
+                readonly limit?: number | null;
+            } | {
+                readonly cursor?: components["schemas"]["QueuedAskCursor"] | null;
+                /** @enum {string} */
+                readonly kind: "queued_discussion_asks";
+                /** Format: int32 */
+                readonly limit?: number | null;
+            } | {
+                readonly cursor?: components["schemas"]["DiscussionCursor"] | null;
+                /** @enum {string} */
+                readonly kind: "discussions";
+                /** Format: int32 */
+                readonly limit?: number | null;
+                readonly page_id?: string | null;
+                readonly provenance?: components["schemas"]["AgentTurnProvenance"] | null;
+                readonly status?: components["schemas"]["DiscussionStatus"] | null;
+                readonly waiting?: components["schemas"]["DiscussionWaiting"] | null;
+            } | {
+                readonly discussion_id: string;
+                /** @enum {string} */
+                readonly kind: "discussion";
+                readonly provenance?: components["schemas"]["AgentTurnProvenance"] | null;
+            } | {
                 /** @enum {string} */
                 readonly kind: "metadata";
             } | {
@@ -10048,6 +10348,10 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "release_search_snapshot";
                 readonly lease_id: string;
+            } | {
+                readonly block_id: string;
+                /** @enum {string} */
+                readonly kind: "block_page";
             } | {
                 readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
                 readonly block_id: string;
@@ -13486,6 +13790,19 @@ export interface components {
         };
         readonly QueryReadRequest: components["schemas"]["ModuleReadRequest_QueryRead"];
         readonly QueryReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_QueryReadValue"];
+        readonly QueuedAsk: {
+            readonly comment: components["schemas"]["DiscussionComment"];
+            readonly pageId: string;
+            readonly queuedAt: string;
+        };
+        readonly QueuedAskCursor: {
+            readonly id: string;
+            readonly queuedAt: string;
+        };
+        readonly QueuedAskWindow: {
+            readonly items: readonly components["schemas"]["QueuedAsk"][];
+            readonly next?: components["schemas"]["QueuedAskCursor"] | null;
+        };
         readonly ReadFileBlobQuery: components["schemas"]["LibraryFileReadSource"] & {
             /** Format: int64 */
             readonly version?: number | null;
@@ -14069,6 +14386,7 @@ export interface components {
                     readonly block_transfer?: components["schemas"]["LibraryBlockTransferResult"] | null;
                     readonly block_transfer_undo?: components["schemas"]["LibraryBlockTransferUndoResult"] | null;
                     readonly canvas_mutation?: components["schemas"]["LibraryCanvasMutationResult"] | null;
+                    readonly discussion?: components["schemas"]["DiscussionCommandResult"] | null;
                     readonly file_mutation?: components["schemas"]["LibraryFileMutationResult"] | null;
                     readonly page_copy?: components["schemas"]["LibraryPageCopyResult"] | null;
                     readonly page_create?: components["schemas"]["LibraryPageCreateResult"] | null;
@@ -14105,6 +14423,7 @@ export interface components {
                     readonly block_transfer?: components["schemas"]["LibraryBlockTransferResult"] | null;
                     readonly block_transfer_undo?: components["schemas"]["LibraryBlockTransferUndoResult"] | null;
                     readonly canvas_mutation?: components["schemas"]["LibraryCanvasMutationResult"] | null;
+                    readonly discussion?: components["schemas"]["DiscussionCommandResult"] | null;
                     readonly file_mutation?: components["schemas"]["LibraryFileMutationResult"] | null;
                     readonly page_copy?: components["schemas"]["LibraryPageCopyResult"] | null;
                     readonly page_create?: components["schemas"]["LibraryPageCreateResult"] | null;
@@ -14530,6 +14849,30 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "discussion_ask_context";
+                    readonly value: components["schemas"]["DiscussionAskContext"];
+                } | {
+                    readonly items: readonly components["schemas"]["DiscussionBlockWriter"][];
+                    /** @enum {string} */
+                    readonly kind: "discussion_block_writers";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "discussion_inbox";
+                    readonly value: components["schemas"]["DiscussionInboxWindow"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "queued_discussion_asks";
+                    readonly value: components["schemas"]["QueuedAskWindow"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "discussions";
+                    readonly value: components["schemas"]["DiscussionWindow"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "discussion";
+                    readonly value: components["schemas"]["DiscussionDetail"];
+                } | {
                     readonly items: readonly components["schemas"]["Member"][];
                     /** @enum {string} */
                     readonly kind: "members";
@@ -14664,6 +15007,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "search_snapshot_release";
                     readonly value: components["schemas"]["LibrarySearchSnapshotRelease"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "block_page";
+                    readonly page_id?: string | null;
                 } | {
                     /** @enum {string} */
                     readonly kind: "agent_block_target";
@@ -15304,6 +15651,10 @@ export interface components {
         readonly RevokeDeviceRequest: {
             readonly device_id: string;
         };
+        readonly RunRevertConflict: {
+            readonly blockId: string;
+            readonly reason: string;
+        };
         readonly RuntimeDescriptor: {
             readonly actual_store_format: components["schemas"]["StoreFormatIdentity"];
             readonly artifact: components["schemas"]["CoreArtifactIdentity"];
@@ -15891,6 +16242,23 @@ export interface components {
         };
         /** @enum {string} */
         readonly StructuralHistoryState: "available" | "consumed" | "superseded" | "unavailable";
+        readonly SuggestedEdit: {
+            readonly baseHash: string;
+            readonly blockIds: readonly string[];
+            readonly decidedAt?: string | null;
+            readonly decidedBy?: components["schemas"]["Actor"] | null;
+            readonly newMarkdown: string;
+            readonly oldMarkdown: string;
+            readonly state: components["schemas"]["SuggestedEditState"];
+        };
+        readonly SuggestedEditDraft: {
+            readonly blockIds: readonly string[];
+            /** @description Optional fence for a Suggest-mode client that observed the original range. */
+            readonly expectedOldMarkdown?: string | null;
+            readonly newMarkdown: string;
+        };
+        /** @enum {string} */
+        readonly SuggestedEditState: "open" | "accepted" | "rejected" | "stale";
         readonly ThreadDelivery: {
             /** Format: int64 */
             readonly binding_revision?: number | null;

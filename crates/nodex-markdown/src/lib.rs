@@ -145,6 +145,8 @@ pub struct PortableOptions<'a> {
     /// The current title of a Page, where the writer knows it, to name Page mentions and
     /// references.
     pub page_title: Option<PageTitles<'a>>,
+    /// Rendered representations of source Blocks, keyed by document Block id.
+    pub block_projections: Option<&'a std::collections::HashMap<String, Vec<Block>>>,
 }
 
 /// Markdown written for apps that read only Markdown.

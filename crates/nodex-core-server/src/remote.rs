@@ -318,6 +318,7 @@ fn admitted_route(path: &str) -> bool {
             | "/core/v1/modules/query/read"
             | "/core/v1/modules/workspace/read"
             | "/core/v1/modules/workspace/apply"
+            | "/core/v1/modules/workspace/tool-operations/admit"
             | "/core/v1/modules/automation/read"
             | "/core/v1/modules/automation/apply"
             | "/core/v1/modules/administration/read"
@@ -902,11 +903,13 @@ pub(crate) async fn enroll(
     Extension(_remote): Extension<RemotePeer>,
     Json(request): Json<EnrollmentRequest>,
 ) -> Result<Json<EnrollmentResponse>, ApiError> {
-    tokio::task::spawn_blocking(move || state.membership.enroll(request))
+    let enrollment_state = Arc::clone(&state);
+    let enrolled = tokio::task::spawn_blocking(move || enrollment_state.membership.enroll(request))
         .await
         .map_err(|_| remote_unavailable())?
-        .map(Json)
-        .map_err(store_api)
+        .map_err(store_api)?;
+    announce_space_change(&state);
+    Ok(Json(enrolled))
 }
 pub(crate) async fn session(
     State(state): State<Arc<ServerState>>,
@@ -981,9 +984,8 @@ pub(crate) async fn prepare_space(
         fingerprint,
     }))
 }
-/// A committed name change wakes every live event stream, so connected desktops show the
-/// new name now rather than after their next reconnection.
-fn announce_name_change(state: &ServerState) {
+/// Refresh live Space read models after a membership or naming commit.
+fn announce_space_change(state: &ServerState) {
     let _ = state.event_sender.send(CommitWake);
 }
 pub(crate) async fn rename_space(
@@ -998,7 +1000,7 @@ pub(crate) async fn rename_space(
         .await
         .map_err(|_| remote_unavailable())?
         .map_err(administration_api)?;
-    announce_name_change(&state);
+    announce_space_change(&state);
     Ok(Json(renamed))
 }
 pub(crate) async fn rename_member(
@@ -1013,7 +1015,7 @@ pub(crate) async fn rename_member(
         .await
         .map_err(|_| remote_unavailable())?
         .map_err(administration_api)?;
-    announce_name_change(&state);
+    announce_space_change(&state);
     Ok(Json(renamed))
 }
 pub(crate) async fn invite(
@@ -1099,6 +1101,7 @@ pub(crate) async fn remove(
         membership
             .remove(request.member_id.clone())
             .map_err(administration_api)?;
+        announce_space_change(&state);
         state
             .connections
             .withdraw(|p| p.member_id == request.member_id)
