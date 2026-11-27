@@ -202,6 +202,7 @@ export function PanelGroupTree({
         leadingTab={leadingTab}
         leadingTabLeafId={leadingTabLeafId}
         contentConcealed={contentConcealed}
+        marksActiveLeaf={rootNode.type !== "leaf"}
         activeLeafRef={activeLeafRef}
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
@@ -355,6 +356,8 @@ function PanelGroupNode(props: {
   leadingTab?: AppShellLeadingTab;
   leadingTabLeafId: string | null;
   contentConcealed: boolean;
+  /** Split groups mark the active one; a lone group has nothing to tell apart. */
+  marksActiveLeaf: boolean;
   activeLeafRef?: Ref<HTMLDivElement>;
   onSelectTab: (leafId: string, tabId: string) => void;
   onCloseTab: (leafId: string, tabId: string) => void;
@@ -475,6 +478,7 @@ function PanelGroupLeaf({
   leadingTab: treeLeadingTab,
   leadingTabLeafId,
   contentConcealed,
+  marksActiveLeaf,
   activeLeafRef,
   onSelectTab,
   onCloseTab,
@@ -532,7 +536,10 @@ function PanelGroupLeaf({
       data-panel-group-leaf-active={isActive ? "true" : "false"}
       className={cn(
         "relative h-full min-h-0 min-w-0 overflow-hidden bg-token-main-surface-primary",
-        isActive && !contentConcealed && "ring-1 ring-inset ring-token-foreground/10",
+        marksActiveLeaf &&
+          isActive &&
+          !contentConcealed &&
+          "ring-1 ring-inset ring-token-foreground/10",
       )}
       onFocusCapture={(event) => {
         if (isGroupInteraction(event)) focusLeaf();

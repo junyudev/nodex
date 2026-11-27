@@ -67,7 +67,7 @@ export function WorkbenchMainSurface({
         className={cn(
           "relative flex min-h-0 min-w-0 flex-1 flex-col",
           headerRule &&
-            "[[data-app-shell-content-dock-rule=true]_&]:border-t-[length:var(--border-width-hairline)] [[data-app-shell-content-dock-rule=true]_&]:border-(--color-border)",
+            "[[data-app-shell-content-dock-rule=true]_&]:border-t-[length:var(--border-width-hairline)] [[data-app-shell-content-dock-rule=true]_&]:border-(--color-border-subtle)",
         )}
       >
         {children}
@@ -81,7 +81,7 @@ export function workbenchMainSurfaceClassName(besideSidebar: boolean): string {
   return cn(
     "relative isolate -mt-(--app-shell-surface-lift) flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-(--color-surface) pt-(--app-shell-surface-header-height)",
     besideSidebar &&
-      "rounded-s-(--app-shell-surface-radius) border-s-[length:var(--border-width-hairline)] border-(--color-border)",
+      "rounded-s-(--app-shell-surface-radius) border-s-[length:var(--border-width-hairline)] border-(--color-border-subtle)",
   );
 }
 
