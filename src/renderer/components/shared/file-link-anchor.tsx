@@ -3,6 +3,7 @@ import { NodexReference } from "@/components/nodex-reference/nodex-reference";
 import { FileLinkWorkspaceContext } from "@/lib/file-link-workspace";
 import {
   useContext,
+  type KeyboardEvent,
   type MouseEventHandler,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -23,11 +24,16 @@ import { useFileReferenceIntent } from "@/lib/file-reference-intent";
 import { openLink } from "@/lib/link-opening";
 import { useLinkOpening, useWebLinkNavigation } from "@/lib/web-link-navigation";
 import { parseNodexDestination } from "../../../shared/nodex-reference";
+import { parseGitHubThreadUrl } from "../../../shared/github-thread";
+import { GitHubThreadInlineLink } from "@/features/github-thread/github-thread-inline-link";
+import { SiteIcon } from "./site-icon";
 
 interface FileLinkAnchorProps {
   href?: string;
   className?: string;
   children: ReactNode;
+  /** The link's words as plain text, when `children` renders them as more than a string. */
+  text?: string;
   showLocalFileTooltip?: boolean;
   cwd?: string | null;
   projectWorkspacePath?: string | null;
@@ -43,6 +49,15 @@ function isFileAction(action: ReturnType<typeof resolveNfmLinkAction>): action i
 }
 
 const isCurrentReference = () => true;
+
+/** Whether a link's words are just its own address, as an autolinked URL's are. */
+/** Whether a link is written as its own URL, give or take its scheme and a trailing slash. */
+function isOwnUrl({ text, children }: Pick<FileLinkAnchorProps, "text" | "children">, url: string) {
+  const words = (text ?? plainChildren(children))?.trim();
+  if (!words) return false;
+  const strip = (value: string) => value.replace(/^https?:\/\//iu, "").replace(/\/$/u, "");
+  return strip(words) === strip(url);
+}
 
 function plainChildren(children: ReactNode): string | null {
   if (typeof children === "string") return children;
@@ -69,7 +84,7 @@ export function FileLinkAnchor(props: FileLinkAnchorProps) {
   const href = props.href?.trim();
   const destination = parseNodexDestination(href);
   if (destination)
-    return plainChildren(props.children)?.trim() === href ? (
+    return isOwnUrl(props, href ?? "") ? (
       // A link written as its own URL names its target, as a mention does.
       <NodexReference destination={destination} variant="mention" />
     ) : (
@@ -84,6 +99,7 @@ function ResolvedLinkAnchor({
   href,
   className,
   children,
+  text,
   cwd: explicitCwd,
   showLocalFileTooltip = false,
   projectWorkspacePath,
@@ -131,72 +147,89 @@ function ResolvedLinkAnchor({
       }
     };
 
+    const blocked = action?.kind === "blocked" || action?.kind === "unresolved-file-like";
+    const webUrl =
+      action?.kind === "web-url" && /^https?:\/\//iu.test(action.url) ? action.url : null;
+    const openMenuAt = (element: HTMLAnchorElement, x: number, y: number) => {
+      if (!webUrl) return;
+      void openWebLinkContextMenu({
+        url: webUrl,
+        selectedText: element.ownerDocument.getSelection()?.toString(),
+        navigation: webNavigation,
+        x,
+        y,
+        isCurrent: () =>
+          element.isConnected &&
+          element.getAttribute("href") === href &&
+          !element.closest("[inert]"),
+      }).catch(() => undefined);
+    };
+    const anchor = {
+      href,
+      "data-agent-activity-file-link": true,
+      onClick: handleClick,
+      onAuxClick: (event: ReactMouseEvent<HTMLAnchorElement>) => {
+        if (event.button === 1) handleClick(event);
+      },
+      onContextMenu: (event: ReactMouseEvent<HTMLAnchorElement>) => {
+        if (!webUrl) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openMenuAt(event.currentTarget, event.clientX, event.clientY);
+      },
+      onKeyDown: (event: KeyboardEvent<HTMLAnchorElement>) => {
+        if (!webUrl || (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)))
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        const bounds = event.currentTarget.getBoundingClientRect();
+        openMenuAt(event.currentTarget, bounds.left, bounds.bottom);
+      },
+      "aria-disabled": blocked ? true : undefined,
+      target: action?.kind === "literal-anchor" ? undefined : "_blank",
+      rel: action?.kind === "literal-anchor" ? undefined : "noopener noreferrer",
+    } as const;
+    // A link written as its own URL names its target; words of its own keep the URL a hover away.
+    const bare = webUrl !== null && isOwnUrl({ text, children }, webUrl);
+    const thread = webUrl ? parseGitHubThreadUrl(webUrl) : null;
+    if (thread)
+      return (
+        <GitHubThreadInlineLink link={thread} bare={bare} anchor={anchor} className={className}>
+          {children}
+        </GitHubThreadInlineLink>
+      );
+
     const link = (
       <a
-        href={href}
-        data-agent-activity-file-link
-        onClick={handleClick}
-        onAuxClick={(event) => {
-          if (event.button === 1) handleClick(event);
-        }}
-        onContextMenu={(event) => {
-          if (action?.kind !== "web-url" || !/^https?:\/\//iu.test(action.url)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          const element = event.currentTarget;
-          void openWebLinkContextMenu({
-            url: action.url,
-            selectedText: element.ownerDocument.getSelection()?.toString(),
-            navigation: webNavigation,
-            x: event.clientX,
-            y: event.clientY,
-            isCurrent: () =>
-              element.isConnected &&
-              element.getAttribute("href") === href &&
-              !element.closest("[inert]"),
-          }).catch(() => undefined);
-        }}
-        onKeyDown={(event) => {
-          if (
-            action?.kind !== "web-url" ||
-            (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey))
-          )
-            return;
-          event.preventDefault();
-          event.stopPropagation();
-          const element = event.currentTarget;
-          const bounds = element.getBoundingClientRect();
-          void openWebLinkContextMenu({
-            url: action.url,
-            selectedText: element.ownerDocument.getSelection()?.toString(),
-            navigation: webNavigation,
-            x: bounds.left,
-            y: bounds.bottom,
-            isCurrent: () =>
-              element.isConnected &&
-              element.getAttribute("href") === href &&
-              !element.closest("[inert]"),
-          }).catch(() => undefined);
-        }}
-        aria-disabled={
-          action?.kind === "blocked" || action?.kind === "unresolved-file-like" ? true : undefined
-        }
+        {...anchor}
+        data-web-link={webUrl ? "" : undefined}
         className={cn(
           "cursor-interaction inline-block max-w-full appearance-none border-0 bg-transparent p-0 text-left align-baseline whitespace-normal text-token-text-link-foreground hover:underline",
-          action?.kind === "blocked" || action?.kind === "unresolved-file-like"
-            ? "cursor-not-allowed"
-            : "",
+          blocked ? "cursor-not-allowed" : "",
           className,
         )}
-        target={action?.kind === "literal-anchor" ? undefined : "_blank"}
-        rel={action?.kind === "literal-anchor" ? undefined : "noopener noreferrer"}
       >
+        {webUrl ? (
+          <SiteIcon href={webUrl} className="relative top-[0.14em] me-[0.25em] size-[1em]" />
+        ) : null}
         <span className="break-words whitespace-normal" data-state="closed">
           {children}
         </span>
       </a>
     );
 
+    if (webUrl && !bare)
+      return (
+        <NodexTooltip
+          tooltipContent={webUrl}
+          side="top"
+          align="start"
+          delayOpen
+          tooltipBodyClassName="max-w-96 truncate font-mono text-xs leading-4"
+        >
+          {link}
+        </NodexTooltip>
+      );
     if (!tooltipLabel) return link;
     return (
       <NodexTooltip
