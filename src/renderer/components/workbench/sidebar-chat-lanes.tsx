@@ -18,7 +18,7 @@ import { SidebarStatusIndicator } from "./sidebar-status-indicator";
 /** Settled chats shown before Show more; a settled chat is rarely the one a person wants. */
 const SIDEBAR_SETTLED_SHELF_MAX_ITEMS = 10;
 /** The most settled chats the sidebar reveals; older ones are browsed on the Settled page. */
-const SIDEBAR_SETTLED_SHELF_REVEAL_LIMIT = 30;
+const SIDEBAR_SETTLED_SHELF_REVEAL_LIMIT = 60;
 
 const SHELF_HEADINGS: Readonly<Record<SidebarChatShelf, MessageDescriptor>> = defineMessages({
   pinned: { id: "workbench.sidebarChatLanes.pinned", defaultMessage: "Pinned" },

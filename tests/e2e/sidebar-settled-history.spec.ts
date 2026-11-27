@@ -64,12 +64,12 @@ test("browses every settled chat from the shelf to the end of the Settled page",
         await expect
           .poll(() => shelfTitles(settled))
           .toEqual(settledChats.slice(0, 10).map((chat) => chat.title));
-        for (let step = 0; step < 4; step += 1) {
+        for (let step = 0; step < 10; step += 1) {
           await pager.getByRole("button", { name: "Show more", exact: true }).click();
         }
         await expect
           .poll(() => shelfTitles(settled))
-          .toEqual(settledChats.slice(0, 30).map((chat) => chat.title));
+          .toEqual(settledChats.slice(0, 60).map((chat) => chat.title));
         await expect(pager.getByRole("button", { name: "Show more", exact: true })).toHaveCount(0);
         await capture(page, testInfo, "settled-shelf-view-all");
       });
