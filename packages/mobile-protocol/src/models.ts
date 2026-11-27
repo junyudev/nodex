@@ -222,6 +222,7 @@ const inboxEntry = {
   id: z.string(),
   pageKey: z.string().nullable(),
   title: z.string(),
+  titleProvisional: z.boolean().default(false),
   body: z.string(),
   bodyTruncated: z.boolean(),
   submittedAt: isoTime,

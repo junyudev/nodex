@@ -128,6 +128,7 @@ export const projectInboxEntry = (item: InboxItem): InboxEntry => {
     pageId: item.pageId,
     pageKey: item.pageKey,
     title: item.title,
+    titleProvisional: item.titleProvisional,
     body: item.body,
     bodyTruncated: item.bodyTruncated,
     submittedAt: item.submittedAt,

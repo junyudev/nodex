@@ -3364,6 +3364,8 @@ fn unchanged_suggestion_titles_settle_without_document_edits() {
             workspace
         };
         let module = &workspace.module;
+        assert!(item(module, "page:a").title_provisional);
+        assert!(item(module, "page:b").title_provisional);
         let input = requests(module).remove(0);
         assert!(
             input
@@ -3403,6 +3405,7 @@ fn unchanged_suggestion_titles_settle_without_document_edits() {
         );
         for page in ["page:a", "page:b"] {
             let entry = item(module, page);
+            assert!(!entry.title_provisional);
             assert_eq!(
                 entry.suggestion_state,
                 ProjectWorkspaceInboxSuggestionState::Settled
@@ -3428,6 +3431,22 @@ fn unchanged_suggestion_titles_settle_without_document_edits() {
                 .iter()
                 .all(|entry| !entry.title_provisional)
         );
+
+        apply_host(
+            module,
+            "send:titled",
+            ProjectWorkspaceIntent::SendInboxMessage {
+                start: None,
+                reply_to_page_id: None,
+                expected_store_epoch: None,
+                page_id: "page:titled".into(),
+                document_id: "document:titled".into(),
+                body: "Android capture already works offline.".into(),
+                title: Some("Offline capture works".into()),
+                project_id: None,
+            },
+        );
+        assert!(!item(module, "page:titled").title_provisional);
     }
 }
 

@@ -10774,6 +10774,7 @@
                 "row_kind",
                 "page_id",
                 "title",
+                "title_provisional",
                 "body",
                 "body_truncated",
                 "body_editable",
@@ -10921,6 +10922,10 @@
                 },
                 "title": {
                   "type": "string"
+                },
+                "title_provisional": {
+                  "type": "boolean",
+                  "description": "Whether the title still uses the provisional label Core took from the message's opening words."
                 },
                 "turn": {
                   "oneOf": [
@@ -48585,6 +48590,7 @@
           "row_kind",
           "page_id",
           "title",
+          "title_provisional",
           "body",
           "body_truncated",
           "body_editable",
@@ -48732,6 +48738,10 @@
           },
           "title": {
             "type": "string"
+          },
+          "title_provisional": {
+            "type": "boolean",
+            "description": "Whether the title still uses the provisional label Core took from the message's opening words."
           },
           "turn": {
             "oneOf": [

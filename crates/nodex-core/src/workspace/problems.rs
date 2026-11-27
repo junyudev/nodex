@@ -164,6 +164,7 @@ pub(super) fn inbox_item(
         page_key: None,
         page_status: None,
         title: problem.summary.clone(),
+        title_provisional: false,
         body: String::new(),
         body_truncated: false,
         body_editable: false,

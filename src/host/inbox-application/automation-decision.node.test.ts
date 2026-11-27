@@ -42,6 +42,7 @@ describe("automation-decision", () => {
     page_id: "held-page",
     page_key: "IN-3",
     title: "Review dependencies",
+    title_provisional: false,
     body: "Reviewed instructions",
     body_truncated: false,
     body_editable: true,

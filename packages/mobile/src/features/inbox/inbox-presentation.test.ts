@@ -12,6 +12,7 @@ import {
   proposalAttribution,
   proposalDestination,
   proposalHeadline,
+  entryBrief,
   sourceLabel,
   suggestionView,
   turnActionView,
@@ -50,6 +51,7 @@ const message = (
   pageId: "m1",
   pageKey: null,
   title: "t",
+  titleProvisional: false,
   body: "b",
   bodyTruncated: false,
   submittedAt: "2026-11-04T00:00:00.000Z",
@@ -204,6 +206,19 @@ describe("sourceLabel", () => {
     expect(sourceLabel(message({ source: { kind: "agent", label: "Fix login" } }))).toBe(
       "Fix login",
     );
+  });
+});
+
+describe("entryBrief", () => {
+  it("reads what someone else wrote as a brief, led by its title once it is a name", () => {
+    const agent = { kind: "agent", label: "Fix login" } as const;
+    expect(entryBrief(message())).toBeNull();
+    expect(entryBrief(message({ source: agent, title: "Login loops" }))).toEqual({
+      headline: "Login loops",
+    });
+    expect(entryBrief(message({ source: agent, titleProvisional: true }))).toEqual({
+      headline: null,
+    });
   });
 });
 

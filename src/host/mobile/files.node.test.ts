@@ -661,6 +661,7 @@ describe("inbox-files", () => {
     pageKey: "P-1",
     pageStatus: null,
     title: "Title",
+    titleProvisional: false,
     body: "Content",
     bodyTruncated: false,
     bodyEditable: true,
@@ -816,6 +817,7 @@ describe("inbox-over-core", () => {
       ]);
       expect(yield* handlers["inbox.message"]({ entryId: input.pageId })).toMatchObject({
         pageId: input.pageId,
+        titleProvisional: true,
         body: input.text,
         bodyTruncated: false,
       });

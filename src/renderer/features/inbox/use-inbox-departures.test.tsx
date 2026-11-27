@@ -17,6 +17,7 @@ const message = (pageId: string, submittedAt: string): InboxItem => ({
   pageKey: null,
   pageStatus: null,
   title: pageId,
+  titleProvisional: false,
   body: pageId,
   bodyTruncated: false,
   bodyEditable: true,

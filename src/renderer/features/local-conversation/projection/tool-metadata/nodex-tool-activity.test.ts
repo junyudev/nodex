@@ -469,7 +469,9 @@ describe("what opening a row offers", () => {
     expect(
       expandable(call("update_page", { pageId: PAGE_ID, body: { kind: "insert", markdown: "x" } })),
     ).toBe(true);
-    expect(expandable(call("send_to_inbox", { body: "Check owners" }))).toBe(true);
+    expect(
+      expandable(call("send_to_inbox", { title: "Confirm launch owners", body: "Check owners" })),
+    ).toBe(true);
 
     for (const plumbing of ["list_projects", "get_context", "query_content", "read_session"])
       expect(expandable(call(plumbing, {}))).toBe(false);
@@ -607,9 +609,11 @@ describe("what opening a row offers", () => {
       readNodexToolDetail(call("send_message_to_session", { sessionId: SESSION_ID, prompt: "Hi" }))
         .message,
     ).toBe("Hi");
-    expect(readNodexToolDetail(call("send_to_inbox", { body: "Check owners" })).message).toBe(
-      "Check owners",
-    );
+    expect(
+      readNodexToolDetail(
+        call("send_to_inbox", { title: "Confirm launch owners", body: "Check owners" }),
+      ).message,
+    ).toBe("Check owners");
     expect(
       readNodexToolDetail(call("report_work", { outcome: "ready", summary: "Tests pass" })).message,
     ).toBe("Tests pass");

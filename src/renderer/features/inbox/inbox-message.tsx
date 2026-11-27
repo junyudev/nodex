@@ -45,6 +45,8 @@ import { NodexAuthor } from "./inbox-nodex";
 import {
   INBOX_KIND_LABELS,
   formatInboxTime,
+  inboxBriefHeadline,
+  inboxReadsAsBrief,
   inboxEntryKind,
   inboxMenuHolds,
   INBOX_HOLD_LABELS,
@@ -224,7 +226,7 @@ function InboxPageStatusMark({ status }: { readonly status: InboxPageStatus }) {
  * One captured message in the Inbox: a card holding the message and, joined beneath it, what
  * Nodex made of it, with the ways to act in one row under the card. The user's own messages
  * sit on the right like chat user messages; messages another Agent or the command line sent
- * sit on the left and name their source.
+ * sit on the left, name their source and read as a brief: the title, then the opening lines.
  */
 export function InboxMessage({
   item,
@@ -285,6 +287,9 @@ export function InboxMessage({
     ? describeBackFromSnooze(item.snooze, now, intl.locale)
     : null;
   const status = inboxPageStatusMark(item);
+  // What someone else sent is written for the reader: a brief, led by its title once it has one.
+  const brief = inboxReadsAsBrief(item);
+  const headline = inboxBriefHeadline(item);
   const chats = linkedChats && linkedChats.relatedCount > 0 ? linkedChats : null;
   // Where the message's Page already stands, read before its words: its Board status once it
   // has left Triage, then its chats.
@@ -505,7 +510,34 @@ export function InboxMessage({
                 !fromUser && strip != null && "border-b border-token-border",
               )}
             >
-              {editor ?? <InboxMessageDocument item={item} lead={marks} />}
+              {editor ??
+                (brief ? (
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    {headline ? (
+                      <h3
+                        data-testid="inbox-message-headline"
+                        className="text-size-chat flex min-w-0 items-start leading-relaxed font-medium"
+                      >
+                        {marks}
+                        <button
+                          type="button"
+                          onClick={onOpenPage}
+                          className="cursor-interaction min-w-0 text-left decoration-token-description-foreground underline-offset-2 hover:underline"
+                        >
+                          {headline}
+                        </button>
+                      </h3>
+                    ) : null}
+                    <InboxMessageDocument
+                      item={item}
+                      brief
+                      recede={headline != null}
+                      lead={headline ? undefined : marks}
+                    />
+                  </div>
+                ) : (
+                  <InboxMessageDocument item={item} lead={marks} />
+                ))}
               {editor == null ? (
                 // Floats over the end of the last line on the text's own color, so showing it
                 // never moves the text. It stays above all of the text, even beside a live mark

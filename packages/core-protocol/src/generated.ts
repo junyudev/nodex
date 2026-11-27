@@ -2676,6 +2676,8 @@ export interface components {
                 readonly suggestion_error?: string | null;
                 readonly suggestion_state: components["schemas"]["ProjectWorkspaceInboxSuggestionState"];
                 readonly title: string;
+                /** @description Whether the title still uses the provisional label Core took from the message's opening words. */
+                readonly title_provisional: boolean;
                 readonly turn?: components["schemas"]["InboxTurn"] | null;
                 readonly waiting: boolean;
             }[];
@@ -11723,6 +11725,8 @@ export interface components {
             readonly suggestion_error?: string | null;
             readonly suggestion_state: components["schemas"]["ProjectWorkspaceInboxSuggestionState"];
             readonly title: string;
+            /** @description Whether the title still uses the provisional label Core took from the message's opening words. */
+            readonly title_provisional: boolean;
             readonly turn?: components["schemas"]["InboxTurn"] | null;
             readonly waiting: boolean;
         };

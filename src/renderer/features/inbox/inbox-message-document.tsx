@@ -7,14 +7,19 @@ import { inboxPageRoutingContext } from "./inbox-presentation";
 
 /**
  * A message as its Page holds it now, with the Page's own access to the Files it shows. `lead`
- * opens its first line.
+ * opens its first line. A message someone else sent reads as a `brief`, receding beneath its
+ * headline when it has one.
  */
 export function InboxMessageDocument({
   item,
   lead,
+  brief = false,
+  recede = false,
 }: {
   readonly item: InboxItem;
   readonly lead?: ReactNode;
+  readonly brief?: boolean;
+  readonly recede?: boolean;
 }) {
   const library = useLibraryMetadata();
   return (
@@ -22,6 +27,8 @@ export function InboxMessageDocument({
       blocks={readMarkdown(item.body)}
       contentKey={item.body}
       lead={lead}
+      brief={brief}
+      recede={recede}
       fileAuthority={
         library.data
           ? {

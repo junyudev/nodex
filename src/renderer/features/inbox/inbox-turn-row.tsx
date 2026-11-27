@@ -1,25 +1,24 @@
 import { useRoutedWebLink } from "@/lib/web-link-navigation";
 import { FormattedMessage, useIntl, defineMessage } from "@/lib/i18n";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import type { InboxItem } from "../../../shared/inbox";
 import { PageTurnChip } from "@/components/workbench/page-turn-chip";
-import { ChatIcon, ChevronDownIcon, ClockIcon, OpenExternalIcon } from "@/components/shared/icons";
+import { ChatIcon, ClockIcon, OpenExternalIcon } from "@/components/shared/icons";
 import { Reply } from "@/components/shared/icons/generic-icons";
 import { InboxIconAction } from "./inbox-icon-action";
 import { describeBackFromSnooze } from "./inbox-snooze";
 import { SnoozeMenu } from "@/components/shared/snooze-menu";
 import { useInboxClock } from "./use-inbox-clock";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
-import { NfmDocument } from "@/components/board/nfm-renderer";
+import { BriefText } from "@/components/message/brief-text";
 import { FileReferenceIntentProvider } from "@/lib/file-reference-intent";
 import { useLibraryFileReadAuthority } from "@/lib/use-library-navigation";
-import { cn } from "@/lib/utils";
 import { NodexButton } from "@/components/ui/button";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { extractMarkdownText, readMarkdown } from "../../../shared/nodex-markdown";
+import { readMarkdown } from "../../../shared/nodex-markdown";
 import { readableIpcError } from "@/lib/ipc-error-message";
 
 /** An Inbox turn is always the reader's own. */
@@ -125,7 +124,7 @@ export function InboxTurnRow({
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
             <button
               type="button"
-              className="min-w-0 flex-[1_1_10rem] truncate text-left text-sm font-medium"
+              className="cursor-interaction min-w-0 flex-[1_1_10rem] truncate text-left text-sm font-medium decoration-token-description-foreground underline-offset-2 hover:underline"
               onClick={onOpenPage}
             >
               {item.title}
@@ -135,8 +134,8 @@ export function InboxTurnRow({
               holder={{ you: true, name: intl.formatMessage(READER) }}
             />
           </div>
-          <div className="flex min-w-0 items-start gap-1.5 text-sm text-token-description-foreground">
-            <TurnBody key={item.body} body={item.body} markdown={!exactQuestion} />
+          <div className="min-w-0 text-sm">
+            <TurnBody body={item.body} markdown={!exactQuestion} />
           </div>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
@@ -246,79 +245,23 @@ export function InboxTurnRow({
 }
 
 /**
- * What the Turn says: an excerpt of two lines that opens in place to the whole text, read as it
- * was written. Only a clipped excerpt offers to open.
+ * What the Turn says, read as a brief beneath the Page's title: three lines that open in place to
+ * the whole text. A pending question is the Agent's exact words; everything else is Markdown, read
+ * with the Library's own access to the Files it links.
  */
 function TurnBody({ body, markdown }: { readonly body: string; readonly markdown: boolean }) {
-  const intl = useIntl();
-  const [expanded, setExpanded] = useState(false);
-  const [clipped, setClipped] = useState(false);
-  return (
-    <div className="flex min-w-0 flex-col items-start gap-1">
-      {!expanded ? (
-        <TurnExcerpt text={markdown ? extractMarkdownText(body) : body} onClipped={setClipped} />
-      ) : markdown ? (
-        <TurnDocument body={body} />
-      ) : (
-        <p className="min-w-0 whitespace-pre-wrap text-token-foreground">{body}</p>
-      )}
-      {expanded || clipped ? (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          className="cursor-interaction inline-flex items-center gap-1 text-xs hover:text-token-foreground"
-          onClick={() => setExpanded((current) => !current)}
-        >
-          {expanded
-            ? intl.formatMessage({ id: "inbox.inboxTurnRow.showLess", defaultMessage: "Show less" })
-            : intl.formatMessage({
-                id: "inbox.inboxTurnRow.showMore",
-                defaultMessage: "Show more",
-              })}
-          <ChevronDownIcon
-            className={cn("icon-2xs transition-transform duration-150", expanded && "rotate-180")}
-          />
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-/** The first two lines, telling its owner whether they leave any of the text out. */
-function TurnExcerpt({
-  text,
-  onClipped,
-}: {
-  readonly text: string;
-  readonly onClipped: (clipped: boolean) => void;
-}) {
-  const ref = useRef<HTMLParagraphElement>(null);
-  useLayoutEffect(() => {
-    const excerpt = ref.current;
-    if (!excerpt) return;
-    const measure = () => onClipped(excerpt.scrollHeight > excerpt.clientHeight + 1);
-    measure();
-    const resize = new ResizeObserver(measure);
-    resize.observe(excerpt);
-    return () => resize.disconnect();
-  }, [onClipped]);
-  return (
-    <p ref={ref} className="line-clamp-2 min-w-0 whitespace-pre-wrap">
-      {text}
-    </p>
-  );
-}
-
-/** The whole text as Markdown, with the Library's own access to the Files it links. */
-function TurnDocument({ body }: { readonly body: string }) {
   const fileAuthority = useLibraryFileReadAuthority();
   return (
     <FileReferenceIntentProvider sidePanel={false} markdownContext>
       <FileReadBoundary authority={fileAuthority}>
-        <NfmDocument
-          blocks={readMarkdown(body)}
-          density="message"
-          className="codex-markdown min-w-0"
+        <BriefText
+          blocks={
+            markdown
+              ? readMarkdown(body)
+              : [{ type: "paragraph", content: [{ type: "text", text: body, styles: {} }] }]
+          }
+          contentKey={body}
+          recede
         />
       </FileReadBoundary>
     </FileReferenceIntentProvider>

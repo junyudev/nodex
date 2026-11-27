@@ -126,8 +126,10 @@ holds the message's attached images in order, and right-clicking it offers the
 actions an Agent's images have. A placeholder numbered beyond the images the
 message carries, as when an image could not be sent, stays a plain reference. An Inbox bubble shows its Page as it is now,
 including anything later added in the Page; the stream shows a bounded part of
-a long body, and the full message stays one action away. Long messages collapse
-after the same number of lines in every bubble.
+a long body, and the full message stays one action away. The reader's own long
+messages collapse after the same number of lines as a chat message; a message
+someone else sent reads as a [brief](./inbox-behavior.md#briefs), its opening
+three lines beneath its title.
 
 An Agent's reply is not a written message; it streams as conversation Markdown,
 read by the same Markdown rules.

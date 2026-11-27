@@ -161,9 +161,9 @@ hydrate only after the bounded fact window is selected.
   bubble renders that body as the Page holds it now, images included; see
   [Message Content Behavior](./message-content-behavior.md). An edit made in the
   Page, by the user or an Agent, shows in the stream as it lands, as does a
-  rename, move or deletion made anywhere else. The Page title is only a label
-  for Board, List, search, tabs, and new chats. The stream does not show it; `Open page` on the
-  message text opens the Page.
+  rename, move or deletion made anywhere else. The Page title labels it on the
+  Board, in List, search, tabs and new chats; in the stream it shows only as a
+  [brief's](#briefs) headline. `Open page` on the message text opens the Page.
 - A sender may give the title. Otherwise Core labels the Page with a provisional
   title: the message's opening words, cut to about 48 columns, where wide
   characters count twice. Later, Nodex replaces that title with
@@ -214,12 +214,43 @@ hydrate only after the bounded fact window is selected.
     `From <Automation>` with the Automation glyph; the label opens the Automation.
 - A message is its Page body, read as Nodex Markdown, with the Library images in
   it. That is what the stream shows, what a suggestion reads, and what a chat
-  it is handed to receives; the Page title is only its label.
+  it is handed to receives; the Page title is only its label and a brief's
+  headline.
 - A suggestion is about the message it read. Editing the message, its text or
   its images, in the stream or in the Page, makes the suggestion outdated rather
   than withdrawing it, and never asks for new advice by itself; see
   [Suggestions](#suggestions). A write that leaves the message as it was, such
   as a rename, a move, or opening the Page, changes nothing.
+
+## Briefs
+
+The Inbox is where a message is decided; its Page is where it is read. The
+reader's own messages and Nodex's answers to them are a conversation and read
+whole, collapsing only after as many lines as a chat message. A message someone
+else sent, an Agent, GitHub, the command line or an Automation, is written for
+the reader and reads as a brief, so a stream of reports scans as easily as a
+stream of notes:
+
+- Its title is the headline once it is a name: one the sender gave, Nodex's
+  name for it, or the reader's. A provisional title only repeats the opening
+  words, so until it is named the brief opens with them. Choosing the headline
+  opens the message's Page beside the Inbox.
+- Beneath the headline, the message's opening three lines recede to the muted
+  color and end in an ellipsis when there is more. They are the text as written,
+  up to its first code block, table, checklist or image; text that opens with
+  one of those shows its words as one paragraph. Images that lead the message
+  keep their row above the text.
+- `Show more` opens the whole message in place at full strength, and
+  `Show less` closes it. A message that changes closes again.
+
+A Turn's fact reads as a brief beneath its Page's title, so a report an Agent
+files and a finding it leaves read alike. A chat suggestion's prompt and each of
+its additions show at most three lines the same way.
+
+Agents write for the brief: `send_to_inbox` requires a title, and its guidance
+asks the Agent to open with one or two sentences the reader can decide from,
+put the evidence after them, and write in the reader's language; see
+[Agent Interface Behavior](agent-interface-behavior.md).
 
 ## Editing a message
 
@@ -447,9 +478,9 @@ the words its Status row uses for the reader, such as `Needs your answer` or
 `Ready for your review`. Beneath it, the row shows the fact behind the Turn,
 such as the exact pending question, report summary, failure reason or finished
 Prerequisites. A reply Turn says `Needs your reply` and shows an excerpt of the
-active chat's last reply when available. The text starts at two lines. When it
-overflows, `Show more` expands it in place, with reports rendered as Markdown.
-`Show less` collapses it.
+active chat's last reply when available. The text reads as a [brief](#briefs)
+beneath the title: its opening three lines, as Markdown except a pending
+question's exact words, with `Show more` to read the rest in place.
 
 Actions revalidate the episode. Questions show the exact option labels: four
 buttons then More… when needed, plus Reply. Review puts the outlined Open chat
@@ -614,10 +645,13 @@ build or test, and changes no file, Nodex content or other state. The rationale
 says what it checked. The request supplies each eligible Project's source
 directories so Nodex can identify where the work belongs.
 
-A chat suggestion separates what the user asked for from what the suggestion
-adds on its own. Its prompt is what the user wants: the task, its scope and
-every requirement the user wrote, plus anything the suggestion is sure the chat
-must know, such as a finding that changes the task. Its additions are sentences
+A chat suggestion separates what the chat should do from what the suggestion
+adds on its own. The chat receives every message unchanged beneath the prompt,
+so the prompt never restates, summarizes or translates them: it is a routing
+note of at most thirty words in the person's language, saying what the chat
+should do with the messages and anything it must know that they do not say,
+such as where the work lives or a finding that changes the task. Nodex returns
+a longer prompt to the suggestion for correction. Its additions are sentences
 the suggestion adds itself that the user might rather not send: how the chat
 could run the work, such as handing part of it to another model, or what it
 could consult, such as a file or link a lookup found. An addition never adds to
@@ -751,8 +785,8 @@ and its row show one of these:
   and is also how the suggestion is stopped.
 - **Suggestion:**
   - for a new chat or a send to a chat, the prompt it will send, read like the
-    message above it: the same size and color, the card's full width, and
-    collapsed after as many lines as a user message in a chat. Its additions
+    message above it: the same size and color, the card's full width, and at
+    most three lines, as a [brief](#briefs) shows them. Its additions
     follow, one per line with a checkbox, all checked. Unchecking one fades and
     strikes it through, and confirming then sends only the additions still
     checked. Other suggestions say what they do in a one-line summary;

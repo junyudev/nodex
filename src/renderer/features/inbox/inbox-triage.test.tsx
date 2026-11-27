@@ -55,6 +55,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageKey: "IN-1",
   pageStatus: null,
   title: "Homepage positioning",
+  titleProvisional: false,
   body: "Homepage feels like a dev tool",
   bodyTruncated: false,
   bodyEditable: true,

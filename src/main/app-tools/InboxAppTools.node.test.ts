@@ -22,7 +22,10 @@ const authority: NodexAgentTurnContext = {
 };
 const input: AppToolInvocation = {
   name: "send_to_inbox",
-  arguments: { body: "Settings buttons need accessible labels" },
+  arguments: {
+    title: "Label the Settings buttons",
+    body: "Settings buttons need accessible labels",
+  },
   caller: {
     threadId: "caller",
     turnId: "turn",
@@ -84,11 +87,23 @@ it.effect("drops one message under the calling Turn and replays it without a sec
     assert.strictEqual(intent?.provenance.authority.turn_id, "turn");
     assert.deepInclude(intent?.intent, {
       kind: "send_inbox_message",
+      title: "Label the Settings buttons",
       body: "Settings buttons need accessible labels",
     });
     // The same call derives the same operation and Page, so Core sees an idempotent replay.
     assert.deepEqual(again, sent);
     assert.include(replay.structuredContent, { replay: true });
+  }),
+);
+
+it.effect("rejects a message without a headline before writing to the Inbox", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const execute = yield* fixture.execute;
+    const result = yield* execute({ ...input, arguments: { body: "Check the labels" } });
+    assert.isTrue(result.isError);
+    assert.nestedPropertyVal(result.structuredContent, "error.code", "invalid_arguments");
+    assert.isEmpty(fixture.applied);
   }),
 );
 

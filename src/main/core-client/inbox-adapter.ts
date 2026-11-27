@@ -354,6 +354,7 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   pageKey: item.page_key ?? null,
   pageStatus: item.page_status ? { id: item.page_status.id, label: item.page_status.label } : null,
   title: item.title,
+  titleProvisional: item.title_provisional,
   body: item.source.kind === "automation" ? projectAutomationInboxSummary(item.body) : item.body,
   bodyTruncated: item.body_truncated,
   bodyEditable: item.body_editable,

@@ -39,6 +39,7 @@ describe("inbox presentation", () => {
     pageKey: "IN-1",
     pageStatus: null,
     title: "Message",
+    titleProvisional: false,
     body: "Message",
     bodyTruncated: false,
     bodyEditable: true,

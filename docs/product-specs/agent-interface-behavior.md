@@ -413,9 +413,11 @@ producer mutations. An interrupted draft launch resumes its original staged mess
 mode through the launch owner, without reconstructing them from current defaults.
 
 `send_to_inbox` leaves a self-contained message in the user's Inbox for work outside the
-caller's task, such as a follow-up, an idea, or a question for later. Its body, read
-as message text, becomes the body of an Inbox Page, and an optional title names it. Core records the caller's chat
-and Project from its verified execution source. A proven Run can send at most five
+caller's task, such as a follow-up, an idea, or a question for later. The required title
+is the message's headline. The Inbox shows the headline and the first three lines of
+the body, so Nodex guidance asks the Agent to open with the point and write in the user's
+language. The whole body becomes the body of an Inbox Page. Core records the caller's
+chat and Project from its verified execution source. A proven Run can send at most five
 messages. A native source without causal Run evidence keeps its Run null and uses an
 independent five-message budget for that native connection. A retry with the same
 `idempotencyKey` returns the original receipt without another message or quota charge.

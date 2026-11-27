@@ -189,9 +189,9 @@ stdin and starts no work. The text is read as message text and becomes the Page
 body whole: GitHub Flavored Markdown becomes structure, a single newline is a
 line break and a blank line starts the next paragraph, text that forms no markup
 stays literal, and images written as `![](nodex://files/FILE_ID)` follow the
-text. `--title` names it, otherwise Nodex labels it and names
-it later. Inside a Project's
-source or managed worktree, or with `--project`, the message lands in that
+text. The Inbox shows a received message's headline and first three lines, so open with
+the point. Give the headline with `--title` or let Nodex label the message and name it later.
+Inside a Project's source or managed worktree, or with `--project`, the message lands in that
 Project's Inbox as a Page on its Board. Anywhere else it lands in the Library
 Inbox. The command cannot read or triage either Inbox. `--idempotency-key` makes a retry return the
 original receipt.
