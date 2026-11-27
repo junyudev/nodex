@@ -723,8 +723,7 @@ function FileChangeRow({
           additions={row.summary.additions}
           deletions={row.summary.deletions}
           showZero={row.action === "delete"}
-          className="text-size-chat-sm"
-          tone="activity"
+          className="text-size-chat-sm leading-none"
         />
         <DiffSummaryIndicator action={row.action} summary={row.summary} />
       </div>

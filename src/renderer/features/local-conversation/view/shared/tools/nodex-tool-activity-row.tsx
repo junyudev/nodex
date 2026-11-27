@@ -391,8 +391,7 @@ export function NodexToolActivityRow({ item }: ToolComponentProps) {
           <DiffStats
             additions={change.additions}
             deletions={change.deletions}
-            className="text-size-chat-sm"
-            tone="activity"
+            className="text-size-chat-sm leading-none"
           />
         ) : null
       }

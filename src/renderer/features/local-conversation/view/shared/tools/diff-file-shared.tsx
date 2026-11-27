@@ -31,52 +31,29 @@ export function summarizeDiff(diffText: string | undefined): DiffSummary {
   return summarizeUnifiedDiffChanges(diffText);
 }
 
-// Literal class strings, so the stylesheet generator sees each hover tone.
-const ACTIVITY_ADDED_TONE =
-  "[@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:text-token-git-decoration-added-resource-foreground";
-const ACTIVITY_DELETED_TONE =
-  "[@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:text-token-git-decoration-deleted-resource-foreground";
-
 export function DiffStats({
   additions,
   deletions,
   className,
   showZero = false,
-  tone = "colored",
 }: DiffSummary & {
   className?: string;
   showZero?: boolean;
-  /** `activity` rests in its row's quiet text color and takes the diff colors on row hover. */
-  tone?: "colored" | "activity";
 }) {
   if (!showZero && additions === 0 && deletions === 0) return null;
-  const activity = tone === "activity";
 
   return (
     <span
       data-thread-find-skip="true"
       className={cn(
         "inline-flex items-center gap-1 disambiguated-digits tabular-nums tracking-tight",
-        activity && "leading-none",
         className,
       )}
     >
-      <span
-        className={cn(
-          "flex shrink-0 items-center",
-          activity ? ACTIVITY_ADDED_TONE : "text-token-git-decoration-added-resource-foreground",
-        )}
-      >
+      <span className="flex shrink-0 items-center text-token-git-decoration-added-resource-foreground">
         +{additions}
       </span>
-      <span
-        className={cn(
-          "flex shrink-0 items-center",
-          activity
-            ? ACTIVITY_DELETED_TONE
-            : "text-token-git-decoration-deleted-resource-foreground",
-        )}
-      >
+      <span className="flex shrink-0 items-center text-token-git-decoration-deleted-resource-foreground">
         -{deletions}
       </span>
     </span>
