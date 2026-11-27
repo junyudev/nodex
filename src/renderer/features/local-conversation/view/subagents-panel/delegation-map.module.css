@@ -1,0 +1,44 @@
+/*
+ * The map's lines move with CSS rather than Motion: the browser steps every line without script
+ * running each frame, and an enclosing AnimatePresence's initial={false}, which holds back every
+ * Motion animation mounted beneath it, cannot freeze them.
+ */
+
+/* Dashes travel from the delegator, one dash period (3 + 9) per 0.3 s. */
+.flow {
+  animation: flow 1.2s linear infinite;
+}
+
+@keyframes flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+/* A result travels home along the line once and fades as it reaches the delegator. */
+.homing {
+  animation:
+    home 0.7s ease-in both,
+    fade 0.2s linear 0.6s both;
+}
+
+@keyframes home {
+  from {
+    offset-distance: 100%;
+  }
+  to {
+    offset-distance: 0%;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

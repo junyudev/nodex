@@ -29,6 +29,7 @@ import {
   type DelegationEdgeState,
   type DelegationMapNode,
 } from "./delegation-map-model";
+import styles from "./delegation-map.module.css";
 import { formatSubagentElapsedTime } from "./subagent-overview-format";
 
 const GEOMETRY = DELEGATION_MAP_GEOMETRY;
@@ -248,16 +249,7 @@ function FlowDashes({
     strokeDasharray: FLOW_DASH,
     strokeLinecap: "round",
   } as const;
-  return moving ? (
-    <motion.path
-      {...stroke}
-      initial={{ strokeDashoffset: 0 }}
-      animate={{ strokeDashoffset: -48 }}
-      transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-    />
-  ) : (
-    <path {...stroke} />
-  );
+  return <path {...stroke} className={moving ? styles.flow : undefined} />;
 }
 
 /**
@@ -298,16 +290,11 @@ function DelegationEdge({
       <>
         <path d={line} stroke={color} strokeOpacity={0.65} strokeWidth={1.5} />
         {arrival.watched && !reducedMotion ? (
-          <motion.circle
+          <circle
             r={3}
             fill={color}
+            className={styles.homing}
             style={{ offsetPath: `path("${returnPath}")` }}
-            initial={{ offsetDistance: "100%", opacity: 1 }}
-            animate={{ offsetDistance: "0%", opacity: 0 }}
-            transition={{
-              offsetDistance: { duration: 0.7, ease: "easeIn" },
-              opacity: { delay: 0.6, duration: 0.2 },
-            }}
           />
         ) : null}
       </>

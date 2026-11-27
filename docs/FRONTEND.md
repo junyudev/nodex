@@ -488,6 +488,12 @@ work follows [Page Stage rich-editor performance](product-specs/card-stage-rich-
 - Honor reduced motion at the shared motion boundary. Animate semantic presence,
   disclosure, and geometry continuity; avoid animation that creates a second
   state owner or delays authoritative text updates.
+- Run an ambient loop that starts when its element mounts, such as flowing
+  dashes, as a CSS animation rather than a Motion `animate`. Motion skips the
+  first animation of every component beneath a child that an
+  `AnimatePresence initial={false}` held at its first render, including
+  components mounted there later, so such a loop never starts. A CSS loop also
+  runs no script per frame.
 - Treat rendered CSS and browser behavior as the evidence. Put reusable numeric
   or state rules in helpers with boundary tests, and preserve visual contracts
   through seeded real-app review or browser behavior tests rather than long

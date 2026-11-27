@@ -1,0 +1,1 @@
+In **Aerial view**, the line to a subagent at work moves again, so you can tell work under way from work waiting on you at a glance. Lines held still in every chat that was already working when the view opened, and a result coming back no longer sent its dot home along the line; both now play as they do in a chat's Subagents map.

@@ -6,6 +6,7 @@ import { useReplicaCopy } from "./copy";
 import { SubagentAvatar } from "./Chat";
 import { ProviderMark, cx } from "./Window";
 import { AgentQuestionIcon, DelegationMapIcon, ListIcon } from "./icons";
+import styles from "./delegation-map.module.css";
 
 /**
  * Each harness's line color, as its Agent definition in src/shared/agents/ names it. A DeepSeek
@@ -287,16 +288,7 @@ function FlowDashes({
     strokeDasharray: "3 9",
     strokeLinecap: "round",
   } as const;
-  return moving ? (
-    <motion.path
-      {...stroke}
-      initial={{ strokeDashoffset: 0 }}
-      animate={{ strokeDashoffset: -48 }}
-      transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-    />
-  ) : (
-    <path {...stroke} />
-  );
+  return <path {...stroke} className={moving ? styles.flow : undefined} />;
 }
 
 /**
@@ -336,16 +328,11 @@ function Edge({
       <>
         <path d={line} stroke={color} strokeOpacity={0.65} strokeWidth={1.5} />
         {arrival.watched && !still ? (
-          <motion.circle
+          <circle
             r={3}
             fill={color}
+            className={styles.homing}
             style={{ offsetPath: `path("${returnPath}")` }}
-            initial={{ offsetDistance: "100%", opacity: 1 }}
-            animate={{ offsetDistance: "0%", opacity: 0 }}
-            transition={{
-              offsetDistance: { duration: 0.7, ease: "easeIn" },
-              opacity: { delay: 0.6, duration: 0.2 },
-            }}
           />
         ) : null}
       </>
