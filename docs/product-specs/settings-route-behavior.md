@@ -36,8 +36,11 @@ Unknown paths present the default section without rewriting the URL or accepting
 legacy aliases. Settings links use in-app navigation and remain distinct from
 file references; file-opening behavior never intercepts a Settings route.
 
-Escape and the Back control in the compact Settings header restore the Workbench return
-route, including Inbox, Scheduled, and the Space’s tabs and selection. Changing Settings sections and
+Escape, the titlebar's Back, and the Back control in the compact Settings header restore the
+Workbench return route, including Inbox, Scheduled, and the Space’s tabs and selection. Back and
+Forward keep their place at the end of the Settings sidebar's titlebar row; Back is available
+even when Settings was the window's first destination. Leaving steps back in the window's
+history rather than adding to it, so Back afterwards never reopens Settings and Forward does. Changing Settings sections and
 reopening the window retain that same origin. The Home/Space rail keeps that return destination selected;
 its buttons leave Settings through normal Workbench navigation. Settings itself is
 outside app-window Back/Forward Scene checkpoints, so it does not create a

@@ -260,8 +260,21 @@ export function openWorkbenchRoute(
   });
 }
 
+/**
+ * Returns to the Scene a route opened over. When that Scene is exactly the previous history
+ * entry, closing steps back instead, so Back after leaving never reopens the route and Forward
+ * can.
+ */
 export function closeWorkbenchRoute(state: WorkbenchWindowState): WorkbenchWindowState {
   if (!("returnTo" in state.location)) return state;
+  const returned = navigateWorkbenchWindow(state, state.location.returnTo, { record: false });
+  const previous = state.history.backStack[state.history.backStack.length - 1] ?? null;
+  if (
+    previous &&
+    areWorkbenchNavigationSnapshotsEqual(previous, snapshotWorkbenchNavigation(returned))
+  ) {
+    return navigateBackInWorkbenchWindow(state);
+  }
   return navigateWorkbenchWindow(state, state.location.returnTo);
 }
 

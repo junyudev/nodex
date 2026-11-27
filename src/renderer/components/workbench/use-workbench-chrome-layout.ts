@@ -74,6 +74,8 @@ interface WorkbenchChromeLayoutInput {
   readonly sidebarLogicalCollapsed: boolean;
   readonly sidebarMotion: SidebarMotion;
   readonly sidebarOpen: boolean;
+  /** Settings shows its own sidebar at this width, whatever the Workbench sidebar's state. */
+  readonly settingsSidebarWidth?: number | null;
 }
 
 function resolveShellWidthClass(width: number): CodexShellWidthClass {
@@ -151,6 +153,7 @@ export function useWorkbenchChromeLayout({
   sidebarLogicalCollapsed,
   sidebarMotion,
   sidebarOpen,
+  settingsSidebarWidth = null,
 }: WorkbenchChromeLayoutInput) {
   const readFallbackSize = useCallback(
     () => readShellBodyFallbackSize(applicationMenuBarEnabled, rootRef.current),
@@ -456,23 +459,32 @@ export function useWorkbenchChromeLayout({
   const applicationMenuLeftSlotWidth = useTransform(leftHeaderContentWidth, (width) =>
     Math.max(width, effectiveHeaderLeftWidth),
   );
+  // Settings' sidebar always shows, so its titlebar row spans the rail and that sidebar.
+  const settingsHeaderWidth =
+    settingsSidebarWidth === null || applicationMenuBarEnabled
+      ? null
+      : WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + settingsSidebarWidth;
   const headerLeftShellSlotWidth =
-    sidebarLogicalCollapsed && rightPanelFullView
-      ? 0
-      : applicationMenuBarEnabled
-        ? applicationMenuLeftSlotWidth
-        : sidebarMotion.mounted
-          ? sidebarHeaderWidth
-          : rightPanelSide === "left"
-            ? collapsedSidebarHeaderWidth
-            : effectiveHeaderLeftWidth;
+    settingsHeaderWidth !== null
+      ? settingsHeaderWidth
+      : sidebarLogicalCollapsed && rightPanelFullView
+        ? 0
+        : applicationMenuBarEnabled
+          ? applicationMenuLeftSlotWidth
+          : sidebarMotion.mounted
+            ? sidebarHeaderWidth
+            : rightPanelSide === "left"
+              ? collapsedSidebarHeaderWidth
+              : effectiveHeaderLeftWidth;
   const headerLeftShellSlotMinWidth = applicationMenuBarEnabled
     ? 0
-    : sidebarMotion.mounted
-      ? sidebarLogicalCollapsed
-        ? effectiveHeaderLeftWidth
-        : Math.max(headerLeftWidth, workspaceSafeLeft + 24)
-      : effectiveHeaderLeftWidth;
+    : settingsHeaderWidth !== null
+      ? Math.max(headerLeftWidth, workspaceSafeLeft + 24)
+      : sidebarMotion.mounted
+        ? sidebarLogicalCollapsed
+          ? effectiveHeaderLeftWidth
+          : Math.max(headerLeftWidth, workspaceSafeLeft + 24)
+        : effectiveHeaderLeftWidth;
 
   return {
     appShellHeaderEdgeScroll,
