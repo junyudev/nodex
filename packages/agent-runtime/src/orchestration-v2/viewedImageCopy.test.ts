@@ -39,7 +39,7 @@ const read = (output: unknown, status: OrchestrationV2TurnItem["status"] = "comp
     viewedImagePath: "/workspace/screens/rail.png",
     input: { file_path: "/workspace/screens/rail.png" },
     output,
-  }) as OrchestrationV2TurnItem;
+  }) satisfies Extract<OrchestrationV2TurnItem, { type: "dynamic_tool" }>;
 const structured = {
   type: "image",
   file: { base64: PNG.toString("base64"), type: "image/png", originalSize: PNG.length },
@@ -86,17 +86,10 @@ it.effect("keeps the picture a read returned as the item's own attachment", () =
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.effect("leaves a read alone that did not return a picture it can keep", () =>
+it.effect("leaves in-progress or failed reads alone", () =>
   Effect.gen(function* () {
     const { attachmentsDir, fileSystem, keep } = yield* fixture;
-    const svg = { type: "image", file: { base64: "PHN2Zz4=", type: "image/svg+xml" } };
-    for (const item of [
-      read(structured, "running"),
-      read(structured, "failed"),
-      read("File does not exist"),
-      read(svg),
-      read({ type: "image", file: { type: "image/png", originalSize: 13675 } }),
-    ])
+    for (const item of [read(structured, "running"), read(structured, "failed")])
       expect(yield* keep(item)).toBe(item);
     expect(yield* fileSystem.readDirectory(attachmentsDir)).toEqual([]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
@@ -108,23 +101,28 @@ it.effect("keeps a picture its provider named, from the file or the bytes it rep
     const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "nodex-viewed-src-" });
     const viewedPath = `${workspace}/luna-star.png`;
     yield* fileSystem.writeFile(viewedPath, PNG);
-    const step = (toolName: string) =>
-      ({ ...read(undefined), toolName, viewedImagePath: viewedPath }) as OrchestrationV2TurnItem;
-    for (const [item, source] of [
-      [step("imageView"), { type: "file", path: viewedPath }],
+    const inspection = { ...read("Provider returned text"), viewedImagePath: "luna-star.png" };
+    const { viewedImagePath: _path, ...generation } = {
+      ...read(undefined),
+      toolName: "imageGeneration",
+    };
+    for (const [item, source, expectedPath] of [
+      [inspection, undefined, "luna-star.png"],
+      [generation, { type: "file", path: viewedPath }, undefined],
       [
-        step("imageGeneration"),
+        generation,
         {
           type: "data",
           name: "luna-star.png",
           mimeType: "image/png",
           base64: PNG.toString("base64"),
         },
+        undefined,
       ],
     ] as const) {
-      const kept = yield* keep(item, source);
+      const kept = yield* keep(item as OrchestrationV2TurnItem, source, workspace);
       if (kept.type !== "dynamic_tool") throw new Error("Expected the step to stay a tool item");
-      expect(kept.viewedImagePath).toBe(viewedPath);
+      expect(kept.viewedImagePath).toBe(expectedPath);
       const [copy] = kept.attachments ?? [];
       expect(copy).toMatchObject({ type: "image", name: "luna-star.png", mimeType: "image/png" });
       const stored = resolveAttachmentPath({ attachmentsDir, attachment: copy! })!;
@@ -140,7 +138,8 @@ it.effect("names a picture whose file cannot be read as unavailable instead of p
     const view = { ...read(undefined), toolName: "imageView", viewedImagePath: gone };
     const kept = yield* keep(view as OrchestrationV2TurnItem, { type: "file", path: gone });
     if (kept.type !== "dynamic_tool") throw new Error("Expected the step to stay a tool item");
-    expect(kept.viewedImagePath).toBeUndefined();
+    expect(kept.viewedImagePath).toBe(gone);
+    expect(yield* keep(kept)).toEqual(kept);
     expect(kept.attachments).toBeUndefined();
     expect(kept.unavailableImages).toEqual([
       { name: "gone.png", sourcePath: gone, reason: "source_missing" },

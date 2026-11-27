@@ -19,7 +19,11 @@ import {
   RunId,
   ThreadId,
 } from "@nodex/runtime-contracts";
+import { DEFAULT_MAX_BYTES } from "@nodex/runtime-shared/BoundedQueue";
 import { resolveSelfInvocation } from "@nodex/runtime-shared/nodeRuntime";
+import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { keepViewedImage } from "../viewedImageCopy.ts";
+import { toolResultImages, toolResultPicture } from "../toolResultImages.ts";
 import { htmlRenderFromToolItem } from "@nodex/runtime-shared/toolOutput";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -1900,6 +1904,25 @@ describe("AntigravityAdapterV2 subagent reads", () => {
       const workspace = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "nodex-antigravity-reads-",
       });
+      const host = yield* ProviderHost.ProviderHost;
+      const attachmentsDir = host.paths.attachmentsDir;
+      const keepPicture = keepViewedImage({ attachmentsDir, fileSystem, path });
+      const savedPicture = path.join(workspace, "saved.png");
+      const inlinePicture = path.join(workspace, "inline.png");
+      const missingPicture = path.join(workspace, "missing.png");
+      const png = Buffer.from("89504e470d0a1a0a", "hex");
+      const picture = {
+        type: "image",
+        mimeType: "image/png",
+        data: png.toString("base64"),
+      } as const;
+      // Two of these fit into one provider event. Three would exceed the queue's byte budget.
+      const screenshotBytes = (DEFAULT_MAX_BYTES * 3) / 8;
+      const frames = ["A", "B", "C", "D"].map((byte) => ({
+        ...picture,
+        data: byte.repeat(screenshotBytes),
+      }));
+      yield* fileSystem.writeFile(savedPicture, png);
       const outside = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "nodex-antigravity-reads-outside-",
       });
@@ -1991,13 +2014,77 @@ describe("AntigravityAdapterV2 subagent reads", () => {
                       rawOutput: stepError,
                     });
                   }
+                  for (const [toolCallId, target] of [
+                    ["image-inline", inlinePicture],
+                    ["image-file", "saved.png"],
+                    ["image-missing", missingPicture],
+                  ] as const) {
+                    yield* update({
+                      sessionUpdate: "tool_call",
+                      toolCallId,
+                      title: "Read image",
+                      kind: "read",
+                      status: "completed",
+                      rawInput: { absolute_path: target },
+                      rawOutput: "Read finished",
+                      ...(toolCallId === "image-inline"
+                        ? { content: [{ type: "content", content: picture }] }
+                        : {}),
+                    });
+                  }
+                  for (const [toolCallId, images] of [
+                    ["screenshot", [picture]],
+                    ["screen-frames", frames],
+                  ] as const) {
+                    yield* update({
+                      sessionUpdate: "tool_call",
+                      toolCallId,
+                      title: "Capture browser",
+                      kind: "other",
+                      status: "in_progress",
+                      rawInput: {
+                        ServerName: "browser",
+                        ToolName: "screenshot",
+                        Arguments: { fullPage: true },
+                      },
+                    });
+                    for (const image of images) {
+                      yield* update({
+                        sessionUpdate: "tool_call_content_chunk",
+                        toolCallId,
+                        content: { type: "content", content: image },
+                      });
+                    }
+                    yield* update({
+                      sessionUpdate: "tool_call_update",
+                      toolCallId,
+                      status: "completed",
+                      rawOutput: {
+                        result: {
+                          content: [
+                            { type: "text", text: "Captured" },
+                            ...(toolCallId === "screen-frames" ? [images[0]!] : []),
+                          ],
+                          structuredContent: {
+                            width: 800,
+                            content: [toolCallId === "screenshot" ? picture : frames[2]!],
+                          },
+                        },
+                      },
+                    });
+                  }
                   return { stopReason: "end_turn" as const };
                 }),
             })),
           ),
         withProcess: (_stop, task) => task,
         defaultModel: Effect.undefined,
-      });
+      }).pipe(
+        Effect.provideService(ProviderHost.ProviderHost, {
+          ...host,
+          keepViewedImage: (item, cwd) => keepPicture(item, undefined, cwd),
+        }),
+      );
       const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
         runtimeMode: "full-access",
         interactionMode: "default",
@@ -2063,17 +2150,20 @@ describe("AntigravityAdapterV2 subagent reads", () => {
           Stream.runCollect,
         ),
       );
-      const read = (nativeId: string) => {
+      const tool = (nativeId: string) => {
         const event = events.findLast(
           (event) =>
             event.type === "turn_item.updated" &&
             event.turnItem.nativeItemRef?.nativeId === nativeId,
         );
         return event?.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool"
-          ? { status: event.turnItem.status, output: event.turnItem.output }
+          ? event.turnItem
           : undefined;
       };
-
+      const read = (nativeId: string) => {
+        const item = tool(nativeId);
+        return item && { status: item.status, output: item.output };
+      };
       const firstEvent = (nativeId: string, status: string) =>
         events.findIndex(
           (event) =>
@@ -2091,6 +2181,57 @@ describe("AntigravityAdapterV2 subagent reads", () => {
       assert.deepEqual(read("call_missing"), failed);
       assert.deepEqual(read("call_denied"), failed);
       assert.deepEqual(read("call_unseen"), failed);
+      yield* fileSystem.remove(savedPicture);
+      for (const [id, source, name] of [
+        ["image-inline", inlinePicture, "inline.png"],
+        ["image-file", "saved.png", "saved.png"],
+      ] as const) {
+        const item = tool(id);
+        assert.equal(item?.viewedImagePath, source);
+        const copy = item?.attachments?.[0];
+        assert.deepInclude(copy, { type: "image", name });
+        if (!copy || copy.type !== "image") return assert.fail("Missing owned image");
+        const stored = resolveAttachmentPath({ attachmentsDir, attachment: copy });
+        if (!stored) return assert.fail("Missing attachment path");
+        assert.deepEqual(Buffer.from(yield* fileSystem.readFile(stored)), png);
+      }
+      assert.equal(tool("image-missing")?.viewedImagePath, missingPicture);
+      assert.deepEqual(tool("image-missing")?.unavailableImages, [
+        { name: "missing.png", sourcePath: missingPicture, reason: "source_missing" },
+      ]);
+      const screenshot = tool("screenshot");
+      if (!screenshot) return assert.fail("Missing screenshot tool");
+      assert.deepInclude(screenshot.mcpToolCall, {
+        server: "browser",
+        tool: "screenshot",
+        arguments: { fullPage: true },
+      });
+      assert.deepEqual(screenshot.mcpToolCall?.result?.structuredContent, {
+        width: 800,
+        content: [],
+      });
+      assert.deepEqual(toolResultImages(screenshot), [
+        { attachmentId: "tool-result:1", mimeType: "image/png" },
+      ]);
+      assert.equal(
+        toolResultPicture(screenshot, "tool-result:1"),
+        `data:image/png;base64,${picture.data}`,
+      );
+      const captured = tool("screen-frames");
+      if (!captured) return assert.fail("Missing bounded screenshot result");
+      assert.equal(captured.mcpToolCall?.status, "completed");
+      assert.deepEqual(toolResultImages(captured), [
+        { attachmentId: "tool-result:1", mimeType: "image/png" },
+        { attachmentId: "tool-result:2", mimeType: "image/png" },
+      ]);
+      for (const [index, frame] of frames.slice(0, 2).entries()) {
+        assert.isTrue(
+          toolResultPicture(captured, `tool-result:${index + 1}`) ===
+            `data:image/png;base64,${frame.data}`,
+        );
+      }
+      const terminal = events.at(-1);
+      assert.equal(terminal?.type === "turn.terminal" && terminal.status, "completed");
     }).pipe(Effect.provide(layerSession)),
   );
 });

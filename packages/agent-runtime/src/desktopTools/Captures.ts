@@ -1,3 +1,4 @@
+import { boundedToolOutputImage } from "@nodex/runtime-shared/toolOutput";
 import { isDeepStrictEqual } from "node:util";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
@@ -7,7 +8,7 @@ import type {
   ThreadId,
   TurnItemId,
 } from "@nodex/runtime-contracts";
-import { normalizeMcpToolCall } from "../orchestration-v2/McpToolCall.ts";
+import { normalizeMcpToolCall } from "@nodex/provider-core/server/mcpToolCall";
 
 type DynamicTool = Extract<OrchestrationV2TurnItem, { type: "dynamic_tool" }>;
 
@@ -60,7 +61,11 @@ export function makeCaptures() {
   };
   const enrich = (item: DynamicTool, attemptId: RunAttemptId | null): DynamicTool => {
     if (
-      item.mcpToolCall ||
+      (item.mcpToolCall !== undefined &&
+        ((item.nativeItemRef?.driver !== "antigravity" &&
+          item.nativeItemRef?.driver !== "acpRegistry") ||
+          item.mcpToolCall.server !== "node_repl" ||
+          item.mcpToolCall.result?.content.some(boundedToolOutputImage))) ||
       !attemptId ||
       !item.toolName ||
       !["completed", "failed", "cancelled", "interrupted"].includes(item.status)

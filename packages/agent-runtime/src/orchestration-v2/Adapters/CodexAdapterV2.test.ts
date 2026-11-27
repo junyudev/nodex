@@ -5500,13 +5500,13 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           status: "completed",
           title: "Generate image",
           toolName: "imageGeneration",
-          viewedImagePath: drawnPath,
           input: { prompt: "A small drawing" },
         });
+        assert.notProperty(latest("generate-drawing"), "viewedImagePath");
         assert.deepEqual(yield* keptBytes(latest("generate-drawing")), drawn);
-        // A picture whose file is gone is named as unavailable, never previewed from its path.
+        // A missing file still identifies the inspection, with no readable attachment.
         const missing = latest("view-gone");
-        assert.isUndefined(missing?.type === "dynamic_tool" ? missing.viewedImagePath : null);
+        assert.equal(missing?.type === "dynamic_tool" ? missing.viewedImagePath : null, gonePath);
         assert.deepEqual(missing?.unavailableImages, [
           { name: "gone.png", sourcePath: gonePath, reason: "source_missing" },
         ]);

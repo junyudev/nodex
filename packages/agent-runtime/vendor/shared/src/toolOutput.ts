@@ -104,7 +104,8 @@ function readResult(value: unknown, budget: ResultReadBudget, depth = 0): Result
   const terminal = typeof value.output === "string" ? value.output : "";
   const marker = terminal.indexOf(TERMINAL_OUTPUT_MARKER);
   const content =
-    value.structuredContent ?? value.content ??
+    value.structuredContent ??
+    value.content ??
     (marker === -1 ? undefined : terminal.slice(marker + TERMINAL_OUTPUT_MARKER.length));
   if (content !== undefined) {
     const nested = readResult(content, budget, depth + 1);
@@ -146,7 +147,9 @@ function pickBounded(
  * own shape gives the row one way to read both this digest and a complete output. Compacting a
  * digest again yields the same digest.
  */
-function compactContentResult(data: Record<PropertyKey, unknown>): CompactContentResult | undefined {
+function compactContentResult(
+  data: Record<PropertyKey, unknown>,
+): CompactContentResult | undefined {
   const result = data.data;
   if (!Predicate.isObject(result)) return undefined;
   const compact: CompactContentResult = pickBounded(result, ["pageId", "pageKey"], boundedId);
@@ -348,6 +351,24 @@ export const MAX_TOOL_OUTPUT_IMAGES = 8;
 /** The largest image a `tool-output-image` asset serves: a provider turn's limit, as base64. */
 export const MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH =
   Math.ceil(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / 3) * 4;
+
+/** The inline raster bytes eligible for the Runtime's tool-result image asset. */
+export function boundedToolOutputImage(block: unknown): { mimeType: string; data: string } | null {
+  const image = readToolOutputImage(block);
+  const data = image?.data;
+  if (
+    !image ||
+    !data ||
+    data.length > MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH ||
+    /[^A-Za-z0-9+/=]/u.test(data)
+  )
+    return null;
+  const pad = data.indexOf("=");
+  if (pad !== -1 && pad !== data.length - (data.endsWith("==") ? 2 : 1)) return null;
+  if (Math.floor(((pad === -1 ? data.length : pad) * 3) / 4) > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES)
+    return null;
+  return { mimeType: image.mimeType, data };
+}
 
 /**
  * The blocks `toolOutputImages` reads, by reference. These hold the only image

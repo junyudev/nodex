@@ -1,3 +1,9 @@
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
+import {
+  boundedToolOutputImage,
+  MAX_TOOL_OUTPUT_IMAGES,
+  readToolOutputImage,
+} from "@nodex/runtime-shared/toolOutput";
 import { HTML_RENDER_TOOL_NAME } from "@nodex/runtime-shared/htmlRender";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -356,7 +362,11 @@ function sanitizeAcpToolCallContent(
 ): ReadonlyArray<EffectAcpSchema.ToolCallContent> {
   return content.map((entry) => {
     switch (entry.type) {
-      case "content":
+      case "content": {
+        const image = boundedToolOutputImage(entry.content);
+        if (image) {
+          return { type: "content", content: { type: "image", ...image } };
+        }
         return {
           type: "content",
           content: {
@@ -364,6 +374,7 @@ function sanitizeAcpToolCallContent(
             text: acpContentBlockDisplayText(entry.content) ?? "",
           },
         };
+      }
       case "diff":
         if ("changes" in entry) {
           return {
@@ -928,7 +939,7 @@ function makeToolCallState(
     ...(status ? { status } : {}),
     ...(command ? { command } : {}),
     ...(presentation?.detail ? { detail: presentation.detail } : {}),
-    data,
+    data: boundAcpToolDataImages(data),
   };
 }
 
@@ -955,6 +966,135 @@ function parseTypedToolCallState(
   );
 }
 
+export function acpToolContentBlocks(value: unknown): readonly unknown[] {
+  if (!Array.isArray(value)) return boundedToolOutputImage(value) ? [value] : [];
+  return value.map((entry: unknown) =>
+    isRecord(entry) && entry.type === "content" ? entry.content : entry,
+  );
+}
+
+export function acpReportedToolResult(rawOutput: unknown) {
+  const envelope = isRecord(rawOutput) ? rawOutput : undefined;
+  const result = isRecord(envelope?.result) ? envelope.result : envelope;
+  const blocks = acpToolContentBlocks(result?.content ?? result ?? rawOutput);
+  return { envelope, result, blocks };
+}
+
+/** A call shares the native queue's byte budget across raw output and display chunks. */
+function makeAcpToolImageBudget(maxBytes: number) {
+  const seen = new Map<string, Set<string>>();
+  let count = 0;
+  return (block: unknown) => {
+    if (count >= MAX_TOOL_OUTPUT_IMAGES || maxBytes <= 0) return null;
+    const image = boundedToolOutputImage(block);
+    if (!image) return null;
+    const { mimeType, data } = image;
+    const previous = seen.get(mimeType);
+    if (previous?.has(data)) return null;
+    // Charge the encoded base64 plus its largest ACP wrapper and array separator.
+    const bytes =
+      data.length +
+      BoundedQueue.encodedBytes({ type: "content", content: { type: "image", mimeType, data: "" } }) +
+      1;
+    if (bytes > maxBytes) return null;
+    maxBytes -= bytes;
+    count += 1;
+    if (previous) previous.add(data);
+    else seen.set(mimeType, new Set([data]));
+    return image;
+  };
+}
+
+/**
+ * Limit image blocks inside ACP display content and raw MCP result envelopes.
+ * Share the returned limiter across fields to charge all of them to one budget.
+ */
+export function makeAcpToolOutputImageLimit(maxBytes: number) {
+  const keep = makeAcpToolImageBudget(maxBytes);
+  const limit = (
+    value: unknown,
+    scope: "all" | "content" | "structured" = "all",
+  ): unknown => {
+    if (Array.isArray(value)) {
+      const items = value.map((entry) => limit(entry, scope));
+      return items.every((entry, index) => entry === value[index])
+        ? value
+        : items.filter((entry) => entry !== undefined);
+    }
+    if (!isRecord(value)) return value;
+    if (value.type === "image") {
+      if (scope === "structured" || readToolOutputImage(value)?.data === undefined) return value;
+      const image = keep(value);
+      if (!image) return undefined;
+      return value.mimeType === image.mimeType && value.data === image.data
+        ? value
+        : { type: "image", ...image };
+    }
+    let bounded: Record<string, unknown> | undefined;
+    for (const key of ["content", "result", "structuredContent", "update", "rawOutput"] as const) {
+      if (key === "structuredContent" && scope === "content") continue;
+      const entry = value[key];
+      const next = limit(entry, key === "structuredContent" ? "all" : scope);
+      if (next === entry) continue;
+      if (next === undefined && key === "content" && value.type === "content") return undefined;
+      bounded ??= { ...value };
+      if (next === undefined) delete bounded[key];
+      else bounded[key] = next;
+    }
+    return bounded ?? value;
+  };
+  return limit;
+}
+
+export function boundAcpToolDataImages(
+  data: Record<string, unknown>,
+  maxBytes: number = BoundedQueue.DEFAULT_MAX_BYTES,
+): Record<string, unknown> {
+  const limit = makeAcpToolOutputImageLimit(maxBytes);
+  // Result blocks and ACP display blocks are the images the transcript can serve.
+  const reported = limit(data.rawOutput, "content");
+  const displayed = limit(data.content, "content");
+  const rawOutput = limit(reported, "structured");
+  const content = limit(displayed, "structured");
+  if (rawOutput === data.rawOutput && content === data.content) return data;
+  return {
+    ...data,
+    ...(rawOutput === data.rawOutput ? {} : { rawOutput }),
+    ...(content === data.content ? {} : { content }),
+  };
+}
+
+/** Media may use the room left in the queue after reserving the ordinary event. */
+export const offerAcpToolEvent = Effect.fnUntraced(function* <A, E>(
+  queue: BoundedQueue.BoundedQueue<A, E>,
+  event: A,
+  limitImages: (event: A, maxBytes: number) => A,
+) {
+  const withoutImages = limitImages(event, 0);
+  if (withoutImages === event) {
+    yield* BoundedQueue.offer(queue, event);
+    return;
+  }
+  const available = queue.maxBytes - queue.bytes - queue.sizeOf(withoutImages);
+  if (available > 0) {
+    const bounded = limitImages(event, available);
+    if (yield* BoundedQueue.tryOffer(queue, bounded)) return;
+  }
+  // Another event may have used that headroom. Preserve this update without the pixels.
+  yield* BoundedQueue.offer(queue, withoutImages);
+});
+
+function acpToolImages(data: Record<string, unknown>): readonly unknown[] {
+  const { blocks } = acpReportedToolResult(data.rawOutput);
+  const keep = makeAcpToolImageBudget(BoundedQueue.DEFAULT_MAX_BYTES);
+  return [...blocks, ...acpToolContentBlocks(data.content)].flatMap(
+    (block) => {
+      const image = keep(block);
+      return image ? [{ type: "image", ...image }] : [];
+    },
+  );
+}
+
 export function mergeToolCallState(
   previous: AcpToolCallState | undefined,
   next: AcpToolCallState,
@@ -965,7 +1105,18 @@ export function mergeToolCallState(
   const status = next.status ?? previous?.status;
   const command = next.command ?? previous?.command;
   const detail = next.detail ?? previous?.detail;
-  const data = mergeToolActivityData(previous?.data, next.data) ?? next.data;
+  let data = mergeToolActivityData(previous?.data, next.data) ?? next.data;
+  // Some agents replace a finished tool's result with a text-only recap.
+  if (previous && ("rawOutput" in next.data || "content" in next.data)) {
+    const pictures = acpToolImages(previous.data);
+    if (pictures.length > acpToolImages(data).length && acpToolImages(next.data).length === 0) {
+      const content: readonly unknown[] = Array.isArray(data.content) ? data.content : [];
+      data = {
+        ...data,
+        content: [...content, ...pictures.map((image) => ({ type: "content", content: image }))],
+      };
+    }
+  }
   return {
     toolCallId: next.toolCallId,
     ...(kind ? { kind } : {}),
@@ -973,7 +1124,7 @@ export function mergeToolCallState(
     ...(status ? { status } : {}),
     ...(command ? { command } : {}),
     ...(detail ? { detail } : {}),
-    data,
+    data: boundAcpToolDataImages(data),
   };
 }
 
@@ -1282,7 +1433,9 @@ export function extractMcpToolCallIdentity(
     const candidateTool = match?.groups?.tool;
     if (
       candidateTool !== undefined &&
-      (options?.antigravityToolIdentity ? APP_MCP_TOOL_NAMES : NODEX_APP_TASK_TOOL_NAMES).has(candidateTool)
+      (options?.antigravityToolIdentity ? APP_MCP_TOOL_NAMES : NODEX_APP_TASK_TOOL_NAMES).has(
+        candidateTool,
+      )
     ) {
       return { server: NODEX_APP_MCP_SERVER, tool: candidateTool };
     }

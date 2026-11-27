@@ -1,3 +1,4 @@
+import { projectTurnItemForWire } from "../orchestration-v2/WireProjection.ts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
@@ -182,7 +183,6 @@ const fixture = (
     missingBoundary?: boolean;
     legacy?: boolean;
     voice?: boolean;
-    media?: boolean;
     tool?: ThreadItemEntry;
     sourceCwd?: string;
     userEntry?: ThreadItemEntry;
@@ -251,28 +251,7 @@ const fixture = (
         });
       if (failSecondPage) return Effect.fail(new Error("Source disconnected"));
       return Effect.succeed({
-        data: options.missingBoundary
-          ? [extra]
-          : [
-              ...(options.media
-                ? [
-                    {
-                      ...user,
-                      item: {
-                        generationId: null,
-                        type: "imageGeneration",
-                        id: "image:source",
-                        result: "/source/private.png",
-                        status: "completed",
-                        revisedPrompt: null,
-                        failure: null,
-                      },
-                    },
-                  ]
-                : []),
-              sourceAssistant,
-              extra,
-            ],
+        data: options.missingBoundary ? [extra] : [sourceAssistant, extra],
         nextCursor: null,
       });
     });
@@ -535,6 +514,7 @@ it.effect.each([false, true])("copies Codex web search activity (legacy history:
 
 it.effect("preserves tool images and result metadata as passive history", () =>
   Effect.gen(function* () {
+    const data = "A".repeat(8 * 1024 * 1024 + 4);
     const source = fixture({
       tool: {
         ...user,
@@ -551,7 +531,7 @@ it.effect("preserves tool images and result metadata as passive history", () =>
           pluginId: null,
           readOnlyHint: true,
           result: {
-            content: [{ type: "image", mimeType: "image/png", data: "AQID" }],
+            content: [{ type: "image", mimeType: "image/png", data }],
             structuredContent: { caption: "Result" },
             _meta: null,
           },
@@ -570,26 +550,76 @@ it.effect("preserves tool images and result metadata as passive history", () =>
       tool?.type === "dynamic_tool" ? tool.mcpToolCall?.result?.structuredContent : null,
       { caption: "Result" },
     );
+    if (tool?.type !== "dynamic_tool") return assert.fail("Missing imported MCP step");
+    const projected = projectTurnItemForWire(tool);
+    if (projected.type !== "dynamic_tool") return assert.fail("Missing wire tool step");
+    assert.deepEqual(projected.resultImages, [
+      { attachmentId: "tool-result:0", mimeType: "image/png" },
+    ]);
+    const attachment = yield* Attachment.make;
+    const image = yield* attachment({
+      threadId: target.threadId,
+      itemId: tool.id,
+      attachmentId: "tool-result:0",
+    });
+    assert.equal(
+      image && "dataUrl" in image ? image.dataUrl.length : null,
+      data.length + "data:image/png;base64,".length,
+    );
     assert.equal(copied.runtimeRequests.length, 0);
     assert.equal(copied.subagents.length, 0);
   }).pipe(Effect.provide(layer)),
 );
 
-for (const unsupported of ["voice", "media"] as const) {
-  it.effect(
-    `refuses unsupported ${unsupported} history without reporting an import as complete`,
-    () =>
-      Effect.gen(function* () {
-        const source = fixture({ [unsupported]: true });
-        const importThread = yield* source.makeImport;
-        const target = input(unsupported);
-        assert.equal((yield* importThread(target).pipe(Effect.result))._tag, "Failure");
-        const thread = yield* (yield* ProjectionStoreV2).getThread(target.threadId);
-        assert.isNotNull(thread.executionHandoff);
-        assert.equal((yield* (yield* OrchestratorV2).getReceipt(target.commandId))._tag, "None");
-      }).pipe(Effect.provide(layer)),
-  );
-}
+it.effect("refuses voice history without reporting an import as complete", () =>
+  Effect.gen(function* () {
+    const source = fixture({ voice: true });
+    const importThread = yield* source.makeImport;
+    const target = input("voice");
+    assert.equal((yield* importThread(target).pipe(Effect.result))._tag, "Failure");
+    const thread = yield* (yield* ProjectionStoreV2).getThread(target.threadId);
+    assert.isNotNull(thread.executionHandoff);
+    assert.equal((yield* (yield* OrchestratorV2).getReceipt(target.commandId))._tag, "None");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each([{ fileId: "opaque-image" }, { result: "/source/private.png" }])(
+  "keeps a completed generation when its native result has no readable bytes: %j",
+  (image) =>
+    Effect.gen(function* () {
+      const source = fixture({
+        tool: {
+          ...user,
+          item: {
+            ...image,
+            type: "imageGeneration",
+            id: "image:source",
+            generationId: "source-generation",
+            revisedPrompt: "Draw a coastline",
+            status: "completed",
+            failure: null,
+          },
+        },
+      });
+      const target = input(
+        "fileId" in image ? "missing-generation-id" : "missing-generation-result",
+      );
+      yield* (yield* source.makeImport)(target);
+      const projection = yield* (yield* ProjectionStoreV2).getThreadProjection(target.threadId);
+      const tool = projection.turnItems.find((item) => item.type === "dynamic_tool");
+      if (tool?.type !== "dynamic_tool") return assert.fail("Missing generation step");
+      assert.equal(tool.viewedImagePath, undefined);
+      assert.equal(tool.attachments, undefined);
+      assert.deepEqual(tool.input, { prompt: "Draw a coastline" });
+      assert.deepEqual(tool.unavailableImages, [
+        {
+          name: "Generated image.png",
+          sourcePath: `codex-image:${"fileId" in image ? image.fileId : "source-generation"}`,
+          reason: "source_missing",
+        },
+      ]);
+    }).pipe(Effect.provide(layer)),
+);
 
 it.effect(
   "retains missing message images and image inspections without borrowing the new directory",
@@ -635,6 +665,7 @@ it.effect(
       assert.deepEqual(opening.unavailableImages, [
         { name: "user.png", sourcePath: originalUserPath, reason: "source_missing" },
       ]);
+      assert.equal(viewed.type === "dynamic_tool" ? viewed.viewedImagePath : null, "viewed.png");
       assert.deepEqual(viewed.unavailableImages, [
         { name: "viewed.png", sourcePath: "viewed.png", reason: "source_missing" },
       ]);
@@ -1145,6 +1176,13 @@ it.effect(
                 name: "Read",
                 input: { file_path: "/original/image.png" },
               },
+              {
+                type: "tool_use",
+                id: "screenshot",
+                name: "mcp__browser__screenshot",
+                input: { fullPage: true },
+              },
+              { type: "tool_use", id: "render-chart", name: "RenderChart", input: {} },
               { type: "future_record", text: "PRESERVED_UNKNOWN_TEXT" },
             ],
           },
@@ -1161,6 +1199,26 @@ it.effect(
                 tool_use_id: "read-image",
                 content: [
                   { type: "text", text: "TOOL_OUTPUT_CONSTRAINT" },
+                  {
+                    type: "image",
+                    source: { type: "base64", media_type: "image/png", data: source.png },
+                  },
+                ],
+              },
+              {
+                type: "tool_result",
+                tool_use_id: "screenshot",
+                content: [
+                  {
+                    type: "image",
+                    source: { type: "base64", media_type: "image/png", data: source.png },
+                  },
+                ],
+              },
+              {
+                type: "tool_result",
+                tool_use_id: "render-chart",
+                content: [
                   {
                     type: "image",
                     source: { type: "base64", media_type: "image/png", data: source.png },
@@ -1197,33 +1255,64 @@ it.effect(
         copied.turnItems.some(
           (item) =>
             item.type === "dynamic_tool" &&
-            item.toolName === "Read" &&
-            JSON.stringify(item.output).includes("read-image"),
-        ),
-      );
-      assert.isTrue(
-        copied.turnItems.some(
-          (item) =>
-            item.type === "dynamic_tool" &&
-            item.toolName === "tool_result" &&
-            JSON.stringify(item.output).includes("TOOL_OUTPUT_CONSTRAINT"),
-        ),
-      );
-      assert.isTrue(
-        copied.turnItems.some(
-          (item) =>
-            item.type === "dynamic_tool" &&
             item.toolName === "future_record" &&
             JSON.stringify(item.output).includes("PRESERVED_UNKNOWN_TEXT"),
         ),
       );
       const image = copied.turnItems.find(
-        (item) => item.type === "dynamic_tool" && item.toolName === "imageView",
+        (item) => item.type === "dynamic_tool" && item.toolName === "Read",
       );
       if (image?.type !== "dynamic_tool") return assert.fail("Missing copied tool image");
-      assert.equal(image.attachments?.length, 1);
+      assert.equal(image.viewedImagePath, "/original/image.png");
+      assert.include(JSON.stringify(image.output), "TOOL_OUTPUT_CONSTRAINT");
+      assert.deepInclude(image.attachments?.[0], { type: "image", name: "image.png" });
+      const mcp = copied.turnItems.find(
+        (item) => item.type === "dynamic_tool" && item.mcpToolCall?.tool === "screenshot",
+      );
+      if (mcp?.type !== "dynamic_tool") return assert.fail("Missing copied screenshot step");
+      assert.deepInclude(mcp.mcpToolCall, { server: "browser", arguments: { fullPage: true } });
+      const projected = projectTurnItemForWire(mcp);
+      if (projected.type !== "dynamic_tool") return assert.fail("Missing wire tool step");
+      assert.deepEqual(projected.resultImages, [
+        { attachmentId: "tool-result:0", mimeType: "image/png" },
+      ]);
+      assert.isUndefined(mcp.attachments);
+      const rendered = copied.turnItems.find(
+        (item) =>
+          item.type === "dynamic_tool" &&
+          item.toolName === "tool_result" &&
+          JSON.stringify(item.output).includes("render-chart"),
+      );
+      if (rendered?.type !== "dynamic_tool") return assert.fail("Missing copied chart result");
+      const renderedWire = projectTurnItemForWire(rendered);
+      if (renderedWire.type !== "dynamic_tool") return assert.fail("Missing wire chart result");
+      assert.deepEqual(renderedWire.resultImages, [
+        { attachmentId: "tool-result:1", mimeType: "image/png" },
+      ]);
+      assert.isFalse(
+        copied.turnItems.some(
+          (item) => item.type === "dynamic_tool" && item.toolName === "imageView",
+        ),
+      );
+
       yield* fs.remove(source.file);
       const readAttachment = yield* Attachment.make;
+      assert.deepEqual(
+        yield* readAttachment({
+          threadId: source.target.threadId,
+          itemId: mcp.id,
+          attachmentId: "tool-result:0",
+        }),
+        { dataUrl: `data:image/png;base64,${source.png}` },
+      );
+      assert.deepEqual(
+        yield* readAttachment({
+          threadId: source.target.threadId,
+          itemId: rendered.id,
+          attachmentId: "tool-result:1",
+        }),
+        { dataUrl: `data:image/png;base64,${source.png}` },
+      );
       const owned = yield* readAttachment({
         threadId: source.target.threadId,
         itemId: image.id,
@@ -1383,7 +1472,7 @@ for (const kind of ["imageGeneration", "dynamicToolCall", "functionCallOutput"] 
                 status: "completed",
                 result: payload,
                 savedPath: "/missing/generated.png",
-                revisedPrompt: null,
+                revisedPrompt: "Draw a trail map",
                 failure: null,
               }
             : kind === "dynamicToolCall"
@@ -1416,6 +1505,11 @@ for (const kind of ["imageGeneration", "dynamicToolCall", "functionCallOutput"] 
       assert.equal(copied?.type, "dynamic_tool");
       if (!copied || copied.type !== "dynamic_tool") return;
       assert.equal(copied.attachments?.length, 1);
+      if (kind === "imageGeneration") {
+        assert.equal(copied.toolName, "imageGeneration");
+        assert.deepEqual(copied.input, { prompt: "Draw a trail map" });
+        assert.isUndefined(copied.viewedImagePath);
+      }
       const readAttachment = yield* Attachment.make;
       const retained = yield* readAttachment({
         threadId: target.threadId,
@@ -1495,6 +1589,68 @@ for (const runtimeMode of [undefined, "auto"] as const) {
       }).pipe(Effect.provide(layer)),
   );
 }
+
+it.effect("imports Antigravity image reads from the source working folder", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "antigravity-import-images-" });
+    const imagePath = path.join(cwd, "photo.png");
+    const png = Buffer.from("89504e470d0a1a0a", "hex");
+    yield* fs.writeFile(imagePath, png);
+    const sourceNativeThreadId = "3e5cc82a-e517-4f4e-8dad-02d900b86b7b";
+    const target = NativeImportInput.make({
+      ...input("antigravity-image"),
+      backendKind: "antigravity",
+      sourceHome: cwd,
+      sourceNativeThreadId,
+      sourceCwd: cwd,
+      modelSelection: { instanceId: antigravityInstanceId, model: "fixture" },
+    });
+    const importThread = yield* make(() =>
+      openAntigravityImportSource({
+        cwd,
+        updates: [
+          {
+            sessionId: sourceNativeThreadId,
+            update: {
+              sessionUpdate: "user_message_chunk",
+              content: { type: "text", text: "Read photo.png" },
+            },
+          },
+          {
+            sessionId: sourceNativeThreadId,
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: "read-photo",
+              title: "Read photo.png",
+              kind: "read",
+              status: "completed",
+              rawInput: { absolute_path: "photo.png" },
+              rawOutput: "Read photo",
+            },
+          },
+        ],
+      }),
+    );
+    yield* importThread(target);
+    yield* fs.remove(imagePath);
+    const { turnItems } = yield* (yield* ProjectionStoreV2).getThreadProjection(target.threadId);
+    const read = turnItems.find((item) => item.type === "dynamic_tool");
+    if (read?.type !== "dynamic_tool") return assert.fail("Missing imported image read");
+    assert.equal(read.viewedImagePath, "photo.png");
+    const copy = read.attachments?.[0];
+    assert.deepInclude(copy, { type: "image", name: "photo.png" });
+    const attachment = yield* Attachment.make;
+    const owned = yield* attachment({
+      threadId: target.threadId,
+      itemId: read.id,
+      attachmentId: copy!.id,
+    });
+    if (!owned || !("path" in owned)) return assert.fail("The imported copy is not readable");
+    assert.deepEqual(Buffer.from(yield* fs.readFile(owned.path)), png);
+  }).pipe(Effect.provide(layer)),
+);
 
 it.effect("resumes an Antigravity history journal only against the frozen replay prefix", () =>
   Effect.gen(function* () {

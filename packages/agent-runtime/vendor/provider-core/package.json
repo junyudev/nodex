@@ -23,6 +23,7 @@
     "./server/managedProvider": "./src/server/managedProvider.ts",
     "./server/McpProviderSessions": "./src/server/McpProviderSessions.ts",
     "./server/mcpSession": "./src/server/mcpSession.ts",
+    "./server/mcpToolCall": "./src/server/mcpToolCall.ts",
     "./server/mcpToolPresentation": "./src/server/mcpToolPresentation.ts",
     "./server/ModelCatalog": "./src/server/ModelCatalog.ts",
     "./server/nativeProtocolLogging": "./src/server/nativeProtocolLogging.ts",

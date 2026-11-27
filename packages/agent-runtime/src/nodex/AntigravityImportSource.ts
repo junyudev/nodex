@@ -1,6 +1,7 @@
 import type { ThreadItem, ThreadItemEntry, UserInput } from "@nodex/codex-app-server-protocol/v2";
 import {
-  acpMcpToolCallInput,
+  acpMcpToolCall,
+  acpReadToolOutput,
   acpProjectedCommandExitCode,
   acpToolCallFileChanges,
   pathFromToolCall,
@@ -18,7 +19,9 @@ import type { ContentBlock, SessionNotification, ToolCallContent } from "effect-
 import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
-import { frozenNativeImportSource } from "./NativeImportSource.ts";
+import { toolReadImagePath } from "@nodex/runtime-shared/filePreview";
+import { viewedToolOutputImage } from "../orchestration-v2/viewedImageCopy.ts";
+import { frozenNativeImportSource, nativeReadContent } from "./NativeImportSource.ts";
 
 export class AntigravityHistoryError extends Schema.TaggedError<AntigravityHistoryError>()(
   "AntigravityHistoryError",
@@ -67,7 +70,14 @@ function toolItem(entry: Extract<ReplayItem, { kind: "tool" }>, cwd: string): Th
   const status =
     tool.status === "failed" ? "failed" : tool.status === "completed" ? "completed" : "inProgress";
   const input = tool.data.rawInput;
-  const content = entry.state.data.content ?? (chunks.length ? chunks : undefined);
+  const content =
+    chunks.length > 0 && Array.isArray(tool.data.content)
+      ? [
+          ...tool.data.content,
+          ...chunks.filter((entry) => entry.type === "content" && entry.content.type === "image"),
+        ]
+      : (tool.data.content ?? (chunks.length ? chunks : undefined));
+  const replayedTool = content === undefined ? tool : { ...tool, data: { ...tool.data, content } };
   const output = tool.data.rawOutput ?? content;
   const outputText =
     tool.data.rawOutput === undefined && content === chunks
@@ -77,43 +87,12 @@ function toolItem(entry: Extract<ReplayItem, { kind: "tool" }>, cwd: string): Th
           )
           .join("")
       : textFromUnknown(output);
-  const mcp = extractMcpToolCallIdentity(tool);
+  const mcp = extractMcpToolCallIdentity(tool, { antigravityToolIdentity: true });
   if (mcp) {
-    const envelope = record(output);
-    const result = record(envelope?.result) ?? envelope;
-    const mcpStatus = status === "completed" && result?.isError === true ? "failed" : status;
-    const error = record(envelope?.error);
-    return {
-      type: "mcpToolCall",
-      id,
-      status: mcpStatus,
-      server: mcp.server,
-      environmentId: null,
-      tool: mcp.tool,
-      arguments: json(acpMcpToolCallInput(mcp, input)),
-      appContext: null,
-      mcpAppUi: null,
-      pluginId: null,
-      readOnlyHint: null,
-      durationMs: null,
-      result:
-        output === undefined
-          ? null
-          : {
-              content: Array.isArray(result?.content)
-                ? result.content.map(json)
-                : [{ type: "text", text: outputText ?? JSON.stringify(output) }],
-              structuredContent: json(result?.structuredContent),
-              _meta: json(result?._meta),
-            },
-      error:
-        mcpStatus === "failed"
-          ? {
-              message:
-                typeof error?.message === "string" ? error.message : (outputText ?? "Tool failed"),
-            }
-          : null,
-    };
+    return acpMcpToolCall(mcp, replayedTool, {
+      nativeItemId: id,
+      status: status === "inProgress" ? "running" : status,
+    });
   }
   const changes = acpToolCallFileChanges(tool.data.content ?? content);
   if (changes.length > 0) {
@@ -158,6 +137,15 @@ function toolItem(entry: Extract<ReplayItem, { kind: "tool" }>, cwd: string): Th
     };
   }
   const path = pathFromToolCall(tool);
+  const image =
+    tool.kind === "read" && toolReadImagePath(path) !== undefined
+      ? viewedToolOutputImage(acpReadToolOutput(replayedTool))
+      : undefined;
+  const contentItems = nativeReadContent(
+    outputText ??
+      (image === undefined && output !== undefined ? JSON.stringify(output) : undefined),
+    image,
+  );
   return {
     type: "dynamicToolCall",
     id,
@@ -166,10 +154,7 @@ function toolItem(entry: Extract<ReplayItem, { kind: "tool" }>, cwd: string): Th
     durationMs: null,
     tool: tool.kind === "read" ? "Read" : (tool.title ?? tool.kind ?? "Tool"),
     arguments: json(path && tool.kind === "read" ? { ...record(input), path } : (input ?? {})),
-    contentItems:
-      output === undefined
-        ? null
-        : [{ type: "inputText", text: outputText ?? JSON.stringify(output) }],
+    contentItems: contentItems.length === 0 ? null : contentItems,
     success: status === "inProgress" ? null : status === "completed",
   };
 }

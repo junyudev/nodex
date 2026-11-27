@@ -12,6 +12,7 @@
 import type {
   BackgroundScope,
   ChatAttachment,
+  OrchestrationV2TurnItem,
   ServerSettings,
   ServerSettingsError,
 } from "@nodex/runtime-contracts";
@@ -67,6 +68,11 @@ export class ProviderHost extends Context.Service<
      * resolve inside the attachments directory.
      */
     readonly resolveAttachmentPath: (attachment: ChatAttachment) => string | null;
+    /** Records an image inspection in the step's own chat attachment storage. */
+    readonly keepViewedImage?: (
+      item: OrchestrationV2TurnItem,
+      cwd: string | null,
+    ) => Effect.Effect<OrchestrationV2TurnItem>;
     /** The credentials stored for `bindingId`, usually an instance id, under a provider-chosen namespace. */
     readonly credentials: (
       namespace: string,

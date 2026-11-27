@@ -122,7 +122,9 @@ skills appear in the Composer for the current workspace.
 
 Images use the model's image input. Supported audio, PDFs and text documents are included
 when the session accepts their content type. Other files, folders and line ranges are
-referenced by path in local chats.
+referenced by path in local chats. In live and copied chats, an image file read keeps its path and
+an owned image or unavailable-image record. MCP screenshots stay on the tool step that returned
+them.
 
 Conversations from the Antigravity app and its command line can be copied into Nodex chats from Settings >
 Conversations; see [Antigravity history](native-conversation-connection-behavior.md#antigravity-history).

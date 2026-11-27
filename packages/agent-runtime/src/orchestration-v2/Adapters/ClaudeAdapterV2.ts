@@ -28,7 +28,7 @@ import {
   parseClaudeWorkflowRunHandles,
 } from "./claudeWorkflowProgress.ts";
 
-import { isWorkspaceImagePreviewPath } from "@nodex/runtime-shared/filePreview";
+import { toolReadImagePath } from "@nodex/runtime-shared/filePreview";
 import {
   fileChangeDetail,
   fileChangeItemFields,
@@ -140,7 +140,11 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
-import { keepViewedImage } from "../viewedImageCopy.ts";
+import {
+  keepViewedImage,
+  type ViewedPictureSource,
+  viewedToolOutputImage,
+} from "../viewedImageCopy.ts";
 import {
   checkClaudeCodeExecutable,
   resolveClaudeSdkExecutablePath,
@@ -5326,13 +5330,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             | "completedAt"
             | "updatedAt"
           >;
-          const viewedImagePath =
-            readPath &&
-            readPath.length <= 4096 &&
-            !/[\r\n]/.test(readPath) &&
-            isWorkspaceImagePreviewPath(readPath)
-              ? readPath
+          const viewedImagePath = toolReadImagePath(readPath);
+          const fallbackImage =
+            viewedImagePath !== undefined &&
+            input.output.type === "structured_tool_use_result" &&
+            !viewedToolOutputImage(outputValue)
+              ? viewedToolOutputImage(input.output.fallbackValue)
               : undefined;
+          const pictureSource: ViewedPictureSource | undefined =
+            fallbackImage === undefined
+              ? undefined
+              : { type: "data", name: "Image", ...fallbackImage };
           const itemType = input.classification.itemType;
           const webSearchPatterns = webSearchPatternsFromClaudeTool({
             toolInput: input.toolInput,
@@ -5403,12 +5411,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                       input: claudeNativeToolInputValue(input.toolInput),
                       ...(outputValue === undefined ? {} : { output: outputValue }),
                     };
-          return { node, turnItem };
+          return { node, turnItem, pictureSource, cwd: input.context.input.runtimePolicy.cwd };
         };
 
         const emitToolCallArtifacts = Effect.fnUntraced(function* (artifacts: {
           readonly node: OrchestrationV2ExecutionNode;
           readonly turnItem: OrchestrationV2TurnItem;
+          readonly cwd: string | null;
+          readonly pictureSource: ViewedPictureSource | undefined;
         }) {
           yield* emitProviderEvent({
             type: "node.updated",
@@ -5418,7 +5428,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* emitProviderEvent({
             type: "turn_item.updated",
             driver: CLAUDE_PROVIDER,
-            turnItem: yield* keepViewedImageCopy(artifacts.turnItem),
+            turnItem: yield* keepViewedImageCopy(
+              artifacts.turnItem,
+              artifacts.pictureSource,
+              artifacts.cwd,
+            ),
           });
         });
 

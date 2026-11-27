@@ -11,7 +11,12 @@ import { createClaudeSessionStores } from "../provider/ClaudeSessionStore.ts";
 import { field, text } from "../orchestration-v2/unknownField.ts";
 import { readClaudeWebSearchResults } from "../provider/ClaudeWebSearch.ts";
 import type { NativeImportInput } from "./NativeImport.ts";
-import { frozenNativeImportSource } from "./NativeImportSource.ts";
+import * as Schema from "effect/Schema";
+import { toolReadImagePath } from "@nodex/runtime-shared/filePreview";
+import { normalizeMcpToolCall } from "@nodex/provider-core/server/mcpToolCall";
+import { claudeMcpToolIdentity } from "../orchestration-v2/Adapters/ClaudeMcpToolCall.ts";
+import { viewedToolOutputImage } from "../orchestration-v2/viewedImageCopy.ts";
+import { frozenNativeImportSource, nativeReadContent } from "./NativeImportSource.ts";
 
 const failure = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
@@ -59,6 +64,96 @@ export const openClaudeImportSource = Effect.fn("ClaudeImportSource.open")(funct
   return frozenNativeImportSource(entries, metadata.cwd, "claude");
 });
 
+type TrackedTool = {
+  readonly entry: ThreadItemEntry;
+  readonly finish: (block: unknown, structured: unknown, completedAt: number | null) => ThreadItem;
+};
+
+type JsonValue = Extract<ThreadItem, { type: "dynamicToolCall" }>["arguments"];
+const isJson = Schema.is(Schema.Json);
+
+function trackedClaudeTool(input: {
+  readonly id: string;
+  readonly toolName: string;
+  readonly args: unknown;
+  readonly startedAt: number | null;
+}): Omit<TrackedTool, "entry"> | undefined {
+  const { id, toolName, args, startedAt } = input;
+  const mcp = claudeMcpToolIdentity(toolName);
+  if (mcp) {
+    return {
+      finish: (block, structured, at) => {
+        const fallback = field(block, "content");
+        const structuredContent = field(structured, "content") ?? structured;
+        const content =
+          viewedToolOutputImage(fallback) && !viewedToolOutputImage(structuredContent)
+            ? fallback
+            : Array.isArray(structuredContent) || typeof structuredContent === "string"
+              ? structuredContent
+              : fallback;
+        return normalizeMcpToolCall({
+          ...mcp,
+          omitImageSourceNotes: true,
+          nativeItemId: id,
+          arguments: args,
+          status:
+            block === undefined
+              ? "running"
+              : field(block, "is_error") === true
+                ? "failed"
+                : "completed",
+          output: {
+            content,
+            structuredContent: field(structured, "structuredContent"),
+            _meta: field(structured, "_meta"),
+            isError: field(structured, "isError"),
+            is_error: field(structured, "is_error"),
+          },
+          ...(startedAt === null || at === null ? {} : { startedAtMs: startedAt, updatedAtMs: at }),
+        });
+      },
+    };
+  }
+  if (toolName !== "Read") return undefined;
+  const path = toolReadImagePath(text(field(args, "file_path") ?? field(args, "path"))?.trim());
+  if (path === undefined) return undefined;
+  return {
+    finish: (block, structured, at) => {
+      const fallback = field(block, "content");
+      const outputText =
+        typeof fallback === "string"
+          ? fallback
+          : Array.isArray(fallback)
+            ? fallback
+                .flatMap((part: unknown) => {
+                  const value = text(field(part, "text"));
+                  return field(part, "type") === "text" && value !== undefined ? [value] : [];
+                })
+                .join("\n") || undefined
+            : undefined;
+      const image = viewedToolOutputImage(structured) ?? viewedToolOutputImage(fallback);
+      const contentItems = nativeReadContent(outputText, image);
+      const status =
+        block === undefined
+          ? "inProgress"
+          : field(block, "is_error") === true
+            ? "failed"
+            : "completed";
+      return {
+        type: "dynamicToolCall",
+        id,
+        tool: "Read",
+        namespace: null,
+        arguments: isJson(args) ? (args as JsonValue) : { file_path: path },
+        status,
+        success: status === "inProgress" ? null : status === "completed",
+        contentItems: contentItems.length > 0 ? contentItems : null,
+        durationMs: startedAt === null || at === null ? null : Math.max(0, at - startedAt),
+      };
+    },
+  };
+}
+
 /** The import vocabulary reuses the protocol's stored item shapes; driver identity stays Claude. */
 function normalizeMessages(
   messages: readonly SessionMessage[],
@@ -68,6 +163,7 @@ function normalizeMessages(
     records.flatMap((entry) => (entry.uuid ? [[entry.uuid, entry] as const] : [])),
   );
   const webSearches = new Map<string, ThreadItemEntry>();
+  const tools = new Map<string, TrackedTool>();
   return messages.flatMap((message) => {
     const record = raw.get(message.uuid);
     const timestamp = typeof record?.timestamp === "string" ? Date.parse(record.timestamp) : NaN;
@@ -97,6 +193,10 @@ function normalizeMessages(
     const blocks: readonly unknown[] =
       typeof content === "string" ? [{ type: "text", text: content }] : content;
     const result: ThreadItemEntry[] = [];
+    const structuredResult =
+      blocks.filter((part) => field(part, "type") === "tool_result").length === 1
+        ? record?.toolUseResult
+        : undefined;
     const userContent: UserInput[] = [];
     for (const [index, block] of blocks.entries()) {
       const id = `${message.uuid}:${index}`;
@@ -167,23 +267,49 @@ function normalizeMessages(
           continue;
         }
       }
+      if (type === "tool_use" && typeof toolName === "string") {
+        const toolId = field(block, "id");
+        if (typeof toolId === "string") {
+          const tool = trackedClaudeTool({
+            id,
+            toolName,
+            args: field(block, "input"),
+            startedAt: at,
+          });
+          if (tool) {
+            const entry = wrap(tool.finish(undefined, undefined, null));
+            tools.set(toolId, { ...tool, entry });
+            result.push(entry);
+            continue;
+          }
+        }
+      }
+      if (type === "tool_result" && typeof toolUseId === "string") {
+        const tool = tools.get(toolUseId);
+        if (tool) {
+          tool.entry.item = tool.finish(block, structuredResult, at);
+          tool.entry.completedAtMs = at;
+          continue;
+        }
+      }
       const images: string[] = [];
       const copied = withoutMedia(block, images);
-      if (type !== "image")
-        result.push(
-          wrap({
-            type: "functionCallOutput",
-            id,
-            name:
-              typeof field(block, "name") === "string"
-                ? (field(block, "name") as string)
-                : String(type ?? "native_record"),
-            namespace: null,
-            output: JSON.stringify(copied),
-          }),
-        );
-      for (const [imageIndex, path] of images.entries())
-        result.push(wrap({ type: "imageView", id: `${id}:image:${imageIndex}`, path }));
+      const serialized = JSON.stringify(copied);
+      result.push(
+        wrap({
+          type: "functionCallOutput",
+          id,
+          name: typeof toolName === "string" ? toolName : String(type ?? "native_record"),
+          namespace: null,
+          output:
+            images.length === 0
+              ? serialized
+              : [
+                  { type: "input_text", text: serialized },
+                  ...images.map((image_url) => ({ type: "input_image" as const, image_url })),
+                ],
+        }),
+      );
     }
     if (userContent.length > 0)
       result.unshift(

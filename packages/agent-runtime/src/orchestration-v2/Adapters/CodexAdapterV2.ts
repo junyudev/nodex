@@ -706,6 +706,7 @@ export function projectCodexPictureItem(item: CodexPictureItem): {
       ? item.result
       : undefined;
   const prompt = trimText(item.revisedPrompt);
+  const locator = `codex-image:${"fileId" in item ? item.fileId : (item.generationId ?? item.id)}`;
   return {
     projection: {
       toolName: "imageGeneration",
@@ -715,7 +716,6 @@ export function projectCodexPictureItem(item: CodexPictureItem): {
         ? { output: "Image generation reached its usage limit." }
         : {}),
       status,
-      ...(savedPath === undefined ? {} : { viewedImagePath: savedPath }),
     },
     source:
       status !== "completed"
@@ -726,9 +726,15 @@ export function projectCodexPictureItem(item: CodexPictureItem): {
               name: savedPath?.split(/[\\/]/u).at(-1) || "Generated image.png",
               mimeType: "image/png",
               base64: result,
+              locator,
+              ...(savedPath === undefined ? {} : { fallbackPath: savedPath }),
             }
           : savedPath === undefined
-            ? undefined
+            ? {
+                type: "unavailable",
+                name: "Generated image.png",
+                locator: `codex-image:${"fileId" in item ? item.fileId : (item.generationId ?? item.id)}`,
+              }
             : { type: "file", path: savedPath },
   };
 }
@@ -4914,6 +4920,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 ...projection,
               },
               source,
+              context.input.runtimePolicy.cwd,
             );
             return { node, turnItem };
           });

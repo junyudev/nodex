@@ -6653,8 +6653,15 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         Buffer.from("89504e470d0a1a0a", "hex"),
         Buffer.alloc(64, 1),
       ]).toString("base64");
+      const fs = yield* FileSystem.FileSystem;
+      const workspace = yield* fs.makeTempDirectoryScoped({ prefix: "claude-fallback-image-" });
+      const fallbackPath = `${workspace}/fallback.png`;
+      const missingPath = `${workspace}/missing.png`;
+      yield* fs.writeFile(fallbackPath, Buffer.from(viewedPng, "base64"));
       const tools = [
         { id: "image", name: "Read", input: { file_path: " /workspace/reference.png " } },
+        { id: "fallback", name: "Read", input: { file_path: fallbackPath } },
+        { id: "missing", name: "Read", input: { file_path: missingPath } },
         { id: "text", name: "Read", input: { file_path: "/workspace/README.md" } },
         { id: "search", name: "Grep", input: { pattern: "TODO", path: "/workspace/src" } },
         { id: "skill", name: "Skill", input: { skill: "full-send" } },
@@ -6747,7 +6754,26 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         items.find((item) => item.nativeItemRef?.nativeId === "skill")?.title,
         "Skill: full-send",
       );
-      for (const item of items.filter((item) => item.nativeItemRef?.nativeId !== "image"))
+      const fallback = items.find((item) => item.nativeItemRef?.nativeId === "fallback");
+      assert.equal(
+        fallback?.type === "dynamic_tool" ? fallback.viewedImagePath : undefined,
+        fallbackPath,
+      );
+      assert.deepInclude(
+        fallback?.type === "dynamic_tool" ? fallback.attachments?.[0] : undefined,
+        { type: "image", name: "fallback.png", sizeBytes: Buffer.from(viewedPng, "base64").length },
+      );
+      const missing = items.find((item) => item.nativeItemRef?.nativeId === "missing");
+      assert.equal(
+        missing?.type === "dynamic_tool" ? missing.viewedImagePath : undefined,
+        missingPath,
+      );
+      assert.deepEqual(missing?.unavailableImages, [
+        { name: "missing.png", sourcePath: missingPath, reason: "source_missing" },
+      ]);
+      for (const item of items.filter(
+        (item) => !["image", "fallback", "missing"].includes(item.nativeItemRef?.nativeId ?? ""),
+      ))
         assert.notProperty(item, "viewedImagePath");
     }).pipe(
       Effect.scoped,

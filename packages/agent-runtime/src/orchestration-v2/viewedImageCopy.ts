@@ -7,14 +7,20 @@ import {
   type OrchestrationV2TurnItem,
   type OrchestrationV2UnavailableImage,
 } from "@nodex/runtime-contracts";
-import { toolOutputImages } from "@nodex/runtime-shared/toolOutput";
+import {
+  MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH,
+  toolOutputImages,
+} from "@nodex/runtime-shared/toolOutput";
+import * as Base64 from "effect/encoding/Base64";
+import * as Result from "effect/Result";
 import * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
-import * as Mime from "effect/http/Mime";
 import * as Option from "effect/Option";
 import type * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import { attachmentRelativePath, createDeterministicAttachmentId } from "../attachmentStore.ts";
+import { parseBase64DataUrl } from "../imageMime.ts";
+import { renderableImageType } from "../renderableImage.ts";
 
 /**
  * Where the picture a step saw or made is, when its tool's own result does not hold it: bytes its
@@ -26,43 +32,59 @@ export type ViewedPictureSource =
       readonly name: string;
       readonly mimeType: string;
       readonly base64: string;
+      readonly fallbackPath?: string;
+      readonly locator?: string;
     }
-  | { readonly type: "file"; readonly path: string };
+  | { readonly type: "file"; readonly path: string }
+  | { readonly type: "unavailable"; readonly name: string; readonly locator: string };
 
-type ViewedPicture =
-  | { readonly kind: "picture"; readonly mimeType: string; readonly bytes: Uint8Array }
-  /** The named file is gone or unreadable, so nothing can ever show it. */
-  | { readonly kind: "missing" }
-  /** Not a picture the chat keeps (absent, unsupported or too large); the step stays as it was. */
-  | { readonly kind: "none" };
+type Picture = { readonly mimeType: string; readonly bytes: Uint8Array };
+type PictureData = Pick<Extract<ViewedPictureSource, { type: "data" }>, "mimeType" | "base64">;
 
-const none: ViewedPicture = { kind: "none" };
-
-/** The picture a read returned: a structured result's `file`, or an image content block. */
-function outputPicture(output: unknown): ViewedPicture {
-  const file =
-    Predicate.isObject(output) && output.type === "image" && Predicate.isObject(output.file)
-      ? output.file
-      : undefined;
-  const image =
-    file !== undefined
-      ? typeof file.base64 === "string" && typeof file.type === "string"
-        ? { mimeType: file.type.toLowerCase(), data: file.base64 }
-        : null
-      : (toolOutputImages(output)[0] ?? null);
-  return image?.data === undefined
-    ? none
-    : { kind: "picture", mimeType: image.mimeType, bytes: Buffer.from(image.data, "base64") };
+function boundedPictureData(mimeType: unknown, base64: unknown): PictureData | undefined {
+  return typeof mimeType === "string" &&
+    isProviderSendTurnSupportedImageMimeType(mimeType) &&
+    typeof base64 === "string" &&
+    base64.length > 0 &&
+    base64.length <= MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH
+    ? { mimeType: mimeType.toLowerCase(), base64 }
+    : undefined;
 }
 
-/**
- * A completed step that viewed or made a picture keeps it as the step's own attachment. Every
- * Device then shows it from the chat's recorded bytes, as it shows any other picture in the chat,
- * rather than from a path on the machine that ran the Agent; the path still says what was read.
- * Without a source the picture is the one the tool's result holds. A named file that cannot be
- * read is recorded as unavailable instead, and no longer offered as the step's preview. Keeping the
- * copy is idempotent, and a picture that cannot be kept leaves the item as it was.
- */
+/** A read may return a structured image file, image blocks or native history content items. */
+export function viewedToolOutputImage(output: unknown): PictureData | undefined {
+  if (Predicate.isObject(output) && output.type === "image" && Predicate.isObject(output.file)) {
+    return boundedPictureData(output.file.type, output.file.base64);
+  }
+  for (const image of toolOutputImages(output)) {
+    const picture = boundedPictureData(image.mimeType, image.data);
+    if (picture !== undefined) return picture;
+  }
+  if (!Array.isArray(output)) return undefined;
+  for (const block of output) {
+    if (
+      !Predicate.isObject(block) ||
+      block.type !== "inputImage" ||
+      typeof block.imageUrl !== "string"
+    )
+      continue;
+    const image = parseBase64DataUrl(block.imageUrl);
+    const picture = boundedPictureData(image?.mimeType, image?.base64);
+    if (picture !== undefined) return picture;
+  }
+  return undefined;
+}
+
+function decodePicture(data: PictureData | undefined): Picture | undefined {
+  const bounded = boundedPictureData(data?.mimeType, data?.base64);
+  if (bounded === undefined) return undefined;
+  const bytes = Result.getOrUndefined(Base64.decode(bounded.base64));
+  return bytes && bytes.byteLength > 0 && bytes.byteLength <= PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
+    ? { mimeType: bounded.mimeType, bytes }
+    : undefined;
+}
+
+/** Keep the picture with the completed step. Prefer provider bytes, then its named local file. */
 export const keepViewedImage =
   (store: {
     readonly attachmentsDir: string;
@@ -72,6 +94,7 @@ export const keepViewedImage =
   (
     item: OrchestrationV2TurnItem,
     source?: ViewedPictureSource,
+    cwd?: string | null,
   ): Effect.Effect<OrchestrationV2TurnItem> => {
     if (
       item.type !== "dynamic_tool" ||
@@ -80,52 +103,69 @@ export const keepViewedImage =
       item.attachments?.some((attachment) => attachment.type === "image")
     )
       return Effect.succeed(item);
+    const filePath =
+      source?.type === "file"
+        ? source.path
+        : source?.type === "data"
+          ? (source.fallbackPath ?? item.viewedImagePath)
+          : item.viewedImagePath;
+    const locator = (
+      filePath ??
+      (source?.type === "unavailable" || source?.type === "data" ? source.locator : undefined)
+    )
+      ?.slice(0, 4096)
+      .trim();
+    const basename = (path: string | undefined) => path?.split(/[\\/]/u).at(-1);
     const name =
-      (source?.type === "data"
-        ? source.name
-        : store.path.basename(source?.path ?? item.viewedImagePath ?? "")
+      (
+        basename(item.viewedImagePath) ??
+        (source?.type === "data" || source?.type === "unavailable"
+          ? source.name
+          : basename(filePath)) ??
+        "Image"
       )
         .slice(0, 255)
         .trim() || "Image";
-    const readFile = (path: string) =>
-      Effect.gen(function* () {
-        const info = yield* store.fileSystem.stat(path);
-        if (info.type !== "File") return { kind: "missing" } as const;
-        if (Number(info.size) > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) return none;
-        return {
-          kind: "picture",
-          mimeType: Option.getOrElse(Mime.getType(path), () => "application/octet-stream"),
-          bytes: yield* store.fileSystem.readFile(path),
-        } as const;
-      }).pipe(Effect.catch(() => Effect.succeed({ kind: "missing" } as const)));
-    const picture: Effect.Effect<ViewedPicture> =
-      source === undefined
-        ? Effect.succeed(outputPicture(item.output))
-        : source.type === "data"
-          ? Effect.succeed({
-              kind: "picture",
-              mimeType: source.mimeType.toLowerCase(),
-              bytes: Buffer.from(source.base64, "base64"),
-            })
-          : readFile(source.path);
+    const readFile = Effect.fnUntraced(
+      function* (path: string) {
+        // Only a file in the provider's execution filesystem can supply the fallback bytes.
+        const local = store.path.isAbsolute(path)
+          ? path
+          : cwd
+            ? store.path.resolve(cwd, path)
+            : null;
+        if (local === null) return undefined;
+        const info = yield* store.fileSystem.stat(local);
+        if (info.type !== "File" || info.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES)
+          return undefined;
+        const file = yield* store.fileSystem.open(local);
+        const read = yield* file.readAlloc(Number(info.size) + 1);
+        const bytes = Option.getOrUndefined(read);
+        if (bytes === undefined || bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES)
+          return undefined;
+        const mimeType = renderableImageType(bytes);
+        return mimeType === null ? undefined : { mimeType, bytes };
+      },
+      Effect.catch(() => Effect.succeed(undefined)),
+    );
     return Effect.gen(function* () {
-      const seen = yield* picture;
-      if (seen.kind === "missing" && source?.type === "file") {
-        const { viewedImagePath: _unreadable, ...rest } = item;
+      const inline =
+        source?.type === "data"
+          ? decodePicture(source)
+          : source === undefined
+            ? decodePicture(viewedToolOutputImage(item.output))
+            : undefined;
+      const seen = inline ?? (filePath === undefined ? undefined : yield* readFile(filePath));
+      if (seen === undefined) {
+        if (!locator || item.unavailableImages?.some((image) => image.sourcePath === locator))
+          return item;
         const unavailable: OrchestrationV2UnavailableImage = {
           name,
-          sourcePath: source.path.slice(0, 4096),
+          sourcePath: locator,
           reason: "source_missing",
         };
-        return { ...rest, unavailableImages: [...(item.unavailableImages ?? []), unavailable] };
+        return { ...item, unavailableImages: [...(item.unavailableImages ?? []), unavailable] };
       }
-      if (
-        seen.kind !== "picture" ||
-        !isProviderSendTurnSupportedImageMimeType(seen.mimeType) ||
-        seen.bytes.byteLength === 0 ||
-        seen.bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
-      )
-        return item;
       const digest = createHash("sha256").update(seen.bytes).digest("hex");
       const id = createDeterministicAttachmentId(
         item.threadId,
