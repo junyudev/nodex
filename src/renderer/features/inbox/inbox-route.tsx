@@ -3,6 +3,7 @@ import { useExecutionHold } from "@/lib/execution-holds-runtime";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
 import { InboxProblemRow } from "./inbox-problem-row";
+import { InboxDiscussions } from "./inbox-discussions";
 import {
   SpaceExecutionPause,
   SpaceExecutionResume,
@@ -921,6 +922,9 @@ export function InboxRoute({
           <InboxActivityFilters filter={activityFilter} onChange={changeActivityFilter} />
         ) : null}
         <InboxImportantBar buried={buriedImportant} nowMs={nowMs} onJump={jump.jump} />
+        {view === "inbox" ? (
+          <InboxDiscussions scope={scope} nowMs={nowMs} onOpenPage={onOpenPage} />
+        ) : null}
         <div
           ref={scrollRef}
           data-testid="inbox-stream"

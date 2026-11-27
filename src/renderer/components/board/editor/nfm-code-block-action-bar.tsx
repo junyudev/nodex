@@ -1,3 +1,4 @@
+import { AskAiIcon } from "@/components/shared/icons";
 import { defineMessage, useIntl } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import {
@@ -73,6 +74,8 @@ export interface NfmCodeBlockMermaidActions {
   readonly onPreviewModeChange: (mode: MermaidCodePreviewMode) => void;
   readonly onExpand: (trigger: HTMLButtonElement) => void;
   readonly onDownload: () => void;
+  /** Asks Nodex to redraw the diagram as a Visual; absent where the Page has no Asks. */
+  readonly onRedrawAsVisual?: () => void;
 }
 
 export interface NfmCodeBlockActionBarProps {
@@ -352,6 +355,27 @@ export function NfmCodeBlockActionBar({
                   <DownloadIcon />
                 </button>
               </NodexTooltip>
+              {mermaid.onRedrawAsVisual ? (
+                <NodexTooltip
+                  tooltipContent={intl.formatMessage({
+                    id: "editor.nfmCodeBlockActionBar.redrawAsVisualTooltip",
+                    defaultMessage: "Ask Nodex to redraw this diagram as a Visual",
+                  })}
+                  disabled={tooltipsDisabled}
+                >
+                  <button
+                    type="button"
+                    aria-label={intl.formatMessage({
+                      id: "editor.nfmCodeBlockActionBar.redrawAsVisual",
+                      defaultMessage: "Redraw as Visual",
+                    })}
+                    className={codeBlockActionButtonClassName}
+                    onClick={mermaid.onRedrawAsVisual}
+                  >
+                    <AskAiIcon className="size-3.5" />
+                  </button>
+                </NodexTooltip>
+              ) : null}
             </>
           ) : null}
         </>

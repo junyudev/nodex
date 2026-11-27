@@ -1,0 +1,1 @@
+Suggest edits instead of making them. Turn on **Suggesting** in the Page toolbar and edit as usual; when you choose **Suggest**, each change becomes a suggestion others can accept or reject. Team Spaces can invite Commenters, who read, comment and suggest without changing Pages.

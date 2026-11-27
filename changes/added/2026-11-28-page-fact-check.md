@@ -1,0 +1,1 @@
+Ask Nodex whether something is true. **Fact-check** on a selection returns a verdict (true, partly true, not true, or can't verify) with linked evidence, and a fix you can accept in one click when the text needs a correction. **Ask Nodex** asks anything about the selection; the answer arrives in the margin. A Page can let Nodex answer its questions on its own.

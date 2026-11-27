@@ -34,6 +34,7 @@ import {
   type RefObject,
   type Ref,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SideMenuExtension } from "@blocknote/core/extensions";
@@ -139,6 +140,8 @@ import { writeNfmPromptCollapsed } from "./nfm-prompt-collapse-store";
 import { NfmSideMenuRuntimeProvider } from "./nfm-side-menu-runtime";
 import { NfmChatSendShortcutController } from "./nfm-chat-send-shortcut-controller";
 import { NfmAskForChangeProvider } from "./nfm-ask-for-change";
+import { NfmPageDiscussionsBridge } from "./nfm-page-discussions-bridge";
+import type { NfmPageDiscussionsBinding } from "./nfm-page-discussions-capability";
 import { ReadonlyMarkdownBlockNotePreview } from "./readonly-nfm-blocknote-preview";
 import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import { resolveSendBlockSelection } from "./send-block-selection";
@@ -296,6 +299,11 @@ interface NfmEditorCommonProps {
   }) => Promise<PageChatSendResult>;
   /** Present when the Page is shown beside a chat: appends Page content to that chat's draft. */
   onAddPromptToChatComposer?: (promptInput: CodexPromptInput) => Promise<void>;
+  /** Connects a Page body to its Discussions: selection actions, in-place Asks and marks. */
+  pageDiscussions?: {
+    readonly binding: NfmPageDiscussionsBinding;
+    readonly overlay?: ReactNode;
+  } | null;
   isActivePanelTab?: boolean;
   headingRail?: {
     portalElement: HTMLElement | null;
@@ -571,6 +579,7 @@ function NfmEditorInstance({
   onStartNewSessionThreadFromEditor,
   onSendPagePrompt,
   onAddPromptToChatComposer,
+  pageDiscussions = null,
   isActivePanelTab = true,
   headingRail,
   className,
@@ -2564,33 +2573,38 @@ function NfmEditorInstance({
                             projectId={executionProjectId}
                             pageId={sourcePageContext?.pageId ?? null}
                           >
-                            <NfmCodeBlockController />
-                            <NfmSideMenuShortcutController />
-                            <NfmChatSendShortcutController />
-                            <SideMenuController
-                              sideMenu={customSideMenu}
-                              floatingUIOptions={sideMenuFloatingOptions}
-                            />
-                            <NfmFormattingToolbarController
-                              formattingToolbar={NfmFormattingToolbar}
-                            />
-                            <NfmLinkToolbarController
-                              linkToolbar={renderLinkToolbar}
-                              floatingUIOptions={{
-                                useTransitionStylesProps: {
-                                  duration: 0,
-                                },
-                                useTransitionStatusProps: {
-                                  duration: 0,
-                                },
-                              }}
-                            />
-                            <NfmSlashMenu
-                              executionProjectId={executionProjectId}
-                              allowPageReferences
-                              catalogRef={insertCatalogRef}
-                            />
-                            <NfmTableHandlesController />
+                            <NfmPageDiscussionsBridge
+                              binding={pageDiscussions?.binding ?? null}
+                              overlay={pageDiscussions?.overlay}
+                            >
+                              <NfmCodeBlockController />
+                              <NfmSideMenuShortcutController />
+                              <NfmChatSendShortcutController />
+                              <SideMenuController
+                                sideMenu={customSideMenu}
+                                floatingUIOptions={sideMenuFloatingOptions}
+                              />
+                              <NfmFormattingToolbarController
+                                formattingToolbar={NfmFormattingToolbar}
+                              />
+                              <NfmLinkToolbarController
+                                linkToolbar={renderLinkToolbar}
+                                floatingUIOptions={{
+                                  useTransitionStylesProps: {
+                                    duration: 0,
+                                  },
+                                  useTransitionStatusProps: {
+                                    duration: 0,
+                                  },
+                                }}
+                              />
+                              <NfmSlashMenu
+                                executionProjectId={executionProjectId}
+                                allowPageReferences
+                                catalogRef={insertCatalogRef}
+                              />
+                              <NfmTableHandlesController />
+                            </NfmPageDiscussionsBridge>
                           </NfmAskForChangeProvider>
                         </NfmSideMenuOpenProvider>
                       </BlockNoteView>

@@ -2833,6 +2833,34 @@ export function TextActionEllipsisIcon({ className }: IconProps) {
   return <EllipsisIcon className={cn("size-4 shrink-0", className)} />;
 }
 
+/** A check inside a speech bubble: asking whether text is true, answered with a verdict. */
+export function FactCheckIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      className={cn("size-4 shrink-0", className)}
+    >
+      <path
+        d="M8 1.9c3.5 0 6.1 2.3 6.1 5.2S11.5 12.3 8 12.3c-.6 0-1.2-.1-1.8-.2L3.4 13.9l.6-2.6C2.7 10.4 1.9 8.9 1.9 7.1 1.9 4.2 4.5 1.9 8 1.9Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m5.6 7.2 1.7 1.6 3.1-3.2"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function TextActionCommentIcon({ className }: IconProps) {
   return <TextBubble20Glyph className={cn("size-5 shrink-0", className)} />;
 }

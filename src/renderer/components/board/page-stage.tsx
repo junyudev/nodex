@@ -69,19 +69,30 @@ import {
   pageMarkdownFileName,
 } from "@/lib/page-markdown-file";
 import { saveWorkspaceFileData } from "@/lib/workspace-file-operations";
-import { writePortableMarkdown } from "../../../shared/nodex-markdown";
+import { writePortablePageMarkdown } from "@/features/visual/portable-page-markdown";
 import type { NfmEditorCommands } from "./editor/nfm-editor-commands";
 import type { PageStageMenuActions } from "./page-stage/page-menu";
 import { PageStageStarters } from "./page-stage/page-starters";
+import type { NfmPageDiscussionsBinding } from "./editor/nfm-page-discussions-capability";
+import { usePageDiscussionsController } from "@/features/page-discussions/use-page-discussions-controller";
+import { PageDiscussionsControllerContext } from "@/features/page-discussions/page-discussions-context";
+import {
+  DiscussionsToolbarControl,
+  SuggestModeControl,
+} from "@/features/page-discussions/view/discussions-toolbar-control";
+import { SuggestionBar } from "@/features/page-discussions/view/suggestion-bar";
+import {
+  NewDiscussionComposer,
+  PageDiscussionsMargin,
+} from "@/features/page-discussions/view/page-discussions-surfaces";
+
+/** Rendered inside the Page editor, where it can float at document positions. */
+const PAGE_DISCUSSIONS_EDITOR_OVERLAY = <NewDiscussionComposer />;
 
 export type { PageStageProps } from "./page-stage/types";
 
-/** The body as portable Markdown, read from the live Document so unsaved edits are included. */
-function readPortablePageMarkdown(document: Y.Doc): string {
-  return writePortableMarkdown(materializePageDocument(document).blockTree).markdown;
-}
-
 interface PageStageDescriptionEditorProps {
+  readonly discussionsBinding: NfmPageDiscussionsBinding;
   readonly contentRoutingContext: PageStageProps["contentRoutingContext"];
   readonly executionProjectId: PageStageProps["executionProjectId"];
   readonly launchProjectId: PageStageProps["launchProjectId"];
@@ -175,8 +186,14 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   bodyNavigationRef,
   editorCommands,
   onEditorCommandsChange,
+  discussionsBinding,
 }: PageStageDescriptionEditorProps) {
   const intl = useIntl();
+  const [bodyColumn, setBodyColumn] = useState<HTMLDivElement | null>(null);
+  const pageDiscussions = useMemo(
+    () => ({ binding: discussionsBinding, overlay: PAGE_DISCUSSIONS_EDITOR_OVERLAY }),
+    [discussionsBinding],
+  );
   const navigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
   const consumedSearchRevealRef = useRef<string | null>(null);
   const consumedFocusIntentRef = useRef<number | null>(null);
@@ -291,7 +308,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   // Starters float in the empty body's click area, just under its first line, so offering
   // them never moves the body or what follows it.
   return (
-    <div className="relative">
+    <div ref={setBodyColumn} className="relative">
       <NfmEditor
         contentRoutingContext={contentRoutingContext}
         executionProjectId={executionProjectId}
@@ -305,7 +322,6 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
           generation,
           clientSessionId: surfaceMutationBarrier.clientSessionId,
           fragment: body,
-          user: { name: "You", color: "#3b82f6" },
           provider: { awareness },
           ...(editorSession ? { transactionOrigin: editorSession.transactionOrigin } : {}),
         }}
@@ -336,10 +352,13 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
         onEditorViewMount={handleEditorViewMount}
         onEditorViewUnmount={handleEditorViewUnmount}
         onSearchScroll={adoptSearchViewport}
+        pageDiscussions={pageDiscussions}
       />
       {editorCommands ? (
         <PageStageStarters commands={editorCommands} className="absolute inset-x-0 top-11" />
       ) : null}
+      <PageDiscussionsMargin origin={bodyColumn} scrollContainerRef={scrollContainerRef} />
+      <SuggestionBar />
     </div>
   );
 });
@@ -477,6 +496,15 @@ export function PageStage(props: PageStageProps) {
   );
   const [editorCommands, setEditorCommands] = useState<NfmEditorCommands | null>(null);
   const titleRef = useRef<HTMLDivElement | null>(null);
+  const discussions = usePageDiscussionsController({
+    contentRoutingContext: props.contentRoutingContext,
+    pageId: controller.page?.id ?? "",
+    besideSessionId: props.sessionId ?? null,
+    onOpenSession: props.onOpenRelatedChat,
+    flushDocument: async () => {
+      await documentRuntimeRef.current?.flushAndFence();
+    },
+  });
 
   if (!controller.page) return null;
   const page = controller.page;
@@ -500,30 +528,38 @@ export function PageStage(props: PageStageProps) {
       toast.danger(request.failureMessage);
       return;
     }
-    void copyTextWithFeedback(
-      readPortablePageMarkdown(runtime.document),
-      request.successMessage,
-      request.failureMessage,
-    );
+    void writePortablePageMarkdown(materializePageDocument(runtime.document).blockTree, {
+      pageId: request.pageId,
+      routingContext: request.routingContext,
+    })
+      .then((markdown) =>
+        copyTextWithFeedback(markdown, request.successMessage, request.failureMessage),
+      )
+      .catch(() => toast.danger(request.failureMessage));
   };
   const downloadMarkdown = () => {
     const runtime = documentRuntimeRef.current;
     if (!runtime) return;
     const title = controller.title;
-    void saveWorkspaceFileData({
-      fileName: pageMarkdownFileName(title),
-      contentsBase64: encodeUtf8Base64(
-        pageMarkdownFileContents(title, readPortablePageMarkdown(runtime.document)),
-      ),
-    }).catch((error: unknown) => {
-      toastFailure(
-        getIntl().formatMessage({
-          id: "board.pageStage.saveMarkdownFailed",
-          defaultMessage: "Couldn’t save the Page as Markdown",
+    void writePortablePageMarkdown(materializePageDocument(runtime.document).blockTree, {
+      pageId: page.id,
+      routingContext: props.contentRoutingContext,
+    })
+      .then((markdown) =>
+        saveWorkspaceFileData({
+          fileName: pageMarkdownFileName(title),
+          contentsBase64: encodeUtf8Base64(pageMarkdownFileContents(title, markdown)),
         }),
-        error,
-      );
-    });
+      )
+      .catch((error: unknown) => {
+        toastFailure(
+          getIntl().formatMessage({
+            id: "board.pageStage.saveMarkdownFailed",
+            defaultMessage: "Couldn’t save the Page as Markdown",
+          }),
+          error,
+        );
+      });
   };
   const documentReady = Boolean(props.documentAuthority);
   const menuActions: PageStageMenuActions = {
@@ -632,6 +668,7 @@ export function PageStage(props: PageStageProps) {
           bodyNavigationRef={bodyNavigationRef}
           editorCommands={editorCommands}
           onEditorCommandsChange={setEditorCommands}
+          discussionsBinding={discussions.binding}
         />
       }
       referencedBy={
@@ -665,9 +702,6 @@ export function PageStage(props: PageStageProps) {
         onReload: documentAuthority.reload,
         dependencies: documentAuthority.surfaceDependencies,
         pendingFallback: pendingDocumentContent,
-        localAwarenessState: {
-          user: { name: "You", color: "#3b82f6" },
-        },
       } as const)
     : null;
   const documentSurface = !surfaceProps ? (
@@ -726,10 +760,23 @@ export function PageStage(props: PageStageProps) {
                 }
               : {}),
           }}
+          comments={
+            documentReady && !controller.showRawContent ? (
+              <>
+                <SuggestModeControl controller={discussions} />
+                <DiscussionsToolbarControl
+                  controller={discussions}
+                  canChangeSetting={discussions.canEditPage}
+                />
+              </>
+            ) : null
+          }
         />
       }
     >
-      {documentSurface}
+      <PageDiscussionsControllerContext value={discussions}>
+        {documentSurface}
+      </PageDiscussionsControllerContext>
     </PageStageFrame>
   );
 }

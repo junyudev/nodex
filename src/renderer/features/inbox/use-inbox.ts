@@ -15,6 +15,8 @@ import type {
   UpdateInboxSettingsInput,
 } from "../../../shared/inbox";
 import { inboxScopeKey } from "../../../shared/inbox";
+import { readDiscussionInbox } from "@/lib/page-discussions-adapter";
+import type { DiscussionCursor } from "../../../shared/discussions";
 import { subscribeInboxChanges } from "@/lib/api";
 import {
   readInboxCounts,
@@ -197,4 +199,19 @@ export function useInboxActivity(scope: InboxScope, filter: ActivityFilter, enab
     isFetchingNextPage: query.isFetchingNextPage,
     fetchNextPage: query.fetchNextPage,
   };
+}
+
+/** Discussion entries share the Inbox's existing per-window invalidation and Space cache. */
+export function useDiscussionInbox(scope: InboxScope, enabled = true) {
+  const context =
+    scope.kind === "project"
+      ? { kind: "project" as const, projectId: scope.projectId }
+      : { kind: "library" as const };
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.inbox.all(), "discussions", inboxScopeKey(scope), context],
+    enabled,
+    initialPageParam: null as DiscussionCursor | null,
+    queryFn: ({ pageParam }) => readDiscussionInbox(context, { cursor: pageParam ?? undefined }),
+    getNextPageParam: ({ next }) => next ?? undefined,
+  });
 }

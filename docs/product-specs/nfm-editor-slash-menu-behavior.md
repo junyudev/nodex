@@ -22,7 +22,7 @@ are omitted when their runtime is unavailable.
 2. `Lists`: Bulleted list, Numbered list, To-do list, Toggle list
 3. `Blocks`: Quote, Callout, Code, Code - Mermaid, Block equation, Divider, Table, Image
 4. `Pages`: Subpage, Mention a page, Embed page, Canvas
-5. `Agent`: Agent Config
+5. `Agent`: Ask Nodex (where the Page can run Asks), Prompt, Agent Config
 
 Heading 4/5/6 are intentionally absent. Unknown dependency-provided items are
 also absent until Nodex gives them a product role, icon, placement, and tested

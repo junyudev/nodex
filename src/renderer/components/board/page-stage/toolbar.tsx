@@ -1,5 +1,5 @@
 import { useIntl } from "@/lib/i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BackIcon } from "@/components/shared/icons";
 import {
   ClockArrowRotateCounterclockwise16Glyph,
@@ -35,6 +35,8 @@ interface PageStageToolbarProps {
   /** Where the Page lives, read from its ownership. */
   readonly location?: PageStageLocationProps;
   readonly onNavigateBack?: () => void;
+  /** The Page's Comments control; absent where the Page has no Discussions. */
+  readonly comments?: ReactNode;
 }
 
 /** The Page's link is how it reaches someone else, so it is the one labelled action. */
@@ -90,6 +92,7 @@ export function PageStageToolbar({
   onCopyLink,
   location,
   onNavigateBack,
+  comments,
 }: PageStageToolbarProps) {
   const intl = useIntl();
 
@@ -137,6 +140,7 @@ export function PageStageToolbar({
         },
       ]}
       trailing={[
+        { id: "comments", content: comments ?? null },
         {
           id: "history",
           content: history ? (
