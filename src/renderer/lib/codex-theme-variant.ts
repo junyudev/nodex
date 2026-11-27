@@ -393,6 +393,10 @@ function deriveAccentStyle(
     "--color-chart-blue": "var(--app-color-accent-blue)",
     "--color-ring-accent": "var(--app-color-border-focus)",
     "--color-text-info": "var(--app-color-text-accent)",
+    // Links read as a light tint of the accent on dark surfaces, as the desktop app draws them.
+    "--color-token-text-link-foreground": isDark
+      ? "color-mix(in srgb, var(--color-accent) 50%, #ffffff)"
+      : "var(--app-color-text-accent)",
     "--app-color-text-on-accent": onAccent,
     "--app-color-text-unread-badge":
       accent.kind === "custom"

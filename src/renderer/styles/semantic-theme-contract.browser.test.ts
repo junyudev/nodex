@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { parseComputedColor } from "@/test/color-contrast";
 import { cdp } from "vite-plus/test/browser";
 import {
   applyRendererThemeForTest,
@@ -181,6 +182,18 @@ describe("semantic theme contract in the renderer build", () => {
 
     expect(rootStyle.getPropertyValue("--app-color-text-foreground").trim()).toBe("#fcfcfc");
     expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(252, 252, 252)");
+    // Thread links are the accent tinted halfway to white, matching the desktop app.
+    const link = parseComputedColor(
+      getComputedStyle(mountRole("text-token-text-link-foreground")).color,
+    );
+    // The desktop app paints #9dc1fb; mixing rounds the red channel either way.
+    for (const [channel, expected] of [
+      [link.red, 157],
+      [link.green, 193],
+      [link.blue, 251],
+    ] as const) {
+      expect(Math.abs(channel - expected)).toBeLessThanOrEqual(1);
+    }
     expect(rootStyle.getPropertyValue("--app-color-text-foreground-secondary").trim()).toBe(
       "rgba(252, 252, 252, 0.71)",
     );
