@@ -1,0 +1,37 @@
+---
+interface Props {
+  /**
+   * Draws the x's crossed lines once the wordmark comes into view. Otherwise they draw only while
+   * a link around the wordmark is pointed at or focused.
+   */
+  drawInView?: boolean;
+  class?: string;
+}
+
+const { drawInView = false, class: className } = Astro.props;
+// Each part repeats the word so it lays out exactly as the name does; the `wordmark` utility shows
+// one piece of each.
+const parts = ["x", "line-a", "line-b"] as const;
+---
+
+<span class:list={["wordmark", className]} data-wordmark-draw-in-view={drawInView ? "" : undefined}>
+  <span data-part="name">Nodex</span>
+  {parts.map((part) => <span data-part={part} aria-hidden="true">Nodex</span>)}
+</span>
+
+<script>
+  // A wordmark that draws in view does so once, when it is all on screen. People who reduce
+  // motion see it drawn without the movement.
+  const marks = document.querySelectorAll<HTMLElement>("[data-wordmark-draw-in-view]");
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const { target, isIntersecting } of entries) {
+        if (!isIntersecting) continue;
+        target.setAttribute("data-crossed", "");
+        observer.unobserve(target);
+      }
+    },
+    { threshold: 1 },
+  );
+  for (const mark of marks) observer.observe(mark);
+</script>

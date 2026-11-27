@@ -1,7 +1,7 @@
 ---
-// One social preview: on the left, Nodex's name, the page's promise at the card's center, and the
-// site's address; running off the card's edges, the window that shows the promise. The default slot
-// holds the promise; the `aside` slot holds the window's content.
+// One social preview: on the left, Nodex's name with what it means, the page's promise at the
+// card's center, and the site's address; running off the card's edges, the window that shows the
+// promise. The default slot holds the promise; the `aside` slot holds the window's content.
 ---
 
 <div class="relative h-[630px] w-[1200px] overflow-hidden bg-page font-sans text-ink">
@@ -9,6 +9,7 @@
     <div class="flex items-center gap-3 self-start">
       <img src="/nodex-icon.png" alt="" width="48" height="48" class="size-12" />
       <span class="text-[31px] font-semibold tracking-[-0.02em]">Nodex</span>
+      <span class="ml-2 text-[24px] tracking-[-0.01em] text-ink-3">Every agent, a node.</span>
     </div>
     <div class="flex flex-col gap-8">
       <slot />

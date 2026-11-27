@@ -6778,6 +6778,7 @@
   "lib.workbenchWindowTitle.settled": "已收尾",
   "lib.workbenchWindowTitle.space": "空间",
   "lib.workspaceTextSearchOperations.searchFailed": "无法搜索文件",
+  "main.about.credits": "每个智能体都是一个节点，每个节点都是 Nodex。",
   "main.appMenu.app.checkForUpdates": "检查更新…",
   "main.appMenu.edit.redo": "重做",
   "main.appMenu.edit.redoAction": "重做 {action}",

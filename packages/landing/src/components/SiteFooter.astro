@@ -2,6 +2,7 @@
 import { CHANGELOG_URL, GITHUB_URL } from "../lib/site";
 import type { Locale } from "../lib/locale";
 import { GitHubMark } from "../replica/icons";
+import Wordmark from "./Wordmark.astro";
 interface Props {
   locale?: Locale;
 }
@@ -11,11 +12,12 @@ const zh = Astro.props.locale === "zh-CN";
 
 <footer class="border-t border-line">
   <div class="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-4 px-6 py-8 text-[13px] text-ink-3">
-    <div class="flex items-center gap-2.5">
+    <p class="flex items-center gap-2.5">
       <img src="/nodex-icon.png" alt="" width="18" height="18" class="size-[18px] opacity-80" />
-      <span>© 2026 Nodex · Apache-2.0</span>
-    </div>
-    <div class="flex items-center gap-5">
+      <Wordmark drawInView class="text-[15px] font-semibold text-ink" />
+      <span>{zh ? "智能体节点，彼此交汇。" : "Agent nodes, crossed."}</span>
+    </p>
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
       <a href={GITHUB_URL} class="inline-flex items-center gap-1.5 hover:text-ink">
         <GitHubMark className="size-3.5" />
         GitHub
@@ -23,6 +25,7 @@ const zh = Astro.props.locale === "zh-CN";
       <a href={CHANGELOG_URL} class="hover:text-ink">{zh ? "更新日志" : "Changelog"}</a>
       <a href="/privacy/" class="hover:text-ink">{zh ? "隐私政策" : "Privacy"}</a>
       <a href="/terms/" class="hover:text-ink">{zh ? "使用条款" : "Terms"}</a>
+      <span class="whitespace-nowrap">© 2026 Nodex · Apache-2.0</span>
     </div>
   </div>
 </footer>

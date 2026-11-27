@@ -8,7 +8,7 @@ export const SOCIAL_CARD_SCALE = 2;
 export const SOCIAL_CARDS = {
   home: {
     file: "og.png",
-    alt: "Nodex: One inbox. Every agent. All local. Aerial view shows two chats at work with their subagents: a Claude Code lead handing its routes to Codex, its tests to Antigravity and its docs to OpenCode, and an Antigravity lead whose Codex subagent passes its screenshots to DeepSeek. Works with Claude Code, Codex, Antigravity, DeepSeek and OpenCode.",
+    alt: "Nodex, every agent a node: One inbox. Every agent. All local. Aerial view shows two chats at work with their subagents: a Claude Code lead handing its routes to Codex, its tests to Antigravity and its docs to OpenCode, and an Antigravity lead whose Codex subagent passes its screenshots to DeepSeek. Works with Claude Code, Codex, Antigravity, DeepSeek and OpenCode.",
   },
   download: {
     file: "og-download.png",
