@@ -12,6 +12,7 @@ const common = {
   pageId: "page",
   pageKey: null,
   title: "Work",
+  titleProvisional: false,
   body: "Choose a scope",
   bodyTruncated: false,
   submittedAt: "2026-11-06T12:00:00Z",

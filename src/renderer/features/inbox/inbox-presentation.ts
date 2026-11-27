@@ -335,6 +335,21 @@ export function inboxRowProject<P extends { readonly id: string }>(
 }
 
 /** The kind the user set, else the one the current suggestion proposes. */
+/**
+ * A message someone else sent, an Agent, GitHub, the command line or an Automation, is written
+ * for the reader and reads as a brief. The reader's own messages and Nodex's answers to them are
+ * conversation and read whole.
+ */
+export const inboxReadsAsBrief = (item: InboxItem): boolean =>
+  item.source.kind !== "user" && item.source.kind !== "nodex";
+
+/**
+ * A brief's headline: its title, once that is a name. A provisional title only repeats the
+ * message's opening words, so the brief opens with them instead.
+ */
+export const inboxBriefHeadline = (item: InboxItem): string | null =>
+  inboxReadsAsBrief(item) && !item.titleProvisional && item.title.trim() ? item.title : null;
+
 export const inboxEntryKind = (item: InboxItem): InboxEntryKind | null =>
   item.kind ?? item.proposal?.kind ?? null;
 

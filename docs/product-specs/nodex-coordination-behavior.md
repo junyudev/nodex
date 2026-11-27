@@ -66,10 +66,11 @@ Plan steps are created in their chosen Projects' Databases. Projectless chats ke
 their Pages in the Library Inbox Database. The original entry keeps its intake
 provenance, and Activity records where the work went.
 
-Nodex marks each new-chat or send-to-chat suggestion that answers a request the person themselves
-clearly made. For those, its prompt is only a short routing note: the chat receives the person's
-own words unchanged. A routing note has at most thirty words and no additions; Nodex corrects
-an overlong note or any additions before its suggestion can be recorded.
+A new-chat or send-to-chat suggestion's prompt is a short routing note: the chat receives the
+messages themselves unchanged, so the note only says what to do with them. A routing note has at
+most thirty words. Nodex marks each such suggestion that answers a request the person themselves
+clearly made, and those carry no additions; Nodex corrects an overlong note, or additions on a
+marked suggestion, before the suggestion can be recorded.
 
 ### Let Nodex start chats for me
 

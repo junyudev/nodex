@@ -9,6 +9,7 @@ export const turnRow = (reason: TurnReason, options: string[] = []): InboxItem =
   pageKey: "NODEX-1",
   pageStatus: null,
   title: "Ship the change",
+  titleProvisional: false,
   body: "The exact question or report",
   bodyTruncated: false,
   bodyEditable: false,

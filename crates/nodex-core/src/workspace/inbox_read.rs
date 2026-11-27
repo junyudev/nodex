@@ -383,6 +383,10 @@ struct EntryRow {
     plain_text: String,
 }
 
+pub(super) fn is_provisional_title(title: &str, provisional_title: Option<&str>) -> bool {
+    provisional_title == Some(title)
+}
+
 /// Admit a small complete Markdown or bounded text prefix in SQLite before decoding.
 /// Byte lengths read column metadata; oversized documents never enter the Markdown parser.
 /// Historical content migrations reuse this read; current Inbox disposition belongs in `read_item`.
@@ -495,7 +499,7 @@ pub(super) fn read_message_edit(
     }
     let next = super::inbox::message_body(body)?;
     let changed = next.markdown != current;
-    let provisional = row.provisional_title.as_deref() == Some(row.title.as_str());
+    let provisional = is_provisional_title(&row.title, row.provisional_title.as_deref());
     let title_markdown = changed
         .then(|| super::inbox::provisional_title(&next.title_text))
         .filter(|excerpt| provisional && *excerpt != row.title)
@@ -767,6 +771,7 @@ fn read_item(
             page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
             page_status: row.page_status.clone(),
             title: row.title.clone(),
+            title_provisional: is_provisional_title(&row.title, row.provisional_title.as_deref()),
             body_editable: !body_truncated && editable_body(&row).is_some(),
             body,
             body_truncated,
@@ -1206,7 +1211,7 @@ pub(crate) fn frozen_input_for_content(
             page_id: page_id.to_owned(),
             content_hash: content.fingerprint(),
         },
-        title_provisional: row.provisional_title.as_deref() == Some(row.title.as_str()),
+        title_provisional: is_provisional_title(&row.title, row.provisional_title.as_deref()),
     };
     Ok(FrozenSuggestionInput { input, content })
 }

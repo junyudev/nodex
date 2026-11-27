@@ -38,6 +38,7 @@ describe("inbox message", () => {
     pageKey: "IN-1",
     pageStatus: null,
     title: "Homepage positioning",
+    titleProvisional: false,
     body: "Homepage feels like a dev tool",
     bodyTruncated: false,
     bodyEditable: true,
@@ -485,6 +486,91 @@ describe("inbox message", () => {
       await userEvent.click(screen.getByRole("button", { name: shown }));
     });
     expect(onOpenPage).toHaveBeenCalledOnce();
+  });
+
+  test("a message an Agent sent reads as a brief: its title, then three receding lines that open in place", async () => {
+    const onOpenPage = vi.fn();
+    const body = [
+      "`landing-build.nightly.test.ts` fails on current main: changelog entries with media carry their caption and an inline script into the entry's text.",
+      "",
+      "**Evidence.** For the entry `changes/added/2026-11-26-custom-snooze-picker.md`, the received list differs from the expected one in two ways.",
+      "",
+      "- the entry's text runs on with its media caption",
+      "- the entry sits one place earlier than expected",
+      "",
+      "Not verified: whether the feed is affected, and the closing words are here.",
+    ].join("\n");
+    const report: InboxItem = {
+      ...waiting,
+      title: "Changelog build test fails on media entries",
+      body,
+      bodyEditable: false,
+      source: {
+        kind: "agent",
+        sessionId: "session:1",
+        threadId: null,
+        runId: null,
+        projectId: null,
+        label: "Landing refresh",
+      },
+    };
+    const { rerender } = renderWithAppMaitai(
+      <Stream>
+        <StreamMessage key="page:1" item={report} onOpenPage={onOpenPage} />
+      </Stream>,
+    );
+    await settleMessageLayout();
+    const headline = screen.getByRole("heading", { name: report.title });
+    const excerpt = screen.getByTestId("inbox-message-unit").querySelector("[data-brief-excerpt]")!;
+    const closing = screen.getByText(/the closing words are here/u);
+    // The headline leads at full strength; the opening recedes beneath it and stops at three lines.
+    expect(headline.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      excerpt.getBoundingClientRect().top + 1,
+    );
+    expect(getComputedStyle(excerpt).color).not.toBe(getComputedStyle(headline).color);
+    const lineHeight = Number.parseFloat(
+      getComputedStyle(screen.getByText(/fails on current main/u)).lineHeight,
+    );
+    expect(excerpt.getBoundingClientRect().height).toBeLessThanOrEqual(lineHeight * 3 + 1);
+    expect(closing.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+      excerpt.getBoundingClientRect().bottom - 1,
+    );
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Show more" }));
+    });
+    expect(
+      screen.getByTestId("inbox-message-unit").querySelector("[data-brief-excerpt]"),
+    ).toBeNull();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
+
+    // The headline is the way to read the whole message in its Page.
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: report.title }));
+    });
+    expect(onOpenPage).toHaveBeenCalledOnce();
+
+    // A provisional title only repeats the opening words, so the brief opens with them instead.
+    rerender(
+      <Stream>
+        <StreamMessage key="page:1" item={{ ...report, titleProvisional: true }} />
+      </Stream>,
+    );
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.getByText(/fails on current main/u)).toBeTruthy();
+  });
+
+  test("the reader's own message reads whole, with no headline", async () => {
+    renderWithAppMaitai(
+      <Stream>
+        <StreamMessage key="page:1" item={waiting} />
+      </Stream>,
+    );
+    await settleMessageLayout();
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(screen.getByText("Homepage feels like a dev tool")).toBeTruthy();
   });
 
   test("a chat suggestion reads as its prompt: full width, the message's size, why on the decision", async () => {

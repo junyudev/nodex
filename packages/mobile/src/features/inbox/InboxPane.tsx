@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { View } from "react-native";
 
 import { Markdown } from "../../markdown/Markdown";
-import { previewMarkdown } from "../../markdown/parse";
+import { plainMarkdownText, previewMarkdown } from "../../markdown/parse";
 import { useRootNavigation } from "../../navigation/types";
 import {
   discardCapture,
@@ -25,6 +25,7 @@ import { useNow } from "../../ui/use-now";
 import { spaceUnreachable } from "../home/ConnectionNotice";
 import { useHomeState, type ReplyTarget } from "../home/home-state";
 import {
+  entryBrief,
   entryChatSession,
   entrySignature,
   type EntrySignature,
@@ -75,6 +76,10 @@ export const SignatureLine = ({
 const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly now: number }) => {
   const navigation = useRootNavigation();
   const preview = useMemo(() => previewMarkdown(message.body), [message.body]);
+  // What someone else wrote reads as a brief: its headline, then three lines of its words.
+  const brief = entryBrief(message);
+  const excerpt = useMemo(() => plainMarkdownText(message.body), [message.body]);
+  const headline = message.rowKind === "problem" ? message.title : (brief?.headline ?? null);
   const accept = useAcceptProposal();
   const setReplyTo = useHomeState((state) => state.setReplyTo);
   const { activeHostId } = useHosts();
@@ -106,10 +111,14 @@ const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly n
       }
     >
       <SignatureLine entry={message} time={intake ? null : time} />
-      {message.rowKind === "turn" || message.rowKind === "problem" ? (
-        <Txt className="font-medium text-ink">{message.title}</Txt>
-      ) : null}
-      {preview.text ? (
+      {headline ? <Txt className="font-medium text-ink">{headline}</Txt> : null}
+      {brief ? (
+        excerpt ? (
+          <Txt className={headline ? "text-ink-2" : "text-ink"} numberOfLines={3}>
+            {excerpt}
+          </Txt>
+        ) : null
+      ) : preview.text ? (
         <Markdown
           text={preview.text}
           selectable={false}
@@ -137,7 +146,7 @@ const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly n
               : time,
             sourceLabel(message),
             outcomeLabel(message),
-            preview.cut || message.bodyTruncated ? "More" : null,
+            !brief && (preview.cut || message.bodyTruncated) ? "More" : null,
           ]
             .filter(Boolean)
             .join(" · ")}

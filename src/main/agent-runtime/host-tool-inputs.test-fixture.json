@@ -108,7 +108,8 @@
     "sessionId": "value"
   },
   "send_to_inbox": {
-    "body": "value"
+    "body": "value",
+    "title": "value"
   },
   "report_work": {
     "outcome": "ready",

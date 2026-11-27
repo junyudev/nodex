@@ -916,10 +916,11 @@ pub enum InboxCommand {
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct InboxSendArgs {
     /// Message text, kept whole as the Page body: GitHub Flavored Markdown, then any images.
+    /// The Inbox shows a received message as a title and the first three lines. Open with the point.
     /// Omitted or - reads redirected stdin.
     #[arg(value_name = "TEXT")]
     pub text: Option<String>,
-    /// Page title; omitted lets Nodex label the message and name it later.
+    /// The headline the Inbox shows above the message; omitted lets Nodex label it and name it later.
     #[arg(long)]
     pub title: Option<String>,
     /// Optional key of 1 to 128 Unicode scalar values. Nodex remembers a key for 7 days. Reuse it with identical arguments after an uncertain result. Use --idempotency-key=VALUE for keys starting with a hyphen.

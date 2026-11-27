@@ -196,6 +196,19 @@ export function snoozeLabel(message: InboxEntry, now: Date): string | null {
 export const sourceLabel = (message: InboxEntry): string | null =>
   message.source.kind === "user" ? null : message.source.label;
 
+/**
+ * How a row reads when someone else wrote it for the person: an Agent, GitHub, the command line or
+ * an Automation, or a Turn's report. It is a brief, as on the desktop: a headline, then its opening
+ * lines. The headline is null while the title is still the provisional label cut from those same
+ * opening words. The person's own messages and Nodex's answers are conversation and read whole.
+ */
+export const entryBrief = (entry: InboxEntry): { readonly headline: string | null } | null => {
+  if (entry.rowKind === "turn") return { headline: entry.title };
+  if (entry.rowKind !== "intake" || entry.source.kind === "user" || entry.source.kind === "nodex")
+    return null;
+  return { headline: entry.titleProvisional || !entry.title.trim() ? null : entry.title };
+};
+
 export interface EntrySignature {
   readonly label: string;
   readonly icon: IconName;

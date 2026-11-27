@@ -5,6 +5,10 @@ import { openNodexMenu } from "@/test/dom";
 import { InboxTurnRow } from "./inbox-turn-row";
 import { turnRow as row, turnRowHandlers as props } from "./inbox-turn-row.test-support";
 vi.mock("@/lib/space-host-runtime", () => ({ useSpaceHostAvailable: () => true }));
+vi.mock("@/lib/use-library-navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/use-library-navigation")>()),
+  useLibraryFileReadAuthority: () => null,
+}));
 afterEach(cleanup);
 test.each([
   ["approval", "Open chat"],

@@ -410,9 +410,10 @@ function ChatAgentMenu({
 }
 
 /**
- * A chat suggestion is the prompt it will send, read like the message above it; where it goes
- * is on the decision. What the suggestion added on its own follows, each kept unless unchecked.
- * Other suggestions say what they do in one line.
+ * A chat suggestion is the prompt it will send, read like the message above it and as briefly:
+ * the chat receives the message itself beneath it, so the prompt only says what to do with it.
+ * Where it goes is on the decision. What the suggestion added on its own follows, each kept unless
+ * unchecked. Other suggestions say what they do in one line.
  */
 function SuggestionStrip({
   proposal,
@@ -456,7 +457,7 @@ function SuggestionStrip({
       className={cn("flex min-w-0 flex-col gap-2", tone)}
     >
       {isChatAction(action) ? (
-        <MessageText text={action.prompt} />
+        <MessageText text={action.prompt} brief />
       ) : (
         <p className="min-w-0 text-sm leading-snug">{proposal.summary}</p>
       )}
@@ -481,7 +482,7 @@ function SuggestionStrip({
                       "line-through opacity-50 [--foreground:var(--color-token-description-foreground)]",
                   )}
                 >
-                  <MessageText text={addition} />
+                  <MessageText text={addition} brief />
                 </div>
               </li>
             );

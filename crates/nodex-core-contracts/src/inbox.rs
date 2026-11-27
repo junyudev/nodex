@@ -442,6 +442,8 @@ pub struct ProjectWorkspaceInboxItem {
     pub page_key: Option<String>,
     pub page_status: Option<ProjectWorkspaceInboxPageStatus>,
     pub title: String,
+    /// Whether the title still uses the provisional label Core took from the message's opening words.
+    pub title_provisional: bool,
     /// The message as the stream shows it, in Nodex Markdown: the Page body when it
     /// fits the stream budget, otherwise the opening of its text as paragraphs.
     pub body: String,

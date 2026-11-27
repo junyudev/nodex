@@ -17,6 +17,7 @@ import { useNow } from "../../ui/use-now";
 import { agentChipLabel, effectiveAgentChoice } from "../pickers/agent-choice";
 import { EntryActions, SignatureLine } from "./InboxPane";
 import {
+  entryBrief,
   entryChatSession,
   snoozeLabel,
   messageChat,
@@ -93,6 +94,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
   };
 
   const chooseSnooze = () => navigation.navigate("InboxSnoozePicker", { pageId });
+  const headline = entryBrief(message)?.headline ?? null;
   const canMarkDone = message.waiting;
   const deferred = message.snooze != null && Date.parse(message.snooze.until) > now;
 
@@ -117,6 +119,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
       contentContainerClassName="gap-5 p-4 pb-10"
       contentInsetAdjustmentBehavior="automatic"
     >
+      {headline ? <Txt className="text-lg font-semibold text-ink">{headline}</Txt> : null}
       <Markdown
         text={message.body}
         actions={{ onOpenChat: (sessionId) => navigation.navigate("Chat", { sessionId }) }}

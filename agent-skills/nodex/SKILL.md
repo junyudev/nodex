@@ -24,7 +24,7 @@ When a reply names a Nodex Page, Database View or chat the person can open, use 
 | Apply heterogeneous fenced or Relation edits  | `page properties apply`                                                                                     |
 | Change Property definitions or saved Views    | `data-source configure`; combine related changes in one script                                              |
 | Substantial rewrite or local diff             | `draft`                                                                                                     |
-| Leave an out-of-scope follow-up for the user  | `inbox send`; it starts no work, and the user decides where it goes                                         |
+| Leave an out-of-scope follow-up for the user  | `inbox send --title`, opening with the point; it starts no work, and the user decides where it goes         |
 
 ## Discover only what you need
 

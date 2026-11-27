@@ -31,24 +31,64 @@ const renderRow = (body: string) =>
     </div>,
   );
 
+/** Whether the brief's three lines end above this part of the text. */
+const clippedOut = (element: HTMLElement) => {
+  const excerpt = element.closest("[data-brief-excerpt]");
+  return (
+    excerpt != null &&
+    element.getBoundingClientRect().top >= excerpt.getBoundingClientRect().bottom - 1
+  );
+};
+
 test("a report longer than its excerpt opens in place and closes again", async () => {
   renderRow(REPORT);
   const more = await screen.findByRole("button", { name: "Show more" });
   expect(more.getAttribute("aria-expanded")).toBe("false");
-  expect(screen.queryByRole("list")).toBeNull();
+  const closing = () => screen.getByText(/the closing words are here/u);
+  // Three lines of the report as written, its list included, then the clamp.
+  expect(screen.getAllByRole("listitem").length).toBeGreaterThan(0);
+  expect(clippedOut(closing())).toBe(true);
 
   await act(async () => {
     await userEvent.click(more);
   });
-  // The whole report, read as it was written.
   expect(screen.getAllByRole("listitem")).toHaveLength(2);
-  expect(screen.getByText(/the closing words are here/u)).toBeTruthy();
+  expect(clippedOut(closing())).toBe(false);
 
   await act(async () => {
     await userEvent.click(screen.getByRole("button", { name: "Show less" }));
   });
-  await waitFor(() => expect(screen.queryByRole("list")).toBeNull());
+  await waitFor(() => expect(clippedOut(closing())).toBe(true));
   expect(await screen.findByRole("button", { name: "Show more" })).toBeTruthy();
+});
+
+test("a brief ends a sentence it cuts with an ellipsis, and stops at the edge of a paragraph it finishes", async () => {
+  const excerpt = () => document.querySelector<HTMLElement>("[data-brief-excerpt]")!;
+  const { unmount } = renderRow(
+    "One line.\n\nAnother line.\n\nA third line.\n\nThe fourth paragraph stays out of view.",
+  );
+  // The third line finishes its paragraph: no ellipsis after the full stop, only that edge.
+  await waitFor(() => expect(getComputedStyle(excerpt()).webkitLineClamp).toBe("none"));
+  expect(screen.getByText("A third line.").getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    excerpt().getBoundingClientRect().bottom + 0.5,
+  );
+  expect(clippedOut(screen.getByText(/fourth paragraph/u))).toBe(true);
+  unmount();
+
+  renderRow(Array(12).fill("A sentence that keeps running on").join(", ") + ".");
+  await screen.findByRole("button", { name: "Show more" });
+  expect(getComputedStyle(excerpt()).webkitLineClamp).toBe("3");
+});
+
+test("an excerpt stops before a code block, which opening reveals", async () => {
+  renderRow("Run the check:\n\n```sh\nvp run check:changed\n```");
+  expect(screen.getByText("Run the check:")).toBeTruthy();
+  expect(screen.queryByText("vp run check:changed")).toBeNull();
+  const more = await screen.findByRole("button", { name: "Show more" });
+  await act(async () => {
+    await userEvent.click(more);
+  });
+  expect(screen.getByText("vp run check:changed")).toBeTruthy();
 });
 
 test("a report that fits its excerpt offers nothing to open", async () => {

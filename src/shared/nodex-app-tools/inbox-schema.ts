@@ -17,7 +17,7 @@ export const sendToInboxSchema = z
       .regex(/\S/, "Must contain a non-whitespace character")
       .min(1)
       .max(200)
-      .optional(),
+      .describe("A few words naming the problem. The Inbox shows it as the message's headline."),
     idempotencyKey: idempotencyKeySchema.optional(),
   })
   .superRefine((input, context) => {
@@ -30,7 +30,7 @@ export const sendToInboxSchema = z
 export const sendToInboxTool: Tool = {
   name: "send_to_inbox",
   description:
-    "Leave a message in the user's Inbox for something outside your current task: a finding, a follow-up, or a question the user should decide later. Write it in Markdown, with a blank line between paragraphs, so that someone without this chat can act on it: what and where, your evidence, why it matters, a suggested direction, and what you did not verify. The whole body becomes the message. Give a short title naming the problem; otherwise Nodex names it. The message is recorded as coming from this chat and lands in the Inbox of this chat's Project, or the Library Inbox for a projectless chat. It starts no work; the user decides what happens to it. Send at most 5 messages per Run, or per native connection when the Run is unknown. Reuse idempotencyKey to retry without sending twice.",
+    "Leave a message in the user's Inbox for something outside your current task: a finding, a follow-up, or a question the user should decide later. The Inbox shows it as a brief: your title, then the first three lines of the body, and the user opens the rest when they need it. So name the problem in the title, and open the body with one or two sentences the user can decide from: what is wrong or what you propose, and why it matters. Then write the rest for someone without this chat: where it is, your evidence, a suggested direction, and what you did not verify, in Markdown with a blank line between paragraphs. Write in the language you use with the user. The whole body becomes the message. It is recorded as coming from this chat and lands in the Inbox of this chat's Project, or the Library Inbox for a projectless chat. It starts no work; the user decides what happens to it. Send at most 5 messages per Run, or per native connection when the Run is unknown. Reuse idempotencyKey to retry without sending twice.",
   inputSchema: toolInputSchema(sendToInboxSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 };

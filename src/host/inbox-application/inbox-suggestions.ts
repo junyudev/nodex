@@ -1,6 +1,9 @@
 import { inboxSkillTokens, type InboxSkillOffer } from "./inbox-skills";
 import { createHash } from "node:crypto";
 import { countWords } from "../../shared/word-count";
+
+/** A chat prompt routes messages the chat receives whole, so it stays a short note. */
+const MAX_ROUTING_NOTE_WORDS = 30;
 import {
   MAX_INBOX_ADDITION_CHARS,
   MAX_INBOX_ADDITIONS,
@@ -267,12 +270,15 @@ export const validateInboxSuggestions = (
     }
     if (!raw.summary.trim()) reject("missing summary");
     const prompt = raw.prompt?.trim();
-    if (raw.explicit_request && (raw.action === "new_chat" || raw.action === "send_to_chat")) {
+    // The chat receives the messages themselves beneath the prompt, so a prompt only routes them.
+    if (raw.action === "new_chat" || raw.action === "send_to_chat") {
       const count = countWords(prompt ?? "");
-      if (count > 30 || raw.additions.length > 0)
+      if (count > MAX_ROUTING_NOTE_WORDS)
         reject(
-          `an explicit request has a ${count}-word routing note and ${raw.additions.length} additions; use at most 30 words and no additions`,
+          `the prompt is a ${count}-word routing note; use at most ${MAX_ROUTING_NOTE_WORDS} words and never restate the messages, which the chat receives unchanged`,
         );
+      if (raw.explicit_request && raw.additions.length > 0)
+        reject(`an explicit request has ${raw.additions.length} additions; use none`);
     }
     const chooses =
       raw.chat_instance_id !== null || raw.chat_model !== null || raw.chat_effort !== null;

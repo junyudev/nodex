@@ -62,7 +62,7 @@ export const makeWithCapture = (
                   acceptedAtMs,
                 ),
                 body: parsed.data.body,
-                ...(parsed.data.title ? { title: parsed.data.title } : {}),
+                title: parsed.data.title,
               },
             },
           },

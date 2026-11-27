@@ -50,7 +50,19 @@ pub(super) fn item(
     page: &str,
     kind: &str,
 ) -> Result<ProjectWorkspaceInboxItem, StoreError> {
-    let (title,markdown):(String,String)=connection.query_row("SELECT COALESCE(materialization.title,''),substr(COALESCE(materialization.markdown,''),1,8192) FROM pages page LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id WHERE page.block_id=?1 AND page.library_id=?2",params![page,library],|r|Ok((r.get(0)?,r.get(1)?)))?;
+    let (title, markdown, provisional_title): (String, String, Option<String>) = connection
+        .query_row(
+            "SELECT COALESCE(materialization.title,''),
+                    substr(COALESCE(materialization.markdown,''),1,8192), entry.provisional_title
+             FROM pages page
+             LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id
+             LEFT JOIN inbox_entries entry ON entry.page_id=page.block_id AND ?3='turn'
+             WHERE page.block_id=?1 AND page.library_id=?2",
+            params![page, library, kind],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+    let title_provisional =
+        super::inbox_read::is_provisional_title(&title, provisional_title.as_deref());
     let (project, at): (Option<String>, String) = connection.query_row(
         "SELECT project_id,sort_at FROM inbox_rows WHERE page_id=?1 AND row_kind=?2",
         params![page, kind],
@@ -181,6 +193,7 @@ pub(super) fn item(
         page_key: crate::database::current_page_key_for_page(connection, library, page)?,
         page_status: None,
         title,
+        title_provisional,
         body,
         body_truncated: false,
         body_editable: false,

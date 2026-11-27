@@ -11,6 +11,7 @@ import {
   UserImageButton,
 } from "@/features/local-conversation/view/shared/user-message-attachments";
 import { UserMessageCollapse } from "@/features/local-conversation/view/shared/user-message-collapse";
+import { BriefText } from "./brief-text";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
 import { useLibraryFileReadAuthority } from "@/lib/use-library-navigation";
@@ -21,9 +22,9 @@ import type { MarkdownBlock } from "../../../shared/nodex-markdown";
 /**
  * A written message, read-only, as a bubble shows it: the images attached to it as a row of
  * thumbnails where they sit, usually above its text, and the text in chat typography, collapsed
- * after as many lines as a chat
- * message. `contentKey` identifies the message, so an expanded message collapses again when it
- * changes. `fileAuthority` reads the message's Library Files; without it, images show as
+ * after as many lines as a chat message, or, as a `brief`, after its opening three lines (see
+ * `BriefText`). `contentKey` identifies the message, so an expanded message collapses again when
+ * it changes. `fileAuthority` reads the message's Library Files; without it, images show as
  * unavailable. `lead` opens the first line of text, which flows on after it and wraps beneath it.
  */
 export function MessageDocument({
@@ -31,12 +32,18 @@ export function MessageDocument({
   contentKey,
   fileAuthority,
   collapsedLineCount,
+  brief = false,
+  recede = false,
   lead,
 }: {
   readonly blocks: readonly MarkdownBlock[];
   readonly contentKey: string;
   readonly fileAuthority: FileReadAuthority | null;
   readonly collapsedLineCount?: number;
+  /** Text written for the reader by someone else, or about it, read as a brief. */
+  readonly brief?: boolean;
+  /** Beneath a headline, a brief's opening recedes so the headline leads. */
+  readonly recede?: boolean;
   readonly lead?: ReactNode;
 }) {
   const { text, attachments, attachmentsAt } = splitMessageContent(blocks);
@@ -50,7 +57,15 @@ export function MessageDocument({
             <span className="flex h-lh items-center">{lead}</span>
           ) : null}
           {attachmentsAt === "start" ? images : null}
-          {text.length > 0 ? (
+          {text.length > 0 && brief ? (
+            <BriefText
+              blocks={text}
+              contentKey={contentKey}
+              lead={lead}
+              recede={recede}
+              className="codex-markdown-user text-size-chat leading-relaxed"
+            />
+          ) : text.length > 0 ? (
             <UserMessageCollapse contentKey={contentKey} collapsedLineCount={collapsedLineCount}>
               <NfmDocument
                 lead={lead}
@@ -77,11 +92,13 @@ export function MessageText({
   cwd,
   projectWorkspacePath,
   collapsedLineCount,
+  brief,
 }: {
   readonly text: string;
   readonly cwd?: string | null;
   readonly projectWorkspacePath?: string | null;
   readonly collapsedLineCount?: number;
+  readonly brief?: boolean;
 }) {
   const fileAuthority = useLibraryFileReadAuthority();
   return (
@@ -91,6 +108,7 @@ export function MessageText({
         contentKey={text}
         fileAuthority={fileAuthority}
         collapsedLineCount={collapsedLineCount}
+        brief={brief}
       />
     </FileLinkWorkspaceProvider>
   );

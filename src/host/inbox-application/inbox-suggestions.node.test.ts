@@ -701,9 +701,9 @@ describe("plan suggestions", () => {
   });
 });
 
-describe("automatic routing notes", () => {
+describe("routing notes", () => {
   it.each(["new_chat", "send_to_chat"])(
-    "limits explicit %s notes to 30 words without additions",
+    "limits %s prompts to 30 words, and explicit ones to no additions",
     (action) => {
       const entries = [entry("1", "Fix this")];
       const validate = (words: number, additions: string[] = [], explicit_request = true) =>
@@ -724,8 +724,9 @@ describe("automatic routing notes", () => {
         );
       expect(validate(30).suggestions).toHaveLength(1);
       expect(() => validate(31)).toThrow(/31-word.*30 words/);
-      expect(() => validate(3, ["Use tests"])).toThrow(/3-word.*1 additions/);
-      expect(validate(31, ["Use tests"], false).suggestions).toHaveLength(1);
+      expect(() => validate(31, [], false)).toThrow(/31-word.*30 words/);
+      expect(() => validate(3, ["Use tests"])).toThrow(/1 additions/);
+      expect(validate(30, ["Use tests"], false).suggestions).toHaveLength(1);
     },
   );
 });

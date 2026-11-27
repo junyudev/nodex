@@ -326,6 +326,8 @@ export interface InboxItem {
   readonly pageKey: string | null;
   readonly pageStatus: InboxPageStatus | null;
   readonly title: string;
+  /** The title still uses the message's opening words as a provisional label. */
+  readonly titleProvisional: boolean;
   readonly body: string;
   readonly bodyTruncated: boolean;
   /** Whether the bounded stream contains the whole editable body. */
