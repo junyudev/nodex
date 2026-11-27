@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -179,6 +180,13 @@ function shownImage(asset: ContentImage, undecodable: string | null): string | n
 export function useViewableContentImage(source: string, alt: string): ViewableContentImage {
   const group = useContext(ViewerGroupContext);
   const scope = useContentImageScope();
+  // A chat replaces its scope object on ordinary renders, as while its Agent works. The image
+  // stays in the viewer for as long as its button shows these bytes, and asks the scope it is in
+  // now whether its actions may still act.
+  const currentScope = useRef(scope);
+  useLayoutEffect(() => {
+    currentScope.current = scope;
+  }, [scope]);
   const key = useId();
   const asset = useContentImage(source);
   const [undecodable, setUndecodable] = useState<string | null>(null);
@@ -193,13 +201,13 @@ export function useViewableContentImage(source: string, alt: string): ViewableCo
       src,
       downloadSrc,
       alt,
-      isCurrent: () => shown && trigger.isConnected && scope.isCurrent(),
+      isCurrent: () => shown && trigger.isConnected && currentScope.current.isCurrent(),
     });
     return () => {
       shown = false;
       release();
     };
-  }, [alt, downloadSrc, group, key, scope, src, trigger]);
+  }, [alt, downloadSrc, group, key, src, trigger]);
   const onContextMenu = useContentImageMenu(source, src, alt);
   return {
     src,

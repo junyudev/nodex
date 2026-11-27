@@ -3,6 +3,11 @@ import { beforeEach, expect, test, describe } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 import "@/globals.css";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import {
+  ContentImageScopeProvider,
+  THIS_COMPUTER_IMAGE_SCOPE,
+  type ContentImageScope,
+} from "@/lib/content-image";
 import { installWindowApi } from "@/test/browser-globals";
 import { TestQueryProvider } from "@/test/query";
 import {
@@ -127,26 +132,28 @@ describe("mcp tool call", () => {
       { type: "image" as const, mimeType: "image/png", data: btoa("not a picture") },
       { type: "image" as const, mimeType: "image/png", data: second },
     ];
-    const view = renderWithMaitai(
+    const call: CodexTranscriptEntry = {
+      ...item,
+      mcpToolCall: {
+        ...item.mcpToolCall!,
+        result: {
+          type: "success",
+          content,
+          structuredContent: null,
+          raw: { content, structuredContent: null, _meta: null },
+        },
+      },
+    };
+    const renderIn = (scope: ContentImageScope) => (
       <TestQueryProvider>
         <NodexTooltipProvider>
-          <McpToolCall
-            item={{
-              ...item,
-              mcpToolCall: {
-                ...item.mcpToolCall!,
-                result: {
-                  type: "success",
-                  content,
-                  structuredContent: null,
-                  raw: { content, structuredContent: null, _meta: null },
-                },
-              },
-            }}
-          />
+          <ContentImageScopeProvider scope={scope}>
+            <McpToolCall item={call} />
+          </ContentImageScopeProvider>
         </NodexTooltipProvider>
-      </TestQueryProvider>,
+      </TestQueryProvider>
     );
+    const view = renderWithMaitai(renderIn({ ...THIS_COMPUTER_IMAGE_SCOPE }));
     const shown = (dialog: HTMLElement) =>
       within(dialog).getByRole("img", { name: "Tool output" }).getAttribute("src");
     try {
@@ -166,6 +173,15 @@ describe("mcp tool call", () => {
       const dialog = await view.findByRole("dialog", { name: "Image preview" });
       expect(shown(dialog)).toBe(`data:image/svg+xml;base64,${preview}`);
       expect(within(dialog).queryByRole("button", { name: "Previous image" })).toBeNull();
+
+      // A chat replaces its image scope on ordinary renders, as while its Agent works; the same
+      // content and bytes keep the viewer open.
+      await act(async () => {
+        view.rerender(renderIn({ ...THIS_COMPUTER_IMAGE_SCOPE }));
+        await Promise.resolve();
+      });
+      expect(view.getByRole("dialog", { name: "Image preview" })).toBe(dialog);
+      expect(shown(dialog)).toBe(`data:image/svg+xml;base64,${preview}`);
 
       await act(async () => {
         await userEvent.keyboard("{ArrowRight}");
