@@ -63,7 +63,9 @@ installation.
 Startup activation starts the tray, Core and Agent Runtime without creating
 Workbench windows. The first foreground open applies **Restore windows**.
 An ordinary launch, `nodex://` link or tray action then opens or focuses a
-Workbench window. A repeated startup activation leaves windows as they are.
+Workbench window. If the last Workbench window is closed while still opening,
+it stays hidden in the tray until the next foreground open. A repeated startup
+activation leaves windows as they are.
 
 Install-over and uninstall first close processes whose executable image is inside
 that installation directory. Detached Core receives an authenticated shutdown

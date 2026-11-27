@@ -110,10 +110,10 @@ export interface ApplicationWindowShellRuntimeOptions {
 interface ShellRecord {
   activationWatchdogPending: boolean;
   readonly gate: ActivationGate;
+  initialRevealSettled: boolean;
   phase: ApplicationWindowShellPhase;
   readonly presentation: "background" | "foreground";
   readyToShow: boolean;
-  revealed: boolean;
   readonly session: WindowSessionRecord;
   showWatchdogPending: boolean;
   readonly webContentsId: number;
@@ -224,13 +224,16 @@ export const live = (
             record.showWatchdogPending = false;
             runWatchdog(watchdogKey("show", record.webContentsId), Effect.void);
           };
+          const settleInitialReveal = (record: ShellRecord): void => {
+            record.initialRevealSettled = true;
+            clearShowWatchdog(record);
+          };
           const reveal = (
             record: ShellRecord,
             reason: "activation" | "ready" | "watchdog",
           ): void => {
-            if (record.revealed || record.window.isDestroyed()) return;
-            record.revealed = true;
-            clearShowWatchdog(record);
+            if (record.initialRevealSettled || record.window.isDestroyed()) return;
+            settleInitialReveal(record);
             if (record.presentation === "background") record.window.showInactive();
             else {
               record.window.show();
@@ -375,10 +378,10 @@ export const live = (
             const record: ShellRecord = {
               activationWatchdogPending: false,
               gate: makeActivationGate(),
+              initialRevealSettled: false,
               phase: "loading",
               presentation,
               readyToShow: false,
-              revealed: false,
               session,
               showWatchdogPending: false,
               webContentsId,
@@ -396,6 +399,8 @@ export const live = (
               if (record.phase === "active") return;
               event.preventDefault();
             });
+            // Closing can send the window to the tray before its first paint.
+            window.once("close", () => settleInitialReveal(record));
             window.once("ready-to-show", () => {
               record.readyToShow = true;
               logger.info("Canonical application window ready to show", {

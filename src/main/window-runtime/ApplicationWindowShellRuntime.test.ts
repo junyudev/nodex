@@ -218,6 +218,55 @@ describe("ApplicationWindowShellRuntime", () => {
     },
   );
 
+  it.effect("does not reveal a window after it has been closed to the tray", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const initial = session("primary", 1);
+        const window = new FakeBrowserWindow();
+        const windows = {
+          attach: () => initial,
+          markFocused: () => undefined,
+          selectStartupSessions: () => [initial],
+        } as unknown as WindowRuntimeService;
+        const display = {
+          bounds: { height: 1_080, width: 1_920, x: 0, y: 0 },
+          scaleFactor: 2,
+        } as Display;
+        const context = yield* Layer.build(
+          live({
+            createIcon: () => ({ isEmpty: () => false }) as Electron.NativeImage,
+            createWindow: () => window as unknown as BrowserWindow,
+            displays: {
+              getAllDisplays: () => [display],
+              getDisplayMatching: () => display,
+              getPrimaryDisplay: () => display,
+            },
+            iconPath: "",
+            initialRestorePolicy: "all",
+            installContextMenu: () => () => undefined,
+            platform: "win32",
+            preloadPath: "/tmp/nodex-preload.js",
+            rendererUrl: "app://-/index.html",
+            theme: { prefersReducedTransparency: false, shouldUseDarkColors: false },
+            windows,
+          }),
+        );
+        const shell = Context.get(context, ApplicationWindowShellRuntime);
+        shell.openInitial();
+        // WindowRuntime keeps a tray-hidden window alive, so paint can still finish later.
+        window.emit("close");
+        window.emit("ready-to-show");
+        const [lease] = shell.claimPendingActivation();
+        expect(lease?.window).toBe(window);
+        shell.completeActivation(window.webContents.id);
+        yield* shell.awaitActivation(window.webContents.id);
+        yield* TestClock.adjust("2 seconds");
+        expect(window.showCount).toBe(0);
+        window.destroy();
+      }),
+    ),
+  );
+
   it.effect("releases each window's menu and watchdogs after Electron destroys it", () => {
     const sessions = [session("primary", 2), session("secondary", 1)];
     const installContextMenu = vi.fn((_window: BrowserWindow) => vi.fn());
