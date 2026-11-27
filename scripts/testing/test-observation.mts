@@ -65,6 +65,7 @@ export interface TestObservation {
   readonly unobservable: Readonly<Record<string, readonly string[]>>;
   readonly nativeResolution: boolean;
   readonly missingModuleCandidates: readonly string[];
+  readonly mockOnlyModuleIds?: readonly string[];
 }
 
 interface Observation {
@@ -82,6 +83,7 @@ interface Observation {
   readonly snapshots: Map<string, ObservedPath>;
   readonly reasons: Map<Reason, Set<string>>;
   nativeResolution: boolean;
+  mockOnlyModuleIds?: readonly string[];
   readonly missingModuleCandidates: Set<string>;
   pending: number;
   pendingChildren: number;
@@ -182,6 +184,7 @@ function publish(observation: Observation) {
     worker: { pid: process.pid, threadId: workers.threadId },
     reads: [...reads].sort(),
     nativeResolution: observation.nativeResolution,
+    mockOnlyModuleIds: observation.mockOnlyModuleIds,
     missingModuleCandidates: [...observation.missingModuleCandidates].sort(),
     probes: Object.fromEntries(probes),
     listings: [...snapshots.values()].filter(({ kind }) => isListing(kind)),
@@ -1457,7 +1460,7 @@ const childObservation = process.env[childObservationEnv];
 if (childObservation) beginChildObservation(childObservation);
 
 /** Runs after Vitest has awaited file hooks and snapshot writes. */
-export function endTestObservation(file: string) {
+export function endTestObservation(file: string, mockOnlyModuleIds?: readonly string[]) {
   if (!active) return;
   const observation = active;
   active = undefined;
@@ -1467,6 +1470,10 @@ export function endTestObservation(file: string) {
     block(observation, "subprocess", "Node child was still running at file end");
   if (observation.pending)
     block(observation, "unfinished filesystem operation", String(observation.pending));
+  // Native reads can reach the same source without going through Vite's module runner.
+  observation.mockOnlyModuleIds = mockOnlyModuleIds?.filter(
+    (id) => !observation.reads.has(relative(observation.root, id.split(/[?#]/u, 1)[0])),
+  );
   observation.finished = true;
   publish(observation);
 }

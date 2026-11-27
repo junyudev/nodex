@@ -141,7 +141,11 @@ export async function runCacheBatch(
         }
         const project = module.toTestSpecification().project;
         evidence.push({
-          ...(await readDependencies(module, dependencies?.get(project)?.get(module.moduleId))),
+          ...(await readDependencies(
+            module,
+            dependencies?.get(project)?.get(module.moduleId),
+            observation?.mockOnlyModuleIds,
+          )),
           durationMs,
         });
       }

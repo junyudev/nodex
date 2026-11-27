@@ -305,6 +305,7 @@ export function dependencyReader(root: string, workspace: ReadonlySet<string>) {
   return async (
     module: TestModule,
     recorded: readonly string[] | undefined,
+    mockOnlyModuleIds?: readonly string[],
   ): Promise<TestEvidence> => {
     const file = relativeInput(root, module.moduleId) ?? module.relativeModuleId;
     if (!fullyPassed(module)) return { file, passed: false, reason: "incomplete pass" };
@@ -329,6 +330,7 @@ export function dependencyReader(root: string, workspace: ReadonlySet<string>) {
       broadTopology ||= evidence.broadTopology;
     };
     const ids = new Set([module.moduleId, ...spec.project.config.setupFiles, ...recorded]);
+    const mockOnly = new Set(mockOnlyModuleIds);
     if (
       spec.project.config.snapshotOptions?.resolveSnapshotPath ||
       spec.project.config.snapshotEnvironment
@@ -382,10 +384,11 @@ export function dependencyReader(root: string, workspace: ReadonlySet<string>) {
         await recordImports(absolute, mocks?.map(({ specifier }) => specifier) ?? []);
         // Automocks can pick up new manual mocks through Vitest's own resolver.
         broadTopology ||= mocks?.some(({ automock }) => automock) ?? false;
-        // Trust the isolated worker for code loads. The shared graph can include an
-        // unmocked implementation reached by another test. Keep graph-only assets.
+        // A shared transform can expose assets of an implementation only another test loaded.
+        // Keep graph-only inputs when the worker cannot prove the implementation was replaced.
+        const includeAssets = !imported.id || !mockOnly.has(imported.id);
         for (const edge of edges) {
-          if (!scriptFile(cleanId(edge)) || workerModule(edge)) ids.add(edge);
+          if (includeAssets && (!scriptFile(cleanId(edge)) || workerModule(edge))) ids.add(edge);
         }
         // Bundled worker URLs do not enumerate their build inputs in the SSR graph.
         if (imported.id && workerModule(imported.id)) {
