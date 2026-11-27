@@ -1,3 +1,4 @@
+import { VisualGuestHost, visualGuestHostLive } from "../visual/VisualGuestHost";
 import { SpacePageFileHosts } from "../page-files/SpacePageFileHosts";
 import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import * as Effect from "effect/Effect";
@@ -220,6 +221,7 @@ const applicationWindows = Layer.unwrap(
     const config = yield* MainConfig;
     const mcpAppSandbox = yield* McpAppSandboxRuntime;
     const pageFileHtml = yield* PageFileHtmlRuntime;
+    const visual = yield* VisualGuestHost;
     const rendererClients = yield* RendererClientRuntime;
     const shell = yield* ApplicationWindowShellRuntime;
     const windows = yield* WindowRuntime;
@@ -230,6 +232,7 @@ const applicationWindows = Layer.unwrap(
       desktopNotifications,
       mcpAppSandbox,
       pageFileHtml,
+      visual,
       platform: config.platform as NodeJS.Platform,
       personalSpaceId: (yield* CoreAuthority).identity.libraryId,
       workspace: (yield* CoreModules).workspace,
@@ -247,6 +250,7 @@ const applicationWindows = Layer.unwrap(
       rendererClients,
       mcpAppSandbox,
       pageFileHtmlRuntimeLive,
+      visualGuestHostLive,
       composerAppshotRuntimeLive,
       windowShutdownLive(),
     ),
@@ -331,6 +335,7 @@ export const live: Layer.Layer<
   | ElectronClipboard
   | McpAppSandboxRuntime
   | PageFileHtmlRuntime
+  | VisualGuestHost
   | RemoteHostedPipRuntime
   | RendererClientRuntime
   | WorkbenchAgentBridge

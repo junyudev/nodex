@@ -110,6 +110,8 @@ pub enum Command {
     Work(crate::work::WorkArgs),
     /// Discover people in the current Library.
     Members(crate::members::MembersArgs),
+    /// Read Discussions, write Comments, and decide Suggested edits.
+    Discussions(crate::discussions::DiscussionsArgs),
     /// Inspect external Sources and their recorded observations.
     Sources(crate::sources::SourcesArgs),
     /// Manage Space remote access, membership and Devices.
@@ -118,6 +120,8 @@ pub enum Command {
     Serve(crate::serve::ServeArgs),
     /// Filter, join and summarize Pages, bodies, Properties and View results with read-only SQL.
     Sql(crate::sql::SqlArgs),
+    /// Check or export offline Visuals.
+    Visual(crate::visual::VisualArgs),
     /// Read one known Page body; --json includes reusable edit validators.
     Read(ReadArgs),
     /// Find ranked Page candidates; use SQL for combined filters and joins.

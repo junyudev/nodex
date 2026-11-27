@@ -635,6 +635,7 @@ pub(super) fn is_leaf(name: &str) -> bool {
             | "database-view-ref"
             | "synced-block-ref"
             | "template-ref"
+            | "pending"
     )
 }
 fn is_container(name: &str) -> bool {

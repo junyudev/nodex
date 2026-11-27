@@ -23,6 +23,7 @@ const skillFiles = [
   "references/project-database-views.md",
   "references/queries-and-configuration.md",
   "references/troubleshooting.md",
+  "references/visuals.md",
 ] as const;
 
 const gitEnvironment = {

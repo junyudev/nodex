@@ -72,6 +72,56 @@ pub(super) fn read(
         .map(|project| project.0.as_str());
     let requesting_adapter = &context.adapter;
     match request {
+        LibraryRead::DiscussionInbox { cursor, limit } => Ok(LibraryReadValue::DiscussionInbox {
+            value: super::discussions::inbox::read(connection, context, cursor.as_ref(), limit)?,
+        }),
+        LibraryRead::DiscussionAskContext { comment_id } => {
+            Ok(LibraryReadValue::DiscussionAskContext {
+                value: super::discussions::asks::read(connection, context, &comment_id)?,
+            })
+        }
+        LibraryRead::DiscussionBlockWriters { page_id } => {
+            Ok(LibraryReadValue::DiscussionBlockWriters {
+                items: super::discussions::asks::block_writers(connection, context, &page_id)?,
+            })
+        }
+        LibraryRead::QueuedDiscussionAsks { cursor, limit } => {
+            Ok(LibraryReadValue::QueuedDiscussionAsks {
+                value: super::discussions::queued(connection, context, cursor.as_ref(), limit)?,
+            })
+        }
+        LibraryRead::Discussions {
+            provenance,
+            page_id,
+            status,
+            waiting,
+            cursor,
+            limit,
+        } => {
+            let context =
+                super::discussions::read_context(connection, context, provenance.as_deref())?;
+            Ok(LibraryReadValue::Discussions {
+                value: super::discussions::list(
+                    connection,
+                    &context,
+                    page_id.as_deref(),
+                    status,
+                    waiting,
+                    cursor.as_ref(),
+                    limit,
+                )?,
+            })
+        }
+        LibraryRead::Discussion {
+            provenance,
+            discussion_id,
+        } => {
+            let context =
+                super::discussions::read_context(connection, context, provenance.as_deref())?;
+            Ok(LibraryReadValue::Discussion {
+                value: super::discussions::detail(connection, &context, &discussion_id)?,
+            })
+        }
         LibraryRead::Members => Ok(LibraryReadValue::Members {
             items: super::members::list(connection, library_id)?,
         }),
@@ -362,6 +412,29 @@ pub(super) fn read(
                     requesting_project_id,
                 )?),
             })
+        }
+        LibraryRead::BlockPage { block_id } => {
+            validate_identity(&block_id, "Block")?;
+            let page_id = connection
+                .query_row(
+                    "SELECT page.block_id FROM document_block_index block
+                     JOIN block_documents ownership ON ownership.document_id = block.document_id
+                     JOIN pages page ON page.block_id = ownership.block_id
+                     WHERE block.block_id = ?1 AND page.library_id = ?2",
+                    params![block_id, library_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            if let Some(page_id) = &page_id {
+                require_bound_page_read_access(
+                    connection,
+                    library_id,
+                    requesting_project_id,
+                    requesting_adapter,
+                    page_id,
+                )?;
+            }
+            Ok(LibraryReadValue::BlockPage { page_id })
         }
         LibraryRead::AgentBlockTarget {
             block_id,

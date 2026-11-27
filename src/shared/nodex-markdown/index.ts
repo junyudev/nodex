@@ -27,6 +27,7 @@ export interface PortableMarkdown {
 export interface PortableMarkdownOptions {
   readonly lineBreaks?: "comment" | "document";
   readonly pageTitles?: Readonly<Record<string, string>>;
+  readonly blockProjections?: Readonly<Record<string, readonly MarkdownBlock[]>>;
 }
 
 export class MarkdownRefusal extends Error {
@@ -168,6 +169,7 @@ export const writePortableMarkdown = (
       JSON.stringify(blocks),
       options.lineBreaks ?? "comment",
       JSON.stringify(options.pageTitles ?? {}),
+      JSON.stringify(options.blockProjections ?? {}),
     ),
   );
 export function markdownPlainText(blocks: readonly MarkdownBlock[]): string {

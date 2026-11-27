@@ -1,3 +1,5 @@
+import { discussionToolCatalog } from "./discussion-schemas";
+import { visualToolCatalog } from "./visual-schemas";
 import { sessionQuestionTool } from "./session-question-schema";
 import { sessionControlToolCatalog } from "./session-control-schemas";
 import { sessionHandoffTool, handoffStatusTool } from "./session-handoff-schemas";
@@ -40,6 +42,8 @@ export const appToolGroups = {
     },
   ],
   content: contentToolCatalog,
+  discussions: discussionToolCatalog,
+  visual: visualToolCatalog,
   terminal: [readSessionTerminalTool],
   account: accountToolCatalog,
   plugin: [uninstallPluginTool],

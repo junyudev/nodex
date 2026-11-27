@@ -32,6 +32,7 @@ export const OFFICIAL_SKILL_FILES = [
   "references/project-database-views.md",
   "references/queries-and-configuration.md",
   "references/troubleshooting.md",
+  "references/visuals.md",
 ] as const;
 
 const OUTPUT_TOP_LEVEL_FILES = ["LICENSE", "README.md", "release-manifest.json"] as const;

@@ -54,10 +54,40 @@ pub(super) fn compile(
     patches: &[ExactMarkdownPatch],
     allocate_block_id: &mut impl FnMut() -> String,
 ) -> Result<Vec<DocumentBlockOperation>, DocumentOperationError> {
-    let (text, mut locations) = located_body(&source.block_tree)?;
+    let (text, locations) = located_body(&source.block_tree)?;
     let spans = resolve_exact_markdown_patches(&text, patches)?;
-    let (target_text, changes) = patch_with_provenance(&text, &spans)?;
-    let mut old = project(parse_markdown_located(&text).map_err(invalid)?)?;
+    compile_spans(source, &text, locations, &spans, allocate_block_id)
+}
+
+/// Compile an exact replacement of a scope already fenced by Block identity.
+pub(crate) fn replace_range(
+    source: &DocumentMaterialization,
+    blocks: &[MaterializedBlockNode],
+    replacement: &str,
+    allocate: &mut impl FnMut() -> String,
+) -> Result<Vec<DocumentBlockOperation>, DocumentOperationError> {
+    let mut scope = source.clone();
+    scope.block_tree = blocks.to_vec();
+    scope.markdown = materialize_markdown(blocks).map_err(invalid)?.markdown;
+    let (text, locations) = located_body(blocks)?;
+    let spans = [MarkdownPatchSpan {
+        start: 0,
+        end: text.len(),
+        replacement: replacement.to_owned(),
+        patch_index: 0,
+    }];
+    compile_spans(&scope, &text, locations, &spans, allocate)
+}
+
+fn compile_spans(
+    source: &DocumentMaterialization,
+    text: &str,
+    mut locations: Vec<MarkdownSourceBlock>,
+    spans: &[MarkdownPatchSpan],
+    allocate_block_id: &mut impl FnMut() -> String,
+) -> Result<Vec<DocumentBlockOperation>, DocumentOperationError> {
+    let (target_text, changes) = patch_with_provenance(text, spans)?;
+    let mut old = project(parse_markdown_located(text).map_err(invalid)?)?;
     let parsed_target = parse_markdown_located(&target_text).map_err(invalid)?;
     let expected_projection = parsed_target.blocks.clone();
     let new = project(parsed_target)?;
@@ -81,7 +111,14 @@ pub(super) fn compile(
         }],
     );
     let projected_sources = invert_edges(&source_edges, old.blocks.len());
-    let lineage = correlate(&old, &new, &changes);
+    let mut lineage = correlate(&old, &new, &changes);
+    for (i, origin) in lineage.iter_mut().enumerate() {
+        if origin.is_some_and(|old_i| old.blocks[old_i].block.block_type == "pending")
+            && new.blocks[i].block.block_type != "pending"
+        {
+            *origin = None;
+        }
+    }
     let desired = desired_blocks(
         &actual,
         &old,
@@ -528,15 +565,19 @@ fn overlay(
     old: &MaterializedBlockNode,
     new: &MaterializedBlockNode,
 ) -> MaterializedBlockNode {
-    if old.block_type != new.block_type {
-        return MaterializedBlockNode {
+    let mut result = if old.block_type != new.block_type {
+        MaterializedBlockNode {
             id: original.id.clone(),
             ..new.clone()
-        };
-    }
-    let mut result = original.clone();
-    if old.content != new.content {
+        }
+    } else {
+        original.clone()
+    };
+    if old.block_type != new.block_type || old.content != new.content {
         result.content = new.content.clone();
+        if let (Some(original), Some(updated)) = (&original.content, &mut result.content) {
+            super::discussion_marks::preserve(original, updated);
+        }
     }
     for key in old
         .props

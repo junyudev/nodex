@@ -1,3 +1,9 @@
+import {
+  discussionCommandSchema,
+  discussionReadSchema,
+  discussionReadValueSchema,
+  discussionResultSchema,
+} from "./discussions";
 import { parseMember } from "./work-graph";
 import {
   isLibraryFileReadMode,
@@ -870,6 +876,14 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
   const operationId = uuidV7(request.operationId, "operationId");
   const storeEpoch = string(request.storeEpoch, "libraryModuleApply.storeEpoch");
   const operation = record(request.operation, "libraryModuleApply.operation");
+  if (operation.kind === "discussion") {
+    exactKeys(operation, "libraryModuleApply.operation", ["kind", "command"]);
+    return {
+      operationId,
+      storeEpoch,
+      operation: { kind: "discussion", command: discussionCommandSchema.parse(operation.command) },
+    };
+  }
   if (isLibraryFileOperationKind(operation.kind)) {
     return { operationId, storeEpoch, operation: libraryFileOperationSchema.parse(operation) };
   }
@@ -1620,6 +1634,14 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
   const request = record(value, "libraryModuleRead");
   exactKeys(request, "libraryModuleRead", ["read"]);
   const read = record(request.read, "libraryModuleRead.read");
+  if (
+    read.mode === "discussions" ||
+    read.mode === "discussion" ||
+    read.mode === "discussion_block_writers" ||
+    read.mode === "discussion_inbox"
+  ) {
+    return { read: discussionReadSchema.parse(read) };
+  }
   if (isLibraryFileReadMode(read.mode)) return { read: libraryFileReadSchema.parse(read) };
   if (read.mode === "structural_history_states") {
     exactKeys(read, "libraryModuleRead.read", ["mode", "tokens"]);
@@ -2146,6 +2168,14 @@ const parseCanvasTarget = (value: unknown, label: string): LibraryCanvasTarget =
 
 const parseReadValue = (value: unknown): LibraryReadValue => {
   const readValue = record(value, "libraryModuleReadResult.value.value");
+  if (
+    readValue.kind === "discussions" ||
+    readValue.kind === "discussion" ||
+    readValue.kind === "discussion_block_writers" ||
+    readValue.kind === "discussion_inbox"
+  ) {
+    return discussionReadValueSchema.parse(readValue);
+  }
   if (isLibraryFileReadValueKind(readValue.kind))
     return libraryFileReadValueSchema.parse(readValue);
   if (readValue.kind === "structural_history_states") {
@@ -2634,10 +2664,11 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
       "commitSeq",
       "committedAt",
     ],
-    ["pageRelocation", "pageRelocationUndo", "fileMutation", "pageFileEntries"],
+    ["pageRelocation", "pageRelocationUndo", "fileMutation", "pageFileEntries", "discussion"],
   );
   const operationKinds = new Set([
     ...LIBRARY_FILE_OPERATION_KINDS,
+    "discussion",
     "create_page",
     "create_database",
     "create_canvas",
@@ -2852,6 +2883,9 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
     operationKind: receipt.operationKind as LibraryModuleApplyReceipt["operationKind"],
     duplicate: boolean(receipt.duplicate, "libraryModuleApplyResult.value.duplicate"),
     didMutate: boolean(receipt.didMutate, "libraryModuleApplyResult.value.didMutate"),
+    ...(receipt.discussion === undefined
+      ? {}
+      : { discussion: discussionResultSchema.parse(receipt.discussion) }),
     ...(receipt.fileMutation === undefined
       ? {}
       : { fileMutation: fileMutationResultSchema.parse(receipt.fileMutation) }),

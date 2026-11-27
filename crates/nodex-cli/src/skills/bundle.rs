@@ -13,7 +13,7 @@ const MAX_BUNDLE_MANIFEST_BYTES: u64 = 256 * 1024;
 const MAX_SKILL_FILE_BYTES: u64 = 128 * 1024;
 const MAX_SKILL_TOTAL_BYTES: u64 = 512 * 1024;
 
-pub const OFFICIAL_SKILL_FILES: [&str; 7] = [
+pub const OFFICIAL_SKILL_FILES: [&str; 8] = [
     "SKILL.md",
     "agents/openai.yaml",
     "references/markdown.md",
@@ -21,9 +21,10 @@ pub const OFFICIAL_SKILL_FILES: [&str; 7] = [
     "references/project-database-views.md",
     "references/queries-and-configuration.md",
     "references/troubleshooting.md",
+    "references/visuals.md",
 ];
 
-const OFFICIAL_BUNDLE_FILES: [&str; 10] = [
+const OFFICIAL_BUNDLE_FILES: [&str; 11] = [
     "LICENSE",
     "README.md",
     "release-manifest.json",
@@ -34,6 +35,7 @@ const OFFICIAL_BUNDLE_FILES: [&str; 10] = [
     "skills/nodex/references/project-database-views.md",
     "skills/nodex/references/queries-and-configuration.md",
     "skills/nodex/references/troubleshooting.md",
+    "skills/nodex/references/visuals.md",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]

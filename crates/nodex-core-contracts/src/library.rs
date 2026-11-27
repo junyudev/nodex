@@ -1,3 +1,4 @@
+use crate::discussions::*;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -5,6 +6,7 @@ use serde_json::Value;
 
 use crate::agent::{
     AgentExecutionAuthorization, AgentOperationPreparation, AgentPreparedExecution,
+    AgentTurnProvenance,
 };
 use crate::database::{
     DatabaseGroupScope, DatabaseIntent, DatabaseListMoveTarget, DatabaseListProjectionExpectation,
@@ -33,6 +35,7 @@ pub struct Member {
 pub enum MemberRole {
     Owner,
     Member,
+    Commenter,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -952,6 +955,32 @@ pub struct LibraryStructuralEditResult {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryRead {
+    DiscussionAskContext {
+        comment_id: String,
+    },
+    DiscussionBlockWriters {
+        page_id: String,
+    },
+    DiscussionInbox {
+        cursor: Option<DiscussionCursor>,
+        limit: Option<u32>,
+    },
+    QueuedDiscussionAsks {
+        cursor: Option<QueuedAskCursor>,
+        limit: Option<u32>,
+    },
+    Discussions {
+        provenance: Option<Box<AgentTurnProvenance>>,
+        page_id: Option<String>,
+        status: Option<DiscussionStatus>,
+        waiting: Option<DiscussionWaiting>,
+        cursor: Option<DiscussionCursor>,
+        limit: Option<u32>,
+    },
+    Discussion {
+        provenance: Option<Box<AgentTurnProvenance>>,
+        discussion_id: String,
+    },
     Metadata,
     Members,
     LocalMember,
@@ -1058,6 +1087,9 @@ pub enum LibraryRead {
     },
     ReleaseSearchSnapshot {
         lease_id: String,
+    },
+    BlockPage {
+        block_id: String,
     },
     AgentBlockTarget {
         block_id: String,
@@ -2935,6 +2967,24 @@ impl LibrarySearchCoverage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryReadValue {
+    DiscussionAskContext {
+        value: crate::discussions::DiscussionAskContext,
+    },
+    DiscussionBlockWriters {
+        items: Vec<crate::discussions::DiscussionBlockWriter>,
+    },
+    DiscussionInbox {
+        value: crate::discussions::DiscussionInboxWindow,
+    },
+    QueuedDiscussionAsks {
+        value: QueuedAskWindow,
+    },
+    Discussions {
+        value: DiscussionWindow,
+    },
+    Discussion {
+        value: DiscussionDetail,
+    },
     Members {
         items: Vec<Member>,
     },
@@ -3038,6 +3088,9 @@ pub enum LibraryReadValue {
     SearchSnapshotRelease {
         value: LibrarySearchSnapshotRelease,
     },
+    BlockPage {
+        page_id: Option<String>,
+    },
     AgentBlockTarget {
         value: Option<LibraryAgentBlockTarget>,
     },
@@ -3120,6 +3173,10 @@ pub enum LibraryReadValue {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryIntent {
+    Discussion {
+        command: Box<DiscussionCommand>,
+        authorization: Option<Box<AgentExecutionAuthorization>>,
+    },
     /// Resolve and replace a Page path inside the same idempotent transaction.
     PutPageFileEntry {
         page_id: String,
@@ -3310,6 +3367,8 @@ pub struct LibraryReceipt {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryCommitValue {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discussion: Option<DiscussionCommandResult>,
     pub page_file_entries: Vec<LibraryPageFileEntryReceipt>,
     pub file_mutation: Option<LibraryFileMutationResult>,
     pub affected_resource_ids: Vec<String>,
@@ -3399,6 +3458,7 @@ pub struct LibraryEvent {
 #[serde(rename_all = "snake_case")]
 pub enum LibraryEventKind {
     LibraryChanged,
+    DiscussionAskQueued,
 }
 
 pub struct LibraryContract;

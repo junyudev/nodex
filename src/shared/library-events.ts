@@ -8,6 +8,7 @@ export interface LibraryNavigationChangedEvent {
   readonly storeEpoch: string | null;
   readonly commitSeq: number | null;
   readonly changeKind: "content" | "location" | "lifecycle" | "database" | "view";
+  readonly discussionAskQueued?: true;
   readonly affectedParentKeys: readonly string[];
   readonly affectedPageIds: readonly string[];
   readonly affectedDatabaseIds: readonly DatabaseId[];

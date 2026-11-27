@@ -301,6 +301,10 @@ pub enum BlockKind {
     },
     Table(Table),
     Divider,
+    Pending {
+        intent: String,
+        discussion: String,
+    },
     Image {
         url: String,
         caption: String,
@@ -576,6 +580,10 @@ fn block_from_json(value: &Value, path: &str) -> Result<Block, ModelError> {
         },
         "table" => BlockKind::Table(table_from_json(content, props, &format!("{path}.content"))?),
         "divider" => BlockKind::Divider,
+        "pending" => BlockKind::Pending {
+            intent: string_prop(props, "intent").unwrap_or_default().into(),
+            discussion: string_prop(props, "discussion").unwrap_or_default().into(),
+        },
         "image" => BlockKind::Image {
             url: string_prop(props, "url").unwrap_or("").trim().to_owned(),
             caption: string_prop(props, "caption").unwrap_or("").to_owned(),
@@ -1273,6 +1281,11 @@ fn block_to_json(block: &Block) -> Value {
             ("table", Some(table_to_json(table)))
         }
         BlockKind::Divider => ("divider", None),
+        BlockKind::Pending { intent, discussion } => {
+            props.insert("intent".into(), json!(intent));
+            props.insert("discussion".into(), json!(discussion));
+            ("pending", None)
+        }
         BlockKind::Image {
             url,
             caption,

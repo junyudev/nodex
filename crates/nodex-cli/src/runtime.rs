@@ -55,6 +55,7 @@ use crate::error::{CliError, CliErrorCode};
 #[derive(Clone, Debug)]
 pub enum CommandOutput {
     Json(Value),
+    JsonStatus { value: Value, exit_status: i32 },
     Text(String),
     Bytes(Vec<u8>),
     Process { stdout: Vec<u8>, exit_status: i32 },
@@ -120,7 +121,9 @@ pub(crate) fn compact_receipt<T: serde::Serialize, R: serde::Serialize>(
 impl CommandOutput {
     pub fn exit_status(&self) -> i32 {
         match self {
-            Self::Process { exit_status, .. } => *exit_status,
+            Self::Process { exit_status, .. } | Self::JsonStatus { exit_status, .. } => {
+                *exit_status
+            }
             _ => crate::EXIT_SUCCESS,
         }
     }
@@ -129,7 +132,7 @@ impl CommandOutput {
         let mut stdout = io::stdout().lock();
         if json_output {
             let result = match self {
-                Self::Json(value) => value,
+                Self::Json(value) | Self::JsonStatus { value, .. } => value,
                 Self::Text(value) => Value::String(value),
                 Self::Bytes(value) => Value::String(String::from_utf8(value).map_err(|_| {
                     CliError::new(
@@ -166,7 +169,7 @@ impl CommandOutput {
     fn write_human(self, writer: &mut impl Write) -> Result<(), CliError> {
         match self {
             Self::Bytes(value) => writer.write_all(&value).map_err(internal),
-            Self::Json(value) => write_line_terminated(
+            Self::Json(value) | Self::JsonStatus { value, .. } => write_line_terminated(
                 writer,
                 serde_json::to_string_pretty(&value)
                     .map_err(internal)?
@@ -200,10 +203,12 @@ pub(crate) fn execute_with_presentation(
     mut cli: Cli,
     presentation: crate::presentation::Presentation,
 ) -> Result<CommandOutput, CliError> {
-    if cli.remote_connection.is_some() && !matches!(cli.command, Command::Space(_)) {
+    if cli.remote_connection.is_some()
+        && !matches!(cli.command, Command::Space(_) | Command::Discussions(_))
+    {
         return Err(CliError::new(
             CliErrorCode::InvalidInput,
-            "A remote connection admits Space commands only",
+            "A remote connection admits Space and Discussion commands",
         ));
     }
     let cwd = env::current_dir().map_err(core_unavailable)?;
@@ -312,6 +317,12 @@ pub(crate) fn execute_with_presentation(
         }) => return crate::draft::discard(directory),
         _ => {}
     }
+    if let Command::Visual(args) = &cli.command
+        && crate::visual::standalone(args)
+        && cli.expect_profile.is_none()
+    {
+        return crate::visual::execute(args.clone(), None, None);
+    }
     let home = if scoped_agent {
         cwd.join(".nodex-agent-content")
     } else if let Some(home) = explicit_home {
@@ -378,9 +389,20 @@ pub(crate) fn execute_with_presentation(
     };
 
     match cli.command {
+        Command::Visual(args) => {
+            let project = if cli.project.is_some() {
+                Some(selected_project(&client, cli.project.as_deref(), &cwd)?.id)
+            } else {
+                None
+            };
+            crate::visual::execute(args, Some(&client), project.as_deref())
+        }
         Command::Serve(_) => unreachable!("serve is handled before connecting to Core"),
         Command::Automations(args) => crate::automations::execute(&client, args),
         Command::Work(args) => crate::work::execute(&client, args, cli.project.as_deref(), &cwd),
+        Command::Discussions(args) => {
+            crate::discussions::execute(&client, args, cli.project.as_deref(), &cwd)
+        }
         Command::Members(args) => crate::members::execute(&client, args),
         Command::Sources(args) => crate::sources::execute(&client, args),
         Command::Space(args) => crate::space::execute(&client, args),
@@ -577,7 +599,9 @@ fn agent_content_command(command: &Command) -> bool {
     matches!(
         command,
         Command::Automations(_)
+            | Command::Visual(_)
             | Command::Members(_)
+            | Command::Discussions(_)
             | Command::Work(_)
             | Command::Open(_)
             | Command::Sources(_)
@@ -1321,7 +1345,7 @@ enum PageSelectorLookup {
 const PAGE_SELECTOR_LOOKUP_ORDER: [PageSelectorLookup; 2] =
     [PageSelectorLookup::PageKey, PageSelectorLookup::TitlePath];
 
-fn canonical_page_selector(selector: &str) -> Result<Option<&str>, CliError> {
+pub(crate) fn canonical_page_selector(selector: &str) -> Result<Option<&str>, CliError> {
     if let Some(page_id) = selector.strip_prefix('@') {
         if !page_id.is_empty() && page_id.len() <= 512 && page_id.trim() == page_id {
             return Ok(Some(page_id));

@@ -20,6 +20,8 @@ pub(super) const RELATIONS: &[&str] = &[
     "file_versions",
     "file_usages",
     "page_history",
+    "discussions",
+    "comments",
 ];
 
 pub(super) fn column(name: &str, storage: &str, nullable: bool, description: &str) -> SqlColumn {
@@ -44,6 +46,49 @@ type RelationDefinition = (
 
 pub(super) fn describe(name: &str) -> Option<SqlTable> {
     let (description, keys, args, ordering, fields): RelationDefinition = match name {
+        "discussions" => (
+            "One Discussion on an active Page.",
+            &["id"],
+            &[],
+            None,
+            &[
+                ("id", "TEXT", false),
+                ("page_id", "TEXT", false),
+                ("status", "TEXT", false),
+                ("anchor_kind", "TEXT", false),
+                ("anchor_block_id", "TEXT", true),
+                ("anchor_state", "TEXT", false),
+                ("quote", "TEXT", false),
+                ("created_by_member_id", "TEXT", true),
+                ("created_at", "TEXT", false),
+                ("resolved_at", "TEXT", true),
+                ("last_activity_at", "TEXT", false),
+                ("waiting_for_nodex", "INTEGER", false),
+                ("question_for_member_id", "TEXT", true),
+            ],
+        ),
+        "comments" => (
+            "One Comment in a Page Discussion, including soft-deleted Comments.",
+            &["id"],
+            &[],
+            None,
+            &[
+                ("id", "TEXT", false),
+                ("discussion_id", "TEXT", false),
+                ("page_id", "TEXT", false),
+                ("author_member_id", "TEXT", true),
+                ("author_is_agent", "INTEGER", false),
+                ("body", "TEXT", false),
+                ("to_nodex", "INTEGER", false),
+                ("ask_kind", "TEXT", true),
+                ("ask_state", "TEXT", true),
+                ("verdict_result", "TEXT", true),
+                ("suggested_edit_state", "TEXT", true),
+                ("created_at", "TEXT", false),
+                ("edited_at", "TEXT", true),
+                ("deleted", "INTEGER", false),
+            ],
+        ),
         "pages" => (
             "One active Page, including standalone Pages; no body is loaded.",
             &["page_id"],

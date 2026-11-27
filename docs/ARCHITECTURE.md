@@ -179,6 +179,20 @@ Transport, origin channel and execution Project cannot author Actor identity.
 A Service's authorizing Member remains separate from its Actor. Durable audit
 identity survives retirement of the rebuildable delivery window.
 
+Library owns Page Discussions, Comments and Ask state. Document marks carry text
+anchors, and Core reconciles their Page and Block coordinates as part of each
+document commit. Suggested edit decisions and their accepted body changes share
+a LocalCommit. The Space host observes the durable Ask queue and submits the
+reserved message to the Session's execution owner. Core derives Run authority
+from the Ask's requester and commits the final Discussion state.
+See [Ask Nodex from a Page](product-specs/page-ask-behavior.md) and [ADR 0091](adr/0091-page-discussion-storage-and-anchors.md).
+
+A Visual is ordinary code block text in the Page document. Main resolves its
+sources through Core with the viewing Member's access and renders it in an
+offline guest that can load only bundled modules and the data Nodex supplies;
+the renderer owns every interaction through the geometry the guest reports.
+See [Visual blocks](product-specs/visual-block-behavior.md) and [ADR 0092](adr/0092-visuals-run-in-offline-guests.md).
+
 Library owns Member identity and the local Profile binding. Each Page owns its
 Member Owner, typed person-or-Agent Assignee, and consent to start automatically.
 Data Source Views project those fields without owning another assignment value.

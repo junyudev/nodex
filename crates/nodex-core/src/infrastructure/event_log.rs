@@ -559,6 +559,8 @@ impl CoreEventLog {
 struct LibraryMetadata {
     #[serde(default)]
     file_revisions: std::collections::BTreeMap<String, i64>,
+    #[serde(default)]
+    discussion_ask_queued: bool,
     module: String,
     affected_page_ids: Vec<String>,
     affected_database_ids: Vec<String>,
@@ -1087,7 +1089,11 @@ fn reconstruct_event(
             )?;
             CoreModuleEventPayload::Library(LibraryEvent {
                 file_revisions: metadata.file_revisions,
-                kind: LibraryEventKind::LibraryChanged,
+                kind: if metadata.discussion_ask_queued {
+                    LibraryEventKind::DiscussionAskQueued
+                } else {
+                    LibraryEventKind::LibraryChanged
+                },
                 page_ids: metadata.affected_page_ids,
                 database_ids: metadata.affected_database_ids,
                 view_ids: metadata.affected_view_ids,
@@ -1275,6 +1281,7 @@ fn decode_library_metadata(row: &ChangeLogRow) -> Result<LibraryMetadata, StoreE
             // Core Library metadata. Reconstruct the event facet without
             // rewriting the immutable historical payload.
             Ok(LibraryMetadata {
+                discussion_ask_queued: false,
                 file_revisions: Default::default(),
                 module: "library".to_owned(),
                 affected_page_ids: Vec::new(),

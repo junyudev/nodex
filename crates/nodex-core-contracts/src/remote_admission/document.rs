@@ -1,25 +1,25 @@
-use super::RemoteAdmission;
+use super::{RemoteAccess, RemoteAdmission};
 use crate::document::{OwnedDocumentIntent, OwnedDocumentRead};
 
 impl RemoteAdmission for OwnedDocumentRead {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
             Self::Recovery { .. }
             | Self::Descriptor { .. }
             | Self::SyncYjs { .. }
             | Self::FetchUpdate { .. }
             | Self::ListVersions { .. }
-            | Self::GetVersion { .. } => true,
+            | Self::GetVersion { .. } => RemoteAccess::Participant,
             Self::RecoveryArtifact { .. }
             | Self::CanvasCompactionEligibility { .. }
             | Self::PrepareAgentSemanticMutation { .. }
-            | Self::AgentSemanticSnapshot { .. } => false,
+            | Self::AgentSemanticSnapshot { .. } => RemoteAccess::Denied,
         }
     }
 }
 
 impl RemoteAdmission for OwnedDocumentIntent {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
             Self::CaptureRecovery { .. }
             | Self::ResolveRecovery { .. }
@@ -30,10 +30,10 @@ impl RemoteAdmission for OwnedDocumentIntent {
             | Self::ReplaceFromMarkdown { .. }
             | Self::ApplyCanvasMutation { .. }
             | Self::CreateCheckpoint { .. }
-            | Self::RestoreVersion { .. } => true,
+            | Self::RestoreVersion { .. } => RemoteAccess::Member,
             Self::ExecutePreparedAgentSemanticMutation { .. }
             | Self::CompactCanvasTombstones { .. }
-            | Self::ApplyOwnerCommand { .. } => false,
+            | Self::ApplyOwnerCommand { .. } => RemoteAccess::Denied,
         }
     }
 }

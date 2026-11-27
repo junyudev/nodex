@@ -1520,7 +1520,7 @@ CREATE TABLE "pages" (
   parent_kind TEXT NOT NULL,
   parent_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL, status_person_revision INTEGER NOT NULL DEFAULT 0 CHECK(status_person_revision >= 0),
+  updated_at TEXT NOT NULL, status_person_revision INTEGER NOT NULL DEFAULT 0 CHECK(status_person_revision >= 0), nodex_answers_questions INTEGER NOT NULL DEFAULT 0 CHECK(nodex_answers_questions IN (0,1)),
   FOREIGN KEY (block_id, library_id)
     REFERENCES blocks(id, library_id) ON UPDATE CASCADE ON DELETE CASCADE,
   FOREIGN KEY (document_id, library_id)
@@ -4734,7 +4734,7 @@ CREATE TABLE members (
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
   display_name TEXT NOT NULL CHECK (length(trim(display_name)) BETWEEN 1 AND 256),
   lifecycle TEXT NOT NULL CHECK (lifecycle IN ('active', 'removed')),
-  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1), role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','member')),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1), role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','member','commenter')),
   UNIQUE (id, library_id)
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX members_library ON members(library_id, lifecycle, display_name, id);
@@ -5198,7 +5198,7 @@ WHEN NEW.space_kind='personal' AND (SELECT count(*) FROM members WHERE library_i
 BEGIN SELECT RAISE(ABORT,'Personal Space requires one active Owner'); END;
 CREATE TABLE space_invites (
  id TEXT PRIMARY KEY, library_id TEXT NOT NULL REFERENCES libraries(id),
- code_hash TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('owner','member')),
+ code_hash TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('owner','member','commenter')),
  member_id TEXT REFERENCES members(id),
  expires_at INTEGER NOT NULL, created_by TEXT NOT NULL REFERENCES members(id), redeemed_at INTEGER
 , device_link INTEGER NOT NULL DEFAULT 0 CHECK(device_link IN (0,1)), created_at INTEGER NOT NULL DEFAULT 0) STRICT;
@@ -6096,4 +6096,53 @@ CREATE TABLE inbox_start_requests (
   CHECK (consent_basis IS NULL OR proposal_id IS NULL)
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version=224;
+CREATE TABLE page_discussions (
+  id TEXT PRIMARY KEY,
+  page_id TEXT NOT NULL REFERENCES pages(block_id) ON DELETE CASCADE,
+  anchor_json TEXT NOT NULL CHECK(json_valid(anchor_json)),
+  creation_hash TEXT NOT NULL,
+  anchor_state TEXT NOT NULL CHECK(anchor_state IN ('live','orphaned')),
+  quote TEXT NOT NULL CHECK(length(quote) <= 500),
+  created_by_json TEXT NOT NULL CHECK(json_valid(created_by_json)),
+  created_at TEXT NOT NULL,
+  resolved_by_json TEXT CHECK(json_valid(resolved_by_json)),
+  resolved_at TEXT,
+  last_activity_at TEXT NOT NULL,
+  CHECK ((resolved_by_json IS NULL) = (resolved_at IS NULL))
+) WITHOUT ROWID, STRICT;
+CREATE INDEX page_discussions_page_activity ON page_discussions(page_id, last_activity_at DESC, id DESC);
+CREATE INDEX page_discussions_activity ON page_discussions(last_activity_at DESC, id DESC);
+CREATE TABLE page_discussion_comments (
+  id TEXT PRIMARY KEY,
+  discussion_id TEXT NOT NULL REFERENCES page_discussions(id) ON DELETE CASCADE,
+  author_json TEXT NOT NULL CHECK(json_valid(author_json)),
+  created_at TEXT NOT NULL,
+  edited_at TEXT,
+  deleted_at TEXT,
+  body TEXT NOT NULL,
+  mentions_json TEXT NOT NULL CHECK(json_valid(mentions_json)),
+  ask_json TEXT CHECK(json_valid(ask_json)),
+  queued_at TEXT,
+  verdict_json TEXT CHECK(json_valid(verdict_json)),
+  suggested_edit_json TEXT CHECK(json_valid(suggested_edit_json)),
+  question_for TEXT REFERENCES members(id)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX page_discussion_comments_order ON page_discussion_comments(discussion_id, created_at, id);
+CREATE INDEX page_discussion_queued_asks ON page_discussion_comments(queued_at,id) WHERE queued_at IS NOT NULL;
+CREATE TABLE page_discussion_anchor_blocks (
+  discussion_id TEXT NOT NULL REFERENCES page_discussions(id) ON DELETE CASCADE,
+  block_id TEXT NOT NULL,
+  PRIMARY KEY(discussion_id, block_id)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX page_discussion_anchor_block ON page_discussion_anchor_blocks(block_id, discussion_id);
+CREATE TABLE page_run_block_changes (
+  page_id TEXT NOT NULL REFERENCES pages(block_id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  block_id TEXT NOT NULL,
+  before_json TEXT CHECK(json_valid(before_json)),
+  after_json TEXT CHECK(json_valid(after_json)),
+  interleaved INTEGER NOT NULL DEFAULT 0 CHECK(interleaved IN (0,1)),
+  PRIMARY KEY(page_id, run_id, session_id, block_id)
+) WITHOUT ROWID, STRICT;
+PRAGMA user_version=225;

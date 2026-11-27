@@ -13,6 +13,7 @@ mod config;
 mod config_script;
 mod data_source;
 pub mod deeplink;
+mod discussions;
 mod draft;
 pub mod error;
 mod files;
@@ -43,6 +44,7 @@ mod sources;
 mod space;
 mod sql;
 mod view;
+mod visual;
 mod work;
 
 use cli::Cli;

@@ -169,6 +169,47 @@ describe("document-sync-adapter", () => {
       ]);
     });
 
+    test("opens a published Page after Core denies write preparation", async (createCoreDocumentSyncAdapter) => {
+      const client = new FakeCoreClient();
+      const adapter = createCoreDocumentSyncAdapter(client);
+      const denied = new CoreModuleResponseError({
+        code: "unauthorized",
+        message: "Only an editor can prepare a Document",
+        retryable: false,
+        recovery: { kind: "none" },
+      });
+      vi.spyOn(client, "documentApply").mockRejectedValue(denied);
+      const input = {
+        ownerBlockId: "page:one",
+        operationId: "prepare:one",
+        clientSessionId: "renderer:open",
+      };
+      client.enqueueDocumentRead(descriptorSnapshot());
+      await expect(adapter.openOwner(input)).resolves.toMatchObject({
+        ok: true,
+        value: { ownerBlockId: input.ownerBlockId, readiness: "ready", headSeq: 2 },
+      });
+      expect(client.documentReads).toEqual([
+        {
+          clientSessionId: input.clientSessionId,
+          read: { kind: "descriptor", owner_block_id: input.ownerBlockId },
+        },
+      ]);
+
+      const pending = descriptorSnapshot();
+      client.enqueueDocumentRead({
+        ...pending,
+        value: {
+          kind: "descriptor",
+          descriptor: { ...pending.value.descriptor, readiness: "pending_genesis", headSeq: 0 },
+        },
+      });
+      await expect(adapter.openOwner(input)).resolves.toMatchObject({
+        ok: false,
+        error: { core: { code: "unauthorized" }, retryable: false },
+      });
+    });
+
     test("fetches one exact verified Document update resource", async (createCoreDocumentSyncAdapter) => {
       const client = new FakeCoreClient();
       const adapter = createCoreDocumentSyncAdapter(client);

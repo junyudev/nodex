@@ -1219,6 +1219,16 @@ const NODEX_TOOL_ACTIVITY = {
   advanced_update_page: resolveAdvancedUpdatePage,
   move_pages: resolveMovePages,
   duplicate_page: resolveDuplicatePage,
+  visual_check: fixed("page", {
+    id: "conversation.nodexToolActivity.checkVisual",
+    defaultMessage:
+      "{phase, select, active {Checking Visual} failed {Couldn't check Visual} other {Checked Visual}}",
+  }),
+  visual_snapshot: fixed("page", {
+    id: "conversation.nodexToolActivity.captureVisual",
+    defaultMessage:
+      "{phase, select, active {Capturing Visual} failed {Couldn't capture Visual} other {Captured Visual}}",
+  }),
   get_context: fixed("project", {
     id: "conversation.nodexToolActivity.readProjectContext",
     defaultMessage:
@@ -1238,6 +1248,81 @@ const NODEX_TOOL_ACTIVITY = {
     id: "conversation.nodexToolActivity.listProjects",
     defaultMessage:
       "{phase, select, active {Listing projects} failed {Couldn't list projects} other {Listed projects}}",
+  }),
+
+  // Page Discussions
+  discussions_list: fixed("chat", {
+    id: "conversation.nodexToolActivity.listDiscussions",
+    defaultMessage:
+      "{phase, select, active {Listing Discussions} failed {Couldn't list Discussions} other {Listed Discussions}}",
+  }),
+  discussions_show: fixed("chat", {
+    id: "conversation.nodexToolActivity.readDiscussion",
+    defaultMessage:
+      "{phase, select, active {Reading Discussion} failed {Couldn't read Discussion} other {Read Discussion}}",
+  }),
+  discussions_create: fixed("chat", {
+    id: "conversation.nodexToolActivity.openDiscussion",
+    defaultMessage:
+      "{phase, select, active {Opening Discussion} failed {Couldn't open Discussion} other {Opened Discussion}}",
+  }),
+  discussions_reply: fixed("chat", {
+    id: "conversation.nodexToolActivity.replyToDiscussion",
+    defaultMessage:
+      "{phase, select, active {Replying to Discussion} failed {Couldn't reply to Discussion} other {Replied to Discussion}}",
+  }),
+  discussions_edit: fixed("chat", {
+    id: "conversation.nodexToolActivity.editComment",
+    defaultMessage:
+      "{phase, select, active {Editing Comment} failed {Couldn't edit Comment} other {Edited Comment}}",
+  }),
+  discussions_delete: fixed("chat", {
+    id: "conversation.nodexToolActivity.deleteComment",
+    defaultMessage:
+      "{phase, select, active {Deleting Comment} failed {Couldn't delete Comment} other {Deleted Comment}}",
+  }),
+  discussions_resolve: fixed("chat", {
+    id: "conversation.nodexToolActivity.resolveDiscussion",
+    defaultMessage:
+      "{phase, select, active {Resolving Discussion} failed {Couldn't resolve Discussion} other {Resolved Discussion}}",
+  }),
+  discussions_reopen: fixed("chat", {
+    id: "conversation.nodexToolActivity.reopenDiscussion",
+    defaultMessage:
+      "{phase, select, active {Reopening Discussion} failed {Couldn't reopen Discussion} other {Reopened Discussion}}",
+  }),
+  discussions_accept: (call) => {
+    const comment = asRecord(outputData(call)?.value);
+    const stale = asRecord(comment?.suggestedEdit)?.state === "stale";
+    return activity(
+      call,
+      "page",
+      stale
+        ? {
+            id: "conversation.nodexToolActivity.staleSuggestedEdit",
+            defaultMessage: "Suggested edit became stale",
+          }
+        : {
+            id: "conversation.nodexToolActivity.applySuggestedEdit",
+            defaultMessage:
+              "{phase, select, active {Applying Suggested edit} failed {Couldn't apply Suggested edit} other {Applied Suggested edit}}",
+          },
+    );
+  },
+  discussions_reject: fixed("page", {
+    id: "conversation.nodexToolActivity.rejectSuggestedEdit",
+    defaultMessage:
+      "{phase, select, active {Rejecting Suggested edit} failed {Couldn't reject Suggested edit} other {Rejected Suggested edit}}",
+  }),
+  discussions_set_page_setting: fixed("page", {
+    id: "conversation.nodexToolActivity.updateNodexAnswersSetting",
+    defaultMessage:
+      "{phase, select, active {Updating Nodex answers setting} failed {Couldn't update Nodex answers setting} other {Updated Nodex answers setting}}",
+  }),
+  discussions_revert_run: fixed("page", {
+    id: "conversation.nodexToolActivity.revertRunPageChanges",
+    defaultMessage:
+      "{phase, select, active {Reverting Run changes on Page} failed {Couldn't revert Run changes on Page} other {Reverted Run changes on Page}}",
   }),
 
   // Chats

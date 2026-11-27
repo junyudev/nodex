@@ -488,6 +488,7 @@ fn apply_and_seal_move(
             agent_page_copy: None,
             agent_create_pages: None,
             agent_move_pages: Some(execution.result),
+            discussion: None,
             change_payload: None,
             committed_at: execution.committed_at,
         },

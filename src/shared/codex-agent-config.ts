@@ -7,7 +7,7 @@ import type {
   CodexReasoningEffort,
 } from "./types";
 
-const CODEX_PROVIDER_ID = "openai";
+export const CODEX_PROVIDER_ID = "openai";
 const MAX_VALUE_LENGTH = 512;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u;
 

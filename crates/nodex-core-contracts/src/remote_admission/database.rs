@@ -1,8 +1,8 @@
-use super::RemoteAdmission;
+use super::{RemoteAccess, RemoteAdmission};
 use crate::database::{DatabaseIntent, DatabaseRead};
 
 impl RemoteAdmission for DatabaseRead {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
             Self::ViewPersonalPreferences { .. }
             | Self::ViewCollapsedOccurrences { .. }
@@ -29,14 +29,14 @@ impl RemoteAdmission for DatabaseRead {
             | Self::Blocking { .. }
             | Self::Prerequisites { .. }
             | Self::RelationTargetWindow { .. }
-            | Self::RelationCandidateWindow { .. } => true,
-            Self::AgentDataSourceQuery { .. } | Self::AgentViewQuery { .. } => false,
+            | Self::RelationCandidateWindow { .. } => RemoteAccess::Participant,
+            Self::AgentDataSourceQuery { .. } | Self::AgentViewQuery { .. } => RemoteAccess::Denied,
         }
     }
 }
 
 impl RemoteAdmission for DatabaseIntent {
-    fn admits_remote_member(&self) -> bool {
+    fn remote_access(&self) -> RemoteAccess {
         match self {
             Self::PutViewPersonalPreferences { .. }
             | Self::SetViewOccurrenceDisclosure { .. }
@@ -66,8 +66,10 @@ impl RemoteAdmission for DatabaseIntent {
             | Self::SetTaskParent { .. }
             | Self::MoveListOccurrences { .. }
             | Self::UndoListOccurrenceMove { .. }
-            | Self::ReverseDataEdit { .. } => true,
-            Self::SetPageProperties { .. } | Self::ApplyPagePropertyEdits { .. } => false,
+            | Self::ReverseDataEdit { .. } => RemoteAccess::Member,
+            Self::SetPageProperties { .. } | Self::ApplyPagePropertyEdits { .. } => {
+                RemoteAccess::Denied
+            }
         }
     }
 }

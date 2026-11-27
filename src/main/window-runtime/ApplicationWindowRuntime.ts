@@ -1,3 +1,4 @@
+import type { VisualGuestHost } from "../visual/VisualGuestHost";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -65,6 +66,7 @@ export interface ApplicationWindowRuntimeOptions {
     ) => Effect.Effect<void>;
   };
   readonly desktopNotifications: DesktopNotificationRuntime["Service"];
+  readonly visual: VisualGuestHost["Service"];
   readonly pageFileHtml: PageFileHtmlRuntime["Service"];
   readonly mcpAppSandbox: McpAppSandboxRuntime["Service"];
   readonly platform: NodeJS.Platform;
@@ -174,6 +176,10 @@ export const live = (
             preload?: string;
             webpreferences?: string;
           };
+          if (options.visual.handlesPartition(webviewParams.partition)) {
+            options.visual.willAttach(window.webContents, event, webPreferences, webviewParams);
+            return;
+          }
           if (pageFileHtmlHost.handlesPartition(webviewParams.partition)) {
             pageFileHtmlHost.handleWillAttach(event, webPreferences, webviewParams);
             return;
@@ -237,6 +243,7 @@ export const live = (
           });
         });
         window.webContents.on("did-attach-webview", (_event, guest) => {
+          if (options.visual.didAttach(window.webContents, guest)) return;
           if (pageFileHtmlHost.handleDidAttach(guest)) return;
           if (mcpAppSandboxHost.handleDidAttach(guest)) return;
           const pending = consumePendingBrowserWebviewAttachment(

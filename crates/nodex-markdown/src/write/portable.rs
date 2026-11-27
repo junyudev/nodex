@@ -44,6 +44,25 @@ impl State<'_, '_> {
     }
 
     fn block(&mut self, block: &Block) -> Vec<Block> {
+        if let Some(replacement) = block
+            .id
+            .as_ref()
+            .and_then(|id| self.options.block_projections?.get(id))
+        {
+            self.lossy = true;
+            let options = PortableOptions {
+                block_projections: None,
+                line_breaks: self.options.line_breaks,
+                page_title: self.options.page_title,
+            };
+            let mut output = State {
+                options: &options,
+                lossy: false,
+            }
+            .flow(replacement);
+            output.extend(self.flow(&block.children));
+            return output;
+        }
         if !block.children.is_empty()
             && matches!(
                 block.kind,
@@ -169,6 +188,7 @@ impl State<'_, '_> {
                 };
             }
             BlockKind::Database
+            | BlockKind::Pending { .. }
             | BlockKind::Canvas
             | BlockKind::DatabaseViewRef { .. }
             | BlockKind::SyncedBlockRef { .. }

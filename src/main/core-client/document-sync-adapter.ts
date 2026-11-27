@@ -122,6 +122,7 @@ export interface CoreDocumentSyncAdapter {
     readonly operationId: string;
     readonly clientSessionId: string;
   }): Promise<DocumentSyncCommandResult<OwnedDocumentDescriptor>>;
+  openOwner: CoreDocumentSyncAdapter["prepareOwner"];
   applyAdditionalDocumentCommand(
     request: AdditionalDocumentCommandRequest,
   ): Promise<AdditionalDocumentCommandResult>;
@@ -853,32 +854,51 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
     }
   };
 
+  const prepareOwner: CoreDocumentSyncAdapter["prepareOwner"] = async (input) => {
+    try {
+      const committed = await client.documentApply({
+        operationId: input.operationId,
+        clientSessionId: input.clientSessionId,
+        intent: {
+          kind: "prepare_owner",
+          owner_block_id: input.ownerBlockId,
+        },
+      });
+      const descriptor = await readDescriptor(input);
+      const storeEpoch = applyResultStoreEpoch(committed);
+      if (
+        committed.receipt.operation_id !== input.operationId ||
+        committed.receipt.document_id !== descriptor.documentId ||
+        committed.outcome.document_id !== descriptor.documentId ||
+        committed.outcome.generation !== descriptor.generation ||
+        committed.outcome.head_seq > descriptor.headSeq ||
+        storeEpoch !== descriptor.storeEpoch
+      ) {
+        throw new Error("Core Owned Document preparation escaped its owner boundary");
+      }
+      return success(descriptor);
+    } catch (error) {
+      rethrowCoreTransportFailure(error);
+      return failure(error);
+    }
+  };
+
   return {
     readDescriptor,
     fetchUpdateResource,
-    prepareOwner: async (input) => {
+    prepareOwner,
+    openOwner: async (input) => {
+      const prepared = await prepareOwner(input);
+      if (prepared.ok || prepared.error.core?.code !== "unauthorized") return prepared;
       try {
-        const committed = await client.documentApply({
-          operationId: input.operationId,
-          clientSessionId: input.clientSessionId,
-          intent: {
-            kind: "prepare_owner",
-            owner_block_id: input.ownerBlockId,
-          },
-        });
         const descriptor = await readDescriptor(input);
-        const storeEpoch = applyResultStoreEpoch(committed);
-        if (
-          committed.receipt.operation_id !== input.operationId ||
-          committed.receipt.document_id !== descriptor.documentId ||
-          committed.outcome.document_id !== descriptor.documentId ||
-          committed.outcome.generation !== descriptor.generation ||
-          committed.outcome.head_seq > descriptor.headSeq ||
-          storeEpoch !== descriptor.storeEpoch
-        ) {
-          throw new Error("Core Owned Document preparation escaped its owner boundary");
-        }
-        return success(descriptor);
+        // Opening an existing Page only needs its published Document identity.
+        return descriptor.ownerType === "page" &&
+          descriptor.ownerLifecycle === "active" &&
+          descriptor.readiness === "ready" &&
+          descriptor.sync.kind === "yjs"
+          ? success(descriptor)
+          : prepared;
       } catch (error) {
         rethrowCoreTransportFailure(error);
         return failure(error);

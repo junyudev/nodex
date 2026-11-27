@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { BlockNoteEditor } from "@blocknote/core";
 import { blocksToYDoc, yDocToBlocks } from "@blocknote/core/yjs";
+import type { XmlElement, XmlText } from "yjs";
 import {
   headlessBlockDocumentSchema,
   type HeadlessBlockDocumentPartialBlock,
@@ -26,6 +27,28 @@ describe("headless Block Document schema", () => {
 
     expect(editor.headless).toBe(true);
     expect(decoded[0]?.id).toBe("headless-probe");
+  });
+
+  test("loads Pending blocks and preserves the visible text of a marked paragraph", () => {
+    const editor = BlockNoteEditor.create({
+      schema: headlessBlockDocumentSchema,
+      initialContent: [
+        { type: "paragraph", content: "Selected words" },
+        { type: "pending", props: { intent: "Write results", discussion: "discussion" } },
+      ],
+    });
+    const document = blocksToYDoc(editor, editor.document, "body");
+    const group = document.getXmlFragment("body").get(0) as XmlElement;
+    const paragraph = (group.get(0) as XmlElement).get(0) as XmlElement;
+    const text = paragraph.get(0) as XmlText;
+    text.format(0, 8, { "comment--abcdefgh": { threadId: "discussion", orphan: false } });
+
+    const [marked, pending] = yDocToBlocks(editor, document, "body");
+    expect(marked?.content).toEqual([{ type: "text", text: "Selected words", styles: {} }]);
+    expect(pending).toMatchObject({
+      type: "pending",
+      props: { intent: "Write results", discussion: "discussion" },
+    });
   });
 
   test("round-trips all custom block and inline shapes through Yjs", () => {

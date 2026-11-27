@@ -2544,7 +2544,7 @@ fn hosted_chat_attachments_are_read_with_the_members_authority_until_withdrawal(
 }
 
 #[test]
-fn a_space_rename_reaches_each_members_live_event_stream() {
+fn space_names_and_membership_changes_reach_each_members_live_event_stream() {
     let core = Core::start();
     let bob = core.enroll();
     let session = core.session(&bob.device_credential);
@@ -2559,20 +2559,57 @@ fn a_space_rename_reaches_each_members_live_event_stream() {
         handshake.commit_head,
     );
     until(&mut live, "event: stream-checkpoint");
-    let renamed = Instant::now();
     core.local.space_rename("Platform".into()).unwrap();
-    // A connected desktop learns of the new name at once, before the stream's heartbeat.
-    loop {
-        let mut line = String::new();
-        assert!(live.read_line(&mut line).unwrap() > 0, "Stream closed");
-        if line.contains("\"operation\":\"rename_space\"") {
-            break;
-        }
-        assert!(
-            renamed.elapsed() < Duration::from_secs(5),
-            "The rename waited for another commit"
+    until(&mut live, "\"operation\":\"rename_space\"");
+
+    let teammate = core.enroll();
+    until(&mut live, "\"operation\":\"enroll_device\"");
+    let current = |kind: &str| {
+        let (status, response) = core.request(
+            "/core/v1/modules/library/read",
+            &session.session_token,
+            Some((&id, &handshake.connection_binding)),
+            json!({"contract_version":nodex_core_contracts::LIBRARY_CONTRACT_VERSION,"read":{"kind":kind}}),
         );
-    }
+        assert_eq!(status, 200, "{response}");
+        assert_eq!(response["status"], "ok", "{response}");
+        response["payload"]["value"].clone()
+    };
+    assert_eq!(current("local_member")["value"]["id"], bob.member_id);
+    let directory_entry = || {
+        current("members")["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["id"] == teammate.member_id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(directory_entry()["lifecycle"], "active");
+
+    let teammate_session = core.session(&teammate.device_credential);
+    assert_eq!(
+        core.request(
+            "/core/v1/admin/space/member-name",
+            &teammate_session.session_token,
+            None,
+            json!({"name": "Renamed teammate"}),
+        )
+        .0,
+        200
+    );
+    until(&mut live, "\"operation\":\"rename_member\"");
+    assert_eq!(directory_entry()["display_name"], "Renamed teammate");
+
+    core.local
+        .space_remove_member(RemoveMemberRequest {
+            member_id: teammate.member_id.clone(),
+        })
+        .unwrap();
+    until(&mut live, "\"operation\":\"remove_member\"");
+    let removed = directory_entry();
+    assert_eq!(removed["display_name"], "Renamed teammate");
+    assert_eq!(removed["lifecycle"], "removed");
 }
 
 #[test]

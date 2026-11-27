@@ -617,10 +617,12 @@ fn remap_block(
         .iter()
         .map(|child| remap_block(child, remap))
         .collect::<Result<_, _>>()?;
+    let mut content = source.content.clone();
+    super::block_tree::clear_copied_discussion_anchors(&mut content);
     Ok(BlockNode {
         id,
         container_attributes,
-        content: source.content.clone(),
+        content,
         children,
     })
 }

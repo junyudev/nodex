@@ -83,6 +83,7 @@ pub enum RemoteAccessCommand {
 pub enum InviteRole {
     Owner,
     Member,
+    Commenter,
 }
 pub(crate) fn execute(client: &CoreClient, args: SpaceArgs) -> Result<CommandOutput, CliError> {
     let result = match args.command {
@@ -126,10 +127,10 @@ pub(crate) fn execute(client: &CoreClient, args: SpaceArgs) -> Result<CommandOut
             .and_then(|v| serde_json::to_value(v).map_err(Into::into)),
         SpaceCommand::Invite { role, member } => client
             .space_invite(InviteRequest {
-                role: if role == InviteRole::Owner {
-                    MemberRole::Owner
-                } else {
-                    MemberRole::Member
+                role: match role {
+                    InviteRole::Owner => MemberRole::Owner,
+                    InviteRole::Member => MemberRole::Member,
+                    InviteRole::Commenter => MemberRole::Commenter,
                 },
                 member_id: member,
             })
