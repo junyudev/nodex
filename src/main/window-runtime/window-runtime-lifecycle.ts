@@ -1,4 +1,4 @@
-export type WindowRuntimeAuxiliaryRole = "avatar-overlay" | "mini";
+export type WindowRuntimeAuxiliaryRole = "mini";
 
 interface WindowRuntimeWindowSnapshotBase {
   /** Monotonic in-process order of the last focus claim. It is never persisted. */

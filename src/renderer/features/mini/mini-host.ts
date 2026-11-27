@@ -7,12 +7,16 @@ import {
 import {
   MINI_COMPANION_EVENT_CHANNEL,
   MINI_PRESENTATION_CHANNEL,
+  MINI_PREVIEWS_CHANNEL,
   type MiniCompanionEvent,
   type MiniCompanionMethod,
+  type MiniContentLayout,
   type MiniCoverage,
   type MiniDrag,
   type MiniOpenTarget,
   type MiniPresentationEvent,
+  type MiniPreviews,
+  type MiniPreviewVisibility,
 } from "../../../shared/mini";
 
 const ignore = (): void => undefined;
@@ -47,6 +51,14 @@ export const miniHost = {
   release: (generation: number) =>
     void invokeRendererControl("mini:release", generation).catch(ignore),
   open: (target: MiniOpenTarget) => void invokeRendererControl("mini:open", target).catch(ignore),
+  layout: (layout: MiniContentLayout | null) =>
+    void invokeRendererControl("mini:layout", layout).catch(ignore),
+  previewVisibility: (sessionId: string, visibility: MiniPreviewVisibility) =>
+    void invokeRendererControl("mini:preview-visibility", sessionId, visibility).catch(ignore),
+  onPreviews: (listener: (previews: MiniPreviews) => void): (() => void) =>
+    window.api?.on(MINI_PREVIEWS_CHANNEL, (payload) => {
+      if (isPreviews(payload)) listener(payload);
+    }) ?? ignore,
   onPresentation: (listener: (event: MiniPresentationEvent) => void): (() => void) =>
     window.api?.on(MINI_PRESENTATION_CHANNEL, (event) => {
       if (isPresentation(event)) listener(event);
@@ -91,4 +103,10 @@ function isCompanionEvent(value: unknown): value is MiniCompanionEvent {
     typeof (value as { event?: unknown }).event === "string" &&
     "data" in value
   );
+}
+
+function isPreviews(value: unknown): value is MiniPreviews {
+  if (typeof value !== "object" || value === null) return false;
+  const { chats, docked } = value as { chats?: unknown; docked?: unknown };
+  return typeof docked === "boolean" && typeof chats === "object" && chats !== null;
 }

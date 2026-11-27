@@ -146,8 +146,8 @@ export interface NativeHostIdentity {
 }
 
 export interface NativeWindowAssertions {
-  readonly avatarHostWindowObserved: boolean;
-  readonly avatarWindowNumber: number | null;
+  readonly miniHostWindowObserved: boolean;
+  readonly miniWindowNumber: number | null;
   readonly calayerHierarchyObserved: boolean;
   readonly completionEffectLayerObserved: boolean;
   readonly contentImageLayerContractObserved: boolean;
@@ -157,7 +157,7 @@ export interface NativeWindowAssertions {
   readonly nativePanelsDetachedAndHiddenAfterStop: boolean;
   readonly nativePanelsParentedToOwner: boolean;
   readonly nativePanelsRemovedAfterStop: boolean;
-  readonly nativePanelsStayedOnPrimaryWithAvatarObserved: boolean;
+  readonly nativePanelsStayedOnPrimaryWithMiniObserved: boolean;
   readonly nativeWindowPairCoLocated: boolean;
   readonly nativeWindowPairObserved: boolean;
   readonly nativeWindowsFollowedOwner: boolean;

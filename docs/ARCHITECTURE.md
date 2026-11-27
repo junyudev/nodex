@@ -554,9 +554,9 @@ interaction, and Computer Use service capabilities. Its callback admission, nati
 window registrations, presentations, and service connection share the Main Scope. A private host
 coordinator derives eligibility and active Session ownership from `WindowRuntime`, starts native
 presentation only while an admitted task and eligible host both exist, and stops it when either
-disappears. Native click, layout, cursor, pet-wake, visibility, and service-loss events converge through
-one integration into Browser Use, Chrome Control, Computer Use, and the restricted avatar overlay;
-no renderer or ambient filesystem search can acquire the raw addon.
+disappears. One integration routes native click, layout, cursor, placement, visibility, and
+service-loss events to Browser Use, Chrome Control, Computer Use, and Mini. The raw addon is
+accessible only through the verified native Platform.
 
 Main prepares the verified Desktop Tool runtime and owns native presentation. Codex launches
 its own REPL. For other local providers, Agent Runtime owns one REPL per Thread and exposes it

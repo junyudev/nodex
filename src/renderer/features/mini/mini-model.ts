@@ -249,3 +249,14 @@ export function miniCoverage(cards: readonly MiniCard[], notice: boolean): MiniC
   }
   return { chats: [...chats], turns, notice };
 }
+
+/** How your chats stand, as the dock's Nodex mark shows it. */
+export type MiniStatus = "idle" | "working" | "attention" | "failed";
+
+/** What needs the person, else what failed, else work under way, else nothing to say. */
+export function miniStatus(cards: readonly MiniCard[]): MiniStatus {
+  if (cards.some((card) => card.tone === "attention")) return "attention";
+  if (cards.some((card) => card.tone === "failed")) return "failed";
+  if (cards.some((card) => card.tone === "working" || card.tone === "starting")) return "working";
+  return "idle";
+}

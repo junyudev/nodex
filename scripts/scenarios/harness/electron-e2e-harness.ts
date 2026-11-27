@@ -97,7 +97,7 @@ export async function waitForNodexWindowInitialization(page: Page): Promise<Page
 
 /**
  * Opens one more application window and resolves it once Main has initialized it. The
- * dictation and avatar overlays are windows too, and may appear meanwhile; only a window
+ * dictation and Mini are windows too, and may appear meanwhile; only a window
  * with the application preload is the one that was opened.
  */
 export async function openNodexWindow(

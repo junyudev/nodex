@@ -168,6 +168,9 @@ observed anchors, obstacles, Home availability, and passthrough geometry. The
 verified native Platform owns callback registration and loads no addon from an
 ambient candidate path.
 
+**Current host:** Mini has replaced the avatar overlay as the non-restorable
+auxiliary host. The window-registry and native trust boundaries above still apply.
+
 Computer Use operating-system settings remain Main-owned. A typed service reads
 and revokes the helper's App and Messages approvals, controls its declared click
 sound modes, and runs the verified Locked Use installer only when app-server

@@ -15,6 +15,8 @@ interface MiniPresence {
   readonly visibility: MiniVisibility;
   readonly coverage: MiniCoverage;
   readonly workbenchFocused: boolean;
+  readonly previewsDocked: boolean;
+  readonly previewDockRequested: boolean;
 }
 
 export interface MiniPresentationState extends MiniPresence {
@@ -39,6 +41,8 @@ export function initialMiniPresentation(
     visibility,
     coverage: EMPTY_MINI_COVERAGE,
     workbenchFocused: false,
+    previewsDocked: false,
+    previewDockRequested: false,
     anchor: DEFAULT_MINI_ANCHOR,
     event: { kind: "hidden", generation: 0, reason: "idle" },
   };
@@ -59,6 +63,9 @@ function hide(state: MiniPresentationState, reason: MiniHideReason): MiniPresent
 }
 
 function settle(state: MiniPresentationState, reason: MiniHideReason): MiniPresentationState {
+  if (state.visibility !== "on-demand" && (state.previewsDocked || state.previewDockRequested)) {
+    return show(state, "resting");
+  }
   const shouldRest =
     state.visibility === "always" ||
     (state.visibility === "active" && !miniCoverageIsEmpty(state.coverage));
@@ -87,6 +94,9 @@ export function transitionMiniPresentation(
         : state;
     case "presence": {
       const next = { ...state, ...action.update };
+      if (next.visibility === "on-demand" && state.visibility !== "on-demand") {
+        return hide({ ...next, previewDockRequested: false }, "idle");
+      }
       return next.event.kind === "focused" ? next : settle(next, "idle");
     }
     case "anchor": {

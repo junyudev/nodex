@@ -1,13 +1,13 @@
 import type { MobileEventData } from "@nodex/mobile-protocol";
 
 /**
- * Mini is Nodex's small presence over other apps: a dock that shows what your chats are doing,
- * cards for the ones that need you, and a composer that starts a chat (`Enter`) or saves to the
- * Inbox (`Cmd/Ctrl+Enter`). It is a client of the same Member companion contract the phone uses
+ * Mini is Nodex's one presence over other apps: a dock that shows what your chats are doing,
+ * cards for the ones that need you, a composer that starts a chat (`Enter`) or saves to the Inbox
+ * (`Cmd/Ctrl+Enter`), and a home beside it for the live previews of agents using this computer. It is a client of the same Member companion contract the phone uses
  * (`@nodex/mobile-protocol`), so its chats, attention and actions read exactly as they do there.
  *
- * Main owns the panel window, its shortcut, where it sits, when it is on screen and
- * whether it holds the keyboard. The panel's renderer owns everything drawn in it.
+ * Main owns the panel window, its shortcut, where it sits, when it is on screen, whether it holds
+ * the keyboard, and the previews docked beside it. The panel's renderer owns everything drawn in it.
  */
 
 /** The renderer route the panel window loads. */
@@ -18,6 +18,39 @@ export const MINI_PRESENTATION_CHANNEL = "mini:presentation";
 
 /** Main → panel renderer: one companion event (`changed`, `chat.activity`, `chat.patch`, …). */
 export const MINI_COMPANION_EVENT_CHANNEL = "mini:companion:event";
+
+/** Main → panel renderer: the chats with a live preview, and whether previews dock beside Mini. */
+export const MINI_PREVIEWS_CHANNEL = "mini:previews";
+
+export interface MiniRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** What Mini draws, in its window's coordinates, so previews can dock beside it. */
+export interface MiniContentLayout {
+  /** Everything Mini draws now: its dock or composer, its cards, a passing notice. */
+  readonly content: MiniRect;
+  /** The dock, or the composer while it is open: the edge docked previews line up with. */
+  readonly base: MiniRect;
+}
+
+export type MiniPreviewVisibility = "shown" | "hidden";
+
+/**
+ * Live previews of agents using this computer (Computer Use, Browser Use), as Mini offers them.
+ * A chat appears while its agent has a live preview; its visibility is the person's choice for it.
+ */
+export interface MiniPreviews {
+  /** By companion chat session id. */
+  readonly chats: Readonly<Record<string, MiniPreviewVisibility>>;
+  /** Whether previews dock beside Mini now, rather than in a Nodex window. */
+  readonly docked: boolean;
+}
+
+export const NO_MINI_PREVIEWS: MiniPreviews = { chats: {}, docked: false };
 
 /**
  * Where the panel sits on its display. Its content grows away from that edge: cards stack above a
@@ -160,6 +193,13 @@ export type MiniCompanionResult =
 
 /** IPC channels the panel renderer invokes; only the Mini panel window may call them. */
 export interface MiniIpcApi {
+  /** Where Mini's drawn content sits now; null while nothing is drawn. */
+  "mini:layout": { args: [layout: MiniContentLayout | null]; result: void };
+  /** Show or hide one chat's live preview, as its own preview controls would. */
+  "mini:preview-visibility": {
+    args: [sessionId: string, visibility: MiniPreviewVisibility];
+    result: void;
+  };
   /** The renderer mounted and can be shown. */
   "mini:ready": { args: []; result: void };
   /** Whether the pointer is over drawn content; elsewhere it reaches the app beneath. */

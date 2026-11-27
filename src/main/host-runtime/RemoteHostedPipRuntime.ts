@@ -211,6 +211,9 @@ export class RemoteHostedPipRuntime extends Context.Service<
     readonly deleteTaskVisibility: (
       taskId: string,
     ) => Effect.Effect<void, RemoteHostedPipRuntimeError>;
+    readonly activeChatPreviews: Effect.Effect<
+      Readonly<Record<string, RemoteHostedPipTaskVisibility>>
+    >;
     readonly diagnosticSnapshot: Effect.Effect<readonly RemoteHostedPipDiagnosticEntry[]>;
     readonly getAlwaysHide: () => boolean;
     readonly observeCodexOccurrence: (
@@ -243,6 +246,10 @@ export class RemoteHostedPipRuntime extends Context.Service<
     readonly retireLocalCodexHost: (reason: "connection-lost" | "shutdown") => Effect.Effect<void>;
     readonly revisions: Stream.Stream<number>;
     readonly setAlwaysHide: (value: boolean) => Effect.Effect<void, RemoteHostedPipRuntimeError>;
+    readonly setChatPreviewVisibility: (
+      sessionId: string,
+      visibility: RemoteHostedPipTaskVisibility,
+    ) => Effect.Effect<void, RemoteHostedPipRuntimeError>;
     readonly setMaxDisplaySize: (value: number) => Effect.Effect<void, RemoteHostedPipRuntimeError>;
     readonly setTaskVisibilities: (
       taskIds: readonly string[],
@@ -1209,6 +1216,20 @@ const makeRuntime = (
       );
 
     return RemoteHostedPipRuntime.of({
+      activeChatPreviews: lock.withPermits(1)(
+        Effect.map(SubscriptionRef.get(snapshotRef), (snapshot) =>
+          Object.fromEntries(
+            snapshot.activeTaskIds.flatMap((taskId) => {
+              const task = state.admittedTasks.get(taskId);
+              if (!task) return [];
+              const visibility = snapshot.alwaysHidden
+                ? "hidden"
+                : (snapshot.taskVisibilities[taskId] ?? "shown");
+              return [[task.sessionId, visibility]];
+            }),
+          ),
+        ),
+      ),
       deleteTaskVisibility: (taskId) =>
         mutatePreference("delete-task-visibility", () =>
           ports.preferences.deleteTaskVisibility(taskId),
@@ -1247,6 +1268,13 @@ const makeRuntime = (
                 : lock.withPermits(1)(publishSnapshot()),
             ),
           );
+        }),
+      setChatPreviewVisibility: (sessionId, visibility) =>
+        mutatePreference("set-chat-preview-visibility", () => {
+          const taskId = activeTaskIds().find(
+            (id) => state.admittedTasks.get(id)?.sessionId === sessionId,
+          );
+          return taskId !== undefined && ports.preferences.setTaskVisibility(taskId, visibility);
         }),
       setMaxDisplaySize: (value) =>
         mutatePreference("set-max-display-size", () =>

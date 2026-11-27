@@ -7,7 +7,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
-import type { SkyNativeAddon } from "../../sky-native";
+import type { SkyNativeAddon, SkyRemoteHostedPipHostRegistration } from "../../sky-native";
 import {
   layer as callbackRuntimeLayer,
   ScopedCallbackRuntime,
@@ -28,13 +28,14 @@ function makeAddon() {
     handlers.set(name, handler);
     return true;
   };
+  let currentHostID = "window-1";
   const addon = {
     completeRemoteHostedPIPContentThread: vi.fn(() => true),
     computerUseServiceProcessMatchesExecutablePath: vi.fn(() => true),
     connectRemoteHostedPIPContentHost: vi.fn(() => true),
     getRemoteHostedPIPContentActiveTaskIDs: vi.fn(() => ["thread-1", "thread-1"]),
     getRemoteHostedPIPContentLayoutState: vi.fn(() => ({
-      currentHostID: "window-1",
+      currentHostID,
       stackDisplayHeight: 250,
     })),
     hasRemoteHostedPIPContentAnyPresentation: vi.fn(() => true),
@@ -42,10 +43,15 @@ function makeAddon() {
     invalidateRemoteHostedPIPContentTurn: vi.fn(() => true),
     isPrivacySettingsTerminationRequest: vi.fn(() => false),
     refreshRemoteHostedPIPContentVisibility: vi.fn(() => true),
-    registerRemoteHostedPIPContentHost: vi.fn(() => true),
+    registerRemoteHostedPIPContentHost: vi.fn(
+      (registration: SkyRemoteHostedPipHostRegistration) => {
+        currentHostID = registration.id;
+        return true;
+      },
+    ),
     setBrowserUsePIPContentClickHandler: vi.fn(setHandler("browser-click")),
     setRemoteHostedPIPContentActiveThreadID: vi.fn(() => true),
-    setRemoteHostedPIPContentComputerUseCursorLocationHandler: vi.fn(setHandler("cursor")),
+    setRemoteHostedPIPContentComputerUseCursorLocationHandler: vi.fn(),
     setRemoteHostedPIPContentLayoutStateChangedHandler: vi.fn(setHandler("layout")),
     setRemoteHostedPIPContentMaxDisplaySize: vi.fn(() => true),
     setRemoteHostedPIPContentMaxDisplaySizeChangedHandler: vi.fn(setHandler("max-size")),
@@ -61,7 +67,7 @@ function makeAddon() {
       },
     ),
     stopRemoteHostedPIPContentHost: stopHost,
-    unregisterRemoteHostedPIPContentHost: vi.fn(() => true),
+    unregisterRemoteHostedPIPContentHost: vi.fn((id: string) => id === currentHostID),
     upsertBrowserUsePIPContent: upsertBrowserContent,
   } as unknown as SkyNativeAddon;
   return { addon, handlers, stopHost, upsertBrowserContent };
@@ -113,6 +119,39 @@ it.effect("adapts native callbacks into a scoped typed event stream", () =>
   ),
 );
 
+it.effect("round-trips Mini through the host identity used by the signed placement control", () =>
+  Effect.gen(function* () {
+    const { addon, handlers } = makeAddon();
+    const platform = yield* makePlatform(addon);
+    const bounds = { x: 0, y: 0, width: 100, height: 100 };
+    yield* platform.registerHost({
+      anchors: [{ alignment: "bottom-left", point: { x: 100, y: 100 } }],
+      anchorRect: bounds,
+      animated: false,
+      contentBounds: bounds,
+      id: "mini",
+      isCodexHomeAvailable: false,
+      nativeWindowHandle: null,
+      presentationScope: "all",
+      title: "Mini",
+    });
+    const wireLayout = addon.getRemoteHostedPIPContentLayoutState();
+    assert.notPropertyVal(wireLayout, "currentHostID", "mini");
+    assert.deepEqual(yield* platform.readLayoutState, {
+      currentHostID: "mini",
+      stackDisplayHeight: 250,
+    });
+
+    const next = yield* Effect.forkChild(Stream.runHead(platform.events));
+    (handlers.get("layout") as (state: unknown) => void)(wireLayout);
+    assert.deepEqual(Option.getOrThrow(yield* Fiber.join(next)), {
+      type: "host-layout-changed",
+      layoutState: { currentHostID: "mini", stackDisplayHeight: 250 },
+    });
+    assert.isTrue(yield* platform.unregisterHost("mini"));
+  }),
+);
+
 it.effect("clears every callback lease and stops the native host on Scope release", () =>
   Effect.gen(function* () {
     const { addon, handlers, stopHost } = makeAddon();
@@ -147,11 +186,11 @@ it.effect("keeps lossless commands isolated from coalescible native state floods
       );
       yield* Effect.yieldNow;
 
-      const cursor = handlers.get("cursor") as (point: { x: number; y: number }) => void;
       const layout = handlers.get("layout") as (state: unknown) => void;
+      const maxSize = handlers.get("max-size") as (size: number) => void;
       for (let index = 0; index < 2_000; index += 1) {
-        cursor({ x: index, y: index });
         layout({ currentHostID: `host-${index}`, stackDisplayHeight: index });
+        maxSize(200 + index);
       }
       (handlers.get("browser-click") as (presentationId: string) => void)("presentation-1");
       (handlers.get("visibility") as (visible: boolean, ids: string[]) => void)(false, [
@@ -231,10 +270,6 @@ it.effect("rejects invalid native callback payloads without poisoning later even
       yield* Effect.yieldNow;
 
       (handlers.get("browser-click") as (presentationId: string) => void)("\0invalid");
-      (handlers.get("cursor") as (point: { x: number; y: number }) => void)({
-        x: Number.NaN,
-        y: 1,
-      });
       (handlers.get("layout") as (state: unknown) => void)({
         currentHostID: "x".repeat(1_025),
         stackDisplayHeight: 10,
@@ -242,11 +277,14 @@ it.effect("rejects invalid native callback payloads without poisoning later even
       (handlers.get("max-size") as (size: number) => void)(Number.POSITIVE_INFINITY);
 
       (handlers.get("browser-click") as (presentationId: string) => void)("presentation-1");
-      (handlers.get("cursor") as (point: { x: number; y: number }) => void)({ x: 12, y: 24 });
+      (handlers.get("max-size") as (size: number) => void)(320);
 
-      assert.deepEqual(yield* Fiber.join(events), [
+      const received = [...(yield* Fiber.join(events))].sort((left, right) =>
+        left.type.localeCompare(right.type),
+      );
+      assert.deepEqual(received, [
         { presentationId: "presentation-1", type: "browser-content-clicked" },
-        { point: { x: 12, y: 24 }, type: "computer-use-cursor-changed" },
+        { size: 320, type: "max-display-size-changed" },
       ]);
     }),
   ),

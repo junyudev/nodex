@@ -22,11 +22,16 @@ import { live as liveCodexVisualizationStateIpc } from "./CodexVisualizationStat
 import { live as localStateIpcLive } from "./ApplicationLocalStateIpc";
 import { PageFileHtmlRuntime } from "../../host-runtime/PageFileHtmlRuntime";
 import { live as livePageFileHtmlIpc } from "./PageFileHtmlIpc";
+import type { MiniContentLayout, MiniPreviewVisibility } from "../../../shared/mini";
+import { MiniCompanion } from "../../mini/MiniCompanion";
+import { MiniRuntime } from "../../mini/MiniRuntime";
+import type { MiniWindowController } from "../../mini/mini-window-controller";
+import { DeepLinkRuntime } from "../../host-runtime/DeepLinkRuntime";
+import { RemoteHostedPipRuntime } from "../../host-runtime/RemoteHostedPipRuntime";
+import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
+import { live as miniIpcLive } from "./MiniIpc";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
-import type { AvatarOverlayRendererEvent } from "../../../shared/avatar-overlay";
-import { AvatarOverlayRuntime } from "../../avatar/AvatarOverlayRuntime";
-import { live as liveAvatarOverlayIpc } from "./AvatarOverlayIpc";
 
 const { openExternal } = vi.hoisted(() => ({ openExternal: vi.fn(async () => {}) }));
 
@@ -239,138 +244,82 @@ describe("PageFileHtmlIpc", () => {
   });
 });
 
-describe("AvatarOverlayIpc", () => {
-  type Handler = (event: IpcMainInvokeEvent, input: unknown) => Effect.Effect<unknown, object>;
-
-  function eventFrom(
-    webContentsId: number,
-    options: { readonly route?: string; readonly subframe?: boolean } = {},
-  ): IpcMainInvokeEvent {
-    const url = new URL("http://localhost:5173/index.html");
-    url.searchParams.set("initialRoute", options.route ?? "/avatar-overlay");
-    const mainFrame = { url: url.toString() };
-    const sender = {
-      getType: () => "window",
-      id: webContentsId,
-      mainFrame,
-    };
-    return {
-      sender,
-      senderFrame: options.subframe ? { url: url.toString() } : mainFrame,
-    } as unknown as IpcMainInvokeEvent;
-  }
-
-  it.effect("admits renderer events only from the Scope-owned avatar webContents", () =>
-    Effect.gen(function* () {
-      const handlers = new Map<string, Handler>();
-      const ipc = makeTestElectronIpc({
-        handle: (channel, handler) =>
-          Effect.acquireRelease(
-            Effect.sync(() => handlers.set(channel, handler as Handler)),
-            () => Effect.sync(() => handlers.delete(channel)),
-          ).pipe(Effect.asVoid),
-        on: () => Effect.void,
-      });
-      const received: AvatarOverlayRendererEvent[] = [];
-      const avatar = AvatarOverlayRuntime.of({
-        applyNativeLayoutState: () => Effect.void,
-        close: Effect.void,
-        handleRendererEvent: (_webContentsId, rendererEvent) =>
-          Effect.sync(() => {
-            received.push(rendererEvent);
-            return true;
-          }),
-        hide: Effect.void,
-        ownsWebContents: (webContentsId) => webContentsId === 777,
-        setComputerUseCursor: () => Effect.void,
-        toggle: Effect.void,
-        wake: Effect.void,
-      });
-      const scope = yield* Scope.make();
-      yield* Layer.buildWithScope(
-        liveAvatarOverlayIpc.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(AvatarOverlayRuntime, avatar),
-              Layer.succeed(ElectronIpc, ipc),
-              mainConfigLayer({ rendererUrl: "http://localhost:5173" }),
-              Layer.succeed(
-                WindowRuntime,
-                WindowRuntime.of({ has: () => true } as unknown as WindowRuntime["Service"]),
-              ),
-            ),
+it.effect("only the owned Mini document can submit bounded layout and preview visibility", () =>
+  Effect.gen(function* () {
+    type Handler = (
+      event: IpcMainInvokeEvent,
+      ...args: unknown[]
+    ) => Effect.Effect<unknown, unknown>;
+    const handlers = new Map<string, Handler>();
+    const ipc = makeTestElectronIpc({
+      handle: (channel: string, handler: Handler) =>
+        Effect.sync(() => void handlers.set(channel, handler)),
+      on: () => Effect.void,
+    });
+    const layouts: Array<MiniContentLayout | null> = [];
+    const choices: Array<[string, MiniPreviewVisibility]> = [];
+    const mini = MiniRuntime.of({
+      panel: {
+        reportLayout: (layout: MiniContentLayout | null) => void layouts.push(layout),
+      } as unknown as MiniWindowController,
+    } as unknown as MiniRuntime["Service"]);
+    const previews = RemoteHostedPipRuntime.of({
+      setChatPreviewVisibility: (sessionId: string, visibility: MiniPreviewVisibility) =>
+        Effect.sync(() => void choices.push([sessionId, visibility])),
+    } as unknown as RemoteHostedPipRuntime["Service"]);
+    const scope = yield* Scope.Scope;
+    yield* Layer.buildWithScope(
+      miniIpcLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            mainConfigLayer({ rendererUrl: "http://localhost:5173" }),
+            Layer.succeed(ElectronIpc, ipc),
+            Layer.succeed(MiniRuntime, mini),
+            Layer.succeed(MiniCompanion, {} as MiniCompanion["Service"]),
+            Layer.succeed(DeepLinkRuntime, {} as DeepLinkRuntime["Service"]),
+            Layer.succeed(RendererClientRuntime, {} as RendererClientRuntime["Service"]),
+            Layer.succeed(RemoteHostedPipRuntime, previews),
+            Layer.succeed(WindowRuntime, {
+              hasAuxiliaryRole: (id, role) => id === 42 && role === "mini",
+            } as WindowRuntime["Service"]),
           ),
         ),
-        scope,
-      );
-      const handleEvent = handlers.get("avatar-overlay:event");
-      assert.isDefined(handleEvent);
+      ),
+      scope,
+    );
 
-      assert.isTrue(
-        Exit.isFailure(yield* Effect.exit(handleEvent!(eventFrom(1), { type: "ready" }))),
-      );
-      assert.deepEqual(received, []);
+    const frame = { url: "http://localhost:5173/?initialRoute=/mini" };
+    const event = (id: number, senderFrame = frame) =>
+      ({
+        sender: { id, getType: () => "window", mainFrame: frame },
+        senderFrame,
+      }) as unknown as IpcMainInvokeEvent;
+    const report = handlers.get("mini:layout")!;
+    const setVisibility = handlers.get("mini:preview-visibility")!;
+    const base = { x: 100, y: 600, width: 120, height: 45 };
+    const layout = { content: { ...base, y: 500, height: 145 }, base };
 
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(report(event(41), layout))));
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(report(event(42, { ...frame }), layout))));
+    for (const badBase of [
+      { ...base, x: Infinity },
+      { ...base, y: 100_000 },
+      { ...base, width: 0 },
+      { ...base, height: 721 },
+    ]) {
       assert.isTrue(
-        Exit.isFailure(
-          yield* Effect.exit(handleEvent!(eventFrom(777, { subframe: true }), { type: "ready" })),
-        ),
+        Exit.isFailure(yield* Effect.exit(report(event(42), { ...layout, base: badBase }))),
       );
-      assert.isTrue(
-        Exit.isFailure(
-          yield* Effect.exit(
-            handleEvent!(eventFrom(777, { route: "/local-conversation" }), { type: "ready" }),
-          ),
-        ),
-      );
-      assert.deepEqual(received, []);
+    }
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(setVisibility(event(41), "chat", "hidden"))));
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(setVisibility(event(42), "chat", "always"))));
+    assert.isEmpty(layouts);
+    assert.isEmpty(choices);
 
-      assert.isTrue(yield* handleEvent!(eventFrom(777), { type: "ready" }));
-      assert.deepEqual(received, [{ type: "ready" }]);
-
-      const tooManyRegions = Array.from({ length: 65 }, (_, index) => ({
-        height: 1,
-        width: 1,
-        x: index,
-        y: 0,
-      }));
-      assert.isTrue(
-        Exit.isFailure(
-          yield* Effect.exit(
-            handleEvent!(eventFrom(777), {
-              regions: tooManyRegions,
-              type: "pointer-regions-changed",
-            }),
-          ),
-        ),
-      );
-      assert.lengthOf(received, 1);
-      assert.isTrue(
-        Exit.isFailure(
-          yield* Effect.exit(
-            handleEvent!(eventFrom(777), {
-              pointerScreenX: Number.NaN,
-              pointerScreenY: 0,
-              type: "drag-move",
-            }),
-          ),
-        ),
-      );
-      assert.isTrue(
-        Exit.isFailure(
-          yield* Effect.exit(
-            handleEvent!(eventFrom(777), {
-              mascot: { height: 20_000, width: 20 },
-              tray: null,
-              type: "element-size-changed",
-            }),
-          ),
-        ),
-      );
-      assert.lengthOf(received, 1);
-
-      yield* Scope.close(scope, Exit.void);
-      assert.strictEqual(handlers.size, 0);
-    }),
-  );
-});
+    yield* report(event(42), layout);
+    yield* report(event(42), null);
+    yield* setVisibility(event(42), "chat", "hidden");
+    assert.deepEqual(layouts, [layout, null]);
+    assert.deepEqual(choices, [["chat", "hidden"]]);
+  }),
+);

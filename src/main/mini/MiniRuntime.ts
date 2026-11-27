@@ -1,11 +1,17 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FiberHandle from "effect/FiberHandle";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { BrowserWindow } from "electron";
-import { EMPTY_MINI_COVERAGE, miniVisibility, type MiniCoverage } from "../../shared/mini";
+import {
+  EMPTY_MINI_COVERAGE,
+  miniVisibility,
+  NO_MINI_PREVIEWS,
+  type MiniCoverage,
+} from "../../shared/mini";
 import { APP_RENDERER_URL } from "../../shared/app-renderer-policy";
 import type {
   CommandKeybindingRejection,
@@ -17,11 +23,17 @@ import {
   type WorkbenchCommandInvocation,
 } from "../../shared/workbench-commands";
 import { MainConfig } from "../app/MainConfig";
+import type { RemoteHostedPipHostLayout } from "../../shared/remote-hosted-pip";
+import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { safeSendToWindow } from "../ipc-safe-send";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import type { MiniPlacement } from "../settings/application-settings-persistence";
 import { loadNativeClipboardBridge } from "../platform/electron/native-clipboard";
-import { ApplicationSettings } from "../settings/ApplicationSettings";
+import {
+  ApplicationSettings,
+  type ApplicationSettingsConflictError,
+  type ApplicationSettingsError,
+} from "../settings/ApplicationSettings";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { MiniWindowController } from "./mini-window-controller";
 import { GlobalMiniShortcut } from "./global-mini-shortcut";
@@ -34,6 +46,13 @@ export class MiniRuntimeError extends Schema.TaggedError<MiniRuntimeError>()("Mi
 export interface MiniRuntimeService {
   readonly restingCoverage: () => MiniCoverage;
   readonly panel: MiniWindowController | null;
+  readonly requestPreviewDock: Effect.Effect<
+    void,
+    ApplicationSettingsError | ApplicationSettingsConflictError
+  >;
+  readonly setPreviewsDocked: (
+    docked: boolean,
+  ) => Effect.Effect<void, ApplicationSettingsError | ApplicationSettingsConflictError>;
   readonly syncCommandKeymap: (
     state: CommandKeymapState,
   ) => Effect.Effect<CommandKeybindingRejection | null, MiniRuntimeError>;
@@ -59,6 +78,8 @@ export const live = (preloadPath: string) =>
       if (!supported) {
         return MiniRuntime.of({
           panel: null,
+          requestPreviewDock: Effect.void,
+          setPreviewsDocked: () => Effect.void,
           restingCoverage: () => EMPTY_MINI_COVERAGE,
           syncCommandKeymap: () => Effect.succeed(null),
           restoreCommandKeymap: () => Effect.void,
@@ -69,6 +90,7 @@ export const live = (preloadPath: string) =>
 
       const initial = yield* settings.snapshot().pipe(Effect.orDie);
       const desktop = yield* ElectronDesktop;
+      const previews = yield* RemoteHostedPipRuntime;
       let screenLocked = false;
       for (const locked of [true, false]) {
         yield* desktop.onPowerEvent(
@@ -91,6 +113,18 @@ export const live = (preloadPath: string) =>
         config.platform === "darwin" &&
         !config.isPackaged &&
         config.environment.NODEX_DEV_MINI_SIGNAL === "1";
+      const hostLayouts = yield* Queue.sliding<{
+        webContentsId: number;
+        layout: RemoteHostedPipHostLayout | null;
+      }>(1);
+      yield* Effect.addFinalizer(() => Queue.shutdown(hostLayouts));
+      yield* Effect.forever(
+        Queue.take(hostLayouts).pipe(
+          Effect.flatMap(({ webContentsId, layout }) =>
+            previews.reportHostLayout(webContentsId, layout),
+          ),
+        ),
+      ).pipe(Effect.forkScoped({ startImmediately: true }));
       const panel = yield* Effect.acquireRelease(
         Effect.sync(
           () =>
@@ -101,6 +135,9 @@ export const live = (preloadPath: string) =>
               miniFocusProbe,
               visibility: miniVisibility(initial.mini),
               placement: initial.miniPlacement,
+              onHostLayout: (webContentsId, layout) => {
+                Queue.offerUnsafe(hostLayouts, { webContentsId, layout });
+              },
               savePlacement: (placement) => {
                 Queue.offerUnsafe(placements, placement);
               },
@@ -128,6 +165,39 @@ export const live = (preloadPath: string) =>
         ),
         Effect.forkScoped({ startImmediately: true }),
       );
+      yield* previews.revisions.pipe(
+        Stream.runForEach(() =>
+          previews.snapshot.pipe(
+            Effect.flatMap((snapshot) =>
+              snapshot.taskVisibilityActionAvailable
+                ? previews.activeChatPreviews
+                : Effect.succeed(NO_MINI_PREVIEWS.chats),
+            ),
+            Effect.tap((chats) => Effect.sync(() => panel.setPreviewChats(chats))),
+          ),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      const dockRequest = yield* FiberHandle.make<void>();
+      const showMini = settings.update({ type: "update-mini", input: { shown: true } });
+      const requestPreviewDock = Effect.gen(function* () {
+        yield* showMini;
+        yield* Effect.sync(() =>
+          panel.apply({ kind: "presence", update: { previewDockRequested: true } }),
+        );
+        // Native layout normally acknowledges the handoff. Bound the temporary presence if it
+        // can't attach, for example when the task ends before the renderer reports a layout.
+        yield* FiberHandle.run(
+          dockRequest,
+          Effect.sleep("5 seconds").pipe(
+            Effect.andThen(
+              Effect.sync(() =>
+                panel.apply({ kind: "presence", update: { previewDockRequested: false } }),
+              ),
+            ),
+          ),
+        );
+      });
       const pressed = (): void => {
         const focused = BrowserWindow.getFocusedWindow();
         if (focused && windows.has(focused.webContents.id)) {
@@ -169,6 +239,12 @@ export const live = (preloadPath: string) =>
       );
       return MiniRuntime.of({
         panel,
+        requestPreviewDock,
+        setPreviewsDocked: (docked) =>
+          Effect.gen(function* () {
+            const extendPresence = yield* Effect.sync(() => panel.setPreviewsDocked(docked));
+            if (extendPresence) yield* showMini;
+          }),
         restingCoverage: () => (screenLocked ? EMPTY_MINI_COVERAGE : panel.restingCoverage()),
         syncCommandKeymap,
         restoreCommandKeymap: (state) => syncCommandKeymap(state).pipe(Effect.asVoid),

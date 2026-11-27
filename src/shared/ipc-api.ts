@@ -718,7 +718,13 @@ export interface RendererDiagnosticsLogInput {
   fields?: Record<string, unknown>;
 }
 
-import type { MiniCompanionEvent, MiniIpcApi, MiniPresentationEvent, MiniSettings } from "./mini";
+import type {
+  MiniCompanionEvent,
+  MiniIpcApi,
+  MiniPresentationEvent,
+  MiniPreviews,
+  MiniSettings,
+} from "./mini";
 
 export interface IpcApi
   extends
@@ -745,11 +751,6 @@ export interface IpcApi
   };
   "workbench-agent:release": { args: [reference: WorkbenchWindowReference]; result: void };
   "workbench-agent:reply": { args: [reply: WorkbenchAgentReply]; result: boolean };
-  "avatar-overlay:event": {
-    args: [event: import("./avatar-overlay").AvatarOverlayRendererEvent];
-    result: boolean;
-  };
-  "avatar-overlay:toggle": { args: []; result: boolean };
   "remote-hosted-pip:host-layout:report": {
     args: [layout: RemoteHostedPipHostLayout | null];
     result: boolean;
@@ -3291,6 +3292,7 @@ export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents extends DeepLinkOpenEvents {
   "mini:presentation": MiniPresentationEvent;
+  "mini:previews": MiniPreviews;
   "mini:companion:event": MiniCompanionEvent;
   "settings:language:changed": import("./i18n/locales").LanguageSettings;
   "agent-plugins:app-event": PluginAppViewEvent;

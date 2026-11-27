@@ -84,19 +84,19 @@ function nativeHostRegistration(window) {
 
 async function createWindow(input) {
   const window = new BrowserWindow({
-    frame: input.avatar ? false : true,
-    height: input.avatar ? 96 : 180,
+    frame: input.mini ? false : true,
+    height: input.mini ? 96 : 180,
     show: false,
     skipTaskbar: true,
-    transparent: input.avatar,
+    transparent: input.mini,
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
     },
-    width: input.avatar ? 96 : 260,
+    width: input.mini ? 96 : 260,
   });
   await window.loadURL(
-    `data:text/html,<title>${input.avatar ? "Avatar" : "Window"}</title><body></body>`,
+    `data:text/html,<title>${input.mini ? "Mini" : "Window"}</title><body></body>`,
   );
   return window;
 }
@@ -211,7 +211,7 @@ async function runNativeBenchmark(config) {
     throw new Error("Signed sky.node export contract does not match the verified manifest");
   }
 
-  const hostWindow = await createWindow({ avatar: false });
+  const hostWindow = await createWindow({ mini: false });
   hostWindow.setBounds({ height: 480, width: 720, x: 80, y: 80 });
   const hostRendererPid = hostWindow.webContents.getOSProcessId();
   emit({ pid: hostRendererPid, role: "renderer-host", type: "owned-process" });
@@ -289,12 +289,12 @@ async function runNativeBenchmark(config) {
   const observedRendererPids = new Set([hostRendererPid]);
   for (let cycle = 1; cycle <= config.windowCycleCount; cycle += 1) {
     const startedAt = performance.now();
-    const primary = await createWindow({ avatar: false });
-    const avatar = await createWindow({ avatar: true });
+    const primary = await createWindow({ mini: false });
+    const mini = await createWindow({ mini: true });
     const primaryRendererPid = primary.webContents.getOSProcessId();
-    const avatarRendererPid = avatar.webContents.getOSProcessId();
+    const miniRendererPid = mini.webContents.getOSProcessId();
     observedRendererPids.add(primaryRendererPid);
-    observedRendererPids.add(avatarRendererPid);
+    observedRendererPids.add(miniRendererPid);
     hostWindow.setBounds({
       height: 480,
       width: 720,
@@ -302,18 +302,18 @@ async function runNativeBenchmark(config) {
       y: 80 + (cycle % 3) * 16,
     });
     const creationLatencyMs = performance.now() - startedAt;
-    await checkpoint(`window-avatar-active-${cycle}`, {
+    await checkpoint(`window-mini-active-${cycle}`, {
       ownedProcesses: [
         { pid: primaryRendererPid, role: "renderer-primary-churn" },
-        { pid: avatarRendererPid, role: "renderer-avatar-churn" },
+        { pid: miniRendererPid, role: "renderer-mini-churn" },
       ],
     });
     const teardownStartedAt = performance.now();
     primary.destroy();
-    avatar.destroy();
+    mini.destroy();
     windowCycleLatencies.push(creationLatencyMs + performance.now() - teardownStartedAt);
     if (cycle % 10 === 0 || cycle === config.windowCycleCount) {
-      await checkpoint(`window-avatar-churn-${cycle}`, {
+      await checkpoint(`window-mini-churn-${cycle}`, {
         observedRendererPidCount: observedRendererPids.size,
       });
       if (cycle !== config.windowCycleCount) {
@@ -379,7 +379,7 @@ async function runNativeBenchmark(config) {
       unavailableReason:
         taskCycleAcceptedCount === config.taskCycleCount ? null : "native-task-cycle-rejected",
     },
-    windowAvatarChurn: {
+    windowMiniChurn: {
       attemptedCount: windowCycleLatencies.length,
       latency: summarize(windowCycleLatencies),
       observedRendererPidCount: observedRendererPids.size,

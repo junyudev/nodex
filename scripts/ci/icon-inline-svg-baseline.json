@@ -40,10 +40,6 @@
       "count": 1,
       "reason": "The usage meter renders a data-driven progress ring around the shared provider mark; its arcs encode remaining capacity, not a reusable control icon."
     },
-    "src/renderer/features/avatar-overlay/avatar-overlay-page.tsx": {
-      "count": 1,
-      "reason": "The mascot is a product illustration owned by the Avatar overlay, not a reusable control icon."
-    },
     "src/renderer/features/insights/insights-charts.tsx": {
       "count": 3,
       "reason": "Insights charts draw data-driven marks whose geometry encodes usage over time; they are not reusable control icons."

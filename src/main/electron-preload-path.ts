@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 
 export type BundledElectronPreload =
-  | "avatar-overlay.js"
   | "browser-guest.js"
   | "global-dictation.js"
   | "index.js"

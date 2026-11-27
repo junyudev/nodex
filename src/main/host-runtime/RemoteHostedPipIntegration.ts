@@ -3,7 +3,8 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import { AvatarOverlayRuntime } from "../avatar/AvatarOverlayRuntime";
+import { REMOTE_HOSTED_PIP_MINI_HOST_ID } from "../../shared/remote-hosted-pip";
+import { MiniRuntime } from "../mini/MiniRuntime";
 import {
   RemoteHostedPipNativePlatform,
   RemoteHostedPipNativePlatformError,
@@ -36,7 +37,7 @@ const ignoreFailure = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =
 export const live: Layer.Layer<
   never,
   never,
-  | AvatarOverlayRuntime
+  | MiniRuntime
   | BrowserUseRuntime
   | ChromeControlRuntime
   | ComputerUseRuntime
@@ -44,7 +45,7 @@ export const live: Layer.Layer<
   | RemoteHostedPipRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
-    const avatar = yield* AvatarOverlayRuntime;
+    const mini = yield* MiniRuntime;
     const browserUse = yield* BrowserUseRuntime;
     const chrome = yield* ChromeControlRuntime;
     const computerUse = yield* ComputerUseRuntime;
@@ -143,17 +144,16 @@ export const live: Layer.Layer<
                 yield* browserUse.focusPresentation({ sessionId: target.threadId, tabId });
               }),
             );
-          case "computer-use-cursor-changed":
-            return avatar.setComputerUseCursor(event.point);
           case "host-layout-changed":
-            return avatar.applyNativeLayoutState({
-              currentHostID: event.layoutState?.currentHostID ?? null,
-              stackDisplayHeight: event.layoutState?.stackDisplayHeight ?? 0,
-            });
+            return ignoreFailure(
+              mini.setPreviewsDocked(
+                event.layoutState?.currentHostID === REMOTE_HOSTED_PIP_MINI_HOST_ID,
+              ),
+            );
           case "max-display-size-changed":
             return ignoreFailure(remoteHostedPip.setMaxDisplaySize(event.size));
-          case "pet-wake-requested":
-            return avatar.wake;
+          case "mini-dock-requested":
+            return ignoreFailure(mini.requestPreviewDock);
           case "service-connection-lost":
             return ignoreFailure(
               Effect.gen(function* () {

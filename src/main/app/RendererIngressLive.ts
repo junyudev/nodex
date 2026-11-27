@@ -70,7 +70,6 @@ import * as NativeSessionCatalogIpc from "../ipc/handlers/NativeSessionCatalogIp
 import * as NativeAutomationImport from "../agent-backend/NativeAutomationImport";
 import * as NativeSessionCatalog from "../agent-backend/NativeSessionCatalog";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
-import * as AvatarOverlayIpc from "../ipc/handlers/AvatarOverlayIpc";
 import * as CodexPendingWorktreeIpc from "../ipc/handlers/CodexPendingWorktreeIpc";
 import * as CodexWorkspaceIpc from "../ipc/handlers/CodexWorkspaceIpc";
 import * as CoreDocumentIpc from "../ipc/handlers/CoreDocumentIpc";
@@ -132,7 +131,6 @@ export const live = Layer.mergeAll(
     Layer.provide(OpenCodeSetup.live.pipe(Layer.provide(OpenCodeInstallPlatform.nodeLive))),
   ),
   AppComponentsIpc.live,
-  AvatarOverlayIpc.live,
   SessionPolicyRuntime.live,
   RemoteHostedPipIpc.live,
   ChromeControlSettingsIpc.live,

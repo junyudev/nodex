@@ -4,6 +4,8 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import { InboxScopeSchema } from "../../../shared/schemas/inbox-scope";
+import { MINI_WINDOW_SIZE } from "../../mini/mini-geometry";
+import { RemoteHostedPipRuntime } from "../../host-runtime/RemoteHostedPipRuntime";
 import { MiniCompanion } from "../../mini/MiniCompanion";
 import { MiniRuntime } from "../../mini/MiniRuntime";
 import { DeepLinkRuntime } from "../../host-runtime/DeepLinkRuntime";
@@ -26,6 +28,21 @@ const Coverage = z.strictObject({
 });
 const Generation = z.number().int().nonnegative();
 const ScreenCoordinate = z.number().finite();
+// Reports use panel-local CSS pixels. Allow clipped content while bounding the native geometry.
+const LayoutCoordinate = (extent: number) =>
+  z
+    .number()
+    .finite()
+    .min(-extent)
+    .max(2 * extent);
+const LayoutRect = z.strictObject({
+  x: LayoutCoordinate(MINI_WINDOW_SIZE.width),
+  y: LayoutCoordinate(MINI_WINDOW_SIZE.height),
+  width: z.number().finite().positive().max(MINI_WINDOW_SIZE.width),
+  height: z.number().finite().positive().max(MINI_WINDOW_SIZE.height),
+});
+const Layout = z.strictObject({ content: LayoutRect, base: LayoutRect }).nullable();
+const PreviewVisibility = z.enum(["shown", "hidden"]);
 const Drag = z.discriminatedUnion("phase", [
   z.strictObject({ phase: z.literal("start"), x: ScreenCoordinate, y: ScreenCoordinate }),
   z.strictObject({ phase: z.literal("end") }),
@@ -52,6 +69,7 @@ export const live = Layer.effectDiscard(
     const ipc = yield* ElectronIpc;
     const config = yield* MainConfig;
     const mini = yield* MiniRuntime;
+    const previews = yield* RemoteHostedPipRuntime;
     const companion = yield* MiniCompanion;
     const windows = yield* WindowRuntime;
     const links = yield* DeepLinkRuntime;
@@ -75,6 +93,14 @@ export const live = Layer.effectDiscard(
         rendererClients.ensureClient(event.sender);
         panel.ready();
       }).pipe(Effect.andThen(companion.ready(event.sender))),
+    );
+    yield* ipc.handleControl("mini:layout", (event, input) =>
+      run(event, "layout", (panel) => panel.reportLayout(Layout.parse(input))),
+    );
+    yield* ipc.handleControl("mini:preview-visibility", (event, sessionId, visibility) =>
+      run(event, "preview-visibility", () =>
+        previews.setChatPreviewVisibility(Id.parse(sessionId), PreviewVisibility.parse(visibility)),
+      ).pipe(Effect.flatten),
     );
     yield* ipc.handleControl("mini:pointer", (event, input) =>
       run(event, "pointer", (panel) => panel.pointer(z.boolean().parse(input))),
