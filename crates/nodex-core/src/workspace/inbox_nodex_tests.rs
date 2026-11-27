@@ -91,6 +91,7 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
             },
         );
         let send = ProjectWorkspaceIntent::SendInboxMessage {
+            start: None,
             reply_to_page_id: None,
             expected_store_epoch: None,
             page_id: "page:request".into(),

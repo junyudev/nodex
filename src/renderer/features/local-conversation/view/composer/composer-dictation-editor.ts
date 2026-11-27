@@ -8,6 +8,12 @@ import {
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import {
+  formatDictationReplacement,
+  type ComposerDictationFinish,
+  type ComposerDictationSplit,
+  type ComposerDictationTarget,
+} from "@/features/dictation/composer-dictation-target";
 import styles from "./composer-dictation-editor.module.css";
 
 interface DictationRange {
@@ -35,19 +41,12 @@ interface DictationState extends DictationSegment {
   readonly cursorRevision?: number;
 }
 
-export type ComposerDictationSplit = () => number | null;
-export type ComposerDictationFinish = "finished" | "not-active" | "cancelled";
-
-export interface ComposerDictationEditor {
+export interface ComposerDictationEditor extends ComposerDictationTarget {
   readonly document: ProseMirrorNode;
-  start(split?: ComposerDictationSplit): void;
-  update(text: string, segment?: { readonly id: number; readonly text: string }): void;
   finish(
     text: string,
     readDetachedDocument?: () => ProseMirrorNode | null,
   ): Promise<ComposerDictationFinish>;
-  preserve(): void;
-  cancel(): void;
   dispose(): void;
 }
 
@@ -353,13 +352,7 @@ export function createComposerDictationEditor(view: EditorView): ComposerDictati
       Math.min(editorState.doc.content.size, range.to + 1),
       "\n",
     );
-    const prefix =
-      remaining && before && !/[\s([{“‘]$/u.test(before) && /^[\p{L}\p{N}]/u.test(remaining)
-        ? " "
-        : "";
-    const suffix =
-      remaining && /[\p{L}\p{N}\p{M}]$/u.test(remaining) && /^[\p{L}\p{N}]/u.test(after) ? " " : "";
-    const replacement = prefix + remaining + suffix;
+    const { replacement, trailingSpace } = formatDictationReplacement(before, remaining, after);
     const original = editorState.doc.textBetween(range.from, range.to);
     let sameStart = 0;
     let sameEnd = 0;
@@ -382,7 +375,7 @@ export function createComposerDictationEditor(view: EditorView): ComposerDictati
     const current = {
       ...range,
       to: range.from + replacement.length,
-      cursor: range.from + replacement.length - suffix.length,
+      cursor: range.from + replacement.length - trailingSpace,
     };
     const recoverable = previous.recoverable
       .filter(

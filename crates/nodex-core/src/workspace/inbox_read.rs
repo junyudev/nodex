@@ -747,6 +747,14 @@ fn read_item(
         .map(|proposal_id| cache.proposal(connection, library_id, proposal_id))
         .transpose()?
         .flatten();
+    let preparation_error = connection
+        .query_row(
+            "SELECT preparation_error FROM inbox_start_requests WHERE page_id=?1",
+            [page_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
     Ok((
         ProjectWorkspaceInboxItem {
             snooze: None,
@@ -775,8 +783,12 @@ fn read_item(
                 "SELECT COALESCE((SELECT in_inbox FROM inbox_rows WHERE row_kind='intake' AND page_id=?1),0)",
                 [page_id], |r| r.get(0),
             )?,
-            suggestion_state: parse_suggestion_state(&row.suggestion_state)?,
-            suggestion_error: row.suggestion_error.clone(),
+            suggestion_state: if preparation_error.is_some() {
+                ProjectWorkspaceInboxSuggestionState::Failed
+            } else {
+                parse_suggestion_state(&row.suggestion_state)?
+            },
+            suggestion_error: preparation_error.or(row.suggestion_error.clone()),
             scope: scope_of(connection.query_row(
                 "SELECT project_id FROM inbox_intake WHERE page_id=?1", [page_id], |r| r.get(0),
             )?),
@@ -830,7 +842,7 @@ pub(super) fn automatic_dispatches(
     limit: u32,
 ) -> Result<Vec<ProjectWorkspaceInboxProposal>, StoreError> {
     super::inbox::require_host(context)?;
-    let ids=connection.prepare("SELECT proposal_id FROM inbox_proposals WHERE library_id=?1 AND auto_confirm_pending=1 AND state='open' AND explicit_request=1 AND origin='agent' AND json_extract(action_json,'$.type') IN ('new_chat','send_to_chat') AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages member JOIN inbox_entries entry ON entry.page_id=member.page_id WHERE member.proposal_id=inbox_proposals.proposal_id AND ((json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)) OR EXISTS(SELECT 1 FROM chat_message_handback_pages returned WHERE returned.page_id=entry.page_id) OR NOT EXISTS(SELECT 1 FROM inbox_member_rows row JOIN page_turn_episodes episode ON episode.page_id=row.page_id WHERE row.page_id=entry.page_id AND row.member_id=entry.author_member_id AND json_extract(episode.signature,'$[1]')='triage') OR entry.current_proposal_id IS NOT inbox_proposals.proposal_id)) ORDER BY created_at,proposal_id LIMIT ?2")?.query_map(params![library,i64::from(limit.clamp(1,100))],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let ids = super::inbox::start::automatic_dispatch_ids(connection, library, limit)?;
     let mut cache = InboxReadCache::default();
     ids.into_iter()
         .map(|id| read_proposal(connection, library, &id, &mut cache))
@@ -1828,6 +1840,7 @@ mod tests {
             &workspace.module,
             "large-capture",
             ProjectWorkspaceIntent::SendInboxMessage {
+                start: None,
                 reply_to_page_id: None,
                 expected_store_epoch: None,
                 page_id: "page:large".into(),

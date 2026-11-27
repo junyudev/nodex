@@ -254,6 +254,7 @@ fn send_to(module: &ProjectWorkspaceModule, id: &str, text: &str, project_id: Op
         module,
         &format!("send:{id}"),
         ProjectWorkspaceIntent::SendInboxMessage {
+            start: None,
             reply_to_page_id: None,
             expected_store_epoch: None,
             page_id: format!("page:{id}"),
@@ -454,6 +455,7 @@ fn project_selection_preserves_the_profile_inbox() {
             request(
                 "project-send",
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
                     reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: "page:cross-project".into(),
@@ -1230,6 +1232,7 @@ fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
             },
         }),
         intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+            start: None,
             reply_to_page_id: None,
             expected_store_epoch: None,
             page_id: format!("page:{id}"),
@@ -1317,6 +1320,7 @@ fn command_line_sends_are_labeled_with_their_project() {
         ..context()
     };
     let intent = |id: &str| ProjectWorkspaceIntent::SendInboxMessage {
+        start: None,
         reply_to_page_id: None,
         expected_store_epoch: None,
         page_id: format!("page:{id}"),
@@ -1718,6 +1722,7 @@ fn agent_send(
             ProjectWorkspaceIntent::AgentCommand {
                 provenance: Box::new(provenance.clone()),
                 intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
                     reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: format!("page:{id}"),
@@ -2074,6 +2079,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
                 request(
                     "cli:choose",
                     ProjectWorkspaceIntent::SendInboxMessage {
+                        start: None,
                         reply_to_page_id: None,
                         expected_store_epoch: None,
                         page_id: "page:cli".into(),
@@ -2093,6 +2099,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
             module,
             "send:missing",
             ProjectWorkspaceIntent::SendInboxMessage {
+                start: None,
                 reply_to_page_id: None,
                 expected_store_epoch: None,
                 page_id: "page:missing".into(),
@@ -3688,6 +3695,7 @@ fn deleting_a_lost_reply_capture_never_resurrects_its_page_on_replay() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     let intent = ProjectWorkspaceIntent::SendInboxMessage {
+        start: None,
         reply_to_page_id: None,
         expected_store_epoch: Some("epoch-1".into()),
         page_id: "page:lost".into(),
@@ -4731,6 +4739,7 @@ fn send_error(module: &ProjectWorkspaceModule, id: &str, body: &str) -> CoreErro
         module,
         &format!("send:{id}"),
         ProjectWorkspaceIntent::SendInboxMessage {
+            start: None,
             reply_to_page_id: None,
             expected_store_epoch: None,
             page_id: format!("page:{id}"),
@@ -6941,6 +6950,7 @@ mod scheduled {
                     },
                 }),
                 intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
                     reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: "page:report".into(),
@@ -9197,4 +9207,461 @@ fn location_only_moves_keep_the_current_status_and_follow_the_page_project() {
     assert_eq!(status_of(&workspace, page).as_deref(), Some("triage"));
     assert!(waits_in(ProjectWorkspaceInboxScope::Library));
     assert!(!waits_in(project_scope()));
+}
+
+mod start_requests {
+    use super::*;
+    use nodex_core_contracts::inbox::{
+        InboxConfirmedBy, ProjectWorkspaceInboxFailureKind, ProjectWorkspaceInboxProposal,
+        ProjectWorkspaceInboxStartRequest, ProjectWorkspaceInboxSuggestedDispatch,
+        ProjectWorkspaceInboxSuggestionTitle,
+    };
+
+    const PAGE: &str = "page:capture";
+    const BODY: &str = "Compare both homepage drafts.";
+
+    fn capture(
+        start: ProjectWorkspaceInboxStartRequest,
+        project_id: Option<&str>,
+    ) -> ProjectWorkspaceIntent {
+        capture_message(start, project_id, BODY)
+    }
+
+    fn capture_message(
+        start: ProjectWorkspaceInboxStartRequest,
+        project_id: Option<&str>,
+        body: &str,
+    ) -> ProjectWorkspaceIntent {
+        ProjectWorkspaceIntent::SendInboxMessage {
+            start: Some(Box::new(start)),
+            reply_to_page_id: None,
+            expected_store_epoch: Some("epoch-1".into()),
+            page_id: PAGE.into(),
+            document_id: "document:capture".into(),
+            body: body.into(),
+            title: None,
+            project_id: project_id.map(str::to_owned),
+        }
+    }
+
+    fn routed() -> ProjectWorkspaceInboxStartRequest {
+        ProjectWorkspaceInboxStartRequest::Routed {
+            suggestions_off: false,
+            execution_selection: None,
+            preparation_error: None,
+        }
+    }
+
+    fn candidates(module: &ProjectWorkspaceModule) -> Vec<ProjectWorkspaceInboxProposal> {
+        let ProjectWorkspaceReadValue::InboxAutomaticDispatches { proposals } = read_host(
+            module,
+            ProjectWorkspaceRead::InboxAutomaticDispatches { limit: 16 },
+        ) else {
+            panic!("automatic dispatch candidates")
+        };
+        proposals
+    }
+
+    fn chat_action(session: Option<&str>) -> ProjectWorkspaceInboxDispatchAction {
+        match session {
+            Some(session_id) => ProjectWorkspaceInboxDispatchAction::SendToChat {
+                session_id: session_id.into(),
+                prompt: BODY.into(),
+                additions: vec![],
+                skills: vec![],
+            },
+            None => ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: None,
+                agent: None,
+                prompt: BODY.into(),
+                additions: vec![],
+                skills: vec![],
+            },
+        }
+    }
+
+    fn settle(module: &ProjectWorkspaceModule, action: ProjectWorkspaceInboxDispatchAction) {
+        let request = requests(module).remove(0);
+        let proposal_id = format!("proposal:{}", request.request_id);
+        apply_host(
+            module,
+            &format!("settle:{}", request.request_id),
+            ProjectWorkspaceIntent::SettleInboxSuggestion {
+                request_id: request.request_id,
+                generation: request.generation,
+                decision_session_id: None,
+                automatic_dispatch: false,
+                titles: vec![ProjectWorkspaceInboxSuggestionTitle {
+                    page_id: PAGE.into(),
+                    title: "Homepage drafts".into(),
+                }],
+                suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
+                    proposal_id,
+                    page_ids: vec![PAGE.into()],
+                    explicit_request: false,
+                    entry_kind: None,
+                    summary: "Compare drafts".into(),
+                    rationale: None,
+                    action,
+                }],
+                produced_by: None,
+                error: None,
+            },
+        );
+    }
+
+    #[test]
+    fn starts_new_chat_atomically_and_reports_delivery() {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        super::super::test_support::create_library_image(&workspace, "capture-shot");
+        let body = format!("{BODY}\n\n![](nodex://files/capture-shot)");
+        let start = |execution_selection| {
+            capture_message(
+                ProjectWorkspaceInboxStartRequest::NewChat {
+                    execution_selection,
+                    preparation_error: None,
+                },
+                Some(PROJECT),
+                &body,
+            )
+        };
+        let selection = selection();
+        let send = start(Some(selection.clone()));
+        let result = module
+            .apply(&host(), request("capture:send", send))
+            .expect("capture and confirm");
+        assert_eq!(result.committed.value.affected_session_ids.len(), 1);
+        let work = &outbox(module)[0];
+        assert_eq!(work.project_id.as_deref(), Some(PROJECT));
+        assert_eq!(work.execution_selection.as_ref(), Some(&selection));
+        assert_eq!(work.page_ids, [PAGE]);
+        let text = work.final_text.as_ref().unwrap();
+        assert!(text.starts_with(BODY));
+        assert!(text.contains("[Image #1]"));
+        assert_eq!(work.images[0].file_id, "capture-shot");
+
+        let replay = module
+            .apply(&host(), request("capture:send", start(None)))
+            .expect("replay the original decision without a new selection");
+        assert!(replay.committed.receipt.mutation.duplicate);
+        assert_eq!(outbox(module).len(), 1);
+
+        apply_host(
+            module,
+            "capture:complete",
+            ProjectWorkspaceIntent::CompleteInboxDispatch {
+                expected_revision: work.revision,
+                message_id: work.message_id.clone(),
+                proposal_id: work.proposal_id.clone(),
+                unavailable_skill_names: vec![],
+                dispatched_thread_id: Some("thread:capture".into()),
+            },
+        );
+        let proposal = window_in(
+            module,
+            project_scope(),
+            ProjectWorkspaceInboxWindowFilter::Processed,
+        )
+        .into_iter()
+        .find(|item| item.page_id == PAGE)
+        .unwrap()
+        .proposal
+        .unwrap();
+        assert_eq!(proposal.confirmed_by, Some(InboxConfirmedBy::User));
+        assert_eq!(
+            proposal.state,
+            ProjectWorkspaceInboxProposalState::Completed
+        );
+        let chat = proposal.chat.unwrap();
+        assert_eq!(chat.session_id, work.session_id);
+        assert_eq!(chat.project_id.as_deref(), Some(PROJECT));
+        assert_eq!(chat.display_title, BODY);
+    }
+
+    #[test]
+    fn routed_capture_survives_disabled_automatic_preparation_and_retries() {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        apply_host(module, "capture:send", capture(routed(), None));
+        apply_host(
+            module,
+            "capture:prepare",
+            ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                request_id: "capture:automatic".into(),
+                limit: 8,
+                automatic: false,
+            },
+        );
+        assert_eq!(
+            item(module, PAGE).suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Pending
+        );
+        let request = requests(module).remove(0);
+        assert_eq!(request.page_ids, [PAGE]);
+
+        apply_host(
+            module,
+            "capture:fail",
+            ProjectWorkspaceIntent::SettleInboxSuggestion {
+                request_id: request.request_id,
+                generation: request.generation,
+                decision_session_id: None,
+                automatic_dispatch: false,
+                titles: vec![],
+                suggestions: vec![],
+                produced_by: None,
+                error: Some("The Agent could not start.".into()),
+            },
+        );
+        let entry = item(module, PAGE);
+        assert_eq!(
+            entry.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Failed
+        );
+        assert_eq!(
+            entry.suggestion_error.as_deref(),
+            Some("The Agent could not start.")
+        );
+        grouped_request(module, "capture:retry", vec![PAGE.into()]);
+        settle(module, chat_action(None));
+        assert_eq!(candidates(module).len(), 1);
+    }
+
+    #[test]
+    fn sender_consent_confirms_either_kind_of_chat_without_a_standing_preference() {
+        for session in [None, Some("session:target")] {
+            let workspace = seeded_workspace();
+            let module = &workspace.module;
+            if let Some(session) = session {
+                create_session_thread(module, "target", session, "thread:target", Some(PROJECT), 1);
+            }
+            apply_host(module, "capture:send", capture(routed(), None));
+            let action = chat_action(session);
+            let mut suggested = action.clone();
+            match &mut suggested {
+                ProjectWorkspaceInboxDispatchAction::NewChat { additions, .. }
+                | ProjectWorkspaceInboxDispatchAction::SendToChat { additions, .. } => {
+                    additions.push("Delegate the comparison to a separate Agent.".into());
+                }
+                _ => unreachable!(),
+            }
+            settle(module, suggested);
+            let proposal = candidates(module).remove(0);
+            assert!(!proposal.explicit_request);
+            let confirm = ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                confirmed_by: InboxConfirmedBy::Nodex,
+                expected_store_epoch: "epoch-1".into(),
+                expected_revision: proposal.revision,
+                proposal_id: proposal.proposal_id,
+                action: Some(action.clone()),
+                session_id: Some("session:captured".into()),
+                execution_selection: session.is_none().then(selection),
+                skill_invocations: vec![],
+                basis: proposal.basis,
+            };
+            apply_host(module, "capture:confirm", confirm.clone());
+            apply_host(module, "capture:confirm", confirm);
+            let work = outbox(module);
+            assert_eq!(work.len(), 1);
+            assert_eq!(work[0].session_id, session.unwrap_or("session:captured"));
+            assert_eq!(work[0].action, action);
+        }
+    }
+
+    #[test]
+    fn routed_capture_waits_for_other_proposals_and_withdraws_consent_on_edit_or_decision() {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        apply_host(module, "capture:send", capture(routed(), None));
+        settle(module, ProjectWorkspaceInboxDispatchAction::Keep);
+        assert!(candidates(module).is_empty());
+        let entry = item(module, PAGE);
+        assert_eq!(
+            entry.proposal.unwrap().action,
+            ProjectWorkspaceInboxDispatchAction::Keep
+        );
+        apply_host(
+            module,
+            "capture:edit",
+            ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: PAGE.into(),
+                basis: entry.basis,
+                original_body: entry.body,
+                body: "Save these homepage drafts for later.".into(),
+            },
+        );
+        grouped_request(module, "capture:again", vec![PAGE.into()]);
+        settle(module, chat_action(None));
+        assert!(candidates(module).is_empty());
+
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        apply_host(module, "capture:send", capture(routed(), None));
+        settle(module, chat_action(None));
+        assert_eq!(candidates(module).len(), 1);
+        apply_host(
+            module,
+            "capture:keep",
+            ProjectWorkspaceIntent::KeepInboxEntries {
+                page_ids: vec![PAGE.into()],
+            },
+        );
+        assert!(candidates(module).is_empty());
+        assert!(outbox(module).is_empty());
+    }
+
+    #[test]
+    fn direct_capture_saves_the_message_when_the_chat_agent_cannot_be_resolved() {
+        for fallback in [false, true] {
+            let workspace = seeded_workspace();
+            let module = &workspace.module;
+            let reason = "Choose another Agent in Inbox settings.";
+            let start = |execution_selection, preparation_error| {
+                if fallback {
+                    ProjectWorkspaceInboxStartRequest::Routed {
+                        suggestions_off: true,
+                        execution_selection,
+                        preparation_error,
+                    }
+                } else {
+                    ProjectWorkspaceInboxStartRequest::NewChat {
+                        execution_selection,
+                        preparation_error,
+                    }
+                }
+            };
+            apply_host(
+                module,
+                "capture:send",
+                capture(start(None, Some(reason.into())), None),
+            );
+            let entry = item(module, PAGE);
+            assert!(entry.waiting);
+            assert_eq!(entry.body, BODY);
+            assert_eq!(entry.suggestion_error.as_deref(), Some(reason));
+            assert_eq!(
+                entry.suggestion_state,
+                ProjectWorkspaceInboxSuggestionState::Failed
+            );
+            assert!(outbox(module).is_empty());
+            assert!(requests(module).is_empty());
+            let replay = module
+                .apply(
+                    &host(),
+                    request(
+                        "capture:send",
+                        capture(start(Some(selection()), None), None),
+                    ),
+                )
+                .unwrap();
+            assert!(replay.committed.receipt.mutation.duplicate);
+            assert!(outbox(module).is_empty());
+            assert_eq!(item(module, PAGE).suggestion_error.as_deref(), Some(reason));
+        }
+    }
+
+    #[test]
+    fn routed_preparation_failure_keeps_the_suggestion_and_consent_for_a_new_request() {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        apply_host(module, "capture:send", capture(routed(), None));
+        settle(module, chat_action(None));
+        let proposal = candidates(module).remove(0);
+        let reason = "The selected model is unavailable.";
+        let failure = |revision| ProjectWorkspaceIntent::RecordInboxStartPreparationFailure {
+            expected_store_epoch: "epoch-1".into(),
+            proposal_id: proposal.proposal_id.clone(),
+            expected_revision: revision,
+            message: reason.into(),
+        };
+        assert_eq!(
+            apply_host_error(
+                module,
+                "capture:stale-failure",
+                failure(proposal.revision + 1)
+            ),
+            CoreErrorCode::RevisionConflict
+        );
+        assert_eq!(candidates(module).len(), 1);
+        apply_host(
+            module,
+            "capture:preparation-failed",
+            failure(proposal.revision),
+        );
+        let entry = item(module, PAGE);
+        assert_eq!(
+            entry.proposal.unwrap().state,
+            ProjectWorkspaceInboxProposalState::Open
+        );
+        assert_eq!(entry.suggestion_error.as_deref(), Some(reason));
+        assert_eq!(
+            entry.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Failed
+        );
+        assert!(candidates(module).is_empty());
+        assert!(outbox(module).is_empty());
+
+        grouped_request(module, "capture:retry", vec![PAGE.into()]);
+        let entry = item(module, PAGE);
+        assert_eq!(
+            entry.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Pending
+        );
+        assert_eq!(entry.suggestion_error, None);
+        settle(module, chat_action(None));
+        assert_eq!(candidates(module).len(), 1);
+    }
+
+    #[test]
+    fn routed_start_with_suggestions_off_can_retry_a_delivery_from_the_row() {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        apply_host(
+            module,
+            "capture:send",
+            capture(
+                ProjectWorkspaceInboxStartRequest::Routed {
+                    suggestions_off: true,
+                    execution_selection: Some(selection()),
+                    preparation_error: None,
+                },
+                None,
+            ),
+        );
+        assert!(requests(module).is_empty());
+        let work = &outbox(module)[0];
+        assert!(work.project_id.is_none());
+        apply_host(
+            module,
+            "capture:fail-delivery",
+            ProjectWorkspaceIntent::FailInboxDispatch {
+                expected_revision: work.revision,
+                message_id: work.message_id.clone(),
+                proposal_id: work.proposal_id.clone(),
+                failure_kind: ProjectWorkspaceInboxFailureKind::Unavailable,
+                message: "The Agent is offline.".into(),
+            },
+        );
+        let proposal = item(module, PAGE).proposal.unwrap();
+        assert_eq!(proposal.state, ProjectWorkspaceInboxProposalState::Failed);
+        assert_eq!(
+            proposal.failure_kind,
+            Some(ProjectWorkspaceInboxFailureKind::Unavailable)
+        );
+        assert_eq!(
+            proposal.failure_message.as_deref(),
+            Some("The Agent is offline.")
+        );
+        apply_host(
+            module,
+            "capture:retry",
+            ProjectWorkspaceIntent::RetryInboxDispatch {
+                proposal_id: proposal.proposal_id,
+            },
+        );
+        let retry = &outbox(module)[0];
+        assert_eq!(retry.message_id, work.message_id);
+        assert_eq!(retry.session_id, work.session_id);
+    }
 }

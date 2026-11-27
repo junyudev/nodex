@@ -3,8 +3,9 @@
 //! Every Inbox message is an ordinary Page. The Library Inbox keeps its Pages in the
 //! Library's Inbox Database; a Project's Inbox keeps them in the Project's own
 //! Database. Capture scope is provenance. Status and the current Turn decide whether
-//! the message waits. Workspace owns provenance and dispatch proposals beside it. A proposal is advice: only `ConfirmInboxDispatch` or
-//! `DispatchInboxEntries` can turn it into dispatch work, and confirmed chat
+//! the message waits. Workspace owns provenance and dispatch proposals beside it. A proposal
+//! becomes work when confirmed, and Capture can save a message and confirm a direct dispatch
+//! in the same mutation. Confirmed chat
 //! work is delivered by the Desktop Host through the dispatch outbox.
 
 #[path = "inbox_event_automation.rs"]
@@ -27,6 +28,8 @@ mod reply;
 pub(crate) mod scheduled;
 #[path = "inbox_snooze.rs"]
 pub(crate) mod snooze;
+#[path = "inbox_start.rs"]
+pub(crate) mod start;
 pub(super) use reliable::{
     apply_reliable, read_pending_request_ids, read_requests, stop_suggestion,
 };
@@ -37,7 +40,7 @@ use nodex_core_contracts::agent::AgentTurnProvenance;
 use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxChatAgent, ProjectWorkspaceInboxDispatchAction,
     ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxPageBasis,
-    ProjectWorkspaceInboxProposalOrigin,
+    ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxStartRequest,
 };
 use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeTurnKind;
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
@@ -737,12 +740,27 @@ pub(super) fn send_message(
     title: Option<&str>,
     project_id: Option<&str>,
     reply_to_page_id: Option<&str>,
+    start_request: Option<&ProjectWorkspaceInboxStartRequest>,
+    assets_root: &std::path::Path,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("page_id", page_id)?;
     validate_id("document_id", document_id)?;
     let message = message_page(body, title)?;
     let mut source = entry_source(connection, library_id, context, provenance)?;
     let inbox_project = capture_scope(connection, library_id, &source, project_id)?;
+    if start_request.is_some() {
+        require_decision_authority(context)?;
+        if source.kind != "user"
+            || context.actor.member_id().is_none()
+            || reply_to_page_id.is_some()
+        {
+            return Err(StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "Only a person's new Inbox message can request a start",
+                false,
+            ));
+        }
+    }
     // A Project's Inbox already names its Project; the label names it only when the
     // message had to land somewhere else.
     if source.kind == "command_line"
@@ -781,6 +799,25 @@ pub(super) fn send_message(
                 inbox_project.as_deref(),
                 &now,
             )?;
+            if let Some(request) = start_request
+                && let Some(mut decision) = start::admit(
+                    connection,
+                    library_id,
+                    context,
+                    scope,
+                    operation_id,
+                    request_hash,
+                    page_id,
+                    &message,
+                    inbox_project.as_deref(),
+                    request,
+                    assets_root,
+                    &now,
+                )?
+            {
+                decision.absorb_workspace(effects);
+                effects = decision;
+            }
             if reply_kind.as_deref() == Some("answer") {
                 nodex::finish_reply(connection, library_id, reply_to_page_id, &now)?;
                 effects.page_ids.extend(reply_to_page_id.map(str::to_owned));
@@ -1158,6 +1195,7 @@ pub(crate) fn status_changed(
         |r| r.get(0),
     )?;
     if from == Some("triage") {
+        start::withdraw(connection, page)?;
         reliable::supersede_requests(connection, &[page.to_owned()], now)?;
         supersede_open_proposals(connection, &[page.to_owned()], "superseded", now)?;
         scheduled::consume(
@@ -1964,6 +2002,7 @@ pub(super) fn resolve_messages(
                 Some(reliable::decision_basis(connection, &page_ids)?)
             };
             for page in &page_ids {
+                start::withdraw(connection, page)?;
                 if returning && super::page_chat::active_chat(connection, page)?.is_some() {
                     return Err(conflict(
                         "Return to Inbox requires the Page to have no active chat",

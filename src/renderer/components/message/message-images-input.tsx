@@ -53,6 +53,11 @@ export interface MessageImageAccess {
   /** Moves a File a draft imported to Trash, unless it changed or came into use since. */
   readonly discardImport: (fileId: string, importedRevision: number) => Promise<void>;
   readonly readAuthority: FileReadAuthority;
+  /**
+   * Opens a picker the window's host owns, for a window that must keep the keyboard while it is
+   * open; without it the browser's own chooser is used.
+   */
+  readonly chooseImages?: () => Promise<readonly File[]>;
 }
 
 interface MessageImageUpload {
@@ -346,9 +351,12 @@ function DraftImageThumbnail({
 /** Opens the system picker for images; the picked ones go to `onFiles`. */
 export function MessageImagePicker({
   onFiles,
+  choose,
   disabled = false,
 }: {
   readonly onFiles: (files: readonly File[]) => void;
+  /** The host's own picker, when it has one; see `MessageImageAccess.chooseImages`. */
+  readonly choose?: () => Promise<readonly File[]>;
   readonly disabled?: boolean;
 }): ReactNode {
   const intl = useIntl();
@@ -370,7 +378,18 @@ export function MessageImagePicker({
           disabled={disabled}
           className={COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME}
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => inputRef.current?.click()}
+          onClick={() => {
+            if (!choose) {
+              inputRef.current?.click();
+              return;
+            }
+            void choose().then(
+              (files) => {
+                if (files.length > 0) onFiles(files);
+              },
+              () => undefined,
+            );
+          }}
         >
           <PlusIcon className="icon-sm" />
         </button>

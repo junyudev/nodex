@@ -32,11 +32,7 @@ import {
   isEmptyInboxDraft,
   recoverInboxDraft,
 } from "./inbox-capture-state";
-import {
-  useInboxCapture,
-  useInboxCaptureState,
-  type InboxSubmitOutcome,
-} from "./use-inbox-capture";
+import { useInboxCapture, useInboxCaptureState, type InboxSubmitResult } from "./use-inbox-capture";
 import { useInboxActions } from "./use-inbox-actions";
 import { prepareInboxConfirmation, dispatchInboxEntries } from "@/lib/inbox-runtime";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
@@ -318,14 +314,14 @@ describe("Inbox capture ownership", () => {
     try {
       await waitFor(() => expect(hook.result.current.canEdit).toBe(true));
       await act(async () => {
-        expect(await hook.result.current.submit()).toBe("unsent");
+        expect((await hook.result.current.submit()).outcome).toBe("unsent");
       });
       hook.rerender({ visiblePageIds: [], storeEpoch: "epoch:1" });
       await act(async () => {
         hook.result.current.changeDraft((draft) => ({ ...draft, title: "A label" }));
       });
       await act(async () => {
-        expect(await hook.result.current.submit()).toBe("unsent");
+        expect((await hook.result.current.submit()).outcome).toBe("unsent");
       });
       await act(async () => {
         hook.result.current.changeDraft((draft) => ({
@@ -335,7 +331,7 @@ describe("Inbox capture ownership", () => {
         }));
       });
       await act(async () => {
-        expect(await hook.result.current.submit()).toBe("unsent");
+        expect((await hook.result.current.submit()).outcome).toBe("unsent");
       });
       expect(hook.result.current.validationError).toBeTruthy();
       expect(onSend).not.toHaveBeenCalled();
@@ -343,7 +339,7 @@ describe("Inbox capture ownership", () => {
         hook.result.current.changeDraft((draft) => ({ ...draft, title: "  *Final* [label]  " }));
       });
       await act(async () => {
-        expect(await hook.result.current.submit()).toBe("sent");
+        expect((await hook.result.current.submit()).outcome).toBe("sent");
       });
       expect(onSend).toHaveBeenCalledWith(
         expect.objectContaining({ title: "*Final* [label]", body: "A message" }),
@@ -373,7 +369,7 @@ describe("Inbox capture ownership", () => {
       await act(async () => {
         hook.result.current.changeDraft((draft) => ({ ...draft, text: "A" }));
       });
-      let first!: Promise<InboxSubmitOutcome>;
+      let first!: Promise<InboxSubmitResult>;
       await act(async () => {
         first = hook.result.current.submit();
         await Promise.resolve();
@@ -383,7 +379,7 @@ describe("Inbox capture ownership", () => {
       await act(async () => {
         hook.result.current.changeDraft((draft) => ({ ...draft, text: "B" }));
         rejectFirst(new Error("response lost"));
-        expect(await first).toBe("failed");
+        expect((await first).outcome).toBe("failed");
       });
       expect(hook.result.current.draft.text).toBe("B");
       expect(hook.result.current.pending[0]?.intent.body).toBe("A");
@@ -410,7 +406,7 @@ describe("Inbox capture ownership", () => {
       });
       persistence.failNext = true;
       await act(async () => {
-        expect(await hook.result.current.submit()).toBe("unsent");
+        expect((await hook.result.current.submit()).outcome).toBe("unsent");
       });
       expect(onSend).not.toHaveBeenCalled();
       expect(hook.result.current.draft.text).toBe("Keep this text");
@@ -447,7 +443,7 @@ describe("Inbox capture ownership", () => {
       });
       persistence.failAtMutation = persistence.mutationCount + 2;
       await act(async () => {
-        expect(await hook.result.current.submit()).toBe("failed");
+        expect((await hook.result.current.submit()).outcome).toBe("failed");
       });
       expect(onSend).not.toHaveBeenCalled();
       expect(hook.result.current.draft).toEqual(EMPTY_INBOX_DRAFT);
@@ -541,7 +537,7 @@ describe("Inbox capture ownership", () => {
         hook.result.current.changeDraft((draft) => ({ ...draft, text: "Deleted elsewhere" }));
       });
       await act(async () => {
-        expect(await hook.result.current.submit()).toBe("sent");
+        expect((await hook.result.current.submit()).outcome).toBe("sent");
       });
       expect(hook.result.current.pending).toEqual([]);
       expect(onSend).toHaveBeenCalledTimes(1);
@@ -566,7 +562,7 @@ describe("Inbox capture ownership", () => {
         }));
       });
       await act(async () => {
-        expect(await hook.result.current.submit()).toBe("failed");
+        expect((await hook.result.current.submit()).outcome).toBe("failed");
       });
       const capture = hook.result.current.pending[0]!;
       expect(capture.status).toBe("needs_review");

@@ -1347,6 +1347,9 @@ fn transition_lifecycle(
             if changed != 1 {
                 return Err(conflict("Page changed during lifecycle transition"));
             }
+            if to == "archived" {
+                crate::workspace::inbox::start::withdraw(connection, page_id)?;
+            }
             synchronize_page_lifecycle(connection, &page, to, metadata_revision, &now)?;
             let library_rank_key = read_library_rank(connection, library_id, page_id)?;
             let receipt = lifecycle_receipt(

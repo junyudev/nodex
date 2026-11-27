@@ -1,7 +1,12 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import { z } from "zod";
 import type { MessageDraftImage } from "@/components/message/message-images-input";
-import type { InboxPreparedConfirmation, InboxScope, InboxSendInput } from "../../../shared/inbox";
+import type {
+  InboxPreparedConfirmation,
+  InboxScope,
+  InboxSendInput,
+  InboxStartRequest,
+} from "../../../shared/inbox";
 import { inboxScopeKey } from "../../../shared/inbox";
 import {
   InboxSendInputSchema,
@@ -109,7 +114,8 @@ export const EMPTY_INBOX_CAPTURE_STATE: InboxCaptureState = {
   decisions: {},
 };
 
-const draftSchema = z.object({
+/** A draft as it is stored, here and by other forms that keep one. */
+export const inboxDraftSchema = z.object({
   title: z.string().default(""),
   text: z.string(),
   images: z.array(
@@ -127,12 +133,12 @@ const draftSchema = z.object({
 
 const stateSchema = z.object({
   version: z.literal(2),
-  draft: draftSchema,
+  draft: inboxDraftSchema,
   draftRevision: z.number().int().nonnegative(),
   captures: z.array(
     z.object({
       intent: InboxSendInputSchema,
-      draft: draftSchema,
+      draft: inboxDraftSchema,
       draftRevision: z.number().int().nonnegative(),
       status: z.enum(["pending", "accepted", "failed", "needs_review"]),
       error: z.string().nullable(),
@@ -174,6 +180,7 @@ export function createInboxCapture(
   state: InboxCaptureState,
   scope: InboxScope,
   storeEpoch: string,
+  start?: InboxStartRequest,
 ): PendingInboxCapture {
   const issuedAt = Date.now();
   const title = state.draft.title.trim();
@@ -195,6 +202,7 @@ export function createInboxCapture(
           }
         : {}),
       body: inboxDraftBody(state.draft),
+      ...(start && !state.draft.replyTo ? { start } : {}),
     },
     draft: state.draft,
     draftRevision: state.draftRevision,

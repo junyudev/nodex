@@ -696,6 +696,7 @@ fn queued_member_withdrawal(withdrawal: &'static str) {
                 &bob,
                 "queued-after-revoke",
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
                     page_id: "019d0000-0000-7000-8000-000000000099".into(),
                     document_id: "019d0000-0000-7000-8000-000000000098".into(),
                     body: "Must never commit".into(),
@@ -749,6 +750,7 @@ fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
         &bob,
         "bob:capture",
         ProjectWorkspaceIntent::SendInboxMessage {
+            start: None,
             reply_to_page_id: None,
             expected_store_epoch: None,
             page_id: "page:bob-idea".into(),

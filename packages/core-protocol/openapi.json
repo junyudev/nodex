@@ -37870,6 +37870,16 @@
                       "null"
                     ]
                   },
+                  "start": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxStartRequest"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "title": {
                     "type": [
                       "string",
@@ -38499,6 +38509,37 @@
                     ]
                   },
                   "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "expected_store_epoch",
+                  "proposal_id",
+                  "expected_revision",
+                  "message",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "expected_store_epoch": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "record_inbox_start_preparation_failure"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "proposal_id": {
                     "type": "string"
                   }
                 }
@@ -49246,6 +49287,76 @@
           }
         ]
       },
+      "ProjectWorkspaceInboxStartRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "execution_selection": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "new_chat"
+                ]
+              },
+              "preparation_error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "suggestions_off",
+              "kind"
+            ],
+            "properties": {
+              "execution_selection": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "routed"
+                ]
+              },
+              "preparation_error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "suggestions_off": {
+                "type": "boolean",
+                "description": "The host's settings decide whether this explicit request skips routing."
+              }
+            }
+          }
+        ],
+        "description": "The sender's start choice. Execution defaults are resolved by the Desktop Host."
+      },
       "ProjectWorkspaceInboxSuggestedDispatch": {
         "type": "object",
         "required": [
@@ -52429,6 +52540,16 @@
                   "null"
                 ]
               },
+              "start": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxStartRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "title": {
                 "type": [
                   "string",
@@ -53058,6 +53179,37 @@
                 ]
               },
               "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "expected_store_epoch",
+              "proposal_id",
+              "expected_revision",
+              "message",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_store_epoch": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_inbox_start_preparation_failure"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "proposal_id": {
                 "type": "string"
               }
             }

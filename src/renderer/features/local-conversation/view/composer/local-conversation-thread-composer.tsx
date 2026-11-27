@@ -34,7 +34,12 @@ import {
 import { useThreadTextSelectionDraft } from "../../thread-text-selection-draft";
 import { ThreadTextSelectionAttachments } from "../thread-text-selection-attachments";
 import { ApplicationPending } from "@/bootstrap/application-surface";
-import { NEEDS_CODEX } from "@/features/app-components/app-component-requirement";
+import {
+  ComposerBufferedDictationControls,
+  ComposerDictateButton,
+  ComposerDictationRecovery,
+  ComposerDictationSendButton,
+} from "@/features/dictation/composer-dictation-controls";
 import { useComposerRealtimeVoice } from "@/features/realtime-voice/realtime-voice-window";
 import { RealtimeVoiceControls } from "@/features/realtime-voice/realtime-voice-controls";
 import { resolveConversationImageInput } from "../../conversation-image-input";
@@ -75,8 +80,8 @@ import {
   resolveCommandShortcutPresentation,
 } from "../../../../../shared/command-keybindings";
 import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
-import { consumeGlobalDictationShortcutNudge, openMicrophoneSettings } from "@/lib/api";
-import { dictationErrorMessage } from "@/features/dictation/dictation-errors";
+import { consumeGlobalDictationShortcutNudge } from "@/lib/api";
+import { useComposerDictationNotifications } from "@/features/dictation/composer-dictation-notifications";
 import {
   createPastedTextAttachment,
   readPastedTextAttachment,
@@ -103,7 +108,6 @@ import {
   ComposerResumeIcon,
   ComposerPlanModeCloseIcon,
   ComposerPlanModeIcon,
-  MicIcon,
   FileIcon,
   ActivitySpinnerIcon,
   StopIcon,
@@ -135,10 +139,11 @@ import { ComposerNoticeRail } from "./composer-notice-rail";
 import { ComposerReviewRail, useChatReview } from "./composer-review-rail";
 import { ComposerTipLine } from "./composer-tip-line";
 import {
-  isComposerDictationShortcut,
   isComposerDictationShortcutTargetBlocked,
-  isComposerDictationShortcutRelease,
+  isElectronLikeComposerEnvironment,
+  supportsComposerDictation,
   useComposerDictation,
+  useComposerDictationHold,
 } from "./use-composer-dictation";
 import { resolveComposerGlobalDictationAdmission } from "./composer-global-dictation-admission";
 import {
@@ -393,18 +398,6 @@ interface ThreadComposerProps {
   intelligenceController?: ComposerIntelligenceController;
   onReleasePromptFocus?: (editor: HTMLElement | null | undefined) => boolean;
   captureUnmountedPromptFocus?: (transfer: ComposerFocusTransfer) => void;
-}
-
-function isElectronLikeComposerEnvironment(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  if (window.api) {
-    return true;
-  }
-
-  return document.documentElement.dataset.codexWindowType === "electron";
 }
 
 interface ComposerAttachmentState extends Partial<ThreadTextSelectionContext> {
@@ -3123,10 +3116,7 @@ function HydratedThreadComposer({
     () =>
       model.dictation.isEnabled &&
       model.dictation.capabilities.composer &&
-      isElectronLikeComposerEnvironment() &&
-      typeof navigator !== "undefined" &&
-      typeof navigator.mediaDevices?.getUserMedia === "function" &&
-      typeof MediaRecorder !== "undefined",
+      supportsComposerDictation(),
     [model.dictation.capabilities.composer, model.dictation.isEnabled],
   );
   const realtimeVoice = useComposerRealtimeVoice(
@@ -3378,22 +3368,10 @@ function HydratedThreadComposer({
     };
   }, [commandKeymapQuery.data, model.dictation.capabilities.global]);
 
-  const {
-    isDictating,
-    isStarting,
-    canRetryDictation,
-    recovery: dictationRecovery,
-    dismissRecovery: dismissDictationRecovery,
-    appendRecoveredText,
-    isTranscribing,
-    transcriptionAction,
-    waveformCanvasRef,
-    startDictation,
-    stopDictation,
-    retryDictation,
-    cancelDictation,
-  } = useComposerDictation({
+  const dictationNotifications = useComposerDictationNotifications();
+  const dictation = useComposerDictation({
     enabled: isDictationSupported,
+    microphoneBusy: isRealtimeVoiceActive,
     streamingAvailability: model.dictation.capabilities.streaming,
     soundsEnabled: model.dictation.capabilities.sounds,
     globalTarget: {
@@ -3401,7 +3379,6 @@ function HydratedThreadComposer({
       priority: isFloatingComposer ? 20 : 10,
       admission: () =>
         resolveComposerGlobalDictationAdmission({
-          floating: isFloatingComposer,
           visible: composerVisible,
           editor: promptEditorRef.current?.getElement() ?? null,
         }),
@@ -3458,53 +3435,16 @@ function HydratedThreadComposer({
         submitAction: actionState.primarySubmitAction,
       });
     },
-    onStartError: (error) => {
-      console.error("[composer-dictation:start]", {
-        kind: error.kind,
-        operation: error.operation,
-        status: error.status,
-        nativeName: error.nativeName,
-      });
-      toast.danger(
-        intl.formatMessage({
-          id: "conversation.localConversationThreadComposer.startDictationFailed",
-          defaultMessage: "Unable to start dictation",
-        }),
-        {
-          id: "composer-dictation-start-error",
-          description: dictationErrorMessage(error),
-          duration: 0,
-          action:
-            error.kind === "microphone-permission-denied" || error.kind === "microphone-restricted"
-              ? {
-                  label: intl.formatMessage({
-                    id: "conversation.localConversationThreadComposer.microphoneSettings",
-                    defaultMessage: "Open microphone settings",
-                  }),
-                  onClick: () => void openMicrophoneSettings(),
-                }
-              : undefined,
-        },
-      );
-    },
-    onTranscribeError: (error) => {
-      console.error("[composer-dictation:transcribe]", {
-        kind: error.kind,
-        retryable: error.retryable,
-      });
-    },
-    onUnsupported: () => {
-      toast.danger(
-        intl.formatMessage({
-          id: "conversation.localConversationThreadComposer.dictationDeviceUnavailable",
-          defaultMessage: "Dictation is not available on this device",
-        }),
-        {
-          id: "composer-dictation-unavailable",
-        },
-      );
-    },
+    ...dictationNotifications,
   });
+  const {
+    isDictating,
+    isStarting,
+    isTranscribing,
+    startDictation,
+    stopDictation,
+    cancelDictation,
+  } = dictation;
   const isComposerDictationActive = isDictating || isTranscribing;
   const inlineDictation = model.dictation.capabilities.streaming === "available";
   const showDictationRow = isComposerDictationActive && !inlineDictation;
@@ -3513,67 +3453,19 @@ function HydratedThreadComposer({
   }, [composerVisible, isDictating, stopDictation]);
   const canResumeInterruptedTurn =
     hasResumeInterruptedTurnCapability && !isDictating && !isTranscribing;
-  const startDictationRef = useRef(startDictation);
-  const stopDictationRef = useRef(stopDictation);
-
-  useEffect(() => {
-    startDictationRef.current = startDictation;
-    stopDictationRef.current = stopDictation;
-  }, [startDictation, stopDictation]);
-
-  useEffect(() => {
-    if (!isDictationSupported || isRealtimeVoiceActive || !composerVisible) return;
-
-    let held: KeyboardEvent | null = null;
-    const releaseActiveShortcut = (): void => {
-      if (!held) return;
-      held = null;
-      stopDictationRef.current("insert");
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || !isComposerDictationShortcut(event, commandKeymapQuery.data)) return;
-      if (
-        isComposerDictationShortcutTargetBlocked(
-          event.target,
-          promptEditorRef.current?.getElement(),
-        )
-      )
-        return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      if (held) return;
-      held = event;
-      void startDictationRef.current("hold");
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (!held || !isComposerDictationShortcutRelease(held, event)) return;
-      // A modifier keyup still belongs to the rest of the window.
-      if (event.code === held.code && event.key === held.key) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-      releaseActiveShortcut();
-    };
-
-    const handleVisibilityChange = (): void => {
-      if (document.visibilityState !== "visible") releaseActiveShortcut();
-    };
-
-    document.addEventListener("keydown", handleKeyDown, true);
-    document.addEventListener("keyup", handleKeyUp, true);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", releaseActiveShortcut);
-    return () => {
-      releaseActiveShortcut();
-      document.removeEventListener("keydown", handleKeyDown, true);
-      document.removeEventListener("keyup", handleKeyUp, true);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", releaseActiveShortcut);
-    };
-  }, [commandKeymapQuery.data, composerVisible, isDictationSupported, isRealtimeVoiceActive]);
+  useComposerDictationHold({
+    enabled: isDictationSupported && !isRealtimeVoiceActive && composerVisible,
+    keymap: commandKeymapQuery.data,
+    canStart: (event) =>
+      !isStarting &&
+      !isComposerDictationActive &&
+      !isComposerDictationShortcutTargetBlocked(
+        event.target,
+        promptEditorRef.current?.getElement(),
+      ),
+    startDictation,
+    stopDictation,
+  });
 
   const handleInterrupt = async () => {
     if (!model.conversation || !model.isThreadRunning) return;
@@ -4673,126 +4565,17 @@ function HydratedThreadComposer({
   );
   const dictationNeedsCodex =
     model.dictation.componentUnavailableReason !== undefined && isElectronLikeComposerEnvironment();
-  const dictationButton = (
-    <button
-      type="button"
-      className={cn(
-        "border-token-border no-drag cursor-interaction flex h-token-button-composer aspect-square items-center justify-center gap-1 rounded-full border border-transparent px-0 py-0 text-sm leading-[18px] whitespace-nowrap text-token-text-tertiary select-none transition-colors duration-100 focus:outline-none enabled:hover:bg-token-list-hover-background enabled:hover:text-token-foreground disabled:cursor-not-allowed disabled:opacity-40 data-[state=open]:bg-token-list-hover-background",
-        inlineDictation && isDictating && "aspect-auto px-2 bg-token-list-hover-background",
-      )}
-      aria-label={
-        isStarting
-          ? intl.formatMessage({
-              id: "conversation.localConversationThreadComposer.clickToCancelDictationStart",
-              defaultMessage: "Starting dictation; click to cancel",
-            })
-          : inlineDictation && isDictating
-            ? intl.formatMessage({
-                id: "conversation.localConversationThreadComposer.stopDictation",
-                defaultMessage: "Stop dictation",
-              })
-            : isTranscribing
-              ? inlineDictation
-                ? intl.formatMessage({
-                    id: "conversation.localConversationThreadComposer.finishingDictation",
-                    defaultMessage: "Finishing dictation",
-                  })
-                : intl.formatMessage({
-                    id: "conversation.localConversationThreadComposer.cancelDictationTranscription",
-                    defaultMessage: "Cancel dictation transcription",
-                  })
-              : canRetryDictation
-                ? intl.formatMessage({
-                    id: "conversation.localConversationThreadComposer.retryDictation",
-                    defaultMessage: "Retry dictation",
-                  })
-                : intl.formatMessage({
-                    id: "conversation.localConversationThreadComposer.dictate",
-                    defaultMessage: "Dictate",
-                  })
-      }
-      onClick={() => {
-        if (inlineDictation && isDictating) {
-          stopDictation("insert");
-          return;
-        }
-        if (isStarting || isTranscribing) {
-          cancelDictation();
-          return;
-        }
-        if (canRetryDictation) {
-          void retryDictation();
-          return;
-        }
-        promptEditorRef.current?.focusAtEnd();
-        void startDictation();
-      }}
-      disabled={dictationNeedsCodex || isRealtimeVoiceActive || (inlineDictation && isTranscribing)}
-      aria-busy={isStarting || isTranscribing}
-    >
-      {inlineDictation && isDictating ? (
-        <canvas
-          ref={waveformCanvasRef}
-          className="h-5 w-8 text-token-text-tertiary"
-          aria-hidden="true"
-        />
-      ) : null}
-      {isStarting || isTranscribing ? (
-        <ActivitySpinnerIcon className="icon-xs" />
-      ) : inlineDictation && isDictating ? (
-        <StopIcon className="icon-xs" />
-      ) : (
-        <MicIcon className="icon-xs" />
-      )}
-    </button>
+  const dictationControl = (
+    <ComposerDictateButton
+      dictation={dictation}
+      supported={isDictationSupported}
+      inlineDictation={inlineDictation}
+      disabled={isRealtimeVoiceActive}
+      dictationNeedsCodex={dictationNeedsCodex}
+      shortcutLabel={dictationShortcutPresentation?.label}
+      onStart={() => promptEditorRef.current?.focusAtEnd()}
+    />
   );
-  const dictationControl =
-    (isDictationSupported || dictationNeedsCodex) &&
-    !(inlineDictation && transcriptionAction === "send") ? (
-      <NodexTooltip
-        tooltipContent={
-          dictationNeedsCodex
-            ? intl.formatMessage(NEEDS_CODEX)
-            : isStarting
-              ? intl.formatMessage({
-                  id: "conversation.localConversationThreadComposer.startingDictation",
-                  defaultMessage: "Starting dictation…",
-                })
-              : isDictating
-                ? intl.formatMessage({
-                    id: "conversation.localConversationThreadComposer.stopDictation",
-                    defaultMessage: "Stop dictation",
-                  })
-                : isTranscribing
-                  ? intl.formatMessage({
-                      id: "conversation.localConversationThreadComposer.finishingDictation",
-                      defaultMessage: "Finishing dictation",
-                    })
-                  : canRetryDictation
-                    ? intl.formatMessage({
-                        id: "conversation.localConversationThreadComposer.retryDictation",
-                        defaultMessage: "Retry dictation",
-                      })
-                    : intl.formatMessage({
-                        id: "conversation.localConversationThreadComposer.dictate",
-                        defaultMessage: "Dictate",
-                      })
-        }
-        shortcutLabel={
-          dictationNeedsCodex || isStarting || isDictating || isTranscribing || canRetryDictation
-            ? undefined
-            : dictationShortcutPresentation?.label
-        }
-        side="top"
-        sideOffset={4}
-      >
-        {dictationNeedsCodex ? (
-          <span className="inline-flex">{dictationButton}</span>
-        ) : (
-          dictationButton
-        )}
-      </NodexTooltip>
-    ) : null;
   const preservePromptFocusForPointerSubmit = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     const editor = promptEditorRef.current?.getElement();
@@ -4855,32 +4638,14 @@ function HydratedThreadComposer({
   );
   const primaryActionControl =
     inlineDictation && isComposerDictationActive ? (
-      <NodexTooltip
-        tooltipContent={intl.formatMessage({
+      <ComposerDictationSendButton
+        dictation={dictation}
+        label={intl.formatMessage({
           id: "conversation.localConversationThreadComposer.send",
           defaultMessage: "Send",
         })}
-        side="top"
-      >
-        <button
-          type="button"
-          className={cn(COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME, "disabled:opacity-50")}
-          aria-label={intl.formatMessage({
-            id: "conversation.localConversationThreadComposer.send",
-            defaultMessage: "Send",
-          })}
-          aria-busy={transcriptionAction === "send"}
-          disabled={transcriptionAction === "send"}
-          onMouseDown={preservePromptFocusForPointerSubmit}
-          onClick={() => stopDictation("send")}
-        >
-          {transcriptionAction === "send" ? (
-            <ActivitySpinnerIcon className="icon-sm" />
-          ) : (
-            <UpArrowIcon className="icon-sm" />
-          )}
-        </button>
-      </NodexTooltip>
+        preserveEditorFocus={preservePromptFocusForPointerSubmit}
+      />
     ) : composerActionState.action === "resume" ? (
       primaryActionButton
     ) : (
@@ -5015,125 +4780,7 @@ function HydratedThreadComposer({
       </div>
     </div>
   );
-  const dictationRowContent = (
-    <>
-      <NodexTooltip
-        tooltipContent={
-          isTranscribing
-            ? intl.formatMessage({
-                id: "conversation.localConversationThreadComposer.cancelTranscription",
-                defaultMessage: "Cancel transcription",
-              })
-            : intl.formatMessage({
-                id: "conversation.localConversationThreadComposer.cancelDictation",
-                defaultMessage: "Cancel dictation",
-              })
-        }
-        side="top"
-        sideOffset={4}
-      >
-        <button
-          type="button"
-          className="inline-flex size-7 items-center justify-center rounded-full border border-transparent px-0 text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
-          aria-label={
-            isTranscribing
-              ? intl.formatMessage({
-                  id: "conversation.localConversationThreadComposer.cancelTranscription",
-                  defaultMessage: "Cancel transcription",
-                })
-              : intl.formatMessage({
-                  id: "conversation.localConversationThreadComposer.cancelDictation",
-                  defaultMessage: "Cancel dictation",
-                })
-          }
-          onClick={cancelDictation}
-        >
-          <CloseIcon className="size-4" />
-        </button>
-      </NodexTooltip>
-      <div
-        className="flex h-token-button-composer min-w-0 flex-1 items-center justify-center text-base text-token-text-tertiary select-none"
-        role={isTranscribing ? "status" : undefined}
-      >
-        {isTranscribing ? (
-          intl.formatMessage({
-            id: "conversation.localConversationThreadComposer.transcribing",
-            defaultMessage: "Transcribing",
-          })
-        ) : (
-          <canvas
-            ref={waveformCanvasRef}
-            className="h-token-button-composer w-full text-token-foreground"
-            aria-hidden="true"
-          />
-        )}
-      </div>
-      <NodexTooltip
-        tooltipContent={
-          <span className="text-token-foreground">
-            {intl.formatMessage({
-              id: "conversation.localConversationThreadComposer.stopDictation",
-              defaultMessage: "Stop dictation",
-            })}
-          </span>
-        }
-        side="top"
-        sideOffset={4}
-      >
-        <button
-          type="button"
-          className="inline-flex size-7 items-center justify-center rounded-full border border-transparent px-0 text-(--foreground-secondary) transition-colors duration-100 hover:bg-(--background-tertiary) hover:text-(--foreground)"
-          aria-label={intl.formatMessage({
-            id: "conversation.localConversationThreadComposer.stopDictation",
-            defaultMessage: "Stop dictation",
-          })}
-          onClick={() => stopDictation("insert")}
-          disabled={isTranscribing}
-          aria-busy={transcriptionAction === "insert"}
-        >
-          {transcriptionAction === "insert" ? (
-            <ActivitySpinnerIcon className="size-4" />
-          ) : (
-            <StopIcon className="size-4" />
-          )}
-        </button>
-      </NodexTooltip>
-      <NodexTooltip
-        tooltipContent={
-          <span className="text-token-foreground">
-            {intl.formatMessage({
-              id: "conversation.localConversationThreadComposer.transcribeAndSend",
-              defaultMessage: "Transcribe and send",
-            })}
-          </span>
-        }
-        side="top"
-        sideOffset={4}
-      >
-        <button
-          type="button"
-          className={cn(
-            "inline-flex size-7 items-center justify-center rounded-full bg-composer-primary p-0.5 text-composer-primary focus-visible:outline-2 focus-visible:outline-background-composer-primary",
-            isTranscribing && "opacity-50",
-          )}
-          aria-label={intl.formatMessage({
-            id: "conversation.localConversationThreadComposer.transcribeAndSend",
-            defaultMessage: "Transcribe and send",
-          })}
-          onMouseDown={preservePromptFocusForPointerSubmit}
-          onClick={() => stopDictation("send")}
-          disabled={transcriptionAction === "send"}
-          aria-busy={transcriptionAction === "send"}
-        >
-          {transcriptionAction === "send" ? (
-            <ActivitySpinnerIcon className="size-4" />
-          ) : (
-            <UpArrowIcon className="size-5" />
-          )}
-        </button>
-      </NodexTooltip>
-    </>
-  );
+
   return (
     <>
       {composerTip ? <ComposerTipLine tip={composerTip} /> : null}
@@ -5541,82 +5188,10 @@ function HydratedThreadComposer({
               </ComposerAttachments>
             ) : null}
 
-            {dictationRecovery ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="mx-3 mb-2 flex flex-wrap items-center gap-2 text-xs text-token-text-tertiary"
-              >
-                {dictationRecovery.phase === "recovering" ? (
-                  <ActivitySpinnerIcon className="size-4" />
-                ) : null}
-                <span className="min-w-0 flex-1">
-                  {dictationRecovery.phase === "recovering"
-                    ? intl.formatMessage({
-                        id: "conversation.localConversationThreadComposer.recoveringText",
-                        defaultMessage: "Recovering text…",
-                      })
-                    : dictationRecovery.phase === "recovered"
-                      ? intl.formatMessage({
-                          id: "conversation.localConversationThreadComposer.textRecovered",
-                          defaultMessage: "Text recovered",
-                        })
-                      : intl.formatMessage({
-                          id: "conversation.localConversationThreadComposer.dictationStopped",
-                          defaultMessage: "Dictation stopped",
-                        })}
-                </span>
-                {dictationRecovery.phase === "recovered" && dictationRecovery.text ? (
-                  <button
-                    type="button"
-                    className="rounded px-2 py-1 text-token-foreground hover:bg-token-list-hover-background"
-                    onClick={() => void appendRecoveredText()}
-                  >
-                    {intl.formatMessage({
-                      id: "conversation.localConversationThreadComposer.addToMessage",
-                      defaultMessage: "Add to message",
-                    })}
-                  </button>
-                ) : null}
-                {dictationRecovery.phase === "failed" ? (
-                  <button
-                    type="button"
-                    className="rounded px-2 py-1 text-token-foreground hover:bg-token-list-hover-background"
-                    onClick={() => void retryDictation()}
-                  >
-                    {intl.formatMessage({
-                      id: "conversation.localConversationThreadComposer.retry",
-                      defaultMessage: "Retry",
-                    })}
-                  </button>
-                ) : null}
-                {dictationRecovery.saveState === "saved" && actions.onOpenVoiceSettings ? (
-                  <button
-                    type="button"
-                    className="rounded px-2 py-1 hover:bg-token-list-hover-background"
-                    onClick={() =>
-                      actions.onOpenVoiceSettings?.(dictationRecovery.recordingId ?? undefined)
-                    }
-                  >
-                    {intl.formatMessage({
-                      id: "conversation.localConversationThreadComposer.viewRecording",
-                      defaultMessage: "View recording",
-                    })}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  aria-label={intl.formatMessage({
-                    id: "conversation.localConversationThreadComposer.dismissDictationRecovery",
-                    defaultMessage: "Dismiss dictation recovery",
-                  })}
-                  className="rounded p-1 hover:bg-token-list-hover-background"
-                  onClick={dismissDictationRecovery}
-                >
-                  <CloseIcon className="size-4" />
-                </button>
-              </div>
-            ) : null}
+            <ComposerDictationRecovery
+              dictation={dictation}
+              onOpenVoiceSettings={actions.onOpenVoiceSettings}
+            />
             <ComposerAdaptiveFooter
               layout={composerLayout}
               input={
@@ -5633,7 +5208,12 @@ function HydratedThreadComposer({
               }
               trailingControls={
                 showDictationRow ? (
-                  <div className="flex items-center gap-2">{dictationRowContent}</div>
+                  <div className="flex items-center gap-2">
+                    <ComposerBufferedDictationControls
+                      dictation={dictation}
+                      preserveEditorFocus={preservePromptFocusForPointerSubmit}
+                    />
+                  </div>
                 ) : isFloatingComposer && floatingComposerSingleLine ? (
                   floatingTrailingControls
                 ) : (

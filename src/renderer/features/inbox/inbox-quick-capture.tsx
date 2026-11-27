@@ -1,6 +1,4 @@
-import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
-import { useLayoutEffect, useRef, useState } from "react";
-import { InboxIcon } from "@/components/shared/icons";
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import {
   NodexDialog,
   NodexDialogContent,
@@ -8,45 +6,19 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
-import { ProjectMarker } from "@/components/workbench/project-marker";
-import { cn } from "@/lib/utils";
 import type { InboxScope } from "../../../shared/inbox";
-import type { ProjectAppearance } from "../../../shared/project-appearance";
-import { InboxComposer } from "./inbox-composer";
-import { useInboxSummary } from "./use-inbox";
-import { useSendInboxMessage } from "./use-inbox-actions";
-import { useInboxCapture } from "./use-inbox-capture";
-import { useInboxImageAccess } from "./use-inbox-image-access";
-
-/** The Inbox a capture lands in, as the capture names it. */
-export interface InboxCaptureDestination {
-  readonly scope: InboxScope;
-  /** The Project's name and marker, or null for the Library Inbox. */
-  readonly project: { readonly name: string; readonly appearance: ProjectAppearance } | null;
-}
+import {
+  InboxCaptureCard,
+  inboxDestinationLabel,
+  type InboxCaptureDestination,
+  type InboxCaptureSent,
+} from "./inbox-capture-card";
 
 export interface InboxQuickCaptureRequest {
   readonly destination: InboxCaptureDestination;
   /** Text selected where the capture began, added to the message. */
   readonly seed: string | null;
   readonly origin?: HTMLElement | null;
-}
-
-const NO_VISIBLE_PAGES: readonly string[] = [];
-/** The capture's own labels share the composer's material, so they read over any page. */
-const CAPTURE_CHIP_CLASS =
-  "flex items-center gap-1.5 rounded-full bg-token-input-background px-2.5 py-1 text-xs text-token-text-secondary electron:elevation-prominent extension:border extension:border-token-border";
-
-export function inboxDestinationLabel(
-  destination: InboxCaptureDestination,
-  intl: IntlShape = getIntl(),
-): string {
-  return destination.project
-    ? intl.formatMessage(
-        { id: "inbox.inboxQuickCapture.valueInbox", defaultMessage: "{value1} Inbox" },
-        { value1: destination.project.name },
-      )
-    : intl.formatMessage({ id: "inbox.inboxQuickCapture.inbox", defaultMessage: "Inbox" });
 }
 
 /**
@@ -66,41 +38,36 @@ export function InboxQuickCapture({
 }) {
   const intl = useIntl();
   const { destination, seed } = request;
-  const summary = useInboxSummary(destination.scope);
-  const send = useSendInboxMessage();
-  const images = useInboxImageAccess(
-    destination.scope.kind === "project" ? destination.scope : { kind: "library" },
-  );
-  const capture = useInboxCapture({
-    windowSessionId,
-    scope: destination.scope,
-    storeEpoch: summary.data?.storeEpoch ?? null,
-    visiblePageIds: NO_VISIBLE_PAGES,
-    onSend: send,
-  });
-  const seeded = useRef(false);
-  useLayoutEffect(() => {
-    if (seeded.current || !seed || !capture.canEdit) return;
-    seeded.current = true;
-    capture.changeDraft((draft) => ({
-      ...draft,
-      text: draft.text.trim() ? `${draft.text.trimEnd()}\n\n${seed}` : seed,
-    }));
-  }, [capture, seed]);
-
-  // A message that could not be saved waits in its Inbox, where it can be retried or recovered.
-  const [deliveryFailed, setDeliveryFailed] = useState(false);
-  const [titleOpen, setTitleOpen] = useState(false);
-  const titleShowing = titleOpen || capture.draft.title !== "";
   const label = inboxDestinationLabel(destination, intl);
-  const failure =
-    capture.validationError ??
-    (capture.error
-      ? intl.formatMessage({
-          id: "inbox.inboxQuickCapture.draftCouldNotBeSaved",
-          defaultMessage: "Draft could not be saved. Your text is still here.",
-        })
-      : null);
+  const confirm = (sent: InboxCaptureSent) => {
+    onClose();
+    toast.success(
+      sent.start === null
+        ? intl.formatMessage(
+            { id: "inbox.inboxQuickCapture.sentToValue", defaultMessage: "Sent to {value1}" },
+            { value1: label },
+          )
+        : destination.project
+          ? intl.formatMessage(
+              {
+                id: "inbox.inboxQuickCapture.startingIn",
+                defaultMessage: "Starting a chat in {project}",
+              },
+              { project: destination.project.name },
+            )
+          : intl.formatMessage({
+              id: "inbox.inboxQuickCapture.nodexIsStartingIt",
+              defaultMessage: "Sent — Nodex is starting it",
+            }),
+      {
+        id: "inbox-quick-capture-sent",
+        action: {
+          label: intl.formatMessage({ id: "inbox.inboxQuickCapture.open", defaultMessage: "Open" }),
+          onClick: () => onOpenInbox(destination.scope),
+        },
+      },
+    );
+  };
 
   return (
     <NodexDialog
@@ -130,98 +97,13 @@ export function InboxQuickCapture({
             { target: label },
           )}
         </NodexDialogDescription>
-        <div data-testid="inbox-quick-capture" className="mb-2 flex items-center gap-2 px-2">
-          <span className={cn(CAPTURE_CHIP_CLASS, "min-w-0")}>
-            {destination.project ? (
-              <ProjectMarker appearance={destination.project.appearance} className="size-3.5" />
-            ) : (
-              <InboxIcon className="icon-xs" />
-            )}
-            <span className="truncate">{label}</span>
-          </span>
-          {titleShowing || !capture.canEdit ? null : (
-            <button
-              type="button"
-              className={cn(
-                CAPTURE_CHIP_CLASS,
-                "cursor-interaction ml-auto shrink-0 hover:text-token-text-primary focus-visible:outline-2 focus-visible:outline-token-focus-border",
-              )}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => setTitleOpen(true)}
-            >
-              <FormattedMessage id="inbox.inboxQuickCapture.addTitle" defaultMessage="Add title" />
-            </button>
-          )}
-        </div>
-        <InboxComposer
-          draft={capture.draft}
-          onDraftChange={capture.changeDraft}
-          images={images}
-          disabled={!capture.ready || capture.savingDraft}
-          readOnly={!capture.canEdit || capture.savingDraft}
+        <InboxCaptureCard
+          destination={destination}
+          windowSessionId={windowSessionId}
+          seed={seed}
           focusToken={1}
-          titleOpen={titleOpen}
-          onTitleOpenChange={setTitleOpen}
-          placeholder={
-            destination.project
-              ? intl.formatMessage(
-                  {
-                    id: "inbox.inboxQuickCapture.addAThoughtToValue",
-                    defaultMessage: "Add a thought to {value1}…",
-                  },
-                  { value1: destination.project.name },
-                )
-              : undefined
-          }
-          onSend={async () => {
-            const outcome = await capture.submit();
-            setDeliveryFailed(outcome === "failed");
-            if (outcome !== "sent") return;
-            onClose();
-            toast.success(
-              intl.formatMessage(
-                { id: "inbox.inboxQuickCapture.sentToValue", defaultMessage: "Sent to {value1}" },
-                { value1: label },
-              ),
-              {
-                id: "inbox-quick-capture-sent",
-                action: {
-                  label: intl.formatMessage({
-                    id: "inbox.inboxQuickCapture.open",
-                    defaultMessage: "Open",
-                  }),
-                  onClick: () => onOpenInbox(destination.scope),
-                },
-              },
-            );
-          }}
+          onSent={confirm}
         />
-        {failure || deliveryFailed ? (
-          <p role="alert" className="flex items-center gap-1 px-4 pt-2 text-xs">
-            <span className="text-token-error-foreground">
-              {failure ??
-                intl.formatMessage(
-                  {
-                    id: "inbox.inboxQuickCapture.captureRetry",
-                    defaultMessage: "Couldn’t save this message. It’s waiting in {inbox} to retry.",
-                  },
-                  { inbox: label },
-                )}
-            </span>
-            {failure ? null : (
-              <button
-                type="button"
-                className="cursor-interaction text-token-text-primary underline-offset-2 hover:underline"
-                onClick={() => {
-                  onClose();
-                  onOpenInbox(destination.scope);
-                }}
-              >
-                <FormattedMessage id="inbox.inboxQuickCapture.open" defaultMessage="Open" />
-              </button>
-            )}
-          </p>
-        ) : null}
       </NodexDialogContent>
     </NodexDialog>
   );

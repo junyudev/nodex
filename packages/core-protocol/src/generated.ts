@@ -9148,6 +9148,7 @@ export interface components {
                  */
                 readonly project_id?: string | null;
                 readonly reply_to_page_id?: string | null;
+                readonly start?: components["schemas"]["ProjectWorkspaceInboxStartRequest"] | null;
                 readonly title?: string | null;
             } | {
                 /** @enum {string} */
@@ -9277,6 +9278,14 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "revise_inbox_message";
                 readonly page_id: string;
+            } | {
+                /** Format: int64 */
+                readonly expected_revision: number;
+                readonly expected_store_epoch: string;
+                /** @enum {string} */
+                readonly kind: "record_inbox_start_preparation_failure";
+                readonly message: string;
+                readonly proposal_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "record_inbox_suggestion_failure";
@@ -11850,6 +11859,20 @@ export interface components {
             readonly label: string;
             readonly project_id?: string | null;
         };
+        /** @description The sender's start choice. Execution defaults are resolved by the Desktop Host. */
+        readonly ProjectWorkspaceInboxStartRequest: {
+            readonly execution_selection?: components["schemas"]["ProjectWorkspaceInboxExecutionSelection"] | null;
+            /** @enum {string} */
+            readonly kind: "new_chat";
+            readonly preparation_error?: string | null;
+        } | {
+            readonly execution_selection?: components["schemas"]["ProjectWorkspaceInboxExecutionSelection"] | null;
+            /** @enum {string} */
+            readonly kind: "routed";
+            readonly preparation_error?: string | null;
+            /** @description The host's settings decide whether this explicit request skips routing. */
+            readonly suggestions_off: boolean;
+        };
         readonly ProjectWorkspaceInboxSuggestedDispatch: {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
             readonly entry_kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
@@ -12569,6 +12592,7 @@ export interface components {
              */
             readonly project_id?: string | null;
             readonly reply_to_page_id?: string | null;
+            readonly start?: components["schemas"]["ProjectWorkspaceInboxStartRequest"] | null;
             readonly title?: string | null;
         } | {
             /** @enum {string} */
@@ -12698,6 +12722,14 @@ export interface components {
             /** @enum {string} */
             readonly kind: "revise_inbox_message";
             readonly page_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly expected_store_epoch: string;
+            /** @enum {string} */
+            readonly kind: "record_inbox_start_preparation_failure";
+            readonly message: string;
+            readonly proposal_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "record_inbox_suggestion_failure";

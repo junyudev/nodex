@@ -13,21 +13,25 @@ export const resolveInboxModel = Effect.fn("InboxRuntimeSelection.resolve")(func
 ): Effect.fn.Return<AgentRuntimeLaunch["modelSelection"], InboxRuntimeError> {
   if (!choice.instanceId)
     return yield* new InboxRuntimeError({ message: "The Agent is not configured" });
+  const readCatalog = (...args: Parameters<typeof runtime.catalog>) =>
+    runtime
+      .catalog(...args)
+      .pipe(
+        Effect.mapError(
+          (error) =>
+            new InboxRuntimeError({ message: error.message, retryable: error.retryable !== false }),
+        ),
+      );
   const read = Effect.gen(function* () {
-    const resolution = resolveFromCatalog(yield* runtime.catalog(), choice, purpose);
+    const resolution = resolveFromCatalog(yield* readCatalog(), choice, purpose);
     if (resolution.kind === "unavailable")
       return yield* new InboxRuntimeError({ message: resolution.message });
     return resolution.kind === "ready" ? resolution.selection : null;
   });
-  const cached = yield* read.pipe(
-    Effect.mapError((error) => new InboxRuntimeError({ message: error.message })),
-  );
+  const cached = yield* read;
   if (cached) return cached;
-  yield* runtime
-    .catalog({ refresh: true })
-    .pipe(Effect.mapError((error) => new InboxRuntimeError({ message: error.message })));
+  yield* readCatalog({ refresh: true });
   const selection = yield* read.pipe(
-    Effect.mapError((error) => new InboxRuntimeError({ message: error.message })),
     Effect.repeat({
       times: 75,
       schedule: Schedule.spaced("200 millis"),
@@ -37,6 +41,7 @@ export const resolveInboxModel = Effect.fn("InboxRuntimeSelection.resolve")(func
   if (!selection)
     return yield* new InboxRuntimeError({
       message: "The Agent model catalog did not become ready",
+      retryable: true,
     });
   return selection;
 });

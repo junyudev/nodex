@@ -42,6 +42,8 @@ import type {
   InboxPageIdsInput,
   InboxProposalInput,
   InboxSendInput,
+  InboxAgentChoice,
+  InboxSettings,
   InboxSendResult,
   InboxSetImportantInput,
   InboxSetKindInput,
@@ -105,6 +107,7 @@ import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeAp
 import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { readRoutingConsent } from "./InboxRoutingConsent";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
+import { InboxRuntimeError } from "./InboxRuntimeError";
 import { createOperationId } from "../../main/core-runtime/operation-identity";
 import { automationDecisionCapture, automationDecisionTitle } from "./automation-decision";
 import type { AutomationClaim } from "../automation-application/AutomationApplication";
@@ -513,6 +516,50 @@ export const make = Effect.gen(function* () {
       return inboxReplyDestination(chat, dispatch);
     });
 
+  const resolveNewChatSelection = (
+    inbox: InboxSettings,
+    agent: InboxAgentChoice | null | undefined,
+    worktree: boolean | null | undefined,
+    operation: string,
+  ) =>
+    resolveInboxModel(runtime, agent ?? inbox.chatAgent).pipe(
+      Effect.map((modelSelection) => ({
+        modelSelection,
+        interactionMode: "default" as const,
+        worktree: worktree ?? inbox.newChatsUseWorktrees,
+      })),
+      Effect.mapError(fail(operation)),
+    );
+
+  const captureStart = Effect.fn("InboxApplication.captureStart")(function* (
+    request: InboxSendInput["start"],
+  ) {
+    if (!request) return undefined;
+    const current = yield* settings.snapshot().pipe(Effect.result);
+    const inbox = current._tag === "Success" ? current.success.inbox : null;
+    const suggestionsOff = inbox?.suggestions === "off";
+    const selection =
+      inbox && (request.kind === "new_chat" || suggestionsOff)
+        ? yield* resolveNewChatSelection(inbox, null, null, "send").pipe(Effect.result)
+        : null;
+    // Core saves a failed start with the message and replays the original outcome on retry.
+    const executionSelection = inboxExecutionSelectionToCore(
+      selection?._tag === "Success" ? selection.success : null,
+    );
+    const preparationError = inbox
+      ? selection?._tag === "Failure"
+        ? selection.failure.message.slice(0, 2000)
+        : undefined
+      : "The Inbox settings could not be read. Review them before starting a chat.";
+    const prepared = {
+      execution_selection: executionSelection,
+      ...(preparationError ? { preparation_error: preparationError } : {}),
+    };
+    return request.kind === "new_chat"
+      ? { kind: "new_chat" as const, ...prepared }
+      : { kind: "routed" as const, suggestions_off: suggestionsOff, ...prepared };
+  });
+
   const send = Effect.fn("InboxApplication.send")(function* (input: InboxSendInput) {
     const parsed = yield* parse("send", () => InboxSendInputSchema.parse(input));
     const reply = parsed.replyToPageId
@@ -554,10 +601,12 @@ export const make = Effect.gen(function* () {
         });
     }
     const replyTarget = parsed.replyToPageId ? yield* entry(parsed.replyToPageId) : null;
+    const start = yield* captureStart(parsed.start);
     const applied = yield* apply(
       "send",
       {
         kind: "send_inbox_message",
+        ...(start ? { start } : {}),
         page_id: parsed.pageId,
         document_id: parsed.documentId,
         body: parsed.body,
@@ -684,22 +733,15 @@ export const make = Effect.gen(function* () {
     // Freeze the Inbox defaults for null plan selections as well as new chats.
     const inbox = (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation"))))
       .inbox;
-    const modelSelection =
-      action.type === "new_chat" || needsDefault
-        ? yield* resolveInboxModel(
-            runtime,
-            (action.type === "new_chat" ? action.agent : null) ?? inbox.chatAgent,
-          ).pipe(Effect.mapError(fail("prepare-confirmation")))
-        : null;
-    // A decision's own choice of worktree wins; otherwise the Inbox's setting, frozen here.
+    // A decision's own Agent and worktree choices win over the Inbox defaults.
     const executionSelection =
-      (action.type === "new_chat" || action.type === "plan") && modelSelection
-        ? {
-            modelSelection,
-            interactionMode: "default" as const,
-            worktree:
-              (action.type === "new_chat" ? action.worktree : null) ?? inbox.newChatsUseWorktrees,
-          }
+      action.type === "new_chat" || needsDefault
+        ? yield* resolveNewChatSelection(
+            inbox,
+            action.type === "new_chat" ? action.agent : null,
+            action.type === "new_chat" ? action.worktree : null,
+            "prepare-confirmation",
+          )
         : null;
     const proposedSkills = inboxActionSkills(storedAction);
     const droppedNames = new Set(draft.kind === "proposal" ? (draft.droppedSkillNames ?? []) : []);
@@ -720,7 +762,7 @@ export const make = Effect.gen(function* () {
     }
     const skillInvocations = yield* skillInventory.resolve(
       action,
-      modelSelection?.instanceId,
+      executionSelection?.modelSelection.instanceId,
       inboxActionSkills(action).map(({ name }) => name),
     );
     const prepared = {
@@ -1111,11 +1153,7 @@ export const make = Effect.gen(function* () {
       const { proposals } = expectVariant(snapshot, "inbox_automatic_dispatches");
       for (const proposal of proposals) {
         const action = inboxDispatchActionFromCore(proposal.action);
-        if (
-          proposal.outdated ||
-          !proposal.explicit_request ||
-          (action.type !== "new_chat" && action.type !== "send_to_chat")
-        )
+        if (proposal.outdated || (action.type !== "new_chat" && action.type !== "send_to_chat"))
           continue;
         let held = false;
         for (const basis of proposal.basis)
@@ -1161,7 +1199,34 @@ export const make = Effect.gen(function* () {
             sessionId: deriveSessionDispatchIdentity(operationId, "inbox-auto-session", at),
           },
         ).pipe(Effect.result);
-        if (prepared._tag === "Failure" || prepared.success.kind !== "proposal") continue;
+        if (prepared._tag === "Failure") {
+          const cause = prepared.failure.cause;
+          if (Schema.is(InboxRuntimeError)(cause) && !cause.retryable) {
+            const message = cause.message.slice(0, 2000);
+            yield* apply("start-preparation-failed", {
+              kind: "record_inbox_start_preparation_failure",
+              expected_store_epoch: snapshot.store_epoch,
+              proposal_id: proposal.proposal_id,
+              expected_revision: proposal.revision,
+              message,
+            }).pipe(
+              Effect.catchIf(
+                (failure) => {
+                  const code = coreRefusal(failure.cause)?.code;
+                  return (
+                    code === "conflict" ||
+                    code === "revision_conflict" ||
+                    code === "not_found" ||
+                    code === "stale_store_epoch"
+                  );
+                },
+                () => Effect.void,
+              ),
+            );
+          }
+          continue;
+        }
+        if (prepared.success.kind !== "proposal") continue;
         // Core rechecks written content, all-user membership and the exact unchanged action atomically.
         const { kind: _kind, ...confirmation } = prepared.success;
         yield* confirm(confirmation, "nodex").pipe(Effect.catch(() => Effect.void));

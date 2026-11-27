@@ -71,6 +71,7 @@ fn intake(w: &TestWorkspace, github: bool) -> ProjectWorkspaceInboxItem {
                 request(
                     "intake",
                     ProjectWorkspaceIntent::SendInboxMessage {
+                        start: None,
                         reply_to_page_id: None,
                         expected_store_epoch: None,
                         page_id: PAGE.into(),

@@ -74,6 +74,7 @@ pub(in crate::workspace) fn read_handoff_json<T: serde::de::DeserializeOwned>(
 
 /// An Agent takes at most this many images with one message; the rest stay on their Pages.
 const MAX_HANDOFF_IMAGES: usize = MAX_SUGGESTION_IMAGES;
+pub(super) const DELIVERY_AWAITING_CONFIRMATION: &str = "Delivery is awaiting confirmation";
 
 fn encode<T: Serialize + ?Sized>(value: &T) -> Result<String, StoreError> {
     serde_json::to_string(value).map_err(|_| internal("Inbox value cannot be encoded"))
@@ -342,6 +343,20 @@ pub(in crate::workspace) fn apply_reliable(
                             "Dispatch skills must match the reviewed suggestion",
                         ));
                     }
+                    let inbox_scope = require_one_scope(connection, &proposal.page_ids)?;
+                    let action = normalize_action(
+                        connection,
+                        library_id,
+                        inbox_scope.as_deref(),
+                        reviewed_action,
+                    )?;
+                    if confirmed_by == InboxConfirmedBy::Nodex {
+                        start::record_routed_dispatch(
+                            connection,
+                            &proposal.page_ids,
+                            &proposal_id,
+                        )?;
+                    }
                     let (effects, notes) = decide(
                         connection,
                         library_id,
@@ -351,7 +366,7 @@ pub(in crate::workspace) fn apply_reliable(
                         request_hash,
                         &proposal_id,
                         &proposal.page_ids,
-                        action.as_ref().unwrap_or(&proposal.action),
+                        &action,
                         session_id.as_deref(),
                         execution_selection.as_ref(),
                         &skill_invocations,
@@ -407,23 +422,7 @@ pub(in crate::workspace) fn apply_reliable(
                         &now,
                     )?;
                     connection.execute("UPDATE inbox_proposals SET state='superseded',revision=revision+1,updated_at=?2 WHERE proposal_id IN (SELECT value FROM json_each(?1))",params![encode(&unknown)?,now])?;
-                    insert_proposal(
-                        connection,
-                        library_id,
-                        NewProposal {
-                            proposal_id: &proposal_id,
-                            origin: ProjectWorkspaceInboxProposalOrigin::User,
-                            page_ids: &pages,
-                            basis: &basis,
-                            action: &action,
-                            entry_kind: None,
-                            summary: &user_summary(&action),
-                            rationale: None,
-                            produced_by: None,
-                        },
-                        &now,
-                    )?;
-                    let (mut decision, notes) = decide(
+                    let (mut decision, notes) = decide_direct(
                         connection,
                         library_id,
                         context,
@@ -432,10 +431,10 @@ pub(in crate::workspace) fn apply_reliable(
                         request_hash,
                         &proposal_id,
                         &pages,
+                        &basis,
                         &action,
                         session_id.as_deref(),
                         execution_selection.as_ref(),
-                        &[],
                         assets_root,
                         &now,
                         Some(previous),
@@ -618,12 +617,63 @@ pub(in crate::workspace) fn apply_reliable(
                         error.as_deref(),
                         &now,
                     )?;
-                    if automatic_dispatch && error.is_none() {
+                    if error.is_none() {
                         for suggestion in &suggestions {
-                            connection.execute("UPDATE inbox_proposals SET auto_confirm_pending=1 WHERE proposal_id=?1 AND explicit_request=1 AND json_extract(action_json,'$.type') IN ('new_chat','send_to_chat') AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages link JOIN inbox_entries entry ON entry.page_id=link.page_id WHERE link.proposal_id=inbox_proposals.proposal_id AND (json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM inbox_member_rows row JOIN page_turn_episodes episode ON episode.page_id=row.page_id WHERE row.page_id=entry.page_id AND row.member_id=entry.author_member_id AND row.in_inbox=1 AND json_extract(episode.signature,'$[1]')='triage') OR EXISTS(SELECT 1 FROM inbox_deferrals deferral WHERE deferral.page_id=entry.page_id AND deferral.member_id=entry.author_member_id AND deferral.until_at>?2) OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)))",params![&suggestion.proposal_id, snooze::normalize_time(&now)?])?;
+                            if start::automatic_consent(
+                                connection,
+                                &suggestion.proposal_id,
+                                automatic_dispatch,
+                            )? {
+                                connection.execute(
+                                    "UPDATE inbox_proposals SET auto_confirm_pending=1 WHERE proposal_id=?1",
+                                    [&suggestion.proposal_id],
+                                )?;
+                            }
                         }
                     }
                     Ok(simple_effects("inbox_settle_suggestion", &now))
+                }
+                ProjectWorkspaceIntent::RecordInboxStartPreparationFailure {
+                    expected_store_epoch,
+                    proposal_id,
+                    expected_revision,
+                    message,
+                } => {
+                    require_host(context)?;
+                    require_epoch(store_epoch, &expected_store_epoch)?;
+                    let proposal = require_proposal(connection, library_id, &proposal_id)?;
+                    revision(&proposal, expected_revision)?;
+                    let pending: bool = connection.query_row(
+                        "SELECT auto_confirm_pending FROM inbox_proposals WHERE proposal_id=?1",
+                        [&proposal_id],
+                        |row| row.get(0),
+                    )?;
+                    if !pending || !start::automatic_consent(connection, &proposal_id, true)? {
+                        return Err(conflict("This suggested start is no longer pending"));
+                    }
+                    require_basis(connection, &proposal.page_ids, &proposal.basis)?;
+                    let reason = failure_text(&message);
+                    let mut effects = simple_effects("inbox_start_preparation_failed", &now);
+                    for basis in &proposal.basis {
+                        let changed = connection.execute(
+                            "UPDATE inbox_start_requests SET preparation_error=?3
+                             WHERE page_id=?1 AND consent_basis=?2 AND EXISTS (
+                                 SELECT 1 FROM inbox_entries WHERE page_id=?1 AND suggestion_state='settled'
+                             )",
+                            params![basis.page_id, basis.content_hash, reason],
+                        )?;
+                        if changed > 0 {
+                            effects.page_ids.push(basis.page_id.clone());
+                        }
+                    }
+                    if effects.page_ids.is_empty() {
+                        return Err(conflict("This proposal has no pending Capture start"));
+                    }
+                    connection.execute(
+                        "UPDATE inbox_proposals SET auto_confirm_pending=0 WHERE proposal_id=?1",
+                        [&proposal_id],
+                    )?;
+                    Ok(effects)
                 }
                 ProjectWorkspaceIntent::BeginInboxDispatch {
                     proposal_id,
@@ -639,7 +689,7 @@ pub(in crate::workspace) fn apply_reliable(
                         expected_revision,
                         &message_id,
                     )?;
-                    connection.execute("UPDATE inbox_proposals SET failure_kind='unknown',failure_message='Delivery is awaiting confirmation',revision=revision+1,updated_at=?2 WHERE proposal_id=?1",params![proposal_id,now])?;
+                    connection.execute("UPDATE inbox_proposals SET failure_kind='unknown',failure_message=?3,revision=revision+1,updated_at=?2 WHERE proposal_id=?1",params![proposal_id,now,DELIVERY_AWAITING_CONFIRMATION])?;
                     super::chat_start_effects(
                         connection,
                         "inbox_begin_dispatch",
@@ -742,6 +792,60 @@ pub(in crate::workspace) fn apply_reliable(
     )
 }
 
+/// Record and confirm a person's direct action in the same mutation scope.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn decide_direct(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    scope: &DurableMutationScope<'_>,
+    operation_id: &str,
+    request_hash: &str,
+    proposal_id: &str,
+    pages: &[String],
+    basis: &[ProjectWorkspaceInboxPageBasis],
+    action: &ProjectWorkspaceInboxDispatchAction,
+    session_id: Option<&str>,
+    selection: Option<&ProjectWorkspaceInboxExecutionSelection>,
+    assets_root: &Path,
+    now: &str,
+    previous: Option<Vec<DecisionPage>>,
+) -> Result<(WorkspaceMutationEffects, Option<InboxNotesResult>), StoreError> {
+    insert_proposal(
+        connection,
+        library_id,
+        NewProposal {
+            proposal_id,
+            origin: ProjectWorkspaceInboxProposalOrigin::User,
+            page_ids: pages,
+            basis,
+            action,
+            entry_kind: None,
+            summary: &user_summary(action),
+            rationale: None,
+            produced_by: None,
+        },
+        now,
+    )?;
+    decide(
+        connection,
+        library_id,
+        context,
+        scope,
+        operation_id,
+        request_hash,
+        proposal_id,
+        pages,
+        action,
+        session_id,
+        selection,
+        &[],
+        assets_root,
+        now,
+        previous,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn decide(
     connection: &Connection,
@@ -762,15 +866,17 @@ fn decide(
 ) -> Result<(WorkspaceMutationEffects, Option<InboxNotesResult>), StoreError> {
     require_live_entries(connection, library_id, pages)?;
     let inbox_scope = require_one_scope(connection, pages)?;
-    let action = normalize_action(connection, library_id, inbox_scope.as_deref(), action)?;
-    if let ProjectWorkspaceInboxDispatchAction::Snooze { snoozed_until } = &action {
+    for page in pages {
+        start::withdraw(connection, page)?;
+    }
+    if let ProjectWorkspaceInboxDispatchAction::Snooze { snoozed_until } = action {
         snooze::set_entries(connection, context, pages, snoozed_until, now)?;
-        finish_proposal(connection, proposal_id, &action_json(&action)?, now)?;
+        finish_proposal(connection, proposal_id, &action_json(action)?, now)?;
         let mut effects = simple_effects("inbox_confirm_snooze", now);
         effects.page_ids = pages.to_vec();
         return Ok((effects, None));
     }
-    if let ProjectWorkspaceInboxDispatchAction::Plan { summary, steps } = &action {
+    if let ProjectWorkspaceInboxDispatchAction::Plan { summary, steps } = action {
         require_decision_authority(context)?;
         return super::plan::confirm(
             connection,
@@ -799,7 +905,7 @@ fn decide(
     {
         return Err(invalid("A new chat requires its resolved Agent selection"));
     }
-    let relocation_project = match &action {
+    let relocation_project = match action {
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
             Some(project_id.clone())
         }
@@ -834,7 +940,7 @@ fn decide(
         None
     };
     let mut tokens = Vec::new();
-    let saved = if let ProjectWorkspaceInboxDispatchAction::SaveToNotes { parent_page_id } = &action
+    let saved = if let ProjectWorkspaceInboxDispatchAction::SaveToNotes { parent_page_id } = action
     {
         let saved = notes::save(
             connection,
@@ -911,7 +1017,7 @@ fn decide(
         ConfirmedProposal {
             proposal_id,
             page_ids: pages,
-            action: &action,
+            action,
             session_id,
         },
         now,
@@ -923,7 +1029,7 @@ fn decide(
     } else {
         None
     };
-    let receiving_agent = match &action {
+    let receiving_agent = match action {
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => Some(
             selection
                 .ok_or_else(|| invalid("A new chat requires its resolved Agent selection"))?
@@ -950,7 +1056,7 @@ fn decide(
     for page in pages {
         connection.execute("UPDATE inbox_entries SET suggestion_state='settled',suggestion_request_id=NULL,suggestion_error=NULL WHERE page_id=?1",[page])?;
     }
-    match &action {
+    match action {
         ProjectWorkspaceInboxDispatchAction::NewChat {
             prompt, additions, ..
         }
@@ -1003,12 +1109,12 @@ fn decide(
                     "The complete dispatch exceeds the delivery size limit",
                 ));
             }
-            let target=match &action{
+            let target=match action{
                 ProjectWorkspaceInboxDispatchAction::SendToChat{session_id,..}=>connection.query_row("SELECT runtime_id,runtime_thread_id FROM project_session_execution_bindings WHERE session_id=?1",[session_id],|r|Ok(ProjectWorkspaceSessionExecutionRef{runtime_id:r.get(0)?,thread_id:r.get(1)?})).optional()?,
                 _=>None,
             };
             images.truncate(MAX_HANDOFF_IMAGES);
-            let unavailable = action_skills(&action)
+            let unavailable = action_skills(action)
                 .iter()
                 .filter(|skill| {
                     !skill_invocations
@@ -1026,7 +1132,7 @@ fn decide(
             effects.page_ids.push(page.clone());
         }
     }
-    match &action {
+    match action {
         ProjectWorkspaceInboxDispatchAction::Keep => keep_message_status(
             connection,
             library_id,
@@ -1354,6 +1460,7 @@ pub(in crate::workspace) fn stop_suggestion(
         request_hash,
         &now,
         |_| {
+            start::withdraw(connection, page_id)?;
             if let Some(id) = &request_id {
                 supersede_request(connection, id, &now)?;
             }
@@ -1400,7 +1507,7 @@ pub(super) fn supersede_requests(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn create_request(
+pub(super) fn create_request(
     connection: &Connection,
     library_id: &str,
     id: &str,
@@ -1437,6 +1544,7 @@ fn create_request(
     supersede_requests(connection, pages, now)?;
     connection.execute("INSERT INTO inbox_suggestion_requests(request_id,library_id,scope_project_id,mode,state,basis_json,proposal_id,expected_revision,correction,created_at,updated_at,inputs_json) VALUES (?1,?2,?3,?4,'pending',?5,?6,?7,?8,?9,?9,?10)",params![id,library_id,inbox_scope,mode,encode(&basis)?,proposal,revision,correction,now,encode(&inputs)?])?;
     for (position, page) in pages.iter().enumerate() {
+        start::clear_preparation_failure(connection, page)?;
         connection.execute("INSERT INTO inbox_suggestion_request_pages(request_id,page_id,position) VALUES (?1,?2,?3)",params![id,page,position as i64])?;
         connection.execute("UPDATE inbox_entries SET suggestion_state='pending',suggestion_request_id=?2,suggestion_error=NULL,revision=revision+1,updated_at=?3 WHERE page_id=?1",params![page,id,now])?;
     }
@@ -1823,8 +1931,12 @@ fn require_automatic_confirmation(
     proposal: &StoredProposal,
     supplied: Option<&ProjectWorkspaceInboxDispatchAction>,
 ) -> Result<(), StoreError> {
-    let eligible = connection.query_row("SELECT origin='agent' AND explicit_request=1 AND auto_confirm_pending=1 AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages member JOIN inbox_entries entry ON entry.page_id=member.page_id WHERE member.proposal_id=inbox_proposals.proposal_id AND ((json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM inbox_member_rows row JOIN page_turn_episodes episode ON episode.page_id=row.page_id WHERE row.page_id=entry.page_id AND row.member_id=entry.author_member_id AND row.in_inbox=1 AND json_extract(episode.signature,'$[1]')='triage') OR EXISTS(SELECT 1 FROM inbox_deferrals deferral WHERE deferral.page_id=entry.page_id AND deferral.member_id=entry.author_member_id AND deferral.until_at>?2) OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)) OR EXISTS(SELECT 1 FROM chat_message_handback_pages returned WHERE returned.page_id=entry.page_id))) FROM inbox_proposals WHERE proposal_id=?1",params![id,snooze::now(connection)?],|r|r.get::<_,bool>(0))?;
-    if !eligible {
+    let pending: bool = connection.query_row(
+        "SELECT auto_confirm_pending FROM inbox_proposals WHERE proposal_id=?1",
+        [id],
+        |row| row.get(0),
+    )?;
+    if !pending || !start::automatic_consent(connection, id, true)? {
         return Err(invalid(
             "Nodex may only act on the user's explicit requests",
         ));

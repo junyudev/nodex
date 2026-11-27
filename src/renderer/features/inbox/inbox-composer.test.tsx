@@ -2,7 +2,12 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
-import { TestQueryProvider } from "@/test/query";
+import { TestQueryProvider, createTestQueryClient } from "@/test/query";
+import { commandKeymapStateQueryOptions } from "@/lib/query-options";
+import { createCommandKeymapState } from "../../../shared/command-keybindings";
+import { DEFAULT_DICTATION_SETTINGS } from "../../../shared/dictation";
+import type { CodexDictationStateSnapshot } from "../../../shared/types";
+import type { DictationStreamingAttempt } from "@/features/dictation/dictation-session-controller";
 import {
   EMPTY_INBOX_DRAFT,
   inboxDraftBody,
@@ -31,6 +36,47 @@ vi.mock("@/lib/use-library-navigation", () => ({
   useLibraryMetadata: () => ({ data: { storeEpoch: "epoch", libraryId: "library" } }),
 }));
 
+const dictationFixture = vi.hoisted(() => ({
+  capabilities: null as CodexDictationStateSnapshot | null,
+  stream: undefined as ((text: string, segment: { id: number; text: string }) => void) | undefined,
+}));
+vi.mock("@/features/dictation/dictation-streaming-client", async (original) => ({
+  ...(await original<typeof import("@/features/dictation/dictation-streaming-client")>()),
+  createBrowserDictationStreamingPort: () => ({
+    prepare: async (_id: string, options: { onTranscript?: typeof dictationFixture.stream }) => {
+      dictationFixture.stream = options.onTranscript;
+      return {
+        start: async () => undefined,
+        stopAndFlush: async () => undefined,
+        finish: async () => "spoken final",
+        split: () => null,
+        hasBoundaries: () => false,
+        abort: () => undefined,
+      } satisfies Omit<DictationStreamingAttempt, "recover" | "isSilent" | "diagnostics">;
+    },
+  }),
+}));
+
+class InboxMediaRecorder extends window.EventTarget {
+  readonly mimeType = "audio/webm";
+  state = "inactive";
+
+  start() {
+    this.state = "recording";
+  }
+
+  stop() {
+    this.state = "inactive";
+    this.dispatchEvent(
+      Object.assign(new Event("dataavailable"), {
+        data: new Blob(["audio"], { type: this.mimeType }),
+      }),
+    );
+    this.dispatchEvent(new Event("stop"));
+  }
+}
+
+const mediaDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
 const createObjectUrl = URL.createObjectURL;
 const revokeObjectUrl = URL.revokeObjectURL;
 beforeEach(() => {
@@ -56,6 +102,12 @@ afterEach(() => {
   URL.createObjectURL = createObjectUrl;
   URL.revokeObjectURL = revokeObjectUrl;
   vi.resetAllMocks();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  if (mediaDevices) Object.defineProperty(navigator, "mediaDevices", mediaDevices);
+  else Reflect.deleteProperty(navigator, "mediaDevices");
+  dictationFixture.capabilities = null;
+  dictationFixture.stream = undefined;
 });
 
 const screenshot = () =>
@@ -78,6 +130,79 @@ function Composer({ onSend }: { readonly onSend: (draft: InboxDraft) => void }) 
     />
   );
 }
+
+test("dictated revisions replace the selection in the host draft before sending", async () => {
+  dictationFixture.capabilities = {
+    isEnabled: true,
+    authMethod: "chatgpt",
+    shortcutLabel: "Ctrl+M",
+    capabilities: {
+      composer: true,
+      global: true,
+      history: true,
+      streaming: "available",
+      semanticCleanup: false,
+      sounds: false,
+      voiceDictionary: false,
+      microphoneOwner: "none",
+      auth: "chatgpt",
+    },
+  };
+  vi.stubGlobal("api", {
+    invoke: async (channel: string) => {
+      if (channel === "codex:dictation:state:read") return dictationFixture.capabilities;
+      if (channel === "codex:dictation:microphone-access:request") return { kind: "granted" };
+      if (channel === "codex:dictation:microphone-lease:acquire") return true;
+      if (channel === "codex:dictation:settings:read") return DEFAULT_DICTATION_SETTINGS;
+      if (channel === "codex-command-keymap-state") return createCommandKeymapState();
+      return null;
+    },
+    on: () => () => undefined,
+  });
+  vi.stubGlobal("MediaRecorder", InboxMediaRecorder);
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      enumerateDevices: async () => [],
+      getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [] }),
+    },
+  });
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  const clock = vi.spyOn(performance, "now").mockReturnValue(1_000);
+  const client = createTestQueryClient();
+  client.setQueryData(commandKeymapStateQueryOptions().queryKey, createCommandKeymapState());
+  const onSend = vi.fn();
+  const view = render(
+    <TestQueryProvider client={client}>
+      <Composer onSend={onSend} />
+    </TestQueryProvider>,
+  );
+
+  const text = view.getByRole("textbox", { name: "Message your Inbox" });
+  if (!(text instanceof HTMLTextAreaElement)) throw new Error("Inbox text field is not a textarea");
+  const dictate = await view.findByRole("button", { name: "Dictate" });
+  await act(async () => {
+    fireEvent.change(text, { target: { value: "Before old after" } });
+    text.focus();
+    text.setSelectionRange(7, 10);
+    fireEvent.click(dictate);
+  });
+  await view.findByRole("button", { name: "Stop dictation" });
+  await act(async () => {
+    dictationFixture.stream?.("spoken", { id: 0, text: "spoken" });
+  });
+  expect(text.value).toBe("Before spoken after");
+  clock.mockReturnValue(2_000);
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Transcribe and send" }));
+  });
+  await waitFor(() =>
+    expect(onSend).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Before spoken final after" }),
+    ),
+  );
+  expect(text.value).toBe("Before spoken final after");
+});
 
 test("a pasted image becomes a Library File sent ahead of the message's text", async () => {
   const onSend = vi.fn();

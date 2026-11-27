@@ -806,6 +806,24 @@ pub struct HandbackMessage {
     pub files: Vec<crate::library::LibraryFileChange>,
 }
 
+/// The sender's start choice. Execution defaults are resolved by the Desktop Host.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceInboxStartRequest {
+    NewChat {
+        execution_selection: Option<ProjectWorkspaceInboxExecutionSelection>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preparation_error: Option<String>,
+    },
+    Routed {
+        /// The host's settings decide whether this explicit request skips routing.
+        suggestions_off: bool,
+        execution_selection: Option<ProjectWorkspaceInboxExecutionSelection>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preparation_error: Option<String>,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::ProjectWorkspaceInboxExecutionSelection;

@@ -76,6 +76,7 @@ pub(super) fn admit<'a>(
         } | ProjectWorkspaceIntent::BeginInboxRouting { .. }
             | ProjectWorkspaceIntent::SettleInboxSuggestion { .. }
             | ProjectWorkspaceIntent::RecordInboxRoutingRefusal { .. }
+            | ProjectWorkspaceIntent::RecordInboxStartPreparationFailure { .. }
             | ProjectWorkspaceIntent::StartInboxRoutingRun { .. }
     ) {
         return Err(denied(

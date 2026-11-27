@@ -108,6 +108,7 @@ fn settle(connection: &Connection) -> Result<(), StoreError> {
         UPDATE inbox_proposals SET auto_confirm_pending=0, revision=revision+1
         WHERE auto_confirm_pending=1;
         UPDATE member_inbox_preferences SET start_my_requests=0 WHERE start_my_requests=1;
+        UPDATE inbox_start_requests SET consent_basis=NULL WHERE consent_basis IS NOT NULL;
         UPDATE inbox_suggestion_requests SET state='superseded' WHERE state='pending';
         UPDATE inbox_entries
         SET suggestion_state='none', suggestion_request_id=NULL, suggestion_error=NULL,

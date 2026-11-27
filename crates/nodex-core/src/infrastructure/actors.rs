@@ -294,7 +294,11 @@ pub(crate) fn workspace(
         let [Some(member)] = members.as_slice() else {
             return Err(denied());
         };
-        let allowed:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM member_inbox_preferences WHERE member_id=?1 AND start_my_requests=1)",[member],|r|r.get(0))?;
+        let allowed = crate::workspace::inbox::start::can_bind_automatic_confirmation(
+            c,
+            member,
+            proposal_id,
+        )?;
         if !allowed || !crate::library::members::is_active(c, &context.library_id.0, member)? {
             return Err(denied());
         }
@@ -369,6 +373,7 @@ pub(crate) fn workspace(
         | W::BeginInboxDispatch { .. }
         | W::CompleteInboxDispatch { .. }
         | W::FailInboxDispatch { .. }
+        | W::RecordInboxStartPreparationFailure { .. }
         | W::RecordInboxSuggestionFailure { .. } => Some(ServiceKind::InboxRouting),
         W::ClaimTurnNotification { .. } | W::ClaimInboxSnoozeNotification { .. } => {
             Some(ServiceKind::Notifications)

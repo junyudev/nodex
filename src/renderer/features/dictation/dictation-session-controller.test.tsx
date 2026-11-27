@@ -321,6 +321,10 @@ describe("DictationSessionController", () => {
     await vi.waitFor(() => expect(fixture.buffered.transcribe).toHaveBeenCalledOnce());
     fixture.controller.stop("send");
     fixture.controller.stop("send");
+    expect(fixture.controller.getSnapshot()).toMatchObject({
+      kind: "transcribing",
+      action: "send",
+    });
     resolveTranscript("send me");
     await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
 

@@ -3597,6 +3597,7 @@ mod tests {
             (
                 "send-inbox",
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
                     reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: "page:inbox".to_owned(),
