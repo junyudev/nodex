@@ -57,12 +57,12 @@ export const live: Layer.Layer<
       (unsubscribe) => Effect.sync(unsubscribe),
     );
     const { handleControl, handleQuery, handleRevisionedCommand } = ipc;
-    const authorize = (event: IpcMainInvokeEvent, allowCapture = false) =>
+    const authorize = (event: IpcMainInvokeEvent, allowMini = false) =>
       Effect.try({
         try: () => {
           requireTrustedAppRendererSender(event, "Application local state", config.rendererUrl);
           if (
-            !(allowCapture ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id))
+            !(allowMini ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id))
           ) {
             throw new Error("Application local state requires an active Nodex window");
           }

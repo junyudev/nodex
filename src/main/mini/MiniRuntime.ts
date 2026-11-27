@@ -78,7 +78,8 @@ export const live = (preloadPath: string) =>
           }),
         );
       }
-      const placements = yield* Queue.unbounded<MiniPlacement>();
+      // Only where Mini was last left matters; a newer placement replaces one not yet saved.
+      const placements = yield* Queue.sliding<MiniPlacement>(1);
       yield* Effect.addFinalizer(() => Queue.shutdown(placements));
       yield* Queue.take(placements).pipe(
         Effect.flatMap((input) => settings.update({ type: "update-mini-placement", input })),

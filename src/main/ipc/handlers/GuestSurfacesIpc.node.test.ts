@@ -72,7 +72,8 @@ describe("CodexVisualizationStateIpc", () => {
             ),
             Layer.succeed(WindowRuntime, {
               has: () => registered,
-              all: () => [
+              hasAppRenderer: () => registered,
+              appRenderers: () => [
                 {
                   isDestroyed: () => false,
                   webContents: {

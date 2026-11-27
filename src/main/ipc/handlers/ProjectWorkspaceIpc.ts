@@ -120,12 +120,12 @@ export const live: Layer.Layer<
     const syncSectionsAfter = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.tap(() => sectionSync.request("local-mutation")));
     const { handleLocalCommitCommand, handlePlainCommand } = ipc;
-    const authorize = (event: IpcMainInvokeEvent, allowCapture = false) =>
+    const authorize = (event: IpcMainInvokeEvent, allowMini = false) =>
       Effect.try({
         try: () => {
           requireTrustedAppRendererSender(event, "Project workspace", config.rendererUrl);
           if (
-            !(allowCapture ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id))
+            !(allowMini ? windows.hasAppRenderer(event.sender.id) : windows.has(event.sender.id))
           ) {
             throw new Error("Project workspace access requires an active Nodex window");
           }
