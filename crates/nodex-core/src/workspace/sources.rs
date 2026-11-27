@@ -70,6 +70,20 @@ pub(super) fn read(
     read: SourceRead,
 ) -> Result<SourceReadValue, StoreError> {
     match read {
+        SourceRead::GitHubThreadLinks {
+            host,
+            repository,
+            number,
+        } => {
+            let links = super::thread_follows::linked_work(
+                connection,
+                library,
+                &host,
+                &repository,
+                number,
+            )?;
+            Ok(SourceReadValue::GitHubThreadLinks { links })
+        }
         SourceRead::EventAutomationWatching {
             source_id,
             repository,

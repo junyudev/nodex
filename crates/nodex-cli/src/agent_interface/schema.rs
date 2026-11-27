@@ -77,6 +77,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["automations", _] => document::<crate::automations::AutomationMutationResult>(),
         ["sources", "list"] => document::<Vec<nodex_core_contracts::sources::Source>>(),
         ["sources", "status"] => document::<Vec<crate::sources::SourceStatus>>(),
+        ["sources", "links"] => document::<nodex_core_contracts::sources::GitHubThreadLinks>(),
         ["sources", "triggers"] => document::<crate::sources::SourceTriggerWindow>(),
         ["sql", "schema"] => document::<nodex_core_contracts::sql::SqlSchema>(),
         ["sql", "query"] => document::<nodex_core_contracts::sql::SqlResult>(),

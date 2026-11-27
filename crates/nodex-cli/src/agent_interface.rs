@@ -215,6 +215,21 @@ const COMMANDS: &[CommandMetadata] = &[
         example_argv: &["sources", "status"],
     },
     CommandMetadata {
+        path: &["sources", "links"],
+        capability: "sources",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "github_thread_links",
+        errors: READ_ERRORS,
+        example: "nodex sources links --thread https://github.com/owner/repo/pull/1",
+        example_argv: &[
+            "sources",
+            "links",
+            "--thread",
+            "https://github.com/owner/repo/pull/1",
+        ],
+    },
+    CommandMetadata {
         path: &["sources", "triggers"],
         capability: "sources",
         effect: CommandEffect::Read,

@@ -11,17 +11,7 @@ import type {
 import { MainConfig } from "../../app/MainConfig";
 import { GitActions } from "../../git-application/GitActions";
 import { readGitRepositoryIdentity } from "../../git-repository-identity-service";
-import {
-  createGhPr,
-  createGhPrComment,
-  mergeGhPr,
-  readGhCliStatus,
-  readGhPrChecks,
-  readGhPrComments,
-  readGhPrDiff,
-  readGhPrStatus,
-  updateGhPr,
-} from "../../github-pr-service";
+import { createGhPr, readGhPrStatus } from "../../github-pr-service";
 import type { GitActionOperationRuntimeError } from "../../host-runtime/GitActionOperationRuntime";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -100,14 +90,7 @@ export const live: Layer.Layer<
     yield* invokeEffectPlainCommand("git:action:commit", (input) => gitActions.commit(input));
     yield* invokeEffectPlainCommand("git:action:push", (input) => gitActions.push(input));
     yield* invokeEffectControl("git:action:cancel", (input) => gitActions.cancel(input));
-    yield* invokeQuery("gh-cli-status", readGhCliStatus);
     yield* invokeQuery("gh-pr-status", readGhPrStatus);
-    yield* invokeQuery("gh-pr-checks", readGhPrChecks);
-    yield* invokeQuery("gh-pr-comments", readGhPrComments);
-    yield* invokeQuery("gh-pr-diff", readGhPrDiff);
-    yield* invokePlainCommand("gh-pr-comment", createGhPrComment);
-    yield* invokePlainCommand("gh-pr-merge", mergeGhPr);
-    yield* invokePlainCommand("gh-pr-update", updateGhPr);
     yield* invokePlainCommand("gh-pr-create", createGhPr);
   }),
 );

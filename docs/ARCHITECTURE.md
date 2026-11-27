@@ -113,7 +113,8 @@ and the phone's [Effect boundary](adr/0076-mobile-runtime-effect-boundary.md).
 Core owns Library-scoped Source configuration, leased read positions, immutable
 Triggers, external threads, Page follows, delivery intent, frozen Channel replies,
 unified Problems and the rebuildable Activity projection. The shared Host kernel owns the scoped Source
-supervisor, GitHub network reads and writes, verified CLI credential lifetime, sender
+supervisor, GitHub network reads and writes including interactive thread reads and actions
+for GitHub tabs, verified CLI credential lifetime, sender
 reconciliation, and delivery through Runtime admission. Poll results commit
 facts and their read position through one typed transaction; renderer and CLI
 consume semantic reads. See [Sources](product-specs/sources-behavior.md).

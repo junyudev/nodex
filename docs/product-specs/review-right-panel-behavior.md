@@ -147,16 +147,9 @@ changed-line limits still apply.
 
 `review-patch` is a read-only full-patch query used for commands such as `Copy git apply command`; it does not mutate the worktree or index. Patch application and revert actions use worker method `apply-patch`, which is the only Git-backed Review operation that applies patch content.
 
-GitHub pull-request review uses typed `gh`-backed IPC:
+Checkout-bound pull request status and creation use typed `gh`-backed IPC:
 
-- `gh-cli-status`
 - `gh-pr-status`
-- `gh-pr-checks`
-- `gh-pr-comments`
-- `gh-pr-diff`
-- `gh-pr-comment`
-- `gh-pr-merge`
-- `gh-pr-update`
 - `gh-pr-create`
 
 When `gh` is missing, unauthenticated, or the repository has no remote, main returns typed disabled states. Renderer surfaces disabled/error UI from those states instead of inferring capability from missing data.
@@ -169,4 +162,4 @@ Local drafts render in the diff annotation slot as `Local comment` cards. The he
 
 Pending review-diff comments are sent with the next thread turn, queued follow-up, or steer. Renderer stores them in `CodexPromptInput.commentAttachments`; main converts each one into a text user input and also writes structured JSON to `additionalContext["review-diff-comments"]` with `kind: "application"`. Each attachment includes `type: "comment"`, text content, `position.path`, `position.side` (`left`/`right`), `line`, optional `start_line` / `start_side`, and optional `localDiffHunk`.
 
-Assistant `::code-comment{title body file start end priority}` directives are parsed separately from normal text and render as readonly Codex line annotation cards on matching file diffs. File-level comments without `start` still render above the file diff. GitHub pull-request inline review comments use the PR review-comments API, preserving path, line, side, range, reply id, author, URL, and outdated state instead of treating issue-level PR comments as inline annotations.
+Assistant `::code-comment{title body file start end priority}` directives are parsed separately from normal text and render as readonly Codex line annotation cards on matching file diffs. File-level comments without `start` still render above the file diff.

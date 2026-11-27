@@ -1,0 +1,85 @@
+{
+  "data": {
+    "repository": {
+      "viewerPermission": "READ",
+      "isArchived": false,
+      "isLocked": false,
+      "issue": {
+        "url": "https://github.com/cli/cli/issues/15176",
+        "title": "Improve file selection",
+        "body": "Choose a file from the current directory.",
+        "createdAt": "2026-11-26T19:23:33Z",
+        "updatedAt": "2026-11-26T19:31:31Z",
+        "closedAt": "2026-11-26T19:31:31Z",
+        "locked": true,
+        "state": "CLOSED",
+        "viewerCanClose": false,
+        "viewerCanReopen": false,
+        "author": {
+          "login": "fredericlepied",
+          "avatarUrl": "https://avatars.githubusercontent.com/u/3169598?v=4",
+          "url": "https://github.com/fredericlepied",
+          "__typename": "User"
+        },
+        "labels": {
+          "nodes": [
+            {
+              "name": "enhancement",
+              "color": "0dd8ac",
+              "description": "a request to improve CLI"
+            },
+            {
+              "name": "gh-api",
+              "color": "92486D",
+              "description": "relating to the gh api command"
+            }
+          ]
+        },
+        "assignees": {
+          "nodes": []
+        },
+        "stateReason": "NOT_PLANNED",
+        "closedByPullRequestsReferences": {
+          "nodes": []
+        },
+        "timelineItems": {
+          "pageInfo": {
+            "hasPreviousPage": false
+          },
+          "nodes": [
+            {
+              "__typename": "IssueComment",
+              "id": "IC_kwDODKw3uc8AAAABrUDW4g",
+              "author": {
+                "login": "cli-triage",
+                "avatarUrl": "https://avatars.githubusercontent.com/in/3557673?v=4",
+                "url": "https://github.com/apps/cli-triage",
+                "__typename": "Bot"
+              },
+              "isMinimized": false,
+              "body": "Thanks for reporting this.",
+              "createdAt": "2026-11-26T19:31:02Z",
+              "lastEditedAt": null,
+              "url": "https://github.com/cli/cli/issues/15176#issuecomment-7201674978"
+            },
+            {
+              "__typename": "IssueComment",
+              "id": "hidden",
+              "author": {
+                "login": "cli-triage",
+                "avatarUrl": "https://avatars.githubusercontent.com/in/3557673?v=4",
+                "url": "https://github.com/apps/cli-triage",
+                "__typename": "Bot"
+              },
+              "isMinimized": true,
+              "body": "Hidden",
+              "createdAt": "2026-11-26T19:31:02Z",
+              "lastEditedAt": null,
+              "url": "https://github.com/cli/cli/issues/15176#issuecomment-7201674978"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

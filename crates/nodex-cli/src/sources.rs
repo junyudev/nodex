@@ -1,5 +1,5 @@
 use crate::{
-    error::CliError,
+    error::{CliError, CliErrorCode},
     runtime::{CommandOutput, unwrap_workspace},
 };
 use clap::{Args, Subcommand};
@@ -19,6 +19,12 @@ pub enum SourcesCommand {
     List,
     /// Read Source positions and open problems.
     Status,
+    /// Read linked Pages and their active chats for a GitHub issue or pull request.
+    Links {
+        /// GitHub issue or pull-request URL.
+        #[arg(long)]
+        thread: String,
+    },
     /// Read the most recent immutable observations on an external thread.
     Triggers {
         /// GitHub issue or pull-request URL.
@@ -53,6 +59,18 @@ fn read(client: &CoreClient, read: SourceRead) -> Result<SourceReadValue, CliErr
     Ok(value)
 }
 pub(crate) fn execute(client: &CoreClient, args: SourcesArgs) -> Result<CommandOutput, CliError> {
+    if let SourcesCommand::Links { thread } = args.command {
+        let read_links = thread_links_read(&thread).ok_or_else(|| {
+            CliError::new(
+                CliErrorCode::InvalidInput,
+                "Expected a GitHub issue or pull-request URL",
+            )
+        })?;
+        let SourceReadValue::GitHubThreadLinks { links } = read(client, read_links)? else {
+            unreachable!("GitHub thread links")
+        };
+        return Ok(CommandOutput::Json(serde_json::json!(links)));
+    }
     if let SourcesCommand::Triggers {
         thread,
         limit,
@@ -158,4 +176,43 @@ pub(crate) fn execute(client: &CoreClient, args: SourcesArgs) -> Result<CommandO
         });
     }
     Ok(CommandOutput::Json(serde_json::json!(status)))
+}
+
+fn thread_links_read(input: &str) -> Option<SourceRead> {
+    let url = url::Url::parse(input).ok()?;
+    if !matches!(url.scheme(), "https" | "http")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+    {
+        return None;
+    }
+    let host = url.host_str()?;
+    let path = url.path().strip_prefix('/')?;
+    let path = path.strip_suffix('/').unwrap_or(path);
+    let mut segments = path.splitn(5, '/');
+    let (owner, repo, route, number) = (
+        segments.next()?,
+        segments.next()?,
+        segments.next()?,
+        segments.next()?.parse::<i32>().ok()?,
+    );
+    if owner.is_empty() || repo.is_empty() || number < 1 {
+        return None;
+    }
+    match (route, segments.next()) {
+        ("issues" | "pull", None) | ("pull", Some("files" | "changes" | "commits" | "checks")) => {}
+        ("pull", Some(subpath))
+            if subpath.split_once('/').is_some_and(|(section, item)| {
+                matches!(section, "files" | "changes" | "commits")
+                    && !item.is_empty()
+                    && !item.contains('/')
+            }) => {}
+        _ => return None,
+    }
+    Some(SourceRead::GitHubThreadLinks {
+        host: host.to_owned(),
+        repository: format!("{owner}/{repo}"),
+        number,
+    })
 }

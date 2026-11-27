@@ -21215,6 +21215,81 @@
         },
         "additionalProperties": false
       },
+      "GitHubThreadLinkRole": {
+        "type": "string",
+        "enum": [
+          "own_pr",
+          "origin",
+          "intake",
+          "context"
+        ]
+      },
+      "GitHubThreadLinkedChat": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "title"
+        ],
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "GitHubThreadLinkedPage": {
+        "type": "object",
+        "required": [
+          "pageId",
+          "title",
+          "role",
+          "projectId",
+          "activeChat"
+        ],
+        "properties": {
+          "activeChat": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GitHubThreadLinkedChat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pageId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/GitHubThreadLinkRole"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "GitHubThreadLinks": {
+        "type": "object",
+        "required": [
+          "pages"
+        ],
+        "properties": {
+          "pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitHubThreadLinkedPage"
+            }
+          }
+        }
+      },
       "HandbackMessage": {
         "type": "object",
         "description": "Host-supplied original text and prepared binary attachments, read from Runtime.",
@@ -66422,6 +66497,33 @@
           {
             "type": "object",
             "required": [
+              "host",
+              "repository",
+              "number",
+              "kind"
+            ],
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "github_thread_links"
+                ]
+              },
+              "number": {
+                "type": "integer",
+                "format": "int32"
+              },
+              "repository": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "limit",
               "kind"
             ],
@@ -66722,6 +66824,24 @@
                 "enum": [
                   "page_follows"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "links",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "github_thread_links"
+                ]
+              },
+              "links": {
+                "$ref": "#/components/schemas/GitHubThreadLinks"
               }
             }
           },

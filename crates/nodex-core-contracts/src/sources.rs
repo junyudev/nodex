@@ -299,6 +299,39 @@ pub struct ThreadDeliveryBatch {
     pub created_at_ms: i64,
     pub state: String,
 }
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GitHubThreadLinkRole {
+    OwnPr,
+    Origin,
+    Intake,
+    Context,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubThreadLinkedChat {
+    pub session_id: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubThreadLinkedPage {
+    pub page_id: String,
+    pub title: String,
+    pub role: GitHubThreadLinkRole,
+    #[schema(required = true)]
+    pub project_id: Option<String>,
+    #[schema(required = true)]
+    pub active_chat: Option<GitHubThreadLinkedChat>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct GitHubThreadLinks {
+    pub pages: Vec<GitHubThreadLinkedPage>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SourceRead {
@@ -316,6 +349,12 @@ pub enum SourceRead {
         page_id: String,
         after_thread_id: Option<String>,
         limit: u32,
+    },
+    #[serde(rename = "github_thread_links")]
+    GitHubThreadLinks {
+        host: String,
+        repository: String,
+        number: i32,
     },
     Deliveries {
         page_id: Option<String>,
@@ -368,6 +407,10 @@ pub enum SourceReadValue {
     },
     PageFollows {
         follows: Vec<PageThreadFollow>,
+    },
+    #[serde(rename = "github_thread_links")]
+    GitHubThreadLinks {
+        links: GitHubThreadLinks,
     },
     Deliveries {
         deliveries: Vec<ThreadDelivery>,

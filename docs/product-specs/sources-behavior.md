@@ -25,6 +25,10 @@ GitHub CLI must be installed and signed in with `gh auth login`. When it cannot
 supply the selected account, Settings offers Reconnect with that hint. Nodex
 never silently substitutes the CLI's other account or an environment token.
 
+In the personal Space, GitHub tabs read issues and pull requests and act as the
+connected account in any repository it can access. Opening or acting in a tab
+does not watch the repository, follow the thread, or advance polling positions.
+
 ## What is observed
 
 In watched repositories, Nodex reads known issues and pull requests, including
@@ -107,6 +111,9 @@ follow for its Workspace's active Page, or its sole active Page without a Worksp
 A follow becomes a known thread for every Source watching that repository;
 it is retained after work closes. The Page's GitHub row and work brief list its
 follows. `nodex page show` lists them too.
+
+From a GitHub issue or pull request, Nodex can read its linked Pages and their
+active chats. `nodex sources links --thread <url>` reads the same links.
 
 ## Delivery to work
 

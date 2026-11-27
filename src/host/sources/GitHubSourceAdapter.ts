@@ -6,13 +6,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { z } from "zod";
-import {
-  GitHubApi,
-  PinnedGitHubCredential,
-  SourceAccount,
-  type GitHubRestResponse,
-} from "@nodex/agent-runtime/github-source";
+import { GitHubApi, type GitHubRestResponse } from "@nodex/agent-runtime/github-source";
 import type { components } from "@nodex/core-protocol";
+import { GitHubAccount } from "../github/GitHubAccount";
 const jsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const parseJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 type Model = components["schemas"];
@@ -173,55 +169,30 @@ export interface GitHubSourceReader {
 export class GitHubSourceAdapter extends Context.Service<GitHubSourceAdapter, GitHubSourceReader>()(
   "nodex/GitHubSourceAdapter",
 ) {}
-/** One credential is pinned across identity verification and every page of a poll. */
-export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSourceReader => {
+export const makeGitHubSourceAdapter = (
+  api: GitHubApi["Service"],
+  accounts: GitHubAccount["Service"],
+): GitHubSourceReader => {
+  const verified = (host: string, account?: string, id?: string) =>
+    accounts.verify(host, account, id).pipe(
+      Effect.mapError(
+        (error) =>
+          new SourceReadError({
+            reason: error._tag === "GitHubAccountVerificationError" ? error.reason : "credential",
+          }),
+      ),
+    );
   const authenticated = Effect.fn("GitHubSourceAdapter.authenticated")(function* <A, E, R>(
     host: string,
     account: string | undefined,
     id: string | undefined,
     use: () => Effect.Effect<A, E, R>,
   ) {
-    const credential = yield* api.credential(host).pipe(
-      Effect.provideService(SourceAccount, account),
-      Effect.mapError(() => new SourceReadError({ reason: "credential" })),
-    );
-    return yield* Effect.gen(function* () {
-      const response = yield* api
-        .rest({ host, path: "user", operation: "source.verify" })
-        .pipe(Effect.mapError(() => new SourceReadError({ reason: "credential" })));
-      const parsed = yield* Effect.try({
-        try: () => userSchema.parse(parseJson(response.body)),
-        catch: () => new SourceReadError({ reason: "credential" }),
-      });
-      if (
-        (account && parsed.login.toLowerCase() !== account.toLowerCase()) ||
-        (id && String(parsed.id) !== id)
-      )
-        return yield* new SourceReadError({ reason: "account_changed" });
-      return yield* use();
-    }).pipe(
-      Effect.provideService(PinnedGitHubCredential, {
-        host,
-        token: credential.token,
-        credentialFingerprint: credential.fingerprint,
-      }),
-    );
+    const credential = yield* verified(host, account, id);
+    return yield* credential.use(use());
   });
   const verify = (host: string, account?: string) =>
-    authenticated(host, account, undefined, () =>
-      api.rest({ host, path: "user", operation: "source.account" }).pipe(
-        Effect.flatMap((response) =>
-          Effect.try({
-            try: () => {
-              const value = userSchema.parse(parseJson(response.body));
-              return { login: value.login, id: String(value.id) };
-            },
-            catch: () => new SourceReadError({ reason: "credential" }),
-          }),
-        ),
-        Effect.mapError(() => new SourceReadError({ reason: "credential" })),
-      ),
-    );
+    verified(host, account).pipe(Effect.map(({ login, id }) => ({ login, id })));
   const readRepository = Effect.fn("GitHubSourceAdapter.readRepository")(function* (
     host: string,
     name: string,
@@ -916,6 +887,6 @@ export function nextPage(link: string | undefined, host: string): string | undef
 export const live = Layer.effect(
   GitHubSourceAdapter,
   Effect.gen(function* () {
-    return makeGitHubSourceAdapter(yield* GitHubApi);
+    return makeGitHubSourceAdapter(yield* GitHubApi, yield* GitHubAccount);
   }),
 );

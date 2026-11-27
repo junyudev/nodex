@@ -1,3 +1,4 @@
+import { makeGitHubAccount } from "../github/GitHubAccount";
 import { describe, expect } from "vitest";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -78,7 +79,10 @@ const response = (
   truncated: false,
   invalidUtf8: false,
 });
-function fake(handler?: (input: GitHubRestInput) => GitHubRestResponse, repositoryId = 10) {
+const fake = Effect.fnUntraced(function* (
+  handler?: (input: GitHubRestInput) => GitHubRestResponse,
+  repositoryId = 10,
+) {
   const requests: GitHubRestInput[] = [];
   const pins: string[] = [];
   const accounts: (string | undefined)[] = [];
@@ -101,8 +105,14 @@ function fake(handler?: (input: GitHubRestInput) => GitHubRestResponse, reposito
         return response([]);
       }),
   };
-  return { api, adapter: makeGitHubSourceAdapter(api), requests, pins, accounts };
-}
+  return {
+    api,
+    adapter: makeGitHubSourceAdapter(api, yield* makeGitHubAccount(api)),
+    requests,
+    pins,
+    accounts,
+  };
+});
 const input = (patch: Partial<PollInput> = {}): PollInput => ({
   source,
   repository,
@@ -117,7 +127,7 @@ describe("GitHub Source polling", () => {
     "walks all pages, overlaps comment reads, includes bodyless reviews and quarantines malformed items",
     () =>
       Effect.gen(function* () {
-        const f = fake(({ path }) => {
+        const f = yield* fake(({ path }) => {
           if (path.startsWith("search/"))
             return response({ total_count: 1, incomplete_results: false, items: [pr] });
           if (path === "repos/alice/repo/pulls/7")
@@ -177,7 +187,7 @@ describe("GitHub Source polling", () => {
   );
   it.effect("revalidates saved validators after restart and records no observations twice", () =>
     Effect.gen(function* () {
-      const f = fake(({ path, ifNoneMatch }) => {
+      const f = yield* fake(({ path, ifNoneMatch }) => {
         if (path.startsWith("search/"))
           return response({ total_count: 0, incomplete_results: false, items: [] });
         if (ifNoneMatch) return response(null, { etag: '"same"' }, 304);
@@ -200,7 +210,7 @@ describe("GitHub Source polling", () => {
       });
       const first = yield* f.adapter.poll(input());
       expect(first.triggers.map((trigger) => trigger.kind)).toEqual(["check", "ci_finished"]);
-      const restarted = yield* makeGitHubSourceAdapter(f.api).poll(
+      const restarted = yield* makeGitHubSourceAdapter(f.api, yield* makeGitHubAccount(f.api)).poll(
         input({
           known: first.threads,
           position: { ...position, baseline: true, revision: 1, cursor: first.cursor },
@@ -233,7 +243,7 @@ describe("GitHub Source polling", () => {
       let extraChecks: typeof checks = [];
       let statuses = [{ ...succeededStatus, id: 7, state: "pending" }];
       let checkValidator = '"checks"';
-      const f = fake(({ path, ifNoneMatch }) => {
+      const f = yield* fake(({ path, ifNoneMatch }) => {
         if (path.startsWith("search/"))
           return response({ total_count: 0, incomplete_results: false, items: [] });
         if (path === "repos/alice/repo/pulls/7") return response({ ...pr, head: { sha: head } });
@@ -251,8 +261,9 @@ describe("GitHub Source polling", () => {
         if (path.includes("/statuses")) return response(statuses);
         return response([]);
       });
-      const poll = (previous?: PollResult) =>
-        makeGitHubSourceAdapter(f.api).poll(
+      const poll = Effect.fnUntraced(function* (previous?: PollResult) {
+        const adapter = makeGitHubSourceAdapter(f.api, yield* makeGitHubAccount(f.api));
+        return yield* adapter.poll(
           previous
             ? input({
                 known: previous.threads,
@@ -271,7 +282,7 @@ describe("GitHub Source polling", () => {
                 },
               }),
         );
-
+      });
       const pending = yield* poll();
       expect(pending.triggers.map((trigger) => trigger.kind)).toEqual(["check", "status"]);
       statuses = [succeededStatus, { ...statuses[0]!, context: "DEPLOY" }];
@@ -331,7 +342,7 @@ describe("GitHub Source polling", () => {
       Effect.gen(function* () {
         let state = "failure";
         let closed = false;
-        const f = fake(({ path }) => {
+        const f = yield* fake(({ path }) => {
           if (path.startsWith("search/"))
             return response({ total_count: 0, incomplete_results: false, items: [] });
           if (path === "repos/alice/repo/pulls/7")
@@ -386,7 +397,9 @@ describe("GitHub Source polling", () => {
   );
   it.effect("never accepts another account or an incomplete discovery window", () =>
     Effect.gen(function* () {
-      const f = fake(() => response({ total_count: 0, incomplete_results: true, items: [] }));
+      const f = yield* fake(() =>
+        response({ total_count: 0, incomplete_results: true, items: [] }),
+      );
       expect(yield* f.adapter.poll(input()).pipe(Effect.flip)).toMatchObject({
         reason: "discovery_incomplete",
       });
@@ -402,7 +415,7 @@ describe("GitHub Source polling", () => {
     () =>
       Effect.gen(function* () {
         let state = "failure";
-        const f = fake(({ path }) => {
+        const f = yield* fake(({ path }) => {
           if (path.startsWith("search/"))
             return response({ total_count: 0, incomplete_results: false, items: [] });
           if (path === "repos/alice/repo/pulls/7") return response(pr);
@@ -458,7 +471,7 @@ describe("GitHub Source polling", () => {
   );
   it.effect("baselines a newly watched repository independently of an older Source", () =>
     Effect.gen(function* () {
-      const f = fake(({ path }) => {
+      const f = yield* fake(({ path }) => {
         if (path.startsWith("search/"))
           return response({ total_count: 1, incomplete_results: false, items: [pr] });
         if (path === "repos/alice/repo/pulls/7") return response(pr);
@@ -509,7 +522,7 @@ it.effect(
   "verifies a context URL with pinned account and immutable repository identity before following",
   () =>
     Effect.gen(function* () {
-      const f = fake(({ path }) =>
+      const f = yield* fake(({ path }) =>
         path === "repos/alice/repo"
           ? response({ id: 10, full_name: "alice/repo" })
           : response({
@@ -537,7 +550,7 @@ it.effect(
         expect(result._tag).toBe("Failure");
       }
       expect(f.requests.length).toBe(before);
-      const changed = fake(undefined, 20);
+      const changed = yield* fake(undefined, 20);
       expect(
         (yield* changed.adapter.verifyThread(source, pr.html_url).pipe(Effect.result))._tag,
       ).toBe("Failure");
@@ -549,7 +562,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const head = { sha: "abc", ref: "nodex-1-work", repo: { id: 10, full_name: "alice/repo" } };
-      const f = fake(({ path }) => {
+      const f = yield* fake(({ path }) => {
         if (path.startsWith("search/"))
           return response({ total_count: 0, incomplete_results: false, items: [] });
         if (path.startsWith("repos/alice/repo/pulls?"))
@@ -578,7 +591,7 @@ it.effect(
 );
 it.effect("refuses a replacement repository before reading or delivering its threads", () =>
   Effect.gen(function* () {
-    const f = fake(undefined, 20);
+    const f = yield* fake(undefined, 20);
     expect((yield* f.adapter.poll(input()).pipe(Effect.result))._tag).toBe("Failure");
     expect(f.requests.map((r) => r.path)).toEqual(["user", "repos/alice/repo"]);
   }),
@@ -597,7 +610,7 @@ it.effect(
         body: "Please fix this concrete failure",
         labels: [{ name: "bug" }],
       };
-      const f = fake(({ path }) => {
+      const f = yield* fake(({ path }) => {
         if (path.startsWith("search/"))
           return response({ total_count: 1, incomplete_results: false, items: [issue] });
         if (path === "repos/alice/repo/issues/8") return response(issue);

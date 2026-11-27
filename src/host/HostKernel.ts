@@ -22,6 +22,8 @@ import * as Inbox from "./inbox-application/InboxApplication";
 import * as InboxDispatcher from "./inbox-application/InboxDispatcher";
 import * as InboxDispatch from "./inbox-application/InboxDispatchRuntime";
 import * as ChannelSender from "./sources/ChannelSender";
+import * as GitHubAccount from "./github/GitHubAccount";
+import * as GitHubThreads from "./github/GitHubThreads";
 import * as GitHubChannel from "./sources/GitHubChannelAdapter";
 import * as GitHubSource from "./sources/GitHubSourceAdapter";
 import * as Sources from "./sources/SourceSupervisor";
@@ -82,7 +84,12 @@ const schedules = maintenance({}).pipe(Layer.provideMerge(clock));
 const decisions = Layer.merge(Decisions.live, notificationIntents).pipe(
   Layer.provideMerge(schedules),
 );
-export const applications = Layer.mergeAll(GitHubSource.live, GitHubChannel.live).pipe(
+export const applications = Layer.mergeAll(
+  GitHubSource.live,
+  GitHubChannel.live,
+  GitHubThreads.live,
+).pipe(
+  Layer.provide(GitHubAccount.live),
   Layer.provide(GitHubPlatform.live),
   Layer.provideMerge(decisions),
 );

@@ -7,8 +7,20 @@ import * as GitHubApiModule from "./github/GitHubApi.ts";
 import * as GitHubCredentialsModule from "./github/GitHubCredentials.ts";
 import * as GitHubQuota from "./github/GitHubQuota.ts";
 import * as SourceControlRateLimit from "./github/SourceControlRateLimit.ts";
-export { GitHubApi, PinnedGitHubCredential } from "./github/GitHubApi.ts";
-export type { GitHubApiError, GitHubRestInput, GitHubRestResponse } from "./github/GitHubApi.ts";
+export {
+  GitHubApi,
+  GitHubApiAuthenticationError,
+  GitHubApiNotFoundError,
+  GitHubApiRateLimitError,
+  GitHubApiResponseError,
+  PinnedGitHubCredential,
+} from "./github/GitHubApi.ts";
+export type {
+  GitHubApiError,
+  GitHubGraphQlInput,
+  GitHubRestInput,
+  GitHubRestResponse,
+} from "./github/GitHubApi.ts";
 export { GitHubCredentials, GitHubNotSignedInError } from "./github/GitHubCredentials.ts";
 export const SourceAccount = Context.Reference<string | undefined>("nodex/GitHubSourceAccount", {
   defaultValue: () => undefined,
