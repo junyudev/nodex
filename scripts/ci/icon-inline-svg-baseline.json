@@ -32,6 +32,10 @@
     "src/renderer/components/workbench/database-list/database-list-nesting-lines.tsx": 1,
     "src/renderer/components/workbench/review-diff-panel.tsx": 1,
     "src/renderer/components/workbench/toggle-list-icon.tsx": 1,
+    "src/renderer/components/workbench/workbench-rail-update-button.tsx": {
+      "count": 1,
+      "reason": "The rail update fills a data-driven download progress ring inside its accent disc; the arc encodes how much of the update has downloaded, not a reusable control icon."
+    },
     "src/renderer/components/workbench/workbench-rail-usage-meter.tsx": {
       "count": 1,
       "reason": "The usage meter renders a data-driven progress ring around the shared provider mark; its arcs encode remaining capacity, not a reusable control icon."
