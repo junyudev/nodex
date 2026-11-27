@@ -5,8 +5,8 @@ import type { LoginItemSettings } from "electron";
 export const WINDOWS_STARTUP_ARGUMENT = "--startup";
 export const WINDOWS_LOGIN_ITEM_NAME = "Nodex";
 
-// Electron's openAtLogin only observes the AUMID-named Run value. Our NSIS-owned
-// value has its own name; launchItems also preserves Windows' approval decision.
+// Electron's openAtLogin only observes the AUMID-named Run value. Nodex keeps
+// its own Run value name, and launchItems reflects Windows' approval decision.
 // Its args omit switches, so they cannot identify the --startup activation.
 export const windowsLoginItemEnabled = (
   executable: string,

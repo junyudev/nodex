@@ -12,7 +12,7 @@ export function resolveSettingsHostPresentation(platform: string) {
     appUpdates: capabilities.autoUpdate,
     /** Hosts where parts of Nodex install after the app; the section lists what this build has. */
     components: platform === "darwin",
-    launchAtLogin: platform === "win32" || platform === "windows",
+    launchAtLogin: platform === "darwin" || platform === "win32" || platform === "windows",
   };
 }
 

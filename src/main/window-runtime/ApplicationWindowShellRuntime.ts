@@ -32,6 +32,7 @@ import type { ElectronWindowBackdrop } from "../electron-window-backdrop";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 import { getLogger } from "../logging/logger";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
   resolveCodexTitleBarOptions,
   syncWindowNavigationChrome,
@@ -69,15 +70,13 @@ export interface ApplicationWindowShellRuntimeService {
   readonly completeActivation: (webContentsId: number) => void;
   readonly create: (
     session: WindowSessionRecord,
-    presentation?: "background" | "foreground" | "hidden",
+    presentation?: "background" | "foreground",
     focus?: "composer",
   ) => BrowserWindow;
   readonly failAll: (cause: unknown) => void;
   readonly failActivation: (webContentsId: number, cause: unknown) => void;
-  readonly openInitial: (
-    policy: WindowRestorePolicy,
-    presentation?: "foreground" | "hidden",
-  ) => readonly BrowserWindow[];
+  /** Consumes the startup restore once, even after every restored window has closed. */
+  readonly openInitial: (target?: "personal") => readonly BrowserWindow[];
   readonly reportRenderer: (webContentsId: number) => void;
 }
 
@@ -95,6 +94,7 @@ export interface ApplicationWindowShellRuntimeOptions {
     readonly getPrimaryDisplay: () => Display;
   };
   readonly iconPath: string;
+  readonly initialRestorePolicy: WindowRestorePolicy;
   readonly installContextMenu: (window: BrowserWindow) => () => void;
   readonly onRendererDocumentLoadFailure?: (input: { readonly cause: unknown }) => void;
   readonly platform: NodeJS.Platform;
@@ -111,7 +111,7 @@ interface ShellRecord {
   activationWatchdogPending: boolean;
   readonly gate: ActivationGate;
   phase: ApplicationWindowShellPhase;
-  readonly presentation: "background" | "foreground" | "hidden";
+  readonly presentation: "background" | "foreground";
   readyToShow: boolean;
   revealed: boolean;
   readonly session: WindowSessionRecord;
@@ -210,6 +210,7 @@ export const live = (
           const activationOrder: number[] = [];
           let activationGateOwner: number | null = null;
           let initialRestoreComplete = false;
+          let pendingRestorePolicy: WindowRestorePolicy | null = options.initialRestorePolicy;
 
           const watchdogKey = (kind: "activation" | "show", webContentsId: number): string =>
             `${kind}:${webContentsId}`;
@@ -227,8 +228,7 @@ export const live = (
             record: ShellRecord,
             reason: "activation" | "ready" | "watchdog",
           ): void => {
-            if (record.presentation === "hidden" || record.revealed || record.window.isDestroyed())
-              return;
+            if (record.revealed || record.window.isDestroyed()) return;
             record.revealed = true;
             clearShowWatchdog(record);
             if (record.presentation === "background") record.window.showInactive();
@@ -569,14 +569,20 @@ export const live = (
               if (activationOrder[0] === webContentsId) activationOrder.shift();
               openNextActivationGate();
             },
-            openInitial: (policy, presentation = "foreground") => {
-              if (records.size > 0) return [...records.values()].map(({ window }) => window);
-              const sessions = options.windows.selectStartupSessions(policy);
+            openInitial: (target) => {
+              const policy = pendingRestorePolicy;
+              if (policy === null) return [];
+              pendingRestorePolicy = null;
+              const selected = options.windows.selectStartupSessions(policy);
+              const first =
+                target === "personal"
+                  ? (selected.find((session) => !session.activeSpaceId) ??
+                    options.windows.createFreshSession())
+                  : selected[0];
+              if (!first) return [];
+              const sessions = [first, ...selected.filter((session) => session !== first)];
               const windows = sessions.map((session, index) =>
-                create(
-                  session,
-                  presentation === "hidden" ? "hidden" : index === 0 ? "foreground" : "background",
-                ),
+                create(session, index === 0 ? "foreground" : "background"),
               );
               const primary = windows[0];
               if (primary) options.windows.markFocused(primary.webContents.id);
@@ -607,6 +613,7 @@ export const live = (
 export const configuredLive: Layer.Layer<
   ApplicationWindowShellRuntime,
   never,
+  | ApplicationSettings
   | AppProtocolRuntime
   | ElectronDesktop
   | MainConfig
@@ -621,6 +628,8 @@ export const configuredLive: Layer.Layer<
     const desktop = yield* ElectronDesktop;
     const shutdown = yield* MainShutdown;
     const windows = yield* WindowRuntime;
+    const settings = yield* ApplicationSettings;
+    const { windowRestore } = yield* settings.snapshot().pipe(Effect.orDie);
     const { default: contextMenu } = yield* Effect.promise(() => import("electron-context-menu"));
     const logger = getLogger({ component: "application-window-shell-recovery" });
     let recoveryPromptOpen = false;
@@ -628,6 +637,7 @@ export const configuredLive: Layer.Layer<
       iconPath: config.isPackaged
         ? `${config.resourcesPath}/icon.png`
         : `${config.projectRootPath}/resources/icon.png`,
+      initialRestorePolicy: windowRestore.policy,
       installContextMenu: (window) => {
         let labels: Labels = {};
         return contextMenu({

@@ -53,19 +53,17 @@ development has no persistent GUID. Regenerate the committed assets from
 `resources/nodex-icon.svg` with `vp exec tsx scripts/sync-windows-tray-icons.ts`
 or the existing `vp run sync:icons` command.
 
-The per-user installer enables launch at login by registering
-`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Nodex` as the installed
-executable with `--startup`. Windows Startup Apps owns enablement. General shows
-Launch at login status and Open Startup Apps. Install-over preserves registration
-and Windows' disabled state. Uninstall removes the Run value and startup approval
-only when the command still belongs to that installation; another installation's
-registration is left intact. No system service or elevation is required.
+Enabling **Open at login** in General registers
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Nodex` for the installed
+executable with `--startup`. Windows Startup Apps can also control enablement.
+Install-over preserves registration and Windows' disabled state. Uninstall removes
+the Run value and startup approval when the command still belongs to that
+installation.
 
-Startup activation creates hidden Workbench windows and the tray, and starts Core
-and Agent Runtime without showing or focusing a window. A startup activation of
-an already-running Desktop never navigates, opens or focuses windows. An ordinary
-launch, `nodex://` link or tray action reveals the existing window. Closing the
-last failed startup window still quits through the normal recovery boundary.
+Startup activation starts the tray, Core and Agent Runtime without creating
+Workbench windows. The first foreground open applies **Restore windows**.
+An ordinary launch, `nodex://` link or tray action then opens or focuses a
+Workbench window. A repeated startup activation leaves windows as they are.
 
 Install-over and uninstall first close processes whose executable image is inside
 that installation directory. Detached Core receives an authenticated shutdown

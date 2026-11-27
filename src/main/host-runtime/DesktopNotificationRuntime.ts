@@ -47,7 +47,7 @@ interface ActiveDesktopNotification {
   readonly notificationId: string;
   readonly conversationId: string | null;
   readonly navigationPath: string | null;
-  readonly originWebContentsId: number;
+  readonly originWebContentsId: number | null;
   readonly remove: () => void;
 }
 
@@ -55,7 +55,7 @@ export interface DesktopNotificationRuntimeService {
   readonly authorization: NativeNotificationAuthorizationService;
   readonly show: (
     notification: DesktopNotificationPayload,
-    originWebContents: WebContents,
+    originWebContents: WebContents | null,
     onAction: (payload: DesktopNotificationActionPayload) => void,
     onRemove?: () => void,
   ) => void;
@@ -172,13 +172,14 @@ export const layer = (
         onAction,
         onRemove = () => undefined,
       ) => {
-        if (!accepting || !options.isSupported() || originWebContents.isDestroyed()) {
+        if (!accepting || !options.isSupported() || originWebContents?.isDestroyed()) {
           callRemove(onRemove, notification.id);
           return;
         }
 
         const actions = (notification.actions ?? []).slice(0, MAX_ACTIONS);
         const hasReply =
+          originWebContents !== null &&
           notification.kind === "turn-complete" &&
           typeof notification.replyPlaceholder === "string" &&
           notification.replyPlaceholder.trim().length > 0;
@@ -191,13 +192,13 @@ export const layer = (
           notificationId: notification.id,
           conversationId: notification.conversationId ?? null,
           navigationPath: notification.navigationPath ?? null,
-          originWebContentsId: originWebContents.id,
+          originWebContentsId: originWebContents?.id ?? null,
           remove: onRemove,
         };
         notifications.set(occurrenceId, active);
         const present = () => {
           if (notifications.get(occurrenceId) !== active) return;
-          if (!accepting || originWebContents.isDestroyed()) {
+          if (!accepting || originWebContents?.isDestroyed()) {
             remove(occurrenceId, false);
             return;
           }

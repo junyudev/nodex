@@ -28,6 +28,9 @@ export interface MainAppOptions<R, E = MainApplicationError> {
 const runApplication = <R, E>(
   options: MainAppOptions<R, E>,
   onAcquired: (application: MainApplication["Service"] | null) => void,
+  replayActivation: (
+    application: MainApplication["Service"],
+  ) => Effect.Effect<void, MainApplicationError>,
   onClosing: () => void,
 ) =>
   Effect.scoped(
@@ -48,6 +51,7 @@ const runApplication = <R, E>(
             );
           }).pipe(Effect.ensuring(Effect.sync(() => onAcquired(null)))),
         );
+        yield* replayActivation(application);
         if (application.readiness === "ready") {
           for (const event of options.initialEvents) yield* application.handleBootstrapEvent(event);
           if (options.onApplicationReady) yield* options.onApplicationReady(application);
@@ -91,9 +95,14 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
     let quitAllowed = false;
     let completeShutdown = Effect.void;
     let activeApplication: MainApplication["Service"] | null = null;
+    let activationPending = false;
     let failurePhase: "startup" | "closing" = "startup";
     yield* electron.onActivate(
-      Effect.suspend(() => activeApplication?.activate ?? Effect.void).pipe(Effect.orDie),
+      Effect.suspend(() => {
+        if (activeApplication) return activeApplication.activate;
+        activationPending = true;
+        return Effect.void;
+      }).pipe(Effect.orDie),
     );
     yield* electron.onBeforeQuit(() => ({
       preventDefault: !quitAllowed,
@@ -141,6 +150,11 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
         (application) => {
           activeApplication = application;
           if (application) completeShutdown = application.completeShutdown ?? Effect.void;
+        },
+        (application) => {
+          if (!activationPending) return Effect.void;
+          activationPending = false;
+          return application.activate;
         },
         () => {
           failurePhase = "closing";

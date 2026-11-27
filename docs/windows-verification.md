@@ -181,8 +181,8 @@ Use Windows 11 Pro or Enterprise in a hypervisor with snapshot support.
     Quit must drain Core and Agent children and remove the tray. Switch Windows'
     system light/dark appearance while Nodex uses the opposite app appearance,
     restart Explorer, and check icon visibility, refresh and stable placement.
-    Sign out/in with Launch at login On: the tray appears without a visible or
-    focused window; ordinary launch and deep links then reveal the retained window.
+    Enable **Open at login** in General and sign out and back in. The tray
+    appears without a window. An ordinary launch or deep link opens a window.
     Toggle Nodex Off in Windows Startup Apps, reopen General to verify Off, upgrade
     and sign in again to verify it remains Off. Re-enable it, repeat sign-in and
     uninstall; confirm Startup Apps and the notification area no longer list Nodex.

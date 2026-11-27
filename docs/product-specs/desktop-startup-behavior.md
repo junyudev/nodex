@@ -1,15 +1,15 @@
 # Desktop Startup Behavior
 
 Status: Active
-Last updated: 2026-11-22
+Last updated: 2026-11-26
 
-On Windows, the per-user login registration launches Nodex with `--startup`.
-That activation acquires the normal application Scope, including the tray, Core,
-Agent Runtime and hidden canonical Workbench windows. It does not show or focus a
-window, including at renderer readiness or a presentation watchdog. A later
-interactive launch or tray action reveals the retained window. Repeated startup
-activations never become ordinary navigation. Other launches retain the startup
-presentation described below. See [Windows host behavior](windows-host-behavior.md#notification-area-and-startup).
+On macOS and Windows, **Open at login** starts Nodex in the background so
+Mini’s shortcut is ready. Core, Agent Runtime and background services start
+without creating a Workbench window. The first foreground Workbench open applies
+the **Restore windows** setting, including when opened from the Dock, Windows
+tray, a link, or something opened from Mini. Later opens use normal window navigation.
+An additional Windows login activation leaves windows as they are. See
+[Windows host behavior](windows-host-behavior.md#notification-area-and-startup).
 
 ## Promise
 
@@ -90,9 +90,9 @@ profiling is best effort and cannot prevent startup or replace the original fail
 Core, Store, capability-graph, or renderer-import failure retains the Nodex mark in the same window,
 announces an alert, and offers `Restart Nodex`. Restart relaunches the application through the
 scoped shutdown path. Closing the last failed window quits instead of leaving a windowless process;
-Dock activation while the failure window exists focuses that window rather than creating another
-one. A native error dialog is reserved for failures that prevent the renderer document itself from
-loading.
+Dock activation focuses the failure window. After a background launch fails, the Dock icon or
+Windows tray opens the recovery window. A native error dialog is reserved for failures that prevent
+the renderer document from loading.
 
 After React takes ownership of the document, a failed surface import or render retains an
 in-application Nodex mark and `Restart Nodex` action. A failed initial surface reports startup

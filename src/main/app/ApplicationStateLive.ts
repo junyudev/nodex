@@ -24,7 +24,8 @@ import { MainShutdown } from "./MainShutdown";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import { WindowsTrayRuntime, live as windowsTrayLive } from "../host-runtime/WindowsTrayRuntime";
-import { isWindowsStartupActivation } from "../windows-desktop-policy";
+import { wasOpenedAtLogin } from "../platform/electron/ElectronLoginItems";
+import { startupWindowPolicy } from "./startup-window-policy";
 import type * as FileSystem from "effect/FileSystem";
 
 const windowsTray = windowsTrayLive();
@@ -65,13 +66,14 @@ const started = Layer.effect(
   Effect.gen(function* () {
     yield* ApplicationBootstrapIpc;
     const applicationShell = yield* ApplicationWindowShellRuntime;
-    const settings = yield* ApplicationSettings;
     const config = yield* MainConfig;
-    const snapshot = yield* settings.snapshot().pipe(Effect.orDie);
-    applicationShell.openInitial(
-      snapshot.windowRestore.policy,
-      isWindowsStartupActivation(config.platform, config.argv) ? "hidden" : "foreground",
-    );
+    const policy = startupWindowPolicy({
+      platform: config.platform,
+      argv: config.argv,
+      wasOpenedAtLogin: wasOpenedAtLogin(config.platform),
+    });
+    if (policy === "restore") applicationShell.openInitial();
+
     return applicationShell;
   }),
 ).pipe(Layer.provideMerge(bootstrapIpc));
