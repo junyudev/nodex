@@ -48,6 +48,7 @@ import {
   Printer,
   Puzzle,
   RotateCcw,
+  Sparkles,
   Smartphone,
   WifiOff,
 } from "@/components/shared/icons/generic-icons";
@@ -179,6 +180,7 @@ import {
   VisibilityIcon,
   VisibilityOffIcon,
   SettingsGeneralIcon,
+  SettingsImportIcon,
   SidePanelBrowserIcon,
 } from "@/components/shared/icons";
 import { TrashIcon } from "@/components/shared/icons/customize-action-icons";
@@ -1511,7 +1513,19 @@ export function BrowserSidebarPanel({
   };
 
   const clearBrowsingData = async (kind: BrowserBrowsingDataKind) => {
-    const result = await clearBrowserData(kind);
+    showClearBrowsingDataResult(kind, await clearBrowserData(kind));
+  };
+
+  const clearCurrentSiteData = async (origin: string) => {
+    const result = await command({ type: "clear-site-data", ...browserIdentity, origin });
+    if (result.ok) setSiteInfoRevision((revision) => revision + 1);
+    showClearBrowsingDataResult("site-data", result);
+  };
+
+  const showClearBrowsingDataResult = (
+    kind: BrowserBrowsingDataKind,
+    result: { ok: boolean; message?: string },
+  ) => {
     if (result.ok) {
       const labels: Record<BrowserBrowsingDataKind, string> = {
         cookies: intl.formatMessage({
@@ -1686,9 +1700,14 @@ export function BrowserSidebarPanel({
               siteInfo={
                 <BrowserSiteInfoMenu
                   url={snapshot.url}
-                  siteInfo={siteInfo}
+                  siteInfo={
+                    siteInfo?.url === snapshot.url &&
+                    matchesBrowserSidebarTabIdentity(siteInfo, browserIdentity)
+                      ? siteInfo
+                      : null
+                  }
                   disabled={pageActionsDisabled}
-                  onClearSiteData={() => clearBrowsingData("site-data")}
+                  onClearSiteData={clearCurrentSiteData}
                   onResetPermissions={(origin) =>
                     void command({
                       type: "reset-site-permissions",
@@ -2237,7 +2256,7 @@ function BrowserSiteInfoMenu({
   url: string;
   siteInfo: BrowserSiteInfo | null;
   disabled: boolean;
-  onClearSiteData: () => void;
+  onClearSiteData: (origin: string) => void;
   onResetPermissions: (origin: string) => void;
 }) {
   const intl = useIntl();
@@ -2311,7 +2330,10 @@ function BrowserSiteInfoMenu({
             ))}
           </div>
           {siteOrigin ? (
-            <NodexDropdownItem onSelect={() => onResetPermissions(siteOrigin)}>
+            <NodexDropdownItem
+              leftSlot={<ResetIcon className="icon-xs" />}
+              onSelect={() => onResetPermissions(siteOrigin)}
+            >
               {intl.formatMessage({
                 id: "browser.browserSidebarPanel.resetPermissions",
                 defaultMessage: "Reset permissions",
@@ -2320,13 +2342,21 @@ function BrowserSiteInfoMenu({
           ) : null}
         </>
       ) : null}
-      <NodexDropdownSeparator />
-      <NodexDropdownItem onSelect={onClearSiteData}>
-        {intl.formatMessage({
-          id: "browser.browserSidebarPanel.clearBuiltInSiteData",
-          defaultMessage: "Clear built-in Browser site data",
-        })}
-      </NodexDropdownItem>
+      {siteOrigin ? (
+        <>
+          <NodexDropdownSeparator />
+          <NodexDropdownItem
+            leftSlot={<DeleteIcon className="icon-xs" />}
+            tone="danger"
+            onSelect={() => onClearSiteData(siteOrigin)}
+          >
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.clearSiteData",
+              defaultMessage: "Clear site data",
+            })}
+          </NodexDropdownItem>
+        </>
+      ) : null}
     </NodexDropdownMenu>
   );
 }
@@ -2488,7 +2518,7 @@ function BrowserCredentialMenu({
         ))
       )}
       <NodexDropdownItem
-        leftSlot={<KeyRound className="icon-xs" />}
+        leftSlot={<Sparkles className="icon-xs" />}
         onSelect={() => {
           void generateAndFillBrowserCredential(identity).then((result) => {
             if (!result.ok)
@@ -2784,7 +2814,7 @@ function BrowserOverflowMenu({
         })}
       </NodexDropdownItem>
       <NodexDropdownItem
-        leftSlot={<DownloadIcon className="icon-xs" />}
+        leftSlot={<SettingsImportIcon className="icon-xs" />}
         onSelect={onOpenProfileImport}
       >
         {intl.formatMessage({
@@ -2798,8 +2828,8 @@ function BrowserOverflowMenu({
         onSelect={() => onOpenSettings("passwords")}
       >
         {intl.formatMessage({
-          id: "browser.browserSidebarPanel.passwords",
-          defaultMessage: "Passwords",
+          id: "browser.browserSidebarPanel.managePasswords",
+          defaultMessage: "Manage passwords",
         })}
       </NodexDropdownItem>
       <NodexDropdownItem
@@ -2839,31 +2869,53 @@ function BrowserOverflowMenu({
         })}
       </NodexDropdownItem>
       <NodexDropdownSeparator />
-      <NodexDropdownItem disabled={disabled} onSelect={() => onClearBrowsingData("cookies")}>
+      <NodexDropdownItem
+        disabled={disabled}
+        leftSlot={<DeleteIcon className="icon-xs" />}
+        tone="danger"
+        onSelect={() => onClearBrowsingData("cookies")}
+      >
         {intl.formatMessage({
           id: "browser.browserSidebarPanel.clearCookies",
           defaultMessage: "Clear cookies",
         })}
       </NodexDropdownItem>
-      <NodexDropdownItem disabled={disabled} onSelect={() => onClearBrowsingData("cache")}>
+      <NodexDropdownItem
+        disabled={disabled}
+        leftSlot={<DeleteIcon className="icon-xs" />}
+        tone="danger"
+        onSelect={() => onClearBrowsingData("cache")}
+      >
         {intl.formatMessage({
           id: "browser.browserSidebarPanel.clearCache",
           defaultMessage: "Clear cache",
         })}
       </NodexDropdownItem>
-      <NodexDropdownItem onSelect={() => onClearBrowsingData("site-data")}>
+      <NodexDropdownItem
+        leftSlot={<DeleteIcon className="icon-xs" />}
+        tone="danger"
+        onSelect={() => onClearBrowsingData("site-data")}
+      >
         {intl.formatMessage({
           id: "browser.browserSidebarPanel.clearSiteData",
           defaultMessage: "Clear site data",
         })}
       </NodexDropdownItem>
-      <NodexDropdownItem onSelect={() => onClearBrowsingData("history")}>
+      <NodexDropdownItem
+        leftSlot={<DeleteIcon className="icon-xs" />}
+        tone="danger"
+        onSelect={() => onClearBrowsingData("history")}
+      >
         {intl.formatMessage({
           id: "browser.browserSidebarPanel.clearHistory",
           defaultMessage: "Clear history",
         })}
       </NodexDropdownItem>
-      <NodexDropdownItem onSelect={() => onClearBrowsingData("downloads")}>
+      <NodexDropdownItem
+        leftSlot={<DeleteIcon className="icon-xs" />}
+        tone="danger"
+        onSelect={() => onClearBrowsingData("downloads")}
+      >
         {intl.formatMessage({
           id: "browser.browserSidebarPanel.clearDownloadHistory",
           defaultMessage: "Clear download history",
@@ -3052,8 +3104,8 @@ export function BrowserDownloadsPage({
           onClick={() => void onClearHistory()}
         >
           {intl.formatMessage({
-            id: "browser.browserSidebarPanel.clearHistory",
-            defaultMessage: "Clear history",
+            id: "browser.browserSidebarPanel.clearDownloadHistory",
+            defaultMessage: "Clear download history",
           })}
         </button>
         <button

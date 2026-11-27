@@ -6,11 +6,12 @@ import * as Fiber from "effect/Fiber";
 import * as FiberSet from "effect/FiberSet";
 import * as Scope from "effect/Scope";
 import { describe, expect } from "vite-plus/test";
-import type {
-  BrowserSidebarDestroyWebviewRequest,
-  BrowserSidebarTabIdentity,
-  BrowserSidebarTabSnapshot,
-  BrowserUsePresentationRequest,
+import {
+  BROWSER_SIDEBAR_PARTITION,
+  type BrowserSidebarDestroyWebviewRequest,
+  type BrowserSidebarTabIdentity,
+  type BrowserSidebarTabSnapshot,
+  type BrowserUsePresentationRequest,
 } from "../../shared/browser-sidebar";
 import {
   activateWorkbenchSceneSurface,
@@ -168,6 +169,7 @@ const makeFixture = (
     const owner = Object.assign(new EventEmitter(), { isDestroyed: () => false });
     const events: BrowserSidebarEvent[] = [];
     const externalUrls: string[] = [];
+    const clearedStorage: { partition: string; origin: string | undefined }[] = [];
     const leavePage = { accept: false, requests: [] as number[] };
     const pages = makeMemoryPages(options.page ? [options.page] : []);
     const runBackground = yield* FiberSet.makeRuntime<never, void, never>();
@@ -181,9 +183,12 @@ const makeFixture = (
           leavePage.requests.push(ownerId);
           return leavePage.accept;
         },
-        sessionFromPartition: (() => ({
+        sessionFromPartition: ((partition: string) => ({
           clearCache: async () => undefined,
           clearData: async () => undefined,
+          clearStorageData: async (options?: { origin?: string }) => {
+            clearedStorage.push({ partition, origin: options?.origin });
+          },
         })) as never,
         openExternal: async (url) => {
           externalUrls.push(url);
@@ -216,6 +221,7 @@ const makeFixture = (
       owner,
       events,
       externalUrls,
+      clearedStorage,
       leavePage,
       pages: pages.pages,
       runtimeRegistry,
@@ -1627,6 +1633,40 @@ it.effect("resets only the current presented origin under its renderer owner", (
     assert.isTrue((yield* fixture.state.handleCommand(command, { ownerWebContentsId: 7 })).ok);
     assert.deepEqual(fixture.results, [false]);
     assert.isEmpty(readTab(fixture.state).permissionPrompts);
+  }),
+);
+
+it.effect("clears storage only for the current HTTP site under its renderer owner", () =>
+  Effect.gen(function* () {
+    const { state, contents, clearedStorage } = yield* attachedBrowserFixture();
+    const origin = "https://example.com";
+    const command = { ...identity, type: "clear-site-data" as const, origin };
+    assert.isFalse((yield* state.handleCommand(command, { ownerWebContentsId: 8 })).ok);
+    assert.isFalse(
+      (yield* state.handleCommand({ ...command, origin: contents.url }, { ownerWebContentsId: 7 }))
+        .ok,
+    );
+    assert.isFalse(
+      (yield* state.handleCommand(
+        { ...command, origin: "https://other.example" },
+        { ownerWebContentsId: 7 },
+      )).ok,
+    );
+    assert.isTrue((yield* state.handleCommand(command, { ownerWebContentsId: 7 })).ok);
+
+    contents.url = "https://other.example/page";
+    contents.emit("did-navigate", {}, contents.url);
+    assert.isFalse((yield* state.handleCommand(command, { ownerWebContentsId: 7 })).ok);
+
+    contents.url = "blob:https://other.example/id";
+    contents.emit("did-navigate", {}, contents.url);
+    assert.isFalse(
+      (yield* state.handleCommand(
+        { ...command, origin: "https://other.example" },
+        { ownerWebContentsId: 7 },
+      )).ok,
+    );
+    assert.deepEqual(clearedStorage, [{ partition: BROWSER_SIDEBAR_PARTITION, origin }]);
   }),
 );
 

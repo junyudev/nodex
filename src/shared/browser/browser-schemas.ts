@@ -239,6 +239,7 @@ export const BrowserSidebarCommandSchema = z.union([
     origin: z.string().url(),
     permission: z.enum(BROWSER_SITE_PERMISSION_NAMES).optional(),
   }),
+  TargetedCommandSchema({ type: z.literal("clear-site-data"), origin: z.string().url() }),
   z
     .object({
       type: z.literal("register-renderer-session"),

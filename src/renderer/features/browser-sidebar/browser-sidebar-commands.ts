@@ -46,6 +46,7 @@ const browserSidebarCommandDefinitions = {
   "browser-use-upsert-tab": defineBrowserSidebarCommand("browser-use-upsert-tab"),
   "capture-browser-use-route": defineBrowserSidebarCommand("capture-browser-use-route"),
   "capture-screenshot": defineBrowserSidebarCommand("capture-screenshot"),
+  "clear-site-data": defineBrowserSidebarCommand("clear-site-data"),
   "close-find": defineBrowserSidebarCommand("close-find"),
   "close-tab": defineBrowserSidebarCommand("close-tab"),
   "find-next": defineBrowserSidebarCommand("find-next"),

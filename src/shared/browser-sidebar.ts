@@ -625,6 +625,7 @@ export type BrowserSidebarCommand =
       origin: string;
       permission?: BrowserSitePermissionName;
     }>
+  | BrowserSidebarTargetedCommand<{ type: "clear-site-data"; origin: string }>
   | BrowserSidebarTargetedCommand<{ type: "set-title"; title: string }>
   | BrowserSidebarTargetedCommand<{ type: "set-favicon"; faviconUrl?: string }>
   | BrowserSidebarTargetedCommand<{ type: "step-zoom"; delta: number; showBanner?: boolean }>

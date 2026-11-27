@@ -2083,7 +2083,7 @@ export class BrowserState {
           );
         }
 
-        if (command.type === "reset-site-permissions") {
+        if (command.type === "clear-site-data" || command.type === "reset-site-permissions") {
           const page =
             tab.webContentsId === null ? null : this.getPermissionPage(tab.webContentsId);
           if (
@@ -2093,6 +2093,19 @@ export class BrowserState {
             permissionOrigin(page.url) !== command.origin
           )
             return { ok: false, message: "Browser site is no longer current" };
+          if (command.type === "clear-site-data") {
+            if (
+              !isHttpUrl(page.url) ||
+              !isHttpUrl(tab.url) ||
+              permissionOrigin(tab.url) !== command.origin
+            )
+              return { ok: false, message: "Browser site is no longer current" };
+            const browserSession = this.electron.sessionFromPartition(BROWSER_SIDEBAR_PARTITION);
+            yield* tryPlatformPromise(command.type, () =>
+              browserSession.clearStorageData({ origin: command.origin }),
+            );
+            return { ok: true };
+          }
           yield* this.permissions
             .reset(command.origin, command.permission)
             .pipe(
