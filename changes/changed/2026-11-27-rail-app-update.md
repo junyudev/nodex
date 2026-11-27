@@ -1,0 +1,1 @@
+A ready Nodex update now waits at the foot of the rail instead of in a banner over your work. The round button fills while the update downloads; hover it to see the version and what it brings, then click it to restart and update, or choose **Later** to hide it for an hour.

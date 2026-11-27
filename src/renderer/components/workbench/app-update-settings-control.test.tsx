@@ -291,3 +291,38 @@ test("Windows uses the shared update actions and preferences", async () => {
     else root.dataset.codexOs = previousOs;
   }
 });
+
+describe("app update release summary", () => {
+  test("reads the headline and the lead sentence of the first changes", async () => {
+    const { summarizeAppUpdateReleaseNotes } = await import("@/lib/app-update-release-summary");
+    const notes = [
+      "## [0.5.15] - 2026-11-26",
+      "",
+      "Aerial view and tables that fit their content",
+      "",
+      "### Added",
+      "",
+      "- See every Agent at work from above. **Aerial view** shows each chat that is working.",
+      "- Agents can use your signed-in [Dia](https://dia.example) profiles. More detail follows.",
+      "",
+      "### Changed",
+      "",
+      "- Tables size their columns to what they hold, and `snake_case` names stay intact.",
+      "- A fourth change does not fit the summary.",
+    ].join("\n");
+
+    expect(summarizeAppUpdateReleaseNotes(notes)).toEqual({
+      headline: "Aerial view and tables that fit their content",
+      highlights: [
+        "See every Agent at work from above.",
+        "Agents can use your signed-in Dia profiles.",
+        "Tables size their columns to what they hold, and snake_case names stay intact.",
+      ],
+    });
+    expect(summarizeAppUpdateReleaseNotes(null)).toEqual({ headline: null, highlights: [] });
+    expect(summarizeAppUpdateReleaseNotes("### Fixed\n- 修复了同步问题。之后的说明")).toEqual({
+      headline: null,
+      highlights: ["修复了同步问题。"],
+    });
+  });
+});

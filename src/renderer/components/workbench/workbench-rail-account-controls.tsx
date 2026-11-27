@@ -37,6 +37,7 @@ import type {
   CodexRateLimitResetResult,
 } from "@/lib/types";
 import type { IpcApi } from "../../../shared/ipc-api";
+import { WorkbenchRailUpdateButton } from "./workbench-rail-update-button";
 
 type CodexLoginStartResult = IpcApi["codex:account:login:start"]["result"];
 
@@ -442,10 +443,7 @@ export function WorkbenchRailAccountControls({
   };
 
   return (
-    <div
-      data-workbench-rail-account-controls=""
-      className="mt-auto flex flex-col items-center gap-2"
-    >
+    <div data-workbench-rail-account-controls="" className="flex flex-col items-center gap-2">
       <div data-workbench-rail-account="" className="contents">
         {subscriptionUsage ? <ProviderKeyUsageMeters meters={meters} /> : null}
         {subscriptionUsage
@@ -568,13 +566,17 @@ export function WorkbenchRailAccountControls({
  * The rail foot with Main's subscription usage. Kept as its own leaf so a new reading re-renders only
  * these controls.
  */
+/** The rail's foot: a pending app update above the account and usage controls. */
 export function WorkbenchRailFoot(
   props: Omit<WorkbenchRailAccountControlsProps, "subscriptionUsage">,
 ) {
   return (
-    <WorkbenchRailAccountControls
-      {...props}
-      subscriptionUsage={useSubscriptionUsage() ?? undefined}
-    />
+    <div data-workbench-rail-foot="" className="mt-auto flex flex-col items-center gap-2">
+      <WorkbenchRailUpdateButton />
+      <WorkbenchRailAccountControls
+        {...props}
+        subscriptionUsage={useSubscriptionUsage() ?? undefined}
+      />
+    </div>
   );
 }
