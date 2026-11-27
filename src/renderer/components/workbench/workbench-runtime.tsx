@@ -27,6 +27,8 @@ import { useFirstRunPresentation } from "@/features/first-run/first-run-state";
 import { DictationRecordingNavigationContext } from "@/features/dictation/dictation-recording-navigation";
 import { subscribeDictationRecordingNavigation } from "@/lib/global-dictation-commands";
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -154,10 +156,7 @@ import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import { libraryContentRoute, projectContentRoute } from "../../../shared/content-routing-context";
 import { readCaptureSelection } from "@/lib/capture-selection";
-import {
-  InboxQuickCapture,
-  type InboxQuickCaptureRequest,
-} from "@/features/inbox/inbox-quick-capture";
+import type { InboxQuickCaptureRequest } from "@/features/inbox/inbox-quick-capture";
 import type { InboxCaptureDestination } from "@/features/inbox/inbox-capture-card";
 import { resolveInboxCaptureScope } from "@/features/inbox/inbox-capture-scope";
 import {
@@ -530,6 +529,11 @@ import { KeyboardShortcutHelpDialog } from "./keyboard-shortcut-help-dialog";
 import type { CommandMenuMode } from "@/lib/command-palette";
 import type { CodexBackgroundTerminalProcessThreadRef } from "@/lib/codex-background-terminal-processes";
 import { primaryCanvasBlockId } from "../../../shared/block-documents";
+
+/** The Inbox composer and its dictation load with the first capture, not with the Workbench. */
+const InboxQuickCapture = lazy(async () => ({
+  default: (await import("@/features/inbox/inbox-quick-capture")).InboxQuickCapture,
+}));
 
 /** A full-view Chat tab carries the Chat actions without the move between panes. */
 const CHAT_TAB_THREAD_HEADER_SLOT: ThreadStageHeaderSlot = { variant: "chat-tab", paneMove: null };
@@ -6697,12 +6701,14 @@ export function WorkbenchRuntime({
                 />
                 {commandPalette}
                 {inboxQuickCapture ? (
-                  <InboxQuickCapture
-                    request={inboxQuickCapture}
-                    windowSessionId={windowSessionId}
-                    onClose={() => setInboxQuickCapture(null)}
-                    onOpenInbox={openInboxScope}
-                  />
+                  <Suspense fallback={null}>
+                    <InboxQuickCapture
+                      request={inboxQuickCapture}
+                      windowSessionId={windowSessionId}
+                      onClose={() => setInboxQuickCapture(null)}
+                      onOpenInbox={openInboxScope}
+                    />
+                  </Suspense>
                 ) : null}
                 <KeyboardShortcutHelpDialog
                   open={keyboardShortcutHelpOpen}
