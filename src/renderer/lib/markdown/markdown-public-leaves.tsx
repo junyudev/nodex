@@ -1,3 +1,4 @@
+import { isMarkdownInlineIcon } from "./markdown-inline-icon";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import {
   useEffect,
@@ -257,6 +258,23 @@ function MarkdownNativeImage({
   return title ? <NodexTooltip tooltipContent={title}>{image}</NodexTooltip> : image;
 }
 
+function MarkdownInlineIcon({
+  node: _node,
+  align: _align,
+  alt,
+  className,
+  ...props
+}: ComponentProps<"img"> & { node?: Element; align?: string }) {
+  return (
+    <img
+      {...props}
+      alt={alt ?? ""}
+      draggable={false}
+      className={cn("inline-block max-h-[1.25em] w-auto align-[-0.2em]", className)}
+    />
+  );
+}
+
 /** Public primitive adapters observe actual props rather than source-position equality. */
 export const markdownPublicLeafComponents: Components = {
   strong: ({ node, children, className, ...props }) => {
@@ -291,9 +309,12 @@ export const markdownPublicLeafComponents: Components = {
     void node;
     return <code {...props} />;
   },
-  img: ({ node, ...props }) => (
-    <FileMarkdownImageFrame identity={JSON.stringify([props.src, props.srcSet])}>
-      <MarkdownNativeImage {...props} node={node} />
-    </FileMarkdownImageFrame>
-  ),
+  img: ({ node, ...props }) =>
+    isMarkdownInlineIcon(props) ? (
+      <MarkdownInlineIcon {...props} />
+    ) : (
+      <FileMarkdownImageFrame identity={JSON.stringify([props.src, props.srcSet])}>
+        <MarkdownNativeImage {...props} node={node} />
+      </FileMarkdownImageFrame>
+    ),
 };

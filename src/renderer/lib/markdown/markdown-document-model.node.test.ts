@@ -835,3 +835,15 @@ describe("markdown syntax", () => {
     });
   });
 });
+
+describe("Markdown inline icons", () => {
+  test("an image sized or aligned as a glyph reads inside the line", async () => {
+    const { isMarkdownInlineIcon } = await import("./markdown-inline-icon");
+    expect(isMarkdownInlineIcon({ width: "16", height: "16", align: "absmiddle" })).toBe(true);
+    expect(isMarkdownInlineIcon({ height: "32" })).toBe(true);
+    expect(isMarkdownInlineIcon({ width: "20px" })).toBe(true);
+    expect(isMarkdownInlineIcon({ width: "640", height: "16" })).toBe(false);
+    expect(isMarkdownInlineIcon({})).toBe(false);
+    expect(isMarkdownInlineIcon({ width: "50%" })).toBe(false);
+  });
+});
