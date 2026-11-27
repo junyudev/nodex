@@ -162,7 +162,7 @@ Page segment opens the Page. Its controls are View source or View preview for
 HTML, Markdown and SVG, Reload for an HTML preview, Save…, and a menu with Copy
 path, Reveal in Finder, Manage in Page files… and Open in Library….
 
-Reveal in Finder (Reveal in File Explorer on Windows) shows the File where other
+Reveal in Finder (Open in Explorer on Windows) shows the File where other
 apps can take it: a read-only copy of its current version, under the name the
 Page shows, ready to drag into another app or open with one. The Library's own
 storage is never revealed, and the copy is not the File: edits to it never reach

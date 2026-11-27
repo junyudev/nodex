@@ -322,8 +322,8 @@ describe("attachment chip", () => {
           "Open in new tab",
           "Save…",
           "Copy reference",
-          // Finder, File Explorer or File Manager, by platform.
-          expect.stringMatching(/^Reveal in /u),
+          // Reveal in Finder, Open in Explorer or Open in File Manager, by platform.
+          expect.stringMatching(/^(?:Reveal|Open) in /u),
         ]);
         await act(async () => {
           fireEvent.click(within(menu).getByRole("menuitem", { name: "Open in new tab" }));

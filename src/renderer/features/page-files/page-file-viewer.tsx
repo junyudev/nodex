@@ -33,10 +33,10 @@ import {
   saveAuthorizedFile,
 } from "@/lib/library-file-resources";
 import { pageFileHasSourceView, resolvePageFileViewKind } from "@/lib/page-file-view-kind";
-import { revealInFileManagerLabel } from "@/lib/reveal-in-file-manager-label";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { useTheme } from "@/lib/use-theme";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
+import { getFileManagerRevealMessage } from "../../../shared/file-link-openers";
 import { fileSource } from "../../../shared/file-resources";
 import type { LibraryPageFileItem } from "../../../shared/library-files";
 import { LibraryFileContent } from "./library-file-content";
@@ -214,7 +214,7 @@ export function PageFileViewer({
                     disabled={!authority}
                     onSelect={reveal}
                   >
-                    {revealInFileManagerLabel()}
+                    {intl.formatMessage(getFileManagerRevealMessage(navigator.platform))}
                   </NodexDropdownItem>
                   <NodexDropdownSeparator />
                   <NodexDropdownItem leftSlot={<AttachmentIcon />} onSelect={onManage}>

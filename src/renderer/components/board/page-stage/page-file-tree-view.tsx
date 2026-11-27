@@ -23,8 +23,8 @@ import {
 } from "@/components/ui/context-menu";
 import { formatBytes } from "@/lib/file-metadata-format";
 import type { PageFileTreeProvenance, PageFileTreeRow } from "@/lib/page-file-tree";
-import { revealInFileManagerLabel } from "@/lib/reveal-in-file-manager-label";
 import { cn } from "@/lib/utils";
+import { getFileManagerRevealMessage } from "../../../../shared/file-link-openers";
 import type { LibraryPageFileItem } from "../../../../shared/library-files";
 
 type Row = PageFileTreeRow<LibraryPageFileItem>;
@@ -460,7 +460,7 @@ function FileTreeRow({
             </NodexContextMenuItem>
           ) : null}
           <NodexContextMenuItem leftSlot={<FolderIcon />} onSelect={() => actions.onReveal(item)}>
-            {revealInFileManagerLabel()}
+            {intl.formatMessage(getFileManagerRevealMessage(navigator.platform))}
           </NodexContextMenuItem>
           <div role="separator" className="my-1 h-px bg-border" />
           <NodexContextMenuItem
