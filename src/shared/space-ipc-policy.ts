@@ -31,6 +31,7 @@ const desktopChannels: readonly (keyof IpcApi)[] = [
   "set-codex-command-keybinding",
   // Device-wide Agent and Terminal discovery.
   "terminal-shells:list",
+  "links:favicon",
 ];
 
 export const isSpaceIpcChannel = (channel: keyof IpcApi): boolean =>

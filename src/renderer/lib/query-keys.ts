@@ -24,6 +24,10 @@ function normalizeNullable(value: string | null | undefined): string {
 }
 
 export const queryKeys = {
+  linkFavicons: {
+    all: () => spaceQueryKey(["linkFavicons"] as const),
+    host: (host: string) => spaceQueryKey(["linkFavicons", host] as const),
+  },
   /** The Profile's API key connections. */
   providerKeys: () => spaceQueryKey(["providerKeys"] as const),
   providerKeyUsage: () => spaceQueryKey(["providerKeyUsage"] as const),

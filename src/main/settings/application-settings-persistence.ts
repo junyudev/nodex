@@ -211,6 +211,7 @@ interface ServerTomlConfig {
   usage_meters?: Partial<UsageMeterSettings>;
   model_policy?: ModelPolicy;
   open_link_in_target?: LinkOpeningSettings["openLinkInTarget"];
+  fetch_link_favicons?: boolean;
   open_local_url_in_target?: LinkOpeningSettings["openLocalUrlInTarget"];
   external_browser_link_shortcut?: LinkOpeningSettings["externalBrowserLinkShortcut"];
   open_github_threads_in_nodex?: boolean;
@@ -1876,6 +1877,20 @@ export function updateUsageMeterSettings(
     usage_meters: settings,
   });
   return settings;
+}
+
+export function getFetchLinkFavicons(source: ApplicationSettingsDocumentSource): boolean {
+  return loadProfileServerTomlConfig(source).fetch_link_favicons !== false;
+}
+
+export function updateFetchLinkFavicons(
+  enabled: boolean,
+  source: ApplicationSettingsDocumentSource,
+): void {
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    fetch_link_favicons: enabled,
+  });
 }
 
 /** Profile-owned URL destinations; absent values use the effective Desktop defaults. */

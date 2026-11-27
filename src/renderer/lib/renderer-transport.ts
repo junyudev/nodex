@@ -22,6 +22,7 @@ export interface RendererTransport {
   subscribeLinkOpeningSettingsChanges?: (
     callback: (settings: import("../../shared/link-opening-settings").LinkOpeningSettings) => void,
   ) => () => void;
+  subscribeLinkFaviconSettingsChanges?: (callback: (enabled: boolean) => void) => () => void;
   subscribeLinkOpenRequests?: (
     callback: (request: import("../../shared/link-opening").LinkOpenRequest) => void,
   ) => () => void;

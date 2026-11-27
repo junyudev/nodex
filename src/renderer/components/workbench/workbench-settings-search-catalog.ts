@@ -764,6 +764,15 @@ export const settingsMessages = defineMessages({
     defaultMessage: "Show what an agent plans to do after you send a message and move on",
   },
   generalPrivacy: { id: "settings.general.privacy.title", defaultMessage: "Privacy" },
+  generalLinkFaviconLabel: {
+    id: "settings.general.linkFavicons.label",
+    defaultMessage: "Website icons for links",
+  },
+  generalLinkFaviconDescription: {
+    id: "settings.general.linkFavicons.description",
+    defaultMessage:
+      "Icons for sites Nodex doesn't draw itself come from Google's icon service, which receives only each site's domain.",
+  },
   generalShareCrashReports: {
     id: "settings.general.shareCrashReports",
     defaultMessage: "Share crash reports",
@@ -1800,6 +1809,11 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.generalShareUsageAnalytics,
             settingsMessages.generalSendAnonymousCountsOfHowNodex,
             ["Telemetry", "anonymous usage", "Statsig", settingsMessages.generalSeeWhatIsSent],
+          ),
+          entry(
+            settingsMessages.generalLinkFaviconLabel,
+            settingsMessages.generalLinkFaviconDescription,
+            ["favicon", "Google"],
           ),
         ],
       },

@@ -1,5 +1,6 @@
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
+import { useLinkFaviconSettings } from "@/lib/link-favicon-settings";
 import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { startTransition } from "react";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
@@ -31,6 +32,8 @@ export function GeneralSettingsPage({ onPathChange, open }: SettingsSectionPageP
   const intl = useIntl();
   const { runSetupAgain } = useFirstRunEntry();
   const tips = useTipsState();
+  const linkFavicons = useLinkFaviconSettings(open);
+  const linkFaviconsLabel = intl.formatMessage(settingsMessages.generalLinkFaviconLabel);
   return (
     <SettingsPageSurface
       title={intl.formatMessage(settingsMessages.generalGeneral)}
@@ -83,6 +86,17 @@ export function GeneralSettingsPage({ onPathChange, open }: SettingsSectionPageP
       <SectionBlock id="privacy" title={intl.formatMessage(settingsMessages.generalPrivacy)}>
         <DiagnosticsSettingRows open={open} />
         <TelemetrySettingRows open={open} />
+        <SettingRow
+          label={linkFaviconsLabel}
+          description={intl.formatMessage(settingsMessages.generalLinkFaviconDescription)}
+        >
+          <NodexSwitch
+            ariaLabel={linkFaviconsLabel}
+            checked={linkFavicons.enabled ?? true}
+            disabled={linkFavicons.enabled === undefined || linkFavicons.saving}
+            onCheckedChange={linkFavicons.set}
+          />
+        </SettingRow>
       </SectionBlock>
 
       <SectionBlock id="about" title={intl.formatMessage(settingsMessages.generalAbout)}>

@@ -413,6 +413,11 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (payload) callback(payload);
       });
     },
+    subscribeLinkFaviconSettingsChanges(callback) {
+      return bridge.on("link-favicon-settings-changed", (enabled: unknown) => {
+        if (typeof enabled === "boolean") callback(enabled);
+      });
+    },
     subscribeLinkOpenRequests(callback) {
       return bridge.on("link:open-requested", (...args: unknown[]) => {
         const payload = args[0] as import("../../shared/link-opening").LinkOpenRequest | undefined;

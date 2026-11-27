@@ -1281,6 +1281,11 @@ provides attribution, and removing it drops Agent authorship.
   required. New or colliding operations cannot use that exception.
 - Sentry crash reports are on by default in released builds and off in development builds, on CI and under `DO_NOT_TRACK`. They explicitly disable personal, HTTP payload/header/query, AI/MCP content, database payload, queue argument, and stack-variable collection, and scrub local paths, auth/cookie/token fields, prompt text, card descriptions, transcript content, SQL/query strings, and raw request bodies from errors, streamed spans, and envelope trace metadata before upload. Error reports keep every stack frame's code location and the most recent breadcrumbs, but never a frame's source lines or variables. Broad remote log shipping is blocked before transport. Session Replay is a separate off-by-default renderer opt-in that requires crash reports to be enabled, masks all text and inputs, blocks media, and keeps screenshots and broad remote log shipping disabled.
 - Usage analytics follow [Product Analytics Behavior](product-specs/product-analytics-behavior.md). Main is the only exit. Events decode against a closed catalog at the Main boundary, so content has no field to travel in and a renderer cannot report installation or execution facts. The identity is a random per-Profile ID, never linked to an account. Nothing is sent before the first-launch notice has been on screen long enough to act on, turning analytics off discards anything unsent, and the Statsig client key in the application can only submit events. The service sees the connecting IP address as with any request. Nodex does not use Statsig AutoCapture or Session Replay.
+- Website icons for links are fetched by Main from Google's `t0.gstatic.com` icon
+  service. The public site's hostname in a fixed HTTPS origin is the sole link
+  data in the request. Main omits credentials and referrers, rejects redirects,
+  accepts only bounded raster images, and honors the Profile's website icon
+  preference before each request.
 - The bundled Browser automation runtime always starts with its own ambient analytics and diagnostics network disabled. Nodex's telemetry setting never enables that runtime traffic, while page navigation and agent browser control remain available.
 
 ### Mini panel

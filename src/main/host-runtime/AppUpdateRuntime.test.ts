@@ -113,6 +113,8 @@ const buildHarness = (input: {
       threadNotificationSettingsChanges: Stream.never,
       telemetrySettingsChanges: Stream.empty,
       linkOpeningSettingsChanges: Stream.empty,
+      fetchLinkFavicons: Effect.succeed(true),
+      linkFaviconSettingsChanges: Stream.empty,
       acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
       providerKeySettingsChanges: Stream.empty,
       providerKeySecret: () => Effect.die("Unused API key"),

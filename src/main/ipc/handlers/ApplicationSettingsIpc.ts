@@ -116,6 +116,7 @@ type SettingsReadChannel =
   | "settings:mini:get"
   | "settings:window-restore:get"
   | "settings:link-opening:get"
+  | "settings:link-favicons:get"
   | "settings:model-policy:get"
   | "settings:usage-meters:get"
   | "settings:agent-runtime:get"
@@ -262,6 +263,16 @@ export const live: Layer.Layer<
         Effect.sync(() => {
           safeBroadcastToWindows(windows.all(), LINK_OPENING_SETTINGS_CHANGED_CHANNEL, [settings]);
         }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    yield* applicationSettings.linkFaviconSettingsChanges.pipe(
+      Stream.runForEach((enabled) =>
+        Effect.sync(() =>
+          safeBroadcastToWindows(windows.appRenderers(), "link-favicon-settings-changed", [
+            enabled,
+          ]),
+        ),
       ),
       Effect.forkScoped({ startImmediately: true }),
     );
@@ -881,6 +892,23 @@ export const live: Layer.Layer<
             "update-link-opening-settings",
             { type: "update-link-opening", input: parsed },
             (value) => value.linkOpening,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
+      "settings:link-favicons:get",
+      "Website icon settings",
+      (value) => value.fetchLinkFavicons,
+    );
+    yield* ipc.handlePlainCommand("settings:link-favicons:update", (event, input: unknown) =>
+      authorize(event, "Website icon settings").pipe(
+        Effect.andThen(parse("parse-link-favicon-settings", () => z.boolean().parse(input))),
+        Effect.flatMap((enabled) =>
+          update(
+            "update-link-favicon-settings",
+            { type: "update-link-favicons", input: enabled },
+            (value) => value.fetchLinkFavicons,
           ),
         ),
       ),

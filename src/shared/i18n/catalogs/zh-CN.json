@@ -8416,6 +8416,8 @@
   "settings.general.hideCommandsAndOutputs": "隐藏命令及其输出。",
   "settings.general.includeMaskedReplaysOfTheApp": "随崩溃报告一同发送已脱敏的应用会话回放。",
   "settings.general.last": "最后一个窗口",
+  "settings.general.linkFavicons.description": "Nodex 没有内置图标的网站，会从 Google 的图标服务获取，只发送网站的域名。",
+  "settings.general.linkFavicons.label": "链接的网站图标",
   "settings.general.linkifyBareDomains": "将裸域名转成链接",
   "settings.general.managedBy": "由 {managedBy} 管理。",
   "settings.general.markdownFileLinks.label": "Markdown 文件链接",
