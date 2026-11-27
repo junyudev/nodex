@@ -213,7 +213,7 @@ interface WorkbenchSessionCommandsInput {
     readonly toggleSessionSettled: (session: ProjectSession) => Promise<void>;
     readonly stepChat: (direction: "next" | "previous") => Promise<void>;
     readonly openNextChatNeedingReader: () => Promise<void>;
-    readonly toggleOrganize: () => void;
+    readonly toggleAttentionView: () => void;
   };
   readonly refreshProjectSessions: (projectId: string | null) => Promise<unknown>;
   readonly resolveForkLocalEnvironmentConfigPath: (
@@ -912,9 +912,9 @@ export function useWorkbenchSessionCommands({
         void chatLifecycle.openNextChatNeedingReader();
         return;
       }
-      if (matches("toggleSidebarOrganize")) {
+      if (matches("toggleAttentionView")) {
         event.preventDefault();
-        chatLifecycle.toggleOrganize();
+        chatLifecycle.toggleAttentionView();
         return;
       }
       if (!activeSession) return;

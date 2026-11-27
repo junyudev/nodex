@@ -15,6 +15,9 @@ import type { InboxCounts } from "../../../shared/inbox";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NodexHomeMark } from "@/components/ui/nodex-home-mark";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import type { AttentionViewTip } from "@/features/tips/attention-view-tip";
+import { ATTENTION_VIEW_TIP_CHATS } from "@/features/tips/tips-model";
+import { useControlTipTurn } from "@/features/tips/tips-on-screen";
 import { codexSidebarProjectThreadContainerId } from "../../../shared/codex-sidebar-thread-move";
 import {
   CodexProjectRow,
@@ -90,6 +93,7 @@ import {
 } from "@/lib/session-execution";
 import { useAgentRuntimeActivities } from "@/lib/agent-runtime-session-activity";
 import {
+  countChatsAskingReader,
   resolveSettleableReadChats,
   sidebarChatNeedsReader,
   type SidebarAutoSettleDays,
@@ -152,7 +156,11 @@ import { pageTurnPhrase, type PageTurnHolder } from "@/lib/page-turn-phrase";
 import { reviewKey, useAcceptedReviews } from "@/lib/page-accept-undo";
 import { sidebarSectionChatIds } from "@/lib/sidebar-section-navigation";
 import { SidebarChatsSectionMenu } from "./sidebar-chats-section-menu";
-import { SidebarArrangeToggle, SidebarLaneViewMenu, SidebarScopeChip } from "./sidebar-view-menu";
+import {
+  SidebarAttentionViewToggle,
+  SidebarLaneViewMenu,
+  SidebarScopeChip,
+} from "./sidebar-view-menu";
 import {
   SidebarCustomSections,
   SidebarProjectSectionMenu,
@@ -249,8 +257,13 @@ export interface SidebarChatLifecycle {
   readonly onOrganizeChange: (organize: SidebarOrganize) => void;
   readonly autoSettleDays: SidebarAutoSettleDays;
   readonly onAutoSettleDaysChange: (days: SidebarAutoSettleDays) => void;
-  /** Every Project's open chats by attention; read only while the sidebar arranges by it. */
+  /**
+   * Every Project's open chats by attention; read while Attention view is on, and while its tip
+   * waits to know when the view would help.
+   */
   readonly openLane: WorkbenchLibrarySessionLane;
+  /** Attention view's tip while it may still be said. */
+  readonly attentionViewTip: AttentionViewTip | null;
   /** Every Project's settled chats, read only while their shelf is open. */
   readonly settledLane: WorkbenchLibrarySessionLane;
   readonly onToggleSessionSettled: (session: ProjectSessionDomain) => void | Promise<void>;
@@ -272,7 +285,7 @@ export interface SidebarChatLifecycle {
   /** The one Project the lanes and the Inbox entry show, or null for every Project. */
   readonly scopeProjectId: string | null;
   readonly onScopeChange: (projectId: string | null) => void;
-  /** The lists the attention arrangement leaves out. */
+  /** The lists Attention view leaves out. */
   readonly hiddenShelves: readonly SidebarOptionalShelf[];
   readonly onHiddenShelvesChange: (shelves: readonly SidebarOptionalShelf[]) => void;
   /** The lines its rows give to what each chat is about. */
@@ -898,6 +911,7 @@ function SidebarThreadOrganizerSections({
   chatOrder,
   onChatOrderChange,
   lifecycle,
+  onChatsAskingReaderChange,
   onPlaceSession,
   sidebarArchivePendingKeys,
   hasMoreProjects,
@@ -907,7 +921,7 @@ function SidebarThreadOrganizerSections({
 }: {
   /** The reader points at or works in the sidebar, so its lanes hold still. */
   laneHolding: boolean;
-  /** Adjusts what the attention arrangement shows; it stays beside its first heading. */
+  /** Adjusts what Attention view shows; it stays beside its first heading. */
   laneViewMenu: ReactNode;
   /** Messages waiting in each Project's own Inbox. */
   projectInboxCounts: Readonly<Record<string, number>>;
@@ -976,6 +990,8 @@ function SidebarThreadOrganizerSections({
   chatOrder: SidebarChatOrder;
   onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
   lifecycle: SidebarChatLifecycle;
+  /** How many open chats ask for their reader, told while Attention view's tip waits. */
+  onChatsAskingReaderChange: (count: number) => void;
   onPlaceSession: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
   sidebarArchivePendingKeys: ReadonlySet<string>;
   hasMoreProjects: boolean;
@@ -1514,7 +1530,7 @@ function SidebarThreadOrganizerSections({
         grouped?: boolean;
         /** A list spanning Projects names each chat's own on its row. */
         showProject?: boolean;
-        /** Rows arranged by attention say what each chat is about under their title. */
+        /** Rows in Attention view say what each chat is about under their title. */
         previewLines?: 1 | 2;
         /** A snoozed row names when its chat returns. */
         wakeLabel?: string | null;
@@ -1694,6 +1710,24 @@ function SidebarThreadOrganizerSections({
         : [],
     [arrangedByAttention, describeLifecycleChat, openLaneSessions],
   );
+  // Attention view's tip waits for chats that ask for their reader. While they sit under their
+  // Projects, the open lane read for the tip counts them across every Project, expanded or not.
+  const attentionViewTipWaits = lifecycle.attentionViewTip !== null && !arrangedByAttention;
+  const chatsAskingReader = useMemo(
+    () =>
+      attentionViewTipWaits
+        ? countChatsAskingReader(
+            openLaneSessions.flatMap((session) => {
+              const chat = describeLifecycleChat(session);
+              return chat ? [chat] : [];
+            }),
+          )
+        : 0,
+    [attentionViewTipWaits, describeLifecycleChat, openLaneSessions],
+  );
+  useEffect(() => {
+    onChatsAskingReaderChange(chatsAskingReader);
+  }, [chatsAskingReader, onChatsAskingReaderChange]);
   const chatLanes = useSidebarChatLanes({
     chats: lifecycleChats,
     activeSessionId,
@@ -1813,7 +1847,7 @@ function SidebarThreadOrganizerSections({
     dnd?: CodexProjectRowDndCapability,
     currentSectionId: string | null = null,
   ) => {
-    // Arranged by attention, a Project is a place to open; its chats already sit in their lanes.
+    // In Attention view, a Project is a place to open; its chats already sit in their lanes.
     const expanded = !arrangedByAttention && expandedProjectIds.has(project.id);
     const threadListId = `project:${project.id}` as const;
     const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
@@ -2049,7 +2083,7 @@ function SidebarThreadOrganizerSections({
 
   // Showing one Project, every row is that Project's; the name would only repeat.
   const showLaneProject = !(arrangedByAttention && lifecycle.scopeProjectId);
-  // Arranged by attention, a row whose chat may need the reader says what it is about.
+  // In Attention view, a row whose chat may need the reader says what it is about.
   const previewLines =
     arrangedByAttention && lifecycle.previewLines > 0
       ? (lifecycle.previewLines as 1 | 2)
@@ -2707,6 +2741,14 @@ export function ProjectSessionSidebar({
       ? (scopeProjects.find((project) => project.id === lifecycle.scopeProjectId) ?? null)
       : null;
   const scopeProjectId = scopeProject?.id ?? null;
+  // Attention view's tip speaks once two chats ask for their reader at once, never from a sidebar
+  // that only floats over the window for a moment, and never over a tip above the Composer.
+  const [chatsAskingReader, setChatsAskingReader] = useState(0);
+  const tipTurn = useControlTipTurn();
+  const attentionViewTip =
+    !floating && tipTurn && chatsAskingReader >= ATTENTION_VIEW_TIP_CHATS
+      ? lifecycle.attentionViewTip
+      : null;
 
   return (
     <WorkbenchSidebarFrame
@@ -2748,9 +2790,10 @@ export function ProjectSessionSidebar({
                     onClear={() => lifecycle.onScopeChange(null)}
                   />
                 ) : null}
-                <SidebarArrangeToggle
+                <SidebarAttentionViewToggle
                   organize={lifecycle.organize}
                   shortcutLabel={lifecycle.organizeShortcutLabel}
+                  tip={attentionViewTip}
                   onOrganizeChange={lifecycle.onOrganizeChange}
                 />
               </>
@@ -2865,6 +2908,7 @@ export function ProjectSessionSidebar({
                 chatOrder={chatOrder}
                 onChatOrderChange={onChatOrderChange}
                 lifecycle={lifecycle}
+                onChatsAskingReaderChange={setChatsAskingReader}
                 onPlaceSession={onPlaceSession}
                 sidebarArchivePendingKeys={sidebarArchivePendingKeys}
                 hasMoreProjects={hasMoreProjects}

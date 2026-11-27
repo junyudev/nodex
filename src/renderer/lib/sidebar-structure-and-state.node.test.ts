@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "vite-plus/test";
 import {
   anchorSidebarChat,
+  countChatsAskingReader,
   holdSidebarLanes,
   normalizeSidebarAutoSettleDays,
   normalizeSidebarHiddenShelves,
@@ -298,6 +299,30 @@ describe("sidebar chat lifecycle", () => {
       expect(resolveNextChatNeedingReader([{ id: "a", needsReader: true }], "a")).toBeNull();
       expect(resolveNextChatNeedingReader([{ id: "a", needsReader: false }], null)).toBeNull();
     });
+  });
+
+  it("counts the chats asking for their reader, leaving snoozed ones until a new request", () => {
+    expect(
+      countChatsAskingReader([
+        chat("waiting", { status: "attention" }),
+        chat("news", { status: "unread" }),
+        chat("pinned news", { pinned: true, status: "unread" }),
+        chat("working", { status: "running" }),
+        chat("read", { status: null }),
+        chat("deferred", {
+          snoozedUntil: SOON,
+          snoozedAt: 20,
+          attentionAt: 10,
+          status: "attention",
+        }),
+        chat("asked again", {
+          snoozedUntil: SOON,
+          snoozedAt: 20,
+          attentionAt: 30,
+          status: "attention",
+        }),
+      ]),
+    ).toBe(4);
   });
 
   describe("sidebar lifecycle preferences", () => {

@@ -259,6 +259,13 @@ unread and snoozed chats open, as well as chats still working, waiting, or await
 their first conversation. A custom Section only arranges chats, so it keeps none open.
 _Avoid_: done chat, finished, closed, resolved.
 
+### Attention view
+
+Attention view is the sidebar arrangement that lists a Member's open chats in lanes
+by whose move each one is, across every Project: Pinned, the Active lane, Working
+and Snoozed. Turned off, the sidebar keeps chats under their Projects.
+_Avoid_: arrange by attention, by attention.
+
 ### Active lane
 
 The Active lane is the sidebar's group for open chats waiting on their Member.
@@ -268,8 +275,8 @@ A Page's [Active chat](#active-chat) is its current work destination.
 
 Session attention is when a chat last came back to a person: when its Agent last
 stopped and asked for them, with a finished reply, a question or an approval, or its
-Session activity when that is later. It orders a Member's open chats when they are
-arranged by attention. A quiet Automation run that asks for nobody, reading a chat
+Session activity when that is later. It orders a Member's open chats in Attention
+view. A quiet Automation run that asks for nobody, reading a chat
 and organizing it never change it.
 
 ### Session activity

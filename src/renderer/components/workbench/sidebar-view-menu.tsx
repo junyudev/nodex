@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { CloseIcon, FilterIcon, SidebarViewOptionsIcon } from "@/components/shared/icons";
+import { NodexCoachmark } from "@/components/ui/coachmark";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
@@ -10,6 +12,7 @@ import {
   NodexDropdownSummarySubmenuItem,
 } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import type { AttentionViewTip } from "@/features/tips/attention-view-tip";
 import { defineMessages, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import {
   normalizeSidebarChatPreviewLines,
@@ -33,41 +36,68 @@ export interface SidebarScopeProject {
 const ALL_PROJECTS = "";
 
 /**
- * Turns the arrangement by attention on and off; off, chats sit under their Projects. The button
- * stays lit while it is on.
+ * Turns Attention view on and off; off, chats sit under their Projects. The button stays lit while
+ * the view is on. Until the person has met the view, its tip points at the button when the view
+ * would help, in place of the button's tooltip.
  */
-export function SidebarArrangeToggle({
+export function SidebarAttentionViewToggle({
   organize,
   shortcutLabel,
+  tip,
   onOrganizeChange,
 }: {
   organize: SidebarOrganize;
   shortcutLabel?: string;
+  tip: AttentionViewTip | null;
   onOrganizeChange: (organize: SidebarOrganize) => void;
 }) {
   const intl = useIntl();
-  const byAttention = organize === "attention";
+  const [button, setButton] = useState<HTMLButtonElement | null>(null);
+  const on = organize === "attention";
   const label = intl.formatMessage({
-    id: "workbench.sidebarViewMenu.arrangeByAttention",
-    defaultMessage: "Arrange by attention",
+    id: "workbench.sidebarViewMenu.attentionView",
+    defaultMessage: "Attention view",
   });
   return (
-    <NodexTooltip delayOpen tooltipContent={label} shortcutLabel={shortcutLabel} side="bottom">
-      <button
-        type="button"
-        className={cn(
-          SIDEBAR_HEADER_TOOL_BUTTON_CLASS,
-          byAttention &&
-            "bg-token-charts-blue/10 text-token-charts-blue hover:bg-token-charts-blue/15 hover:text-token-charts-blue",
-        )}
-        aria-label={label}
-        aria-pressed={byAttention}
-        data-app-action-sidebar-organize={organize}
-        onClick={() => onOrganizeChange(byAttention ? "project" : "attention")}
+    <>
+      <NodexTooltip
+        delayOpen
+        disabled={tip !== null}
+        tooltipContent={label}
+        shortcutLabel={shortcutLabel}
+        side="bottom"
       >
-        <FilterIcon className="icon-xs" />
-      </button>
-    </NodexTooltip>
+        <button
+          ref={setButton}
+          type="button"
+          className={cn(
+            SIDEBAR_HEADER_TOOL_BUTTON_CLASS,
+            on &&
+              "bg-token-charts-blue/10 text-token-charts-blue hover:bg-token-charts-blue/15 hover:text-token-charts-blue",
+          )}
+          aria-label={label}
+          aria-pressed={on}
+          data-app-action-sidebar-organize={organize}
+          onClick={() => onOrganizeChange(on ? "project" : "attention")}
+        >
+          <FilterIcon className="icon-xs" />
+        </button>
+      </NodexTooltip>
+      <NodexCoachmark
+        anchor={button}
+        open={tip !== null}
+        title={label}
+        shortcutLabel={shortcutLabel}
+        description={intl.formatMessage({
+          id: "tips.attentionView",
+          defaultMessage: "Gathers the chats waiting on you from every project into one list.",
+        })}
+        dismissLabel={intl.formatMessage({ id: "tips.dismiss", defaultMessage: "Dismiss tip" })}
+        onDismiss={() => tip?.dismiss()}
+        // It reaches out over the window rather than across the rows it is about.
+        placement="bottom-start"
+      />
+    </>
   );
 }
 
@@ -104,7 +134,7 @@ function ScopeLabel({ name, inboxCount }: { name: string; inboxCount: number }) 
 }
 
 /**
- * Adjusts what the attention arrangement shows: which lists beside `Active`, how much each row
+ * Adjusts what Attention view shows: which lists beside `Active`, how much each row
  * says, and whose chats, every Project's or one Project's. It stays beside the arrangement's first
  * heading, in reach without pointing at it.
  */

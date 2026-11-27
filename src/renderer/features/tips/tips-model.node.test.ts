@@ -6,7 +6,7 @@ import {
   outgrownTips,
   settleTips,
   timelyTips,
-  type TipId,
+  type ComposerTipId,
   type TipMoment,
   type TipsState,
 } from "./tips-model";
@@ -51,7 +51,7 @@ describe("settled tips", () => {
 });
 
 describe("timelyTips", () => {
-  it.each<{ situation: string; facts: Partial<TipMoment>; tips: TipId[] }>([
+  it.each<{ situation: string; facts: Partial<TipMoment>; tips: ComposerTipId[] }>([
     {
       situation: "a Page and a teammate are available after a Run",
       facts: { pageOpened: true },

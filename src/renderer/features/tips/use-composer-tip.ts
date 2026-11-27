@@ -8,11 +8,11 @@ import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft
 import { useDesktopNotificationAuthorization } from "@/lib/desktop-notification-authorization";
 import type { ComposerTip } from "@/features/local-conversation/thread-stage-types";
 import {
-  TIP_IDS,
+  COMPOSER_TIP_IDS,
   chooseTip,
   outgrownTips,
+  type ComposerTipId,
   type ShownTip,
-  type TipId,
   type TipMoment,
 } from "./tips-model";
 import { useTipsNavigation } from "./tips-navigation";
@@ -50,7 +50,7 @@ export function useComposerTip(input: {
   const navigation = useTipsNavigation();
   const { moment: facts, sessionId } = input;
   const live = input.enabled && state !== null && state.on;
-  const waiting = (tip: TipId) => live && !state.settled.includes(tip);
+  const waiting = (tip: ComposerTipId) => live && !state.settled.includes(tip);
 
   // Each outside fact is read only while its tip could still be said.
   const rested = facts.started && !facts.working && facts.finishedRuns > 0;
@@ -68,7 +68,7 @@ export function useComposerTip(input: {
     | (ShownTip & {
         readonly sessionId: string;
         /** The tip this one took over from, when a new rest arrived with no work seen between. */
-        readonly after: TipId | null;
+        readonly after: ComposerTipId | null;
       })
     | null
   >(null);
@@ -89,11 +89,11 @@ export function useComposerTip(input: {
       ? current.tip
       : current.after;
   const outgrown = outgrownTips(moment);
-  const due = TIP_IDS.filter((id) => id === passed || (outgrown.includes(id) && waiting(id))).join(
-    ",",
-  );
+  const due = COMPOSER_TIP_IDS.filter(
+    (id) => id === passed || (outgrown.includes(id) && waiting(id)),
+  ).join(",");
   useEffect(() => {
-    const tips = TIP_IDS.filter((id) => due.split(",").includes(id));
+    const tips = COMPOSER_TIP_IDS.filter((id) => due.split(",").includes(id));
     if (tips.length) settle(...tips);
   }, [due, settle]);
 

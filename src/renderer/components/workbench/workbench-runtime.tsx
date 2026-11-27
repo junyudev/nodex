@@ -184,6 +184,7 @@ import {
   AutomationsNavigationProvider,
   type AutomationsNavigation,
 } from "@/features/automations/automations-navigation";
+import { useAttentionViewTip } from "@/features/tips/attention-view-tip";
 import { TipsNavigationProvider, type TipsNavigation } from "@/features/tips/tips-navigation";
 import type { CustomizeNavigation } from "@/features/plugins/customize-navigation";
 import {
@@ -964,6 +965,9 @@ export function WorkbenchRuntime({
     lifecycle: "open",
   });
   const sidebarOrganize = sidebar?.organize ?? "attention";
+  // Attention view's tip waits while chats sit under their Projects. A window without the
+  // person's own sidebar arrangement neither says nor settles it.
+  const attentionViewTip = useAttentionViewTip(sidebar?.organize ?? null);
   // Lanes show one Project only while that Project is still listed.
   const sidebarScopeProjectId =
     sidebarOrganize === "attention" &&
@@ -979,7 +983,8 @@ export function WorkbenchRuntime({
     projectId: sidebarScopeProjectId,
     order: "attention",
     lifecycle: "open",
-    enabled: sidebarOrganize === "attention",
+    // The tip reads the lanes too, to know when Attention view would help.
+    enabled: sidebarOrganize === "attention" || attentionViewTip !== null,
     resolveScene: sessionCatalog.resolveScene,
   });
   const sidebarSettledLane = useWorkbenchLibrarySessionLane({
@@ -2756,7 +2761,7 @@ export function WorkbenchRuntime({
     toggleSessionSettled,
     stepChat,
     openNextChatNeedingReader,
-    toggleOrganize: () =>
+    toggleAttentionView: () =>
       changeSidebarOrganize(sidebarOrganize === "attention" ? "project" : "attention"),
   };
   const sidebarChatLifecycle: SidebarChatLifecycle = {
@@ -2772,6 +2777,8 @@ export function WorkbenchRuntime({
     onAutoSettleDaysChange: setSidebarAutoSettleDays ?? ignoreSidebarAutoSettleDaysChange,
     openLane: sidebarOpenLane,
     settledLane: sidebarSettledLane,
+    // Setup holds the window first.
+    attentionViewTip: firstRun.undecided || firstRun.workbenchInert ? null : attentionViewTip,
     onToggleSessionSettled: toggleSessionSettled,
     onSnoozeSession: setSessionSnooze,
     onSettleSessions: settleSessions,
@@ -2790,7 +2797,7 @@ export function WorkbenchRuntime({
     ),
     organizeShortcutLabel: formatCommandShortcutLabel(
       commandKeymapState ?? createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows"),
-      "toggleSidebarOrganize",
+      "toggleAttentionView",
       "CmdOrCtrl+Alt+U",
     ),
   };

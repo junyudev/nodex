@@ -183,7 +183,7 @@ function SidebarProjectOptionsMenu({
         />
       </NodexDropdownItem>
       <NodexDropdownSeparator paddingClassName="pt-1 pb-2" />
-      {/* Arranged by attention, chats order themselves by when each came back. */}
+      {/* In Attention view, chats order themselves by when each came back. */}
       {organize === "project" ? (
         <NodexDropdownFlyoutSubmenuItem
           label={intl.formatMessage({

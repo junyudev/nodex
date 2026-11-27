@@ -35,7 +35,7 @@ async function expectChats(scope: Locator, chats: readonly { title: string }[], 
     .toEqual(chats.map((chat) => chat.title).sort(byTitle));
 }
 
-test("arranges chats by attention and applies sidebar actions to their live lanes", async ({}, testInfo) => {
+test("lists chats in Attention view and applies sidebar actions to their live lanes", async ({}, testInfo) => {
   await withElectronScenario(
     {
       label: "sidebar-attention",
@@ -65,7 +65,8 @@ test("arranges chats by attention and applies sidebar actions to their live lane
       const snoozed = section(page, "Snoozed");
       const settled = section(page, "Settled");
       const inbox = page.getByTestId("sidebar-inbox-row-wrapper");
-      const arrangeByAttention = page.getByRole("button", { name: "Arrange by attention" });
+      const attentionView = page.getByRole("button", { name: "Attention view", exact: true });
+      const attentionViewTip = page.getByRole("dialog", { name: "Attention view" });
       const review = thread(active, chats.review);
       // A chat filed in a Section takes the lane its state puts it in.
       const quietChats = [chats.quietNodex, chats.quietCore, chats.quietWeb, chats.releaseNodex];
@@ -74,10 +75,15 @@ test("arranges chats by attention and applies sidebar actions to their live lane
       const waitingGlyph = inbox.getByLabel("Something in the Inbox waits for your answer");
 
       await test.step("show the seeded lanes, Page wording, and Library Inbox", async () => {
-        // Chats sit under their Projects until the toggle beside Search arranges them by attention.
-        await expect(arrangeByAttention).toHaveAttribute("aria-pressed", "false");
-        await arrangeByAttention.click();
-        await expect(arrangeByAttention).toHaveAttribute("aria-pressed", "true");
+        // Chats sit under their Projects until the toggle beside Search turns on Attention view.
+        // With chats asking for the person, the view's tip points at the toggle until it is used.
+        await expect(attentionView).toHaveAttribute("aria-pressed", "false");
+        await expect(attentionViewTip).toContainText(
+          "Gathers the chats waiting on you from every project into one list.",
+        );
+        await attentionView.click();
+        await expect(attentionView).toHaveAttribute("aria-pressed", "true");
+        await expect(attentionViewTip).toBeHidden();
         await expect
           .poll(() =>
             sidebar
@@ -124,7 +130,7 @@ test("arranges chats by attention and applies sidebar actions to their live lane
       });
 
       await test.step("scope both chats and Inbox to Core", async () => {
-        await expect(arrangeByAttention).toHaveAttribute("aria-pressed", "true");
+        await expect(attentionView).toHaveAttribute("aria-pressed", "true");
         // The view options stay beside the first heading without pointing at it.
         await section(page, "Pinned").getByRole("button", { name: "View options" }).click();
         await page.getByRole("menuitem", { name: /^Chats from/ }).hover();

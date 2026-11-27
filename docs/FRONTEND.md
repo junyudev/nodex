@@ -368,6 +368,10 @@ measured vertical caption clearance. See [Windows host behavior](product-specs/w
   imports are limited to the small set of editor positioning controllers and UI
   adapters audited by `verify:renderer-ui-boundaries`. A feature that only needs
   a menu, popover, tooltip, or hover surface uses the Nodex primitive instead.
+- A surface that stays until the person answers it, such as a tip beside a control,
+  uses `NodexCoachmark`, never a popover or tooltip. Dialogs, the command palette and
+  the Composer hand Escape to any open popover or tooltip, so a lasting one would take
+  Escape from the whole window.
 - A modal presentation that must preserve a mounted native document uses
   `NodexRetainedModalFocusBoundary`. Its existing content root encloses the
   focus guards, while the app-owned adapter traps focus, restores the trigger,

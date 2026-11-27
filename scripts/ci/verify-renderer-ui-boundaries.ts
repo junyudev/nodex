@@ -17,6 +17,7 @@ const floatingUiAllowlist = new Set([
   "src/renderer/components/board/editor/nfm-blocknote-floating-ui.ts",
   "src/renderer/components/board/editor/nfm-editor-floating-positioning.test.ts",
   "src/renderer/components/board/editor/nfm-side-menu.tsx",
+  "src/renderer/components/ui/coachmark.tsx",
   "src/renderer/components/ui/hover-card.tsx",
   "src/renderer/components/ui/retained-modal-focus-boundary.tsx",
   "third_party/blocknote/packages/react/src/components/AttributionTooltip/AttributionTooltipController.tsx",
