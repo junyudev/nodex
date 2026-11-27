@@ -62,7 +62,6 @@ export class MiniWindowController {
     screen.on("display-removed", this.#reposition);
     screen.on("display-metrics-changed", this.#reposition);
     this.syncWorkbenchFocus();
-    this.#createWindow();
   }
 
   syncWorkbenchFocus(): void {
@@ -70,8 +69,10 @@ export class MiniWindowController {
     this.apply({ kind: "presence", update: { workbenchFocused } });
   }
 
-  #createWindow(): void {
-    if (this.#disposed || this.#window) return;
+  #ensureWindow(): void {
+    if (this.#disposed || this.#window || this.#recreate) return;
+    // When active, the renderer supplies the coverage that decides if Mini should rest.
+    if (this.#state.visibility === "on-demand" && this.#state.event.kind === "hidden") return;
     const url = new URL(this.options.rendererUrl);
     url.searchParams.set("initialRoute", MINI_ROUTE);
     const mac = this.options.native !== null;
@@ -135,12 +136,13 @@ export class MiniWindowController {
       this.#blurHolds.clear();
       this.#shownGeneration = null;
       this.#cancelMove();
+      if (!this.#disposed && this.#state.visibility !== "on-demand") {
+        this.#recreate = setTimeout(() => {
+          this.#recreate = null;
+          this.#ensureWindow();
+        }, 1000);
+      }
       this.apply({ kind: "renderer-lost" });
-      if (this.#disposed) return;
-      this.#recreate = setTimeout(() => {
-        this.#recreate = null;
-        this.#createWindow();
-      }, 1000);
     });
     void window.loadURL(url.toString()).catch((error: unknown) => {
       if (window.isDestroyed()) return;
@@ -177,6 +179,7 @@ export class MiniWindowController {
   apply(action: MiniPresentationAction): void {
     const previous = this.#state.event;
     this.#state = transitionMiniPresentation(this.#state, action);
+    this.#ensureWindow();
     if (this.#state.event === previous) return;
     const next = this.#state.event.kind;
     if (next !== previous.kind && (next === "focused" || previous.kind === "focused")) {

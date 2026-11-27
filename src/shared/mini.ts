@@ -6,7 +6,7 @@ import type { MobileEventData } from "@nodex/mobile-protocol";
  * Inbox (`Cmd/Ctrl+Enter`). It is a client of the same Member companion contract the phone uses
  * (`@nodex/mobile-protocol`), so its chats, attention and actions read exactly as they do there.
  *
- * Main owns the one prewarmed panel window, its shortcut, where it sits, when it is on screen and
+ * Main owns the panel window, its shortcut, where it sits, when it is on screen and
  * whether it holds the keyboard. The panel's renderer owns everything drawn in it.
  */
 

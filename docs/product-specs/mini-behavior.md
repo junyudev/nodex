@@ -71,7 +71,9 @@ system notification already shown, and chat snooze notifications follow their us
 
 ## Panel presence
 
-- On macOS and Windows, Mini is a prewarmed floating panel in the personal Space.
+- On macOS and Windows, Mini is a floating panel in the personal Space. With Mini off,
+  Nodex first creates the panel when you ask for it. When Mini is enabled,
+  Nodex prepares its panel at launch.
   **Open Mini** defaults to `Shift+Option+Space` on macOS and `Shift+Alt+Space`
   on Windows. A focused Workbench window runs **Capture to Inbox** instead.
   Change or clear the shortcut in **Settings → Keyboard shortcuts**. The chord
@@ -100,7 +102,7 @@ system notification already shown, and chat snooze notifications follow their us
   display geometry changes. The pointer reaches the app beneath transparent
   areas outside Mini's content.
 - Mini stays outside Window Session restoration. If its renderer stops
-  unexpectedly, Main prepares a fresh panel.
+  unexpectedly, Main prepares a fresh panel for an enabled Mini.
 
 ## Companion session
 
