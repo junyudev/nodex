@@ -139,6 +139,8 @@ export interface GitHubGraphQlInput {
   readonly operation: string;
   readonly query: string;
   readonly variables?: Readonly<Record<string, unknown>>;
+  /** Return partial data when every GraphQL error is a field-scoped NOT_FOUND. */
+  readonly allowMissingFields?: boolean;
   readonly allowReserve?: boolean;
   /** Defaults to the reserve policy. Set false to honor known pauses when spending reserve. */
   readonly allowPaused?: boolean;
@@ -232,6 +234,7 @@ const decodeGraphQlErrors = Schema.decodeUnknownOption(
       errors: Schema.NonEmptyArray(
         Schema.Struct({
           type: Schema.optional(Schema.String),
+          path: Schema.optional(Schema.Unknown),
           message: Schema.optional(Schema.String),
         }),
       ),
@@ -299,6 +302,7 @@ function classify(input: {
   readonly headers: Readonly<Record<string, string | undefined>>;
   readonly body: string;
   readonly graphql: boolean;
+  readonly allowMissingFields: boolean;
   readonly acceptNotModified: boolean;
 }): Answer {
   const { status, headers, body } = input;
@@ -324,11 +328,13 @@ function classify(input: {
     return Answer.RateLimited();
   }
   if (status === 401) return Answer.Unauthorized();
-  if (
-    status === 404 ||
-    (errors !== undefined && errors.every((error) => error.type === "NOT_FOUND"))
-  ) {
-    return Answer.NotFound();
+  if (status === 404) return Answer.NotFound();
+  if (errors?.every((error) => error.type === "NOT_FOUND")) {
+    return input.allowMissingFields &&
+      status === 200 &&
+      errors.every((error) => Array.isArray(error.path) && error.path.length > 0)
+      ? Answer.Ok()
+      : Answer.NotFound();
   }
   if (errors !== undefined) return Answer.Failed({ messages });
   if ((status >= 200 && status < 300) || (status === 304 && input.acceptNotModified)) {
@@ -379,6 +385,7 @@ export const make = Effect.gen(function* () {
     readonly acceptNotModified: boolean;
     /** Reads the body for GraphQL `errors`, which GitHub sends with HTTP 200. */
     readonly graphql?: boolean;
+    readonly allowMissingFields?: boolean;
   }) {
     const host = normalizeHost(input.host);
     // Only the path: a query string can carry a SHA or a branch, and never needs to be in a trace.
@@ -457,6 +464,7 @@ export const make = Effect.gen(function* () {
           headers,
           body: collected.text,
           graphql: input.graphql === true,
+          allowMissingFields: input.allowMissingFields === true,
           acceptNotModified: input.acceptNotModified,
         }),
         {
@@ -563,6 +571,7 @@ export const make = Effect.gen(function* () {
         allowPaused: input.allowPaused ?? allowReserve,
         acceptNotModified: false,
         graphql: true,
+        allowMissingFields: input.allowMissingFields === true,
       });
       // A body cut at the byte cap hides any `errors` past the cut and cannot be decoded.
       if (response.truncated) {

@@ -1,11 +1,12 @@
 import {
+  GitHubApi,
   GitHubApiAuthenticationError,
   GitHubApiNotFoundError,
   GitHubApiRateLimitError,
   GitHubApiResponseError,
   PinnedGitHubCredential,
   SourceAccount,
-  type GitHubApi,
+  sourceApiLayer,
   type GitHubApiError,
   type GitHubGraphQlInput,
   type GitHubRestInput,
@@ -15,12 +16,16 @@ import { it } from "@effect/vitest";
 import { describe, expect } from "vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
+import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
-import { parseGitHubThreadUrl } from "../../shared/github-thread";
+import { gitHubThreadKey, parseGitHubThreadUrl } from "../../shared/github-thread";
 import { makeGitHubAccount } from "./GitHubAccount";
 import { makeGitHubThreads } from "./GitHubThreads";
 import issueFixture from "./fixtures/issue.json";
 import prFixture from "./fixtures/pull-request.json";
+import summariesFixture from "./fixtures/thread-summaries.json";
 
 const host = "github.com";
 const ref = { host, owner: "CLI", repo: "CLI", number: 15100 };
@@ -90,8 +95,10 @@ const makeFixture = Effect.fnUntraced(function* (
         }),
       ),
   };
-  const threads = yield* makeGitHubThreads(api, yield* makeGitHubAccount(api), () =>
-    Effect.succeed(options.source === null ? undefined : (options.source ?? account)),
+  const threads = yield* makeGitHubThreads(api, yield* makeGitHubAccount(api), (requestedHost) =>
+    Effect.succeed(
+      requestedHost !== host || options.source === null ? undefined : (options.source ?? account),
+    ),
   );
   return { ...threads, callsTo, requests };
 });
@@ -212,6 +219,93 @@ describe("GitHub thread data", () => {
       expect(f.callsTo("thread.identity")).toHaveLength(2);
       expect(f.callsTo("source.verify")).toHaveLength(1);
     }),
+  );
+
+  it.effect("shares a batch and keeps found summaries when GitHub reports a missing field", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const requests: string[] = [];
+      const http = HttpClient.make((request) =>
+        Effect.gen(function* () {
+          requests.push(request.url);
+          expect(request.headers.authorization).toBe("Bearer source-token");
+          if (request.url.endsWith("/user")) {
+            return HttpClientResponse.fromWeb(
+              request,
+              Response.json({ login: account.account_login, id: 1 }),
+            );
+          }
+          yield* Deferred.succeed(entered, undefined);
+          yield* Deferred.await(release);
+          return HttpClientResponse.fromWeb(request, Response.json(summariesFixture));
+        }),
+      );
+      const apiLayer = sourceApiLayer(() =>
+        Effect.succeed({ token: Redacted.make("source-token"), fingerprint: "source-fingerprint" }),
+      ).pipe(Layer.provide(Layer.succeed(HttpClient.HttpClient, http)));
+      const api = yield* Effect.service(GitHubApi).pipe(Effect.provide(apiLayer));
+      const threads = yield* makeGitHubThreads(api, yield* makeGitHubAccount(api), () =>
+        Effect.succeed(account),
+      );
+      const issue = { ...ref, number: 15170 };
+      const missing = { ...ref, repo: "go-gh", number: 2147483647 };
+      const [result, reordered] = yield* Effect.all(
+        [
+          threads.summaries([ref, issue, missing]),
+          threads.summaries([missing, issue, { ...ref, owner: "cli", repo: "cli" }]),
+          Deferred.await(entered).pipe(
+            Effect.andThen(Effect.yieldNow),
+            Effect.andThen(Deferred.succeed(release, undefined)),
+          ),
+        ],
+        { concurrency: "unbounded" },
+      );
+      expect(result).toEqual({
+        status: "ready",
+        summaries: {
+          [gitHubThreadKey(ref)]: {
+            ref: { ...ref, owner: "cli", repo: "cli" },
+            kind: "pull_request",
+            url: "https://github.com/cli/cli/pull/15100",
+            title: "Revoke CLI OAuth tokens on logout",
+            state: "merged",
+            draft: false,
+          },
+          [gitHubThreadKey(issue)]: {
+            ref: { ...issue, owner: "cli", repo: "cli" },
+            kind: "issue",
+            url: "https://github.com/cli/cli/issues/15170",
+            title: "gh ssh-key list",
+            state: "closed",
+            draft: false,
+            stateReason: "not_planned",
+          },
+          [gitHubThreadKey(missing)]: null,
+        },
+      });
+      expect(reordered).toEqual(result);
+      expect(requests.filter((url) => url.endsWith("/graphql"))).toHaveLength(1);
+    }),
+  );
+
+  it.effect(
+    "refuses mixed hosts and hosts without a connected Source before making a request",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* makeFixture();
+        const other = { ...ref, host: "github.example.com" };
+        const noSource = yield* makeFixture({ source: null });
+        for (const result of [
+          yield* f.summaries([other]),
+          yield* f.summaries([ref, other]),
+          yield* noSource.summaries([ref]),
+        ]) {
+          expect(result).toMatchObject({ status: "unavailable", reason: "not_connected" });
+        }
+        expect(f.requests).toEqual([]);
+        expect(noSource.requests).toEqual([]);
+      }),
   );
 
   it.effect("distinguishes disconnected, refused, mismatched, missing and paused outcomes", () =>

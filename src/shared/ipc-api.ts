@@ -4,6 +4,7 @@ import type {
   GitHubThreadCommandResult,
   GitHubThreadReadResult,
   GitHubThreadRef,
+  GitHubThreadSummariesResult,
 } from "./github-thread";
 import type { DeepLinkOpenEvents } from "./nodex-deeplink";
 import type { AgentProfile, AgentProfilesUpdate } from "./agents/profiles";
@@ -2235,6 +2236,10 @@ export interface IpcApi
 
   // GitHub tabs
   "github:thread": { args: [ref: GitHubThreadRef]; result: GitHubThreadReadResult };
+  "github:thread-summaries": {
+    args: [refs: readonly GitHubThreadRef[]];
+    result: GitHubThreadSummariesResult;
+  };
   "github:thread-files": { args: [ref: GitHubThreadRef]; result: GitHubPullRequestFilesResult };
   "github:thread-command": {
     args: [ref: GitHubThreadRef, command: GitHubThreadCommand];

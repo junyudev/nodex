@@ -1,3 +1,5 @@
+import type { GitHubThreadRef } from "../../shared/github-thread";
+
 const variables = "$owner: String!, $repo: String!, $number: Int!";
 const repository = "repository(owner: $owner, name: $repo)";
 const repositoryIdentity = "name owner { login }";
@@ -13,6 +15,52 @@ export const resolveGitHubThread = `
     }
   }
 `;
+
+export function readGitHubThreadSummaries(refs: readonly GitHubThreadRef[]) {
+  const grouped = new Map<
+    string,
+    { alias: string; refs: [GitHubThreadRef, ...GitHubThreadRef[]] }
+  >();
+  for (const ref of refs) {
+    const key = `${ref.owner}/${ref.repo}`;
+    const group = grouped.get(key);
+    if (group) group.refs.push(ref);
+    else grouped.set(key, { alias: `r${grouped.size}`, refs: [ref] });
+  }
+  const repositories = [...grouped.values()];
+  const variables: Record<string, string | number> = {};
+  const declarations: string[] = [];
+  const variable = (name: string, type: "String!" | "Int!", value: string | number) => {
+    variables[name] = value;
+    declarations.push(`$${name}: ${type}`);
+    return `$${name}`;
+  };
+  const selections = repositories.map(({ alias, refs }) => {
+    const [first] = refs;
+    const owner = variable(`${alias}Owner`, "String!", first.owner);
+    const repo = variable(`${alias}Repo`, "String!", first.repo);
+    const threads = refs.map(
+      ({ number }, index) => `
+      t${index}: issueOrPullRequest(number: ${variable(`${alias}Number${index}`, "Int!", number)}) {
+        __typename
+        ... on PullRequest { number url title pullState: state isDraft }
+        ... on Issue { number url title issueState: state stateReason(enableDuplicate: true) }
+      }
+    `,
+    );
+    return `
+      ${alias}: repository(owner: ${owner}, name: ${repo}) {
+        ${repositoryIdentity}
+        ${threads.join("")}
+      }
+    `;
+  });
+  return {
+    query: `query NodexThreadSummaries(${declarations.join(", ")}) { ${selections.join("")} }`,
+    variables,
+    repositories,
+  };
+}
 
 const actor = "login avatarUrl url __typename";
 const label = "name color description";

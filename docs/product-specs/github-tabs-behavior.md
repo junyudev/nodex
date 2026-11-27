@@ -115,6 +115,8 @@ A failed refresh keeps what the tab already shows.
 
 ## Boundaries
 
+Inline GitHub thread links read titles and states in batches using the connected account.
+
 GitHub tabs read any repository the connected account can see. Opening one never watches a
 repository, follows a thread or creates Inbox entries; that remains the work of
 [Sources](sources-behavior.md). In a team Space, GitHub tabs are not yet available, and links

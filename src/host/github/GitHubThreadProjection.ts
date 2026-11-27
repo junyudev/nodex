@@ -1,20 +1,22 @@
 import { z } from "zod";
-import type {
-  GitHubActor,
-  GitHubCheck,
-  GitHubCheckStatus,
-  GitHubIssueDetail,
-  GitHubIssueStateReason,
-  GitHubMergeMethod,
-  GitHubPullRequestDetail,
-  GitHubReviewComment,
-  GitHubReviewer,
-  GitHubReviewState,
-  GitHubThreadRef,
-  GitHubThreadSummary,
-  GitHubTimelineEvent,
-  GitHubTimelineItem,
+import {
+  gitHubThreadKey,
+  type GitHubActor,
+  type GitHubCheck,
+  type GitHubCheckStatus,
+  type GitHubIssueDetail,
+  type GitHubIssueStateReason,
+  type GitHubMergeMethod,
+  type GitHubPullRequestDetail,
+  type GitHubReviewComment,
+  type GitHubReviewer,
+  type GitHubReviewState,
+  type GitHubThreadRef,
+  type GitHubThreadSummary,
+  type GitHubTimelineEvent,
+  type GitHubTimelineItem,
 } from "../../shared/github-thread";
+import type { readGitHubThreadSummaries } from "./GitHubThreadDocuments";
 
 const text = z.string();
 const count = z.number().int().nonnegative();
@@ -38,15 +40,32 @@ const nodes = <T>(value: { nodes: readonly (T | null)[] | null } | null | undefi
   value?.nodes?.filter((node): node is T => node !== null) ?? [];
 
 const state = z.enum(["OPEN", "CLOSED", "MERGED"]);
-const summary = z.object({
+const summaryFields = z.object({ number: count, url: text, title: text });
+const summary = summaryFields.extend({
   __typename: z.enum(["Issue", "PullRequest"]),
-  number: count,
-  url: text,
-  title: text,
   state,
   isDraft: z.boolean().optional(),
+  stateReason: text.nullable().optional(),
   repository: namedRepository,
 });
+const summaryNode = z
+  .discriminatedUnion("__typename", [
+    summaryFields.extend({
+      __typename: z.literal("PullRequest"),
+      pullState: state,
+      isDraft: z.boolean(),
+    }),
+    summaryFields.extend({
+      __typename: z.literal("Issue"),
+      issueState: z.enum(["OPEN", "CLOSED"]),
+      stateReason: text.nullable(),
+    }),
+  ])
+  .nullable();
+const summariesResponse = z.object({
+  data: z.record(z.string(), namedRepository.catchall(z.unknown()).nullable()),
+});
+
 const reviewer = z.object({ combinedSlug: text.optional() }).extend(actor.partial().shape);
 const inline = z.object({
   id: text,
@@ -313,7 +332,31 @@ function mapSummary(host: string, value: z.infer<typeof summary>): GitHubThreadS
     title: value.title,
     state: lower(value.state),
     draft: value.isDraft ?? false,
+    ...(value.stateReason !== undefined && { stateReason: issueReason(value.stateReason) }),
   };
+}
+
+export function projectThreadSummaries(
+  body: unknown,
+  repositories: ReturnType<typeof readGitHubThreadSummaries>["repositories"],
+): Record<string, GitHubThreadSummary | null> {
+  const { data } = summariesResponse.parse(body);
+  return Object.fromEntries(
+    repositories.flatMap(({ alias, refs }) => {
+      const repository = data[alias];
+      if (repository === undefined) throw new Error("Missing GitHub repository field");
+      return refs.map((ref, index): [string, GitHubThreadSummary | null] => {
+        const key = gitHubThreadKey(ref);
+        const node = repository === null ? null : summaryNode.parse(repository[`t${index}`]);
+        if (node === null || repository === null) return [key, null];
+        const summary =
+          node.__typename === "Issue"
+            ? { ...node, state: node.issueState }
+            : { ...node, state: node.pullState };
+        return [key, mapSummary(ref.host, { ...summary, repository })];
+      });
+    }),
+  );
 }
 
 function lower<S extends string>(value: S): Lowercase<S> {
