@@ -185,8 +185,13 @@ async function runSegment(
       : "0 hits, suite or shard executed without result reuse";
     await appendFile(stepSummary, `- ${suite} shard ${shard + 1}/${count}: ${result}\n`);
   }
-  // A failed sample must shadow the previous archive on the next run.
+  // A failed sample must shadow the previous archive on the next run. The shard already re-ran
+  // every file, so evidence that did not reproduce warns rather than failing passing tests.
   const invalidated = previousEpoch !== (await cacheEpoch(directory));
+  if (invalidated)
+    process.stdout.write(
+      `::warning title=Test cache invalidated::${suite} shard ${shard + 1}/${count} discarded its saved passes and ran every file; the [test-cache] log line names the evidence that did not reproduce.\n`,
+    );
   if (invalidated || (exit === 0 && summary && summary.recorded > 0))
     await appendFile(output, "publish=true\n");
   return exit;
