@@ -50,9 +50,9 @@ export interface WorkbenchSidebarPreferences {
   readonly organize: SidebarOrganize;
   /** The one Project the attention lanes and the Inbox entry show, or null for all of them. */
   readonly scopeProjectId: string | null;
-  /** The lists the attention arrangement leaves out. */
+  /** The lists Attention view leaves out. */
   readonly hiddenShelves: readonly SidebarOptionalShelf[];
-  /** The lines the attention arrangement's rows give to what each chat is about. */
+  /** The lines Attention view's rows give to what each chat is about. */
   readonly previewLines: SidebarChatPreviewLines;
   readonly autoSettleDays: SidebarAutoSettleDays;
 }

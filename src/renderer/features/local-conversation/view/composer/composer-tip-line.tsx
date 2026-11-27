@@ -3,6 +3,7 @@ import { useIntl } from "@/lib/i18n";
 import { XmarkMdIcon } from "@/components/shared/icons/plugin-detail-icons";
 import { toastFailure } from "@/lib/failure-toast";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { useComposerTipOnScreen } from "@/features/tips/tips-on-screen";
 import type { ComposerTip } from "../../thread-stage-types";
 
 /**
@@ -15,6 +16,7 @@ import type { ComposerTip } from "../../thread-stage-types";
 export function ComposerTipLine({ tip }: { readonly tip: ComposerTip }) {
   const intl = useIntl();
   const [pending, setPending] = useState(false);
+  useComposerTipOnScreen();
   const { action } = tip;
   const run = () => {
     if (!action) return;

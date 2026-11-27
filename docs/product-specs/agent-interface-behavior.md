@@ -617,7 +617,7 @@ milliseconds. `snoozedUntil` and `settledAt` are ISO timestamps. An archived cha
 A Runtime child inherits the root chat's attention. Read and unread marks do not move a chat between lanes.
 
 `list_sessions` accepts `lanes` to select any of `pinned`, `active`, `working`, `snoozed`,
-or `settled`. With `order: "attention"`, it follows the sidebar's **By attention** arrangement
+or `settled`. With `order: "attention"`, it follows the sidebar's **Attention view**
 before taking a page. Pinned follows the Member's pin order. Active puts chats stopped on the
 Member first and then uses newest attention time. Working uses newest attention time, Snoozed
 puts the soonest wake first, and Settled puts the most recently settled chat first. An elapsed

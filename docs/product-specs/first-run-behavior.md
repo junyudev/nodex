@@ -191,15 +191,21 @@ an Agent writes shows what a Page is better than a description could.
 ## Tips
 
 A tip introduces one thing at the moment a person first meets it: what the thing is, and one way to
-try it now. Tips are the only teaching Nodex does after setup; there is no tour, checklist or
-what's-new surface.
+try it now. Tips are the only teaching Nodex does after setup, and what the person is doing is what
+brings each one; there is no tour or checklist, and release news waits in
+[What's new](nodex-account-login-behavior.md#whats-new) instead. Most tips are said above the
+Composer; a tip about a control elsewhere is said beside it.
 
 A tip must never read as something to fix, so it shares no look with a notice. A notice is a tinted
-tab on the Composer, because it holds the Composer. A tip is one centered sentence above the
-Composer in the quiet text color, with no surface, border or icon of its own. Its only color is a
-small `Tip` badge. The thing to try is a word in the sentence with a dotted underline, not a button,
-and the `×` that puts it away shows on hover or keyboard focus. It fades in over a third of a second,
-and it touches nothing: the Composer and its tabs look exactly as they do without it.
+tab on the Composer, because it holds the Composer.
+
+### Above the Composer
+
+A Composer tip is one centered sentence above the Composer in the quiet text color, with no surface,
+border or icon of its own. Its only color is a small `Tip` badge. The thing to try is a word in the
+sentence with a dotted underline, not a button, and the `×` that puts it away shows on hover or
+keyboard focus. It fades in over a third of a second, and it touches nothing: the Composer and its
+tabs look exactly as they do without it.
 
 | Tip            | When                                                                 | Says                                                                                  | Offers        |
 | -------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------- |
@@ -209,9 +215,9 @@ and it touches nothing: the Composer and its tabs look exactly as they do withou
 | Notifications  | A Run finished, and the system hasn't been asked about notifications | `Get a notification when an agent finishes?`                                          | `Turn on`     |
 | Inbox          | New Chat, while another chat is working                              | `More on your mind? Drop it in the Inbox and Nodex suggests where it should go.`      | `Open Inbox`  |
 
-- **One at a time, one per rest.** A chat speaks only when its Agent is at rest, and each rest
-  between Runs has room for one tip, the first in the table's order that still applies. Settling a
-  tip leaves that rest quiet instead of bringing up the next.
+- **One per rest.** A chat speaks only when its Agent is at rest, and each rest between Runs has
+  room for one tip, the first in the table's order that still applies. Settling a tip leaves that
+  rest quiet instead of bringing up the next.
 - **Once.** A tip is settled for good when the person acts on it, dismisses it with its `×`,
   or carries on past it by sending their next message. It never returns, in any window.
 - **Never in the way.** A tip gives way to every condition that holds the Composer (an Agent to sign
@@ -225,6 +231,33 @@ and it touches nothing: the Composer and its tabs look exactly as they do withou
   system for notification permission.
 - **Outgrown.** Once another Agent has worked in a chat the person has open, the two teamwork tips
   are settled unseen: Agents that have worked together need no introduction.
+
+### Beside a control
+
+A control's tip is a small card whose notch points at the control. It names the control and its
+shortcut as the control's tooltip does, says in one sentence what it is for, and ends its first line
+with an `×`; while it shows, it stands in for the tooltip. The control itself is the way to try it,
+and it keeps working exactly as it does without the card. The card fades in like a Composer tip and
+claims nothing a menu would: Escape, a click elsewhere and keyboard focus keep meaning what they
+meant, and Tab from the control reaches the `×`.
+
+| Tip            | Beside                                | When                                                                                                                  | Says                                                                 |
+| -------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Attention view | The sidebar's `Attention view` toggle | Chats sit under their Projects, and two open chats ask for the person at once: an answer, an approval or news to read | `Gathers the chats waiting on you from every project into one list.` |
+
+- **Until answered.** It is settled for good when the person dismisses it with its `×` or turns
+  Attention view on in any way: the toggle, `⌥⌘U` or the command palette. Until then, losing its
+  moment only hides it: fewer chats asking for the person, a sidebar that is hidden or only floats
+  over the window. It returns with the moment, in every window that shows the sidebar.
+- **Counted across Projects.** Every Project's open chats count, collapsed or not. A snoozed chat
+  counts again once it wakes, or once its Agent asks for the person anew.
+- **Outgrown.** A person who turns Attention view on before its tip speaks never sees it.
+
+### Every tip
+
+- **One at a time.** A control's tip waits while a Composer tip is on screen in its window: that one
+  belongs to a moment that passes, and the control's tip can wait for it. No tip speaks while setup
+  holds the window.
 - **Off.** Settings → General → `Show tips` turns all of them off, and is on to begin with.
 
 ## Afterward

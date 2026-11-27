@@ -1,18 +1,27 @@
 import { parseAgentRuntimeToolName } from "@/features/local-conversation/agent-runtime-transcript-projection";
 
 /**
- * A tip introduces one thing at the moment a person first meets it, in one quiet sentence above
- * the Composer, with a way to try it. Listed most timely first: what is on screen now comes before
- * what could be done next, and a question about later comes last.
+ * A tip introduces one thing at the moment a person first meets it. Most are one quiet sentence
+ * above the Composer, with a way to try it, listed most timely first: what is on screen now comes
+ * before what could be done next, and a question about later comes last.
  */
-export const TIP_IDS = [
+export const COMPOSER_TIP_IDS = [
   "page",
   "second-opinion",
   "second-agent",
   "notifications",
   "inbox",
 ] as const;
+export type ComposerTipId = (typeof COMPOSER_TIP_IDS)[number];
+
+/** Tips said beside the control they introduce, which is itself the way to try it. */
+const CONTROL_TIP_IDS = ["attention-view"] as const;
+
+export const TIP_IDS = [...COMPOSER_TIP_IDS, ...CONTROL_TIP_IDS] as const;
 export type TipId = (typeof TIP_IDS)[number];
+
+/** Two chats asking for their person at once is when one list of them starts to help. */
+export const ATTENTION_VIEW_TIP_CHATS = 2;
 
 export interface TipsState {
   /** The person's own switch in Settings → General. */
@@ -49,10 +58,10 @@ export interface TipMoment {
   readonly otherChatWorking: boolean;
 }
 
-/** The tips this moment has a use for, most timely first. */
-export function timelyTips(moment: TipMoment): readonly TipId[] {
+/** The Composer tips this moment has a use for, most timely first. */
+export function timelyTips(moment: TipMoment): readonly ComposerTipId[] {
   const rested = moment.started && moment.finishedRuns > 0;
-  const use: Record<TipId, boolean> = {
+  const use: Record<ComposerTipId, boolean> = {
     page: rested && moment.pageOpened,
     "second-opinion": rested && !moment.teamedUp && moment.teammate !== null,
     "second-agent":
@@ -60,16 +69,16 @@ export function timelyTips(moment: TipMoment): readonly TipId[] {
     notifications: rested && moment.notificationsUndecided,
     inbox: !moment.started && moment.otherChatWorking,
   };
-  return TIP_IDS.filter((tip) => use[tip]);
+  return COMPOSER_TIP_IDS.filter((tip) => use[tip]);
 }
 
 /** Tips a person no longer needs: Agents that have worked together need no introduction. */
-export const outgrownTips = (moment: Pick<TipMoment, "teamedUp">): readonly TipId[] =>
+export const outgrownTips = (moment: Pick<TipMoment, "teamedUp">): readonly ComposerTipId[] =>
   moment.teamedUp ? ["second-opinion", "second-agent"] : [];
 
 /** The tip a chat showed, and the rest it showed it in. */
 export interface ShownTip {
-  readonly tip: TipId;
+  readonly tip: ComposerTipId;
   readonly finishedRuns: number;
 }
 
@@ -81,7 +90,7 @@ export function chooseTip(input: {
   readonly state: TipsState;
   readonly moment: TipMoment;
   readonly shown: ShownTip | null;
-}): TipId | null {
+}): ComposerTipId | null {
   const { state, moment, shown } = input;
   if (!state.on || moment.working) return null;
   const open = timelyTips(moment).filter((tip) => !state.settled.includes(tip));

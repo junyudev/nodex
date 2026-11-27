@@ -860,9 +860,9 @@ export const CODEX_COMMAND_REGISTRY = [
     ["CmdOrCtrl+B"],
   ),
   command(
-    "toggleSidebarOrganize",
-    "Arrange chats by attention",
-    "Arrange the sidebar's chats by attention, or group them by project",
+    "toggleAttentionView",
+    "Toggle Attention view",
+    "Show the sidebar's chats by whose move they are, or group them by project",
     175,
     "app",
     EDITABLE_SHORTCUT,
@@ -1463,9 +1463,9 @@ const COMMAND_TITLE_MESSAGES = defineMessages({
     id: "command.nextThreadNeedingAttention.title",
     defaultMessage: "Next chat needing you",
   },
-  toggleSidebarOrganize: {
-    id: "command.toggleSidebarOrganize.title",
-    defaultMessage: "Arrange chats by attention",
+  toggleAttentionView: {
+    id: "command.toggleAttentionView.title",
+    defaultMessage: "Toggle Attention view",
   },
   findInThread: {
     id: "command.findInThread.title",
@@ -1778,9 +1778,9 @@ const COMMAND_DESCRIPTION_MESSAGES = defineMessages({
     id: "command.nextThreadNeedingAttention.description",
     defaultMessage: "Open the next chat that is waiting on you or has news",
   },
-  toggleSidebarOrganize: {
-    id: "command.toggleSidebarOrganize.description",
-    defaultMessage: "Arrange the sidebar's chats by attention, or group them by project",
+  toggleAttentionView: {
+    id: "command.toggleAttentionView.description",
+    defaultMessage: "Show the sidebar's chats by whose move they are, or group them by project",
   },
   findInThread: {
     id: "command.findInThread.description",

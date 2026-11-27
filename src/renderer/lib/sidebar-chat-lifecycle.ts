@@ -166,11 +166,11 @@ export function holdSidebarLanes<Chat extends { readonly id: string }>(
   return result;
 }
 
-/** Every list of chats the attention arrangement shows: its lanes and the Settled shelf. */
+/** Every list of chats Attention view shows: its lanes and the Settled shelf. */
 export type SidebarChatShelf = SidebarChatLane | "settled";
 
 /**
- * The lists a reader may leave out of the attention arrangement, in the order it shows them.
+ * The lists a reader may leave out of Attention view, in the order it shows them.
  * `Active` always shows: it is what the arrangement is for.
  */
 export const SIDEBAR_OPTIONAL_SHELVES = [
@@ -232,6 +232,13 @@ export function resolveSidebarChatPreview(input: {
 /** A chat that asks something of its reader: an answer, an approval, or a look at its news. */
 export function sidebarChatNeedsReader(status: SidebarRowLiveStatus | null): boolean {
   return status === "attention" || status === "unread";
+}
+
+/** How many open chats ask something of their reader now; a snoozed one asks once it wakes. */
+export function countChatsAskingReader(chats: readonly SidebarLifecycleChat[]): number {
+  return chats.filter(
+    (chat) => sidebarChatNeedsReader(chat.status) && resolveSidebarChatLane(chat) !== "snoozed",
+  ).length;
 }
 
 /**
@@ -297,11 +304,11 @@ export function resolveAutoSettleIdleBefore(now: number, days: number): number {
 
 /**
  * How the sidebar arranges the reader's open chats: grouped under the Project each belongs to,
- * or by whose move each one is, across every Project.
+ * or, in Attention view, by whose move each one is, across every Project.
  */
 export type SidebarOrganize = "attention" | "project";
 
-/** Chats sit under their Projects until the reader turns on the arrangement by attention. */
+/** Chats sit under their Projects until the reader turns on Attention view. */
 export function normalizeSidebarOrganize(value: unknown): SidebarOrganize {
   return value === "attention" ? "attention" : "project";
 }
