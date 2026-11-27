@@ -782,6 +782,20 @@ export interface ThreadTurnOutputsBlockModel {
   resources: readonly ThreadSummaryPanelOutputRow[];
 }
 
+/**
+ * The Inbox messages a completed turn left for later, placed with its reply after its outputs.
+ * Only the Page identities come from the transcript; each card reads the message as it is now.
+ */
+export interface ThreadTurnFollowUpsBlockModel {
+  id: string;
+  turnId: string | null;
+  createdAt: number;
+  updatedAt: number;
+  searchableText: string;
+  type: "turnFollowUps";
+  pageIds: readonly string[];
+}
+
 export interface ThreadWorkedForBlockModel extends ThreadRenderKeyedBlockFields {
   id: string;
   turnId: string | null;
@@ -1065,6 +1079,7 @@ export type ThreadBlockModel =
   | ThreadTranscriptBlockModel
   | ThreadAssistantActionsBlockModel
   | ThreadTurnOutputsBlockModel
+  | ThreadTurnFollowUpsBlockModel
   | ThreadGeneratedImageGalleryBlockModel
   | ThreadWorkedForBlockModel
   | ThreadAgentActivityGroupBlockModel;

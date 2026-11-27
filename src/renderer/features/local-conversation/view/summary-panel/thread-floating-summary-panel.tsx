@@ -99,7 +99,10 @@ import type {
   ThreadSummaryPanelBrowserRow,
   ThreadSummaryPanelAutomationRow,
 } from "../../thread-stage-types";
-import { ThreadSummaryPanelRow } from "./thread-summary-panel-row";
+import {
+  ThreadSummaryPanelRow,
+  ThreadSummaryPanelShowMoreButton,
+} from "./thread-summary-panel-row";
 import {
   ThreadSummaryPanelCountBadge,
   ThreadSummaryPanelSection,
@@ -112,6 +115,9 @@ import {
 } from "./thread-summary-git-action-dialog";
 import { ThreadSummaryCreatePullRequestDialog } from "./thread-summary-create-pull-request-dialog";
 import { ThreadSummaryBackgroundSection } from "./thread-summary-background-section";
+import { ThreadSummaryFollowUpsSection } from "./thread-summary-follow-ups-section";
+import { isFollowUpOpen } from "@/features/inbox/follow-ups";
+import { useSessionFollowUps } from "@/features/inbox/use-session-follow-ups";
 import { ThreadSummaryBranchSetupDialog } from "./thread-summary-branch-setup-dialog";
 import {
   ThreadPinnedSummaryPanelShell,
@@ -150,6 +156,10 @@ export interface ThreadSummaryPanelContentProps {
   projectlessOutputDirectory?: string | null;
   projectWorkspacePath: string | null;
   turns: readonly CodexConversationTurn[];
+  /** The chat's Core Session, whose Agents' Inbox messages the summary lists as Follow-ups. */
+  sessionId?: string | null;
+  /** Whether the chat can be forked, which a follow-up can be handed to. */
+  canForkSession?: boolean;
   /** Live background work the conversation's Agents left running, with Stop and output. */
   backgroundTasks?: ConversationBackgroundTasks | null;
   backgroundAgentRows?: readonly CodexSubagentRow[];
@@ -451,21 +461,6 @@ function SummarySourceIconStrip({
 const SIDE_CHAT_INITIAL_LIMIT = 4;
 
 /** Reveals the rest of a section's rows, aligned with the row labels above it. */
-function ThreadSummaryPanelShowMoreButton({ onClick }: { onClick: () => void }) {
-  const intl = useIntl();
-  return (
-    <ThreadSummaryPanelRow
-      label={intl.formatMessage({
-        id: "conversation.threadFloatingSummaryPanel.showMore",
-        defaultMessage: "Show more",
-      })}
-      icon={<span aria-hidden="true" />}
-      labelClassName="truncate text-token-text-secondary"
-      onClick={onClick}
-    />
-  );
-}
-
 function SummaryDropdownRowLabel({ label }: { label: string }) {
   return (
     <span className="flex min-w-0 items-center gap-1 text-token-foreground">
@@ -1021,6 +1016,8 @@ export function ThreadSummaryPanelSurface({
   projectlessOutputDirectory = null,
   projectWorkspacePath,
   turns,
+  sessionId = null,
+  canForkSession = false,
   backgroundTasks = null,
   backgroundAgentRows: projectedBackgroundAgentRows,
   childMemberships = EMPTY_CHILD_MEMBERSHIPS,
@@ -1280,6 +1277,9 @@ export function ThreadSummaryPanelSurface({
   const hasComputerUsePip =
     computerUsePip !== null && actions?.onToggleSummaryComputerUsePip !== undefined;
   const chatFolderPath = activeThreadProjectless && activeThreadId ? cwd?.trim() || null : null;
+  const followUps = useSessionFollowUps(sessionId).data ?? null;
+  const openFollowUpCount =
+    followUps?.items.filter((item) => isFollowUpOpen(item.state)).length ?? 0;
   const summarySections = useMemo(
     () =>
       buildThreadSummaryPanelSectionModel({
@@ -1289,6 +1289,8 @@ export function ThreadSummaryPanelSurface({
         hasFolder: chatFolderPath !== null,
         hasPlan: planRow !== null,
         outputCount: outputRows.length,
+        followUpCount: followUps?.items.length ?? 0,
+        openFollowUpCount,
         sideChatCount: sideChatRows.length,
         backgroundSubagentRows,
         taskCount: backgroundTasks?.tasks.length ?? 0,
@@ -1304,6 +1306,8 @@ export function ThreadSummaryPanelSurface({
       chatFolderPath,
       hasComputerUsePip,
       outputRows.length,
+      followUps,
+      openFollowUpCount,
       planRow,
       clockAutomation,
       sideChatRows.length,
@@ -1851,6 +1855,18 @@ export function ThreadSummaryPanelSurface({
                         />
                       ))}
                     </ThreadSummaryPanelSection>
+                  );
+
+                case "followUps":
+                  if (!sessionId || !followUps) return null;
+                  return (
+                    <ThreadSummaryFollowUpsSection
+                      key={section.kind}
+                      sessionId={sessionId}
+                      followUps={followUps}
+                      openCount={section.count ?? 0}
+                      canFork={canForkSession}
+                    />
                   );
 
                 case "sideChats":

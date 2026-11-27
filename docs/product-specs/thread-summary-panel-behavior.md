@@ -4,7 +4,7 @@
 
 The Thread Summary panel is a derived view of one attached root Chat. It gives
 the user compact access to the active task's schedule, environment, plan,
-outputs, auxiliary conversations, processes, Browser state, and sources without
+outputs, follow-ups, auxiliary conversations, processes, Browser state, and sources without
 creating another conversation or runtime authority.
 
 The selected Session Scene owns whether its pinned summary is open. Workbench
@@ -31,12 +31,13 @@ The summary projects keyed sections in this order:
 2. Environment
 3. Plan
 4. Outputs
-5. Side chats
-6. Subagents
-7. Background
-8. Computer Use
-9. Browser
-10. Sources
+5. Follow-ups
+6. Side chats
+7. Subagents
+8. Background
+9. Computer Use
+10. Browser
+11. Sources
 
 Optional empty or unsupported sections are omitted rather than rendered as
 disabled placeholders. Sources is the deliberate exception: it remains
@@ -181,6 +182,24 @@ the same file and URL context-menu actions used by message links, including Save
 Sources is an icon-only accessible list. It does not add a duplicate text-pill
 representation of the same integrations, and it shows `No sources yet` when no
 source has been projected.
+
+## Follow-ups
+
+Follow-ups lists the Inbox messages the chat's Agents left with `send_to_inbox`,
+from Core's read of messages whose source is this chat: those still waiting for
+a decision first, then the rest, newest first within each, five at a time with
+Show more. It is omitted until the chat has sent one. The count beside the title
+is what still waits for a decision; with none waiting, the section starts
+collapsed.
+
+A row shows the message Page's Status glyph and current title. Hovering a
+waiting row reveals the same two decisions as the transcript's follow-up cards,
+as icons: send it to this chat, and fork this chat with it, where the chat can be
+forked. A handled row says where the message went in a word or two instead:
+`This chat`, `Own chat` for a fork or new chat started for it alone, `Other chat`,
+its Status, or `Notes`. Its tooltip gives the title and the full state, naming
+another chat, and activating the row opens the message Page beside the chat. See
+[Inbox Behavior](inbox-behavior.md#follow-ups-in-the-chat-that-raised-them).
 
 ## Side chats, Subagents, and Background
 

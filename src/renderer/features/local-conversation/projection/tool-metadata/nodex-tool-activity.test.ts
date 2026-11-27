@@ -7,6 +7,7 @@ import {
   joinNodexActivityParts,
   readNodexToolDetail,
   resolveNodexToolActivity,
+  sentInboxPageId,
   splitNodexDocumentBlocks,
   summarizeRepeatedNodexCalls,
 } from "./nodex-tool-activity";
@@ -92,6 +93,24 @@ describe("resolveNodexToolActivity", () => {
     const second = { pageIds: [PAGE_ID, PARENT_ID], values };
     expect(label(call("set_page_properties", { updates: [first, second] }))).toBe(
       "Updated properties on 2 pages",
+    );
+  });
+
+  test("names a sent Inbox message by the Page it became, once it exists", () => {
+    const args = { title: "Bridge aliases", body: "Nested scopes keep the root value." };
+    const sent = call("send_to_inbox", args, { data: { operationId: "op", pageId: PAGE_ID } });
+
+    expect(resolveNodexToolActivity(sent)?.parts.at(-1)).toEqual({
+      kind: "page",
+      pageId: PAGE_ID,
+      title: "Bridge aliases",
+    });
+    expect(sentInboxPageId(sent)).toBe(PAGE_ID);
+    // Before Core accepts it, or when it refuses, there is no Page to follow up on.
+    expect(sentInboxPageId({ ...sent, ...running })).toBeNull();
+    expect(sentInboxPageId({ ...sent, ...failed })).toBeNull();
+    expect(label(call("send_to_inbox", args, undefined, running))).toBe(
+      "Sending to Inbox “Bridge aliases”",
     );
   });
 

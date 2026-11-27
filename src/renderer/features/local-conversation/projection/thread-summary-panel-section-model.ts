@@ -8,6 +8,7 @@ export type ThreadSummaryPanelSectionKind =
   | "folder"
   | "plan"
   | "outputs"
+  | "followUps"
   | "sideChats"
   | "subagents"
   | "tasks"
@@ -35,6 +36,9 @@ export interface ThreadSummaryPanelSectionModelInput {
   hasFolder?: boolean;
   hasPlan: boolean;
   outputCount: number;
+  /** Inbox messages the chat's Agents left, and how many still wait for a decision. */
+  followUpCount?: number;
+  openFollowUpCount?: number;
   sideChatCount: number;
   backgroundSubagentRows: readonly Pick<
     ThreadComposerShellBackgroundAgentRowModel,
@@ -151,6 +155,19 @@ export function buildThreadSummaryPanelSectionModel(
           }),
           mode: "accordion",
           count: input.outputCount,
+          autoCollapse: false,
+        }
+      : null,
+    (input.followUpCount ?? 0) > 0
+      ? {
+          kind: "followUps",
+          sectionKey: "follow-ups",
+          title: getIntl().formatMessage({
+            id: "conversation.threadSummaryPanelSectionModel.followUps",
+            defaultMessage: "Follow-ups",
+          }),
+          mode: "accordion",
+          count: input.openFollowUpCount ?? 0,
           autoCollapse: false,
         }
       : null,

@@ -1637,6 +1637,8 @@ function ConnectedThreadStageContent({
       projectlessOutputDirectory: summaryFields.projectlessOutputDirectory,
       projectWorkspacePath: input.projectWorkspacePath ?? null,
       turns,
+      sessionId: input.sessionId ?? null,
+      canForkSession: runtimeSession,
       backgroundTasks:
         input.provider?.backgroundTasks ??
         createCodexBackgroundTerminalTasks(activeThreadId, backgroundTerminalRows, actions, intl),
@@ -1688,6 +1690,7 @@ function ConnectedThreadStageContent({
       runtime.kind,
       runtime.hostId,
       input.projectWorkspacePath,
+      input.sessionId,
       actions,
       turns,
     ],

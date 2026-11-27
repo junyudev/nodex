@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { projectSessionDetailQueryOptions } from "@/lib/query-options";
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { FormattedMessage, defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useInboxSkillAvailability, InboxSkillToggles } from "./inbox-skill-review";
@@ -27,6 +29,7 @@ import { useInboxChatTargets } from "./use-inbox";
 import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
 import { InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
+import { isChatAction } from "./inbox-presentation";
 import { useInboxChatWorktree } from "./inbox-chat-location";
 import { sameInboxAgentChoice } from "./inbox-agent-model";
 
@@ -45,6 +48,10 @@ const ACTION_LABELS: Readonly<Record<ActionType, MessageDescriptor>> = {
   send_to_chat: defineMessage({
     id: "inbox.inboxDispatchEditor.sendToChat",
     defaultMessage: "Send to chat",
+  }),
+  fork_chat: defineMessage({
+    id: "inbox.inboxDispatchEditor.forkChat",
+    defaultMessage: "Fork chat",
   }),
   move_to_project: defineMessage({
     id: "inbox.inboxDispatchEditor.moveToProject",
@@ -66,6 +73,10 @@ const CONFIRM_LABELS: Readonly<Record<ActionType, MessageDescriptor>> = {
     defaultMessage: "Start chat",
   }),
   send_to_chat: defineMessage({ id: "inbox.inboxDispatchEditor.send", defaultMessage: "Send" }),
+  fork_chat: defineMessage({
+    id: "inbox.inboxDispatchEditor.forkChat",
+    defaultMessage: "Fork chat",
+  }),
   move_to_project: defineMessage({ id: "inbox.inboxDispatchEditor.move", defaultMessage: "Move" }),
 };
 
@@ -82,11 +93,15 @@ export interface InboxDispatchAutomationDecision {
  * A held decision admits its Automation action or is handed on like any message. Skipping it is
  * `Mark done`, so it offers no Keep. Other messages cannot admit an Automation action.
  */
-const actionTypesFor = (decisionId: string | null | undefined): readonly ActionType[] =>
+const actionTypesFor = (
+  decisionId: string | null | undefined,
+  forkable: boolean,
+): readonly ActionType[] =>
   (Object.keys(ACTION_LABELS) as ActionType[]).filter(
     (type) =>
       type !== "plan" &&
       type !== "snooze" &&
+      (type !== "fork_chat" || forkable) &&
       (decisionId ? type !== "keep" && type !== "save_to_notes" : type !== "execute_decision"),
   );
 
@@ -107,6 +122,12 @@ export interface InboxDispatchDraft {
   readonly agent?: InboxAgentChoice | null;
   /** Whether a new chat runs in its Page's worktree; the Inbox's setting when unset. */
   readonly worktree?: boolean | null;
+  readonly newWorktree?: boolean | null;
+  /**
+   * The chat an Agent's message came from. It is where Send to chat starts, and the chat Fork
+   * chat forks; only a message with one can be forked.
+   */
+  readonly sourceSessionId?: string | null;
   /** The immutable decision being reviewed, independent of its originating Automation. */
   readonly decisionId?: string | null;
   /** Present for an automation's waiting run, which can run its task. */
@@ -155,9 +176,11 @@ export function draftFromAction(
         agent: action.agent,
         worktree: action.worktree ?? null,
       };
+    case "fork_chat":
     case "send_to_chat":
       return {
-        type: "send_to_chat",
+        type: action.type,
+        ...(action.type === "fork_chat" ? { newWorktree: action.newWorktree } : {}),
         projectId: null,
         sessionId: action.sessionId,
         prompt: inboxPromptWithAdditions(action.prompt, action.additions),
@@ -199,9 +222,11 @@ export function draftForInboxItem(
     action ?? inboxNewChatAction(projectId, messageTextOf(item.body)),
     messageTextOf(item.body),
   );
+  const sourceSessionId = item.source.kind === "agent" ? item.source.sessionId : null;
   return {
     ...draft,
     ...(proposal?.state !== "open" && draft.skills ? { skills: [] } : {}),
+    sourceSessionId,
     basis: proposal?.basis ?? [item.basis],
     chat: proposal?.chat ?? null,
     decisionId:
@@ -238,10 +263,12 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
             ...(draft.skills?.length ? { skills: draft.skills } : {}),
           }
         : null;
+    case "fork_chat":
     case "send_to_chat":
       return prompt && draft.sessionId
         ? {
-            type: "send_to_chat",
+            type: draft.type,
+            ...(draft.type === "fork_chat" ? { newWorktree: draft.newWorktree } : {}),
             sessionId: draft.sessionId,
             prompt,
             additions: [],
@@ -339,10 +366,18 @@ export function InboxDispatchEditor({
     draft.type === "move_to_project" && inboxProjectId !== null
       ? activeProjects.filter((project) => project.id !== inboxProjectId)
       : activeProjects;
+  // A fork is always of the chat the message came from; sending starts from that chat too.
+  const sourceSessionId =
+    initial.sourceSessionId ?? (initial.type === "fork_chat" ? initial.sessionId : null);
   const selectType = (type: ActionType) =>
     setDraft((current) => ({
       ...current,
       type,
+      ...(type === "fork_chat"
+        ? { sessionId: sourceSessionId }
+        : type === "send_to_chat" && current.sessionId === null
+          ? { sessionId: sourceSessionId }
+          : {}),
       projectId:
         inboxProjectId === null
           ? current.projectId
@@ -376,8 +411,15 @@ export function InboxDispatchEditor({
   const chosenChat =
     chats.find((chat) => chat.sessionId === draft.sessionId) ??
     (selectedChat?.sessionId === draft.sessionId ? selectedChat : null);
+  const sourceChat = useQuery({
+    ...projectSessionDetailQueryOptions(sourceSessionId ?? ""),
+    enabled: sourceSessionId !== null,
+  }).data;
   const chatTitle =
     (chosenChat ? presentSessionTitle(chosenChat, intl) : null) ??
+    (sourceChat && draft.sessionId === sourceSessionId
+      ? presentSessionTitle(sourceChat, intl)
+      : null) ??
     (draft.sessionId
       ? intl.formatMessage({
           id: "inbox.inboxDispatchEditor.selectedChat",
@@ -391,7 +433,7 @@ export function InboxDispatchEditor({
   const submit = async () => {
     if (!action || skillAvailability.pending) return;
     setSubmitting(true);
-    const chat = action.type === "send_to_chat" ? chosenChat : null;
+    const chat = action.type === "send_to_chat" || action.type === "fork_chat" ? chosenChat : null;
     const done = droppedSkillNames.length
       ? await onSubmit(action, chat, droppedSkillNames)
       : await onSubmit(action, chat);
@@ -415,7 +457,7 @@ export function InboxDispatchEditor({
           defaultMessage: "Action",
         })}
       >
-        {actionTypesFor(draft.decisionId).map((type) => {
+        {actionTypesFor(draft.decisionId, sourceSessionId !== null).map((type) => {
           const Icon = INBOX_ACTION_ICONS[type];
           return (
             <button
@@ -568,7 +610,16 @@ export function InboxDispatchEditor({
         </div>
       ) : null}
 
-      {draft.type === "new_chat" || draft.type === "send_to_chat" ? (
+      {draft.type === "fork_chat" ? (
+        <div className="flex min-w-0 items-center gap-2 px-1 text-sm text-token-description-foreground">
+          <span className="shrink-0">
+            <FormattedMessage id="inbox.inboxDispatchEditor.chat" defaultMessage="Chat" />
+          </span>
+          <span className="min-w-0 truncate text-token-foreground">{chatTitle}</span>
+        </div>
+      ) : null}
+
+      {draft.type === "new_chat" || draft.type === "send_to_chat" || draft.type === "fork_chat" ? (
         <textarea
           aria-label={intl.formatMessage({
             id: "inbox.inboxDispatchEditor.prompt",
@@ -584,9 +635,7 @@ export function InboxDispatchEditor({
         />
       ) : null}
 
-      {action &&
-      draft.proposal &&
-      (action.type === "new_chat" || action.type === "send_to_chat") ? (
+      {action && draft.proposal && isChatAction(action) ? (
         <InboxSkillToggles
           skills={inboxActionSkills(draft.proposal.action)}
           dropped={droppedSkillNames}

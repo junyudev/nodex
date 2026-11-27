@@ -7,6 +7,7 @@ import {
 } from "react";
 import { cn } from "../../../../lib/utils";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { useIntl } from "@/lib/i18n";
 
 interface ThreadSummaryPanelRowProps extends Omit<
   ComponentPropsWithoutRef<"div">,
@@ -165,3 +166,19 @@ export const ThreadSummaryPanelRow = forwardRef<HTMLDivElement, ThreadSummaryPan
     );
   },
 );
+
+/** Reveals the rest of a capped section list. */
+export function ThreadSummaryPanelShowMoreButton({ onClick }: { onClick: () => void }) {
+  const intl = useIntl();
+  return (
+    <ThreadSummaryPanelRow
+      label={intl.formatMessage({
+        id: "conversation.threadFloatingSummaryPanel.showMore",
+        defaultMessage: "Show more",
+      })}
+      icon={<span aria-hidden="true" />}
+      labelClassName="truncate text-token-text-secondary"
+      onClick={onClick}
+    />
+  );
+}

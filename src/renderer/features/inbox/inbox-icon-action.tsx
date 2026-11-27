@@ -4,6 +4,7 @@ import type { InboxDispatchAction, InboxEntryKind } from "../../../shared/inbox"
 import {
   AutomationRunNowIcon,
   ClockIcon,
+  ForkIcon,
   MoveToIcon,
   NewChatIcon,
   NoteIcon,
@@ -25,6 +26,7 @@ export const INBOX_ACTION_ICONS: Readonly<Record<InboxDispatchAction["type"], In
   snooze: ClockIcon,
   new_chat: NewChatIcon,
   send_to_chat: SendToChatIcon,
+  fork_chat: ForkIcon,
   move_to_project: MoveToIcon,
   execute_decision: AutomationRunNowIcon,
 };
