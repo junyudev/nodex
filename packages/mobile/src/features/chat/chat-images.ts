@@ -69,6 +69,14 @@ export const galleryAt = (gallery: readonly GalleryImage[], image: GalleryImage)
   return index < 0 ? { images: [image], index: 0 } : { images: gallery, index };
 };
 
+const WORK_PREVIEW_LIMIT = 3;
+
+/** The first pictures of a collapsed work group and how many more the viewer can show. */
+export const workImagePreview = (images: readonly GalleryImage[]) => ({
+  thumbnails: images.slice(0, WORK_PREVIEW_LIMIT),
+  remaining: Math.max(0, images.length - WORK_PREVIEW_LIMIT),
+});
+
 export const THUMBNAIL_GAP = 8;
 const LARGEST_THUMBNAIL = 160;
 const COLUMNS = 3;

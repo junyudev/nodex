@@ -44,6 +44,17 @@ const WINDOW_STEP_IMAGES = 4;
 
 type Activity = Extract<ChatItem, { kind: "activity" }>;
 type DynamicTool = Extract<AgentTurnItem, { type: "dynamic_tool" }>;
+const GENERATED_IMAGE = "Generated image";
+const TOOL_OUTPUT_IMAGE = "Tool output";
+
+const isInlineImage = (source: string): boolean => /^data:image\//iu.test(source);
+
+const imageBasename = (path: string | undefined): string | null => {
+  if (!path || isInlineImage(path)) return null;
+  return (path.startsWith("/") ? posix : win32).basename(path) || null;
+};
+
+const viewedImageTitle = (name: string | null): string => `Viewed ${name || "an image"}`;
 const json = (data: unknown): string | null =>
   data === undefined || data === null
     ? null
@@ -109,13 +120,26 @@ const nativePictures = (
 ): { readonly images: FileRef[]; readonly unavailableImages: UnavailablePicture[] } => {
   const images: FileRef[] = [];
   const unavailableImages: UnavailablePicture[] = [];
+  if (item.type === "imageGeneration" && (item.failure || item.status !== "completed"))
+    return { images, unavailableImages };
+  const stepImageName =
+    item.type === "userMessage"
+      ? null
+      : item.type === "imageView"
+        ? (imageBasename(item.path) ?? "Image")
+        : item.type === "imageGeneration"
+          ? GENERATED_IMAGE
+          : TOOL_OUTPUT_IMAGE;
   for (const { id, media, resource } of nativeSessionMediaResources(item)) {
     if (media !== "image") continue;
     const source = resource?.source ?? "";
-    const picture = { name: resource?.name ?? "Picture", mimeType: resource?.mimeType ?? null };
+    const picture = {
+      name: stepImageName ?? resource?.name ?? "Picture",
+      mimeType: resource?.mimeType ?? null,
+    };
     if (resource && /^https:\/\//iu.test(source))
       images.push({ ...picture, ref: source, size: null });
-    else if (resource && runId && (/^data:image\//iu.test(source) || isAbsolutePath(source)))
+    else if (resource && runId && (isInlineImage(source) || isAbsolutePath(source)))
       images.push({
         ...picture,
         ref: attachmentRef([sessionId, threadId, item.id, id, runId]),
@@ -151,6 +175,12 @@ const activityStatus = (status: string): Activity["status"] => {
   if (["cancelled", "interrupted", "declined"].includes(status)) return "declined";
   if (status === "failed") return "failed";
   return "done";
+};
+
+const generationTitle = (status: Activity["status"]): string => {
+  if (status === "running") return "Generating image";
+  if (status === "done") return GENERATED_IMAGE;
+  return "Couldn't generate image";
 };
 
 export const utf8Tail = (text: string, limit: number): { text: string; truncated: boolean } => {
@@ -269,6 +299,7 @@ export const runtimeItemProjector =
       output: string | null = null,
       outputTruncated = false,
       images: Activity["images"] = [],
+      imageAction?: Activity["imageAction"],
     ): Activity => ({
       ...base,
       kind: "activity",
@@ -279,6 +310,7 @@ export const runtimeItemProjector =
       outputTruncated,
       status: activityStatus(item.status),
       images,
+      ...(imageAction ? { imageAction } : {}),
       unavailableImages: missingCopies(item),
     });
     const notice = (text: string, tone: "info" | "warning" | "danger" = "info"): ChatItem => ({
@@ -298,18 +330,17 @@ export const runtimeItemProjector =
         mimeType: file.mimeType,
         size: file.sizeBytes,
       }));
-    // A step that viewed a picture shows the copy the Agent kept, as the desktop does; any other
-    // step shows the pictures its tool returned, which every Runtime read names without their bytes.
-    const stepImages = (tool: DynamicTool): Activity["images"] => {
-      const kept = files((tool.attachments ?? []).filter((file) => file.type === "image"));
-      if (kept.length > 0) return kept.slice(0, STEP_IMAGES);
-      return (tool.resultImages ?? []).slice(0, STEP_IMAGES).map(({ attachmentId, mimeType }) => ({
-        ref: ref(attachmentId),
-        name: "Tool output",
-        mimeType,
-        size: null,
-      }));
-    };
+    // Every Runtime read names a tool's returned pictures; a tool that kept pictures as its own
+    // attachments shows those.
+    const stepImages = (tool: DynamicTool, kept: Activity["images"]): Activity["images"] =>
+      tool.resultImages?.length
+        ? tool.resultImages.slice(0, STEP_IMAGES).map(({ attachmentId, mimeType }) => ({
+            ref: ref(attachmentId),
+            name: TOOL_OUTPUT_IMAGE,
+            mimeType,
+            size: null,
+          }))
+        : kept;
     switch (item.type) {
       case "user_message":
         return {
@@ -387,15 +418,53 @@ export const runtimeItemProjector =
         return work("search", "Search files", item.pattern ?? null, json(item.results));
       case "web_search":
         return work("web", "Search the web", item.patterns?.join(", ") ?? null, json(item.results));
-      case "dynamic_tool":
+      case "dynamic_tool": {
+        const output = toolOutput(item.output ?? item.mcpToolCall?.result);
+        const kept = files(
+          (item.attachments ?? []).filter((file) => file.type === "image").slice(0, STEP_IMAGES),
+        );
+        if (item.toolName === "imageGeneration") {
+          const status = activityStatus(item.status);
+          const prompt = isRecord(item.input) ? item.input.prompt : null;
+          return work(
+            "image",
+            generationTitle(status),
+            typeof prompt === "string" ? prompt : null,
+            output,
+            item.outputOmitted,
+            status === "done" ? kept.map((image) => ({ ...image, name: GENERATED_IMAGE })) : [],
+            "generate",
+          );
+        }
+        const inspected =
+          item.status === "completed" &&
+          (item.toolName === "imageView" || item.viewedImagePath !== undefined) &&
+          (kept.length > 0 || Boolean(item.unavailableImages?.length));
+        if (inspected) {
+          return work(
+            "image",
+            viewedImageTitle(
+              kept[0]?.name ||
+                imageBasename(item.viewedImagePath) ||
+                item.unavailableImages?.[0]?.name ||
+                null,
+            ),
+            item.viewedImagePath ?? null,
+            output,
+            item.outputOmitted,
+            kept,
+            "view",
+          );
+        }
         return work(
           "tool",
           item.title ?? item.toolName ?? "Tool",
           null,
-          toolOutput(item.output ?? item.mcpToolCall?.result),
+          output,
           item.outputOmitted,
-          stepImages(item),
+          stepImages(item, kept),
         );
+      }
       case "subagent":
         return work(
           "agent",
@@ -456,6 +525,7 @@ export const projectNativeItem = (
     detail: string | null,
     output: string | null,
     status = "completed",
+    imageAction?: Activity["imageAction"],
   ): Activity => ({
     ...base,
     kind: "activity",
@@ -465,6 +535,7 @@ export const projectNativeItem = (
     output,
     outputTruncated: false,
     status: activityStatus(status),
+    ...(imageAction ? { imageAction } : {}),
     ...pictures,
   });
   switch (item.type) {
@@ -522,9 +593,25 @@ export const projectNativeItem = (
     case "functionCallOutput":
       return work("tool", item.name, item.namespace, toolOutput(item.output));
     case "imageView":
-      return work("file", "View image", item.path, null);
-    case "imageGeneration":
-      return work("tool", "Generate image", item.revisedPrompt, null, item.status);
+      return work(
+        "image",
+        viewedImageTitle(imageBasename(item.path)),
+        isInlineImage(item.path) ? null : item.path,
+        null,
+        "completed",
+        "view",
+      );
+    case "imageGeneration": {
+      const status = item.failure ? "failed" : item.status;
+      return work(
+        "image",
+        generationTitle(activityStatus(status)),
+        item.revisedPrompt,
+        null,
+        status,
+        "generate",
+      );
+    }
     case "plan":
       return work("plan", "Plan", null, item.text);
     case "subAgentActivity":

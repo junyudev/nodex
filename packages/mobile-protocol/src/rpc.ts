@@ -20,7 +20,7 @@ import {
 import { PushRegistrationSchema } from "./push";
 
 /** Increment on any change an older peer cannot ignore. A mismatch asks the person to update. */
-export const MOBILE_PROTOCOL_REVISION = 4;
+export const MOBILE_PROTOCOL_REVISION = 5;
 /** Core and native adapters reject a complete frame above this bound. */
 export const MOBILE_MAX_MESSAGE_BYTES = 1024 * 1024;
 

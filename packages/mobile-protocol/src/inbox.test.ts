@@ -123,19 +123,36 @@ describe("InboxProposalSchema", () => {
 });
 
 describe("ChatItemSchema", () => {
+  const activity = {
+    kind: "activity",
+    id: "step",
+    at: "2026-11-08T00:00:00.000Z",
+    detail: null,
+    status: "done",
+    output: null,
+    outputTruncated: false,
+  };
+
   it("reads a step from a host that predates its pictures as having none", () => {
     expect(
       ChatItemSchema.parse({
-        kind: "activity",
-        id: "step",
-        at: "2026-11-08T00:00:00.000Z",
+        ...activity,
         category: "tool",
         title: "Take a screenshot",
-        detail: null,
-        status: "done",
-        output: null,
-        outputTruncated: false,
       }),
     ).toMatchObject({ kind: "activity", images: [], unavailableImages: [] });
+  });
+
+  it.each([
+    ["view", "Viewed chart.png"],
+    ["generate", "Generated image"],
+  ])("decodes an image activity for %s", (imageAction, title) => {
+    expect(
+      ChatItemSchema.parse({ ...activity, category: "image", imageAction, title }),
+    ).toMatchObject({
+      category: "image",
+      imageAction,
+      title,
+    });
   });
 });

@@ -293,6 +293,7 @@ describe("a step's pictures", () => {
         resultImages: returned(1),
       }),
     );
+    expect(step).toMatchObject({ category: "tool", title: "screenshot" });
     expect(step.output).toBe("Captured the page.");
     expect(step.images).toEqual([
       { ref: expect.any(String), name: "Tool output", mimeType: "image/png", size: null },
@@ -332,7 +333,8 @@ describe("a step's pictures", () => {
     const viewed = tool({
       toolName: "Read",
       title: "Read chart.png",
-      viewedImagePath: "/Users/someone/chart.png",
+      viewedImagePath: "/Users/someone/original.png",
+      resultImages: returned(1),
       attachments: [
         copy,
         { type: "file", id: "notes", name: "notes.txt", mimeType: "text/plain", sizeBytes: 3 },
@@ -345,6 +347,11 @@ describe("a step's pictures", () => {
     // A transcript window carries no tool output; the copy is the item's own attachment.
     const window = project({ ...viewed, outputOmitted: true } as AgentTurnItem);
     for (const step of [full, window]) {
+      expect(step).toMatchObject({
+        category: "image",
+        imageAction: "view",
+        title: "Viewed chart.png",
+      });
       expect(step.images).toEqual([
         { ref: expect.any(String), name: "chart.png", mimeType: "image/png", size: 68 },
       ]);
@@ -353,6 +360,83 @@ describe("a step's pictures", () => {
       ]);
     }
     expect(window.output).toBeNull();
+  });
+
+  test("a missing inspected picture keeps its description and the reason it is unavailable", () => {
+    const viewedImagePath = String.raw`C:\gone\chart.png`;
+    const unavailableImages = [
+      { name: "chart.png", sourcePath: viewedImagePath, reason: "source_missing" },
+    ];
+    expect(project(tool({ toolName: "Read", viewedImagePath, unavailableImages }))).toMatchObject({
+      category: "image",
+      imageAction: "view",
+      title: "Viewed chart.png",
+      images: [],
+      unavailableImages: [{ name: "chart.png", reason: "Its original file is missing." }],
+    });
+    expect(
+      project(
+        tool({
+          toolName: "imageView",
+          unavailableImages: [{ ...unavailableImages[0], name: "" }],
+        }),
+      ),
+    ).toMatchObject({ category: "image", imageAction: "view", title: "Viewed an image" });
+  });
+
+  test("a file read without an inspected picture keeps its title and any tool result pictures", () => {
+    const step = project(
+      tool({
+        toolName: "Read",
+        title: "Read notes.txt",
+        viewedImagePath: "/tmp/notes.txt",
+        resultImages: returned(1),
+      }),
+    );
+    expect(step).toMatchObject({ category: "tool", title: "Read notes.txt" });
+    expect(step.imageAction).toBeUndefined();
+    expect(step.images).toMatchObject([{ name: "Tool output" }]);
+    expect(located(step.images)).toEqual([
+      ["chat", "source-thread", "source-item", "tool-result:1"],
+    ]);
+  });
+
+  test.each([
+    ["running", "running", "Generating image"],
+    ["completed", "done", "Generated image"],
+    ["failed", "failed", "Couldn't generate image"],
+  ])("a Runtime image generation step reads as %s", (status, projectedStatus, title) => {
+    const step = project(
+      tool({
+        toolName: "imageGeneration",
+        status,
+        input: { prompt: "A lighthouse at dusk" },
+        attachments:
+          status === "completed"
+            ? [
+                {
+                  type: "image",
+                  id: "generated-copy",
+                  name: "lighthouse.png",
+                  mimeType: "image/png",
+                  sizeBytes: 68,
+                },
+              ]
+            : [],
+        resultImages: returned(1),
+      }),
+    );
+    expect(step).toMatchObject({
+      category: "image",
+      imageAction: "generate",
+      title,
+      status: projectedStatus,
+      detail: "A lighthouse at dusk",
+      images: status === "completed" ? [{ name: "Generated image" }] : [],
+    });
+    expect(located(step.images)).toEqual(
+      status === "completed" ? [["chat", "source-thread", "source-item", "generated-copy"]] : [],
+    );
   });
 
   test("a result whose shape matters keeps it, without the picture's bytes", () => {
@@ -415,8 +499,11 @@ describe("a connected conversation's pictures", () => {
     const viewed = project({ type: "imageView", id: "view", path: "/tmp/chart.png" });
     expect(viewed).toMatchObject({
       kind: "activity",
-      title: "View image",
+      category: "image",
+      imageAction: "view",
+      title: "Viewed chart.png",
       detail: "/tmp/chart.png",
+      images: [{ name: "chart.png" }],
     });
     if (viewed.kind !== "activity") throw new Error("A view is a step");
     expect(located(viewed.images)).toEqual([["chat", "codex-thread", "view", "image", "run"]]);
@@ -438,6 +525,11 @@ describe("a connected conversation's pictures", () => {
       error: null,
     });
     if (returned.kind !== "activity") throw new Error("A tool call is a step");
+    expect(returned).toMatchObject({
+      category: "tool",
+      title: "screenshot",
+      images: [{ name: "Tool output" }],
+    });
     expect(returned.output).toBe("Captured.");
     expect(located(returned.images)).toEqual([
       ["chat", "codex-thread", "call", "content:1", "run"],
@@ -445,7 +537,36 @@ describe("a connected conversation's pictures", () => {
     expect(Buffer.byteLength(JSON.stringify(returned))).toBeLessThan(4 * 1024);
   });
 
-  test("a picture its desktop cannot read is named with the reason, not left out", () => {
+  test.each([
+    ["in_progress", "running", "Generating image"],
+    ["completed", "done", "Generated image"],
+    ["failed", "failed", "Couldn't generate image"],
+  ])("a native image generation step reads as %s", (status, projectedStatus, title) => {
+    const step = project({
+      type: "imageGeneration",
+      id: "generated",
+      status,
+      revisedPrompt: "A lighthouse at dusk",
+      failure: null,
+      ...(status === "completed" ? { result: PNG } : { fileId: "file-provider" }),
+    });
+    expect(step).toMatchObject({
+      kind: "activity",
+      category: "image",
+      imageAction: "generate",
+      title,
+      status: projectedStatus,
+      detail: "A lighthouse at dusk",
+      images: status === "completed" ? [{ name: "Generated image" }] : [],
+      unavailableImages: [],
+    });
+    if (step.kind !== "activity") throw new Error("A generation is a step");
+    expect(located(step.images)).toEqual(
+      status === "completed" ? [["chat", "codex-thread", "generated", "image", "run"]] : [],
+    );
+  });
+
+  test("native image steps name pictures their desktop cannot read and give the reason", () => {
     const generated = project({
       type: "imageGeneration",
       id: "generated",
@@ -456,20 +577,28 @@ describe("a connected conversation's pictures", () => {
     });
     expect(generated).toMatchObject({
       kind: "activity",
-      title: "Generate image",
+      title: "Generated image",
       detail: "A lighthouse at dusk",
       images: [],
       unavailableImages: [
         {
-          name: "Picture",
+          name: "Generated image",
           reason: "Codex keeps this picture with its provider; the desktop has no copy.",
         },
       ],
     });
     // Without its Run, the item cannot be read again to fetch the picture.
     expect(project({ type: "imageView", id: "view", path: "/tmp/chart.png" }, null)).toMatchObject({
+      title: "Viewed chart.png",
       images: [],
       unavailableImages: [{ name: "chart.png" }],
+    });
+    expect(
+      project({ type: "imageView", id: "view", path: `data:image/png;base64,${PNG}` }),
+    ).toMatchObject({
+      title: "Viewed an image",
+      detail: null,
+      images: [{ name: "Image" }],
     });
   });
 });

@@ -30,7 +30,7 @@ import { EffortPills } from "../pickers/EffortPills";
 import { useChatEffort } from "../pickers/use-chat-effort";
 import { setArchived } from "./chat-archive";
 import { ChatGallery, ImageStrip, UnavailablePictures, useOpenPicture } from "./ChatImages";
-import { galleryImages } from "./chat-images";
+import { galleryImages, workImagePreview } from "./chat-images";
 import { RequestCard } from "./RequestCard";
 import { UserRow, type RetryActions } from "./UserRow";
 import { stepTitle, transcriptRows, type TranscriptRow } from "./transcript-rows";
@@ -40,6 +40,7 @@ const CATEGORY_ICONS: Readonly<
 > = {
   command: "terminal",
   file: "file",
+  image: "photo",
   search: "search",
   web: "globe",
   tool: "tool",
@@ -50,6 +51,7 @@ const CATEGORY_ICONS: Readonly<
 
 /** A step's picture in an opened run of work. */
 const STEP_THUMBNAIL = 48;
+const WORK_THUMBNAIL = (STEP_THUMBNAIL * 3) / 4;
 const STEP_ICON = 15;
 const EMPTY_ITEMS: readonly ChatItem[] = [];
 
@@ -144,20 +146,44 @@ const WorkRow = ({
   readonly sessionId: string;
 }) => {
   const [open, setOpen] = useState(false);
+  const { thumbnails, remaining } = workImagePreview(open ? [] : row.images);
+  const toggle = () => setOpen((value) => !value);
   return (
     <View className="px-4 pt-4">
-      <Tap
-        accessibilityState={{ expanded: open }}
-        className="flex-row items-center gap-1.5"
-        onPress={() => setOpen((value) => !value)}
-      >
-        {row.running ? <Spinner size="small" /> : <Icon name="check" size={15} color="ink-3" />}
-        <Txt className="shrink text-sm text-ink-3" numberOfLines={1}>
-          {row.title}
-          {row.failedCount > 0 ? ` · ${row.failedCount} failed` : ""}
-        </Txt>
-        <Icon name={open ? "chevronDown" : "chevronRight"} size={13} color="ink-3" />
-      </Tap>
+      <View className="flex-row items-center">
+        <Tap
+          accessibilityState={{ expanded: open }}
+          accessibilityHint={remaining > 0 ? `${remaining} more pictures` : undefined}
+          className="min-w-0 flex-1 flex-row items-center gap-1.5 self-stretch pr-2"
+          onPress={toggle}
+        >
+          {row.running ? <Spinner size="small" /> : <Icon name="check" size={15} color="ink-3" />}
+          <Txt className="shrink text-sm text-ink-3" numberOfLines={1}>
+            {row.title}
+            {row.failedCount > 0 ? ` · ${row.failedCount} failed` : ""}
+          </Txt>
+          <Icon name={open ? "chevronDown" : "chevronRight"} size={13} color="ink-3" />
+        </Tap>
+        <ImageStrip
+          className="min-h-11 flex-nowrap items-center"
+          images={thumbnails}
+          size={WORK_THUMBNAIL}
+          sequence={row.images}
+        />
+        {remaining > 0 ? (
+          <Tap
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            className="justify-center self-stretch pl-2"
+            onPress={toggle}
+          >
+            <Txt className="text-xs text-ink-3" numberOfLines={1}>
+              +{remaining}
+            </Txt>
+          </Tap>
+        ) : null}
+      </View>
       {open ? (
         <View className="mt-1 border-l-[0.5px] border-line pl-3">
           {row.items.map((item) => (

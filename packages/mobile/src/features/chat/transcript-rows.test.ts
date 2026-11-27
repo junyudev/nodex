@@ -98,6 +98,40 @@ describe("transcriptRows", () => {
     expect(rows[0]).toMatchObject({ failedCount: 1 });
   });
 
+  it("collects the group's available pictures in step order", () => {
+    const rows = transcriptRows(
+      [
+        {
+          ...activity("inspect"),
+          category: "image",
+          imageAction: "view",
+          images: [{ ref: "nodex://one", name: "chart.png", mimeType: "image/png", size: null }],
+          unavailableImages: [{ name: "gone.png", reason: "Its original file is missing." }],
+        },
+        thinking("t"),
+        {
+          ...activity("tool"),
+          category: "tool",
+          images: [{ ref: "nodex://two", name: "Tool output", mimeType: null, size: null }],
+        },
+        user("next-message"),
+        activity("unrelated-step"),
+      ],
+      idle,
+    );
+    expect(rows).toMatchObject([
+      {
+        type: "work",
+        images: [
+          { ref: "nodex://one", name: "chart.png" },
+          { ref: "nodex://two", name: "Tool output" },
+        ],
+      },
+      { type: "user" },
+      { type: "work", images: [] },
+    ]);
+  });
+
   it("adds a working row only when a running chat shows nothing moving", () => {
     const types = (items: readonly ChatItem[], status: "idle" | "running") =>
       transcriptRows(items, { status }).map((row) => row.type);
@@ -141,6 +175,24 @@ describe("workTitle", () => {
     expect(workTitle([activity("a")])).toBe("1 step");
     expect(workTitle([activity("a"), activity("b")])).toBe("2 steps");
     expect(workTitle([thinking("t")])).toBe("Thought");
+  });
+
+  it("counts inspections as viewed images even when a picture is unavailable", () => {
+    const viewed: ReturnType<typeof activity> = {
+      ...activity("a", "done", "Viewed chart.png"),
+      category: "image",
+      imageAction: "view",
+      unavailableImages: [{ name: "chart.png", reason: "Its original file is missing." }],
+    };
+    const generated: ReturnType<typeof activity> = {
+      ...activity("b", "done", "Generated image"),
+      category: "image",
+      imageAction: "generate",
+    };
+    expect(workTitle([viewed])).toBe("Viewed 1 image");
+    expect(workTitle([viewed, { ...viewed, id: "c" }, generated, activity("d")])).toBe(
+      "Viewed 2 images · 2 steps",
+    );
   });
 });
 
