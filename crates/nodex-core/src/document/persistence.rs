@@ -606,6 +606,13 @@ fn persist_yjs_commit_inner(
         ]),
     )?;
     let title_changed = input.base_materialization.title != input.materialization.title;
+    if let Some(page) = &page_impact
+        && (input.base_materialization.markdown != input.materialization.markdown
+            || (input.base_materialization.rich_title != input.materialization.rich_title
+                && context.actor().member_id().is_some()))
+    {
+        crate::workspace::inbox::start::withdraw(connection, &page.page_id)?;
+    }
     let projection_impact = if title_changed
         || input.base_materialization.rich_title != input.materialization.rich_title
         || nested_page_placement_changed

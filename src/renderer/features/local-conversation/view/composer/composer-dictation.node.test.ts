@@ -1,4 +1,5 @@
 import { dictationTextResult } from "../../../../../../tests/fixtures/dictation-diagnostics";
+import { createTextareaDictationTarget } from "@/features/dictation/textarea-dictation-target";
 import { describe, expect, test } from "vite-plus/test";
 import {
   buildDictationMultipartPayload,
@@ -102,5 +103,62 @@ describe("composer dictation waveform", () => {
     appendComposerDictationWaveformLevel(levels, 0.16, 2);
 
     expect(levels).toEqual([0.2, 1]);
+  });
+});
+
+describe("textarea dictation", () => {
+  test("replaces the selection with word boundaries and keeps surrounding whitespace", () => {
+    const target = createTextareaDictationTarget(() => undefined);
+    target.observe("Please(old)  tomorrow", { from: 7, to: 10 });
+    target.insert("  call home  ");
+    expect(target.text).toBe("Please(call home)  tomorrow");
+
+    target.observe("speaknow", { from: 5, to: 5 });
+    target.insert(" clearly ");
+    expect(target.text).toBe("speak clearly now");
+  });
+
+  test("updates earlier segments at their anchored ranges and cancels only untouched text", () => {
+    const target = createTextareaDictationTarget(() => undefined);
+    target.observe("Alpha old Omega", { from: 6, to: 9 });
+    let segment = 0;
+    target.start(() => ++segment);
+    target.update("one", { id: 0, text: "one" });
+    target.observe(target.text, { from: target.text.length, to: target.text.length });
+    target.update("one two", { id: 0, text: "one two" });
+    target.update("three", { id: 1, text: "three" });
+    expect(target.text).toBe("Alpha one two Omega three");
+
+    target.observe("Alpha one too Omega three", { from: 13, to: 13 });
+    target.update("one two revised", { id: 0, text: "one two revised" });
+    expect(target.text).toBe("Alpha one too Omega three");
+
+    target.cancel();
+    expect(target.text).toBe("Alpha one too Omega");
+  });
+
+  test("restores a selection replaced by more than one provisional segment", () => {
+    const target = createTextareaDictationTarget(() => undefined);
+    target.observe("Alpha old Omega", { from: 6, to: 9 });
+    target.start(() => 1);
+    target.update("one two", { id: 0, text: "one two" });
+    target.observe(target.text, { from: 6, to: 13 });
+    target.update("new", { id: 1, text: "new" });
+    expect(target.text).toBe("Alpha new Omega");
+    target.cancel();
+    expect(target.text).toBe("Alpha old Omega");
+  });
+
+  test("defers transcript revisions until composition finishes", async () => {
+    const target = createTextareaDictationTarget(() => undefined);
+    target.observe("draft ", { from: 6, to: 6 });
+    target.start(() => null);
+    target.beginComposition();
+    target.update("provisional", { id: 0, text: "provisional" });
+    const finished = target.finish("final");
+    expect(target.text).toBe("draft ");
+    target.finishComposition();
+    expect(await finished).toBe("finished");
+    expect(target.text).toBe("draft final");
   });
 });

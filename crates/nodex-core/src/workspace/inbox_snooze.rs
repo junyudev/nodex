@@ -56,6 +56,7 @@ pub(super) fn set_entries(
     }
     let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     for page in pages {
+        super::start::withdraw(connection, page)?;
         if connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry
             JOIN inbox_rows row ON row.page_id=entry.page_id AND row.row_kind='intake' AND row.in_inbox=1
             WHERE entry.page_id=?1 AND entry.source_kind='automation')", [page], |row| row.get::<_, bool>(0))? {

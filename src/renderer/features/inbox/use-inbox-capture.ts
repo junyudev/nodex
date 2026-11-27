@@ -7,6 +7,7 @@ import {
   type InboxScope,
   type InboxSendInput,
   type InboxSendResult,
+  type InboxStartRequest,
 } from "../../../shared/inbox";
 import {
   persistedAtom,
@@ -54,6 +55,16 @@ const savingCapturesFamily = scopedAtomFamily({
 /** An untouched draft stays unsent; a consumed draft with a delivery error waits for recovery. */
 export type InboxSubmitOutcome = "sent" | "unsent" | "failed";
 
+/** A submission's outcome and, once one was made, the message Page it creates. */
+export interface InboxSubmitResult {
+  readonly outcome: InboxSubmitOutcome;
+  readonly pageId: string | null;
+  /** The start request it carried, as the sender gave it. */
+  readonly start: InboxStartRequest | null;
+}
+
+const unsent: InboxSubmitResult = { outcome: "unsent", pageId: null, start: null };
+
 export function inboxCaptureAtom(windowSessionId: string, scope: InboxScope) {
   const key = inboxCaptureStorageKey(windowSessionId, scope);
   const existing = definitions.get(key);
@@ -83,12 +94,16 @@ export function useInboxCaptureState(windowSessionId: string, scope: InboxScope)
 export function useInboxCapture({
   windowSessionId,
   scope,
+  destination = scope,
   storeEpoch,
   visiblePageIds,
   onSend,
 }: {
   readonly windowSessionId: string;
+  /** The Inbox whose form this is: the draft is kept under it. */
   readonly scope: InboxScope;
+  /** Where a send lands, when the form lets its sender choose; the form's own Inbox otherwise. */
+  readonly destination?: InboxScope;
   readonly storeEpoch: string | null;
   readonly visiblePageIds: readonly string[];
   readonly onSend: (intent: InboxSendInput) => Promise<InboxSendResult>;
@@ -114,7 +129,7 @@ export function useInboxCapture({
     (capture) =>
       capture.draftRevision === state.value.draftRevision &&
       capture.intent.storeEpoch === storeEpoch &&
-      inboxScopeKey(capture.intent.scope) === inboxScopeKey(scope),
+      inboxScopeKey(capture.intent.scope) === inboxScopeKey(destination),
   );
 
   useLayoutEffect(() => {
@@ -197,18 +212,24 @@ export function useInboxCapture({
     );
   };
 
-  const submit = async (): Promise<InboxSubmitOutcome> => {
-    if (preparing.current || savingDraft || !storeEpoch || state.status !== "ready")
-      return "unsent";
+  /** A retry of the same draft keeps its first identity, start request included. */
+  const submit = async (options?: {
+    readonly start?: InboxStartRequest;
+  }): Promise<InboxSubmitResult> => {
+    if (preparing.current || savingDraft || !storeEpoch || state.status !== "ready") return unsent;
     const current = read();
-    if (isEmptyInboxDraft(current.draft)) return "unsent";
+    if (isEmptyInboxDraft(current.draft)) return unsent;
     preparing.current = true;
     const capture =
       current.captures.find((entry) => entry.draftRevision === current.draftRevision) ??
-      createInboxCapture(current, scope, storeEpoch);
+      createInboxCapture(current, destination, storeEpoch, options?.start);
+    const result = (outcome: InboxSubmitOutcome): InboxSubmitResult =>
+      outcome === "unsent"
+        ? unsent
+        : { outcome, pageId: capture.intent.pageId, start: capture.intent.start ?? null };
     if (inFlight.current.has(capture.intent.pageId)) {
       preparing.current = false;
-      return "unsent";
+      return unsent;
     }
     if (capture.status === "needs_review" || capture.intent.storeEpoch !== storeEpoch) {
       setValidationError(
@@ -218,13 +239,13 @@ export function useInboxCapture({
         }),
       );
       preparing.current = false;
-      return "unsent";
+      return unsent;
     }
     const validation = InboxSendInputSchema.safeParse(capture.intent);
     if (!validation.success) {
       setValidationError(validation.error.issues[0]?.message ?? "Message could not be saved");
       preparing.current = false;
-      return "unsent";
+      return unsent;
     }
     markSaving(capture, true);
     return runWithCleanup(
@@ -242,8 +263,7 @@ export function useInboxCapture({
             },
           },
         );
-        if (outcome !== null) return outcome;
-        return deliver(capture);
+        return result(outcome ?? (await deliver(capture)));
       },
       { cleanup: () => markSaving(capture, false) },
     );

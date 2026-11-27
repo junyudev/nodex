@@ -203,6 +203,8 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
             | Self::ReviseInboxMessage { .. } => true,
             // Agent-authored context and Host interruption delivery never become Member commands.
             Self::AnswerInboxQuestion { .. }
+            // Only the Host records that it could not prepare a requested start.
+            | Self::RecordInboxStartPreparationFailure { .. }
             | Self::HandBackMessage { .. }
             | Self::BindChatInbound { .. }
             | Self::AutomationAssessment { .. }

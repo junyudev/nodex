@@ -33,6 +33,12 @@ type Handler<Channel extends keyof IpcApi> = (
   ...args: IpcApi[Channel]["args"]
 ) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
+export const miniInboxChannels: ReadonlySet<keyof IpcApi> = new Set([
+  "inbox:summary",
+  "inbox:send",
+  "inbox:reply-destination",
+]);
+
 /** Trusted-window ingress for the Inbox application Interface. */
 export const live: Layer.Layer<
   never,
@@ -44,11 +50,15 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const inbox = yield* InboxApplication;
     const windows = yield* WindowRuntime;
-    const authorize = (event: IpcMainInvokeEvent) =>
+    const authorize = (event: IpcMainInvokeEvent, channel: keyof IpcApi) =>
       Effect.try({
         try: () => {
           requireTrustedAppRendererSender(event, "Inbox", config.rendererUrl);
-          if (!windows.has(event.sender.id)) {
+          const id = event.sender.id;
+          const admitted = miniInboxChannels.has(channel)
+            ? windows.hasAppRenderer(id)
+            : windows.has(id);
+          if (!admitted) {
             throw new Error("Inbox access requires an active Nodex window");
           }
         },
@@ -58,8 +68,8 @@ export const live: Layer.Layer<
       ipc,
       (channel, task) =>
         (event, ...args) =>
-          authorize(event).pipe(
-            Effect.andThen(
+          authorize(event, channel).pipe(
+            Effect.andThen(() =>
               task(event, ...args).pipe(
                 // Preserve Core's user-facing reason, such as a changed suggestion.
                 Effect.mapError((cause) =>

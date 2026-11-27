@@ -1888,6 +1888,26 @@ async fn workspace_apply(
             error,
         )))));
     }
+    if context.principal.is_some()
+        && matches!(
+            request.intent,
+            nodex_core_contracts::workspace::ProjectWorkspaceIntent::SendInboxMessage {
+                start: Some(_),
+                ..
+            }
+        )
+    {
+        let proof = optional_header(&headers, host_bridge::INVOCATION_HEADER, "Host invocation");
+        if !proof.ok().flatten().is_some_and(|token| {
+            state
+                .host_bridge
+                .authorizes_inbox_start(&token, &operation_id, &request.intent)
+        }) {
+            return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+                unauthorized("Inbox starts require their live Host submission"),
+            )))));
+        }
+    }
     // A Member's Inbox decision reaches Core through the Space host, which resolves its
     // Agent from the host's catalog and carries the Member's live invocation proof.
     if bound.principal.is_some()

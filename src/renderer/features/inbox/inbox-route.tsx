@@ -47,6 +47,7 @@ import {
   ListLayoutIcon,
   InboxIcon,
   MoreActionsIcon,
+  NewChatIcon,
   RefreshIcon,
 } from "@/components/shared/icons";
 import { useApplicationPending } from "@/bootstrap/application-surface";
@@ -72,6 +73,7 @@ import type { ShowPagesInChatInput } from "@/lib/page-chat-actions";
 import { usePageChatActivitySummaries } from "@/lib/use-page-chat-activity-summaries";
 import { cn } from "@/lib/utils";
 import { ThreadTimestampSeparator } from "@/features/local-conversation/view/shared/thread-timestamp-separator";
+import { captureStartLabel, captureStartRequest } from "./inbox-capture-card";
 import { InboxComposer } from "./inbox-composer";
 import {
   InboxDispatchEditor,
@@ -1282,6 +1284,11 @@ export function InboxRoute({
           disabled={!capture.ready || capture.savingDraft}
           readOnly={!capture.canEdit || capture.savingDraft}
           onSend={capture.submit}
+          alternate={{
+            label: captureStartLabel(projectName, intl),
+            icon: NewChatIcon,
+            run: () => capture.submit({ start: captureStartRequest(scope) }),
+          }}
           focusToken={replyFocusToken}
           placeholder={
             projectName

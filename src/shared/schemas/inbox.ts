@@ -25,6 +25,7 @@ import type {
   InboxPageIdsInput,
   InboxProposalInput,
   InboxSendInput,
+  InboxStartRequest,
   InboxSetImportantInput,
   InboxSetKindInput,
   InboxSummaryInput,
@@ -218,6 +219,11 @@ export const InboxWindowInputSchema = z
   })
   .strict() satisfies z.ZodType<InboxWindowInput>;
 
+export const InboxStartRequestSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("new_chat") }).strict(),
+  z.object({ kind: z.literal("routed") }).strict(),
+]) satisfies z.ZodType<InboxStartRequest>;
+
 export const InboxSendInputSchema = z
   .object({
     replyToPageId: id.optional(),
@@ -239,8 +245,13 @@ export const InboxSendInputSchema = z
       )
       .optional(),
     body: messageBody,
+    start: InboxStartRequestSchema.optional(),
   })
-  .strict() satisfies z.ZodType<InboxSendInput>;
+  .strict()
+  .refine(
+    (input) => !input.start || (!input.replyToPageId && !input.turnEpisode),
+    "Only a new message can request a start",
+  ) satisfies z.ZodType<InboxSendInput>;
 
 export const InboxEditInputSchema = z
   .object({ pageId: id, basis: InboxPageBasisSchema, originalBody: messageBody, body: messageBody })

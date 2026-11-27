@@ -8,7 +8,7 @@ use crate::inbox::{
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
     ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxExecutionSelection,
     ProjectWorkspaceInboxFailureKind, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxMessageEdit,
-    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxScope,
+    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxScope, ProjectWorkspaceInboxStartRequest,
     ProjectWorkspaceInboxSuggestedDispatch, ProjectWorkspaceInboxSuggestionInput,
     ProjectWorkspaceInboxSuggestionMode, ProjectWorkspaceInboxSuggestionRequest,
     ProjectWorkspaceInboxSuggestionTitle, ProjectWorkspaceInboxSummary,
@@ -2730,6 +2730,8 @@ pub enum ProjectWorkspaceIntent {
     /// title that the suggestion Agent may later replace.
     SendInboxMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        start: Option<Box<ProjectWorkspaceInboxStartRequest>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         reply_to_page_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         expected_store_epoch: Option<String>,
@@ -2861,6 +2863,12 @@ pub enum ProjectWorkspaceIntent {
     /// title follows the new opening words.
     ReviseInboxMessage {
         page_id: String,
+    },
+    RecordInboxStartPreparationFailure {
+        expected_store_epoch: String,
+        proposal_id: String,
+        expected_revision: i64,
+        message: String,
     },
     RecordInboxSuggestionFailure {
         page_ids: Vec<String>,

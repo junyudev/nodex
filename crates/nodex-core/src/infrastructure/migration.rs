@@ -533,6 +533,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 223,
         apply: migrate_v222_to_v223,
     },
+    MigrationStep {
+        from_revision: 223,
+        to_revision: 224,
+        apply: migrate_v223_to_v224,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2927,6 +2932,21 @@ fn migrate_v219_to_v220(
     Ok(())
 }
 
+fn migrate_v223_to_v224(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v223_to_v224.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_start_requests":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v222_to_v223(
     connection: &Connection,
     context: &MigrationContext,
@@ -4474,6 +4494,7 @@ fn prepare_current_inbox_capture_columns(connection: &Connection) -> Result<(), 
     install_current_schema(&mut current)?;
     for name in [
         "inbox_routing_deliveries",
+        "inbox_start_requests",
         "page_active_chats",
         "inbox_answers",
         "sources",
@@ -4501,7 +4522,8 @@ fn prepare_current_inbox_capture_columns(connection: &Connection) -> Result<(), 
 #[cfg(test)]
 fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), StoreError> {
     connection.execute_batch(
-        "DROP TRIGGER turn_intake_removed;
+        "DROP TABLE inbox_start_requests;
+        DROP TRIGGER turn_intake_removed;
         DROP TRIGGER turn_intake_delivery;
         DROP TRIGGER turn_intake_proposal;
         DROP TRIGGER turn_intake_added;
@@ -4546,7 +4568,14 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+pub(crate) fn rewind_inbox_start_to_v223(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../tests/fixtures/rewind-v224-to-v223.sql"))?;
+    Ok(())
+}
+
+#[cfg(test)]
 fn rewind_decision_runs_to_v219(connection: &Connection) -> Result<(), StoreError> {
+    rewind_inbox_start_to_v223(connection)?;
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v223-to-v222.sql"))?;
     let present: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='nodex_decision_runs')",
@@ -9556,12 +9585,37 @@ mod tests {
     }
 
     #[test]
+    fn inbox_start_migration_upgrades_v223_in_one_step() {
+        let profile = tempdir().expect("Profile");
+        let mut connection = open_writer(&profile.path().join("nodex.db")).expect("Store");
+        prepare_profile_store(&mut connection, profile.path()).expect("prepare fresh Store");
+        rewind_inbox_start_to_v223(&connection).expect("rewind Capture schema");
+        connection.pragma_update(None, "user_version", 223).unwrap();
+        validate_schema_identity(&connection, 223).expect("published v223 Store");
+
+        let prepared =
+            prepare_profile_store(&mut connection, profile.path()).expect("upgrade Capture schema");
+        assert_eq!(prepared.migrated_from_version, Some(223));
+        assert_eq!(prepared.schema_version, 224);
+        validate_schema_identity(&connection, 224).expect("published v224 Store");
+        let history = connection
+            .prepare("SELECT source_revision, target_revision FROM core_store_migration_history")
+            .unwrap()
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(history, [(223, 224)]);
+    }
+
+    #[test]
     fn automation_run_migration_preserves_existing_followups_and_ignores_dispatches() {
         let mut connection = Connection::open_in_memory().unwrap();
         connection
             .pragma_update(None, "foreign_keys", true)
             .unwrap();
         install_current_schema(&mut connection).unwrap();
+        rewind_inbox_start_to_v223(&connection).unwrap();
         connection
             .execute_batch(include_str!("../../tests/fixtures/rewind-v223-to-v222.sql"))
             .unwrap();
@@ -10418,6 +10472,7 @@ mod tests {
                     operation_id: format!("send:waiting:{}", random_uuid_v7().unwrap()),
                     store_epoch: StoreEpoch(epoch.clone()),
                     intent: ProjectWorkspaceIntent::SendInboxMessage {
+                        start: None,
                         reply_to_page_id: None,
                         expected_store_epoch: Some(epoch),
                         page_id: "page:waiting".into(),
@@ -10651,6 +10706,7 @@ mod tests {
             apply(
                 &format!("send:{id}"),
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
                     reply_to_page_id: None,
                     expected_store_epoch: Some(epoch.clone()),
                     page_id: format!("page:{id}"),
@@ -10975,6 +11031,7 @@ mod tests {
             apply(
                 &format!("send:{id}"),
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
                     reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: format!("page:{id}"),
@@ -11031,6 +11088,7 @@ mod tests {
             apply(
                 "send:erased",
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    start: None,
                     reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: "page:erased".into(),

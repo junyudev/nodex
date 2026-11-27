@@ -277,6 +277,22 @@ pub(super) fn apply(
                     thread.title.clear();thread.state.clear();thread.head=None;thread.draft=false;thread.observation_revision=0;thread.observations.clear();
                 }
             if let ProjectWorkspaceIntent::ReplyToPageTurn { dispatch, .. } = &mut capture_intent { *dispatch=None; }
+            if let ProjectWorkspaceIntent::SendInboxMessage { start: Some(start), .. } = &mut capture_intent {
+                use nodex_core_contracts::inbox::ProjectWorkspaceInboxStartRequest::*;
+                // Keep the requested kind in the fingerprint. Settings and catalog resolution
+                // may change before a caller retries a lost receipt.
+                match start.as_mut() {
+                    NewChat { execution_selection, preparation_error } => {
+                        *execution_selection = None;
+                        *preparation_error = None;
+                    },
+                    Routed { suggestions_off, execution_selection, preparation_error } => {
+                        *suggestions_off = false;
+                        *execution_selection = None;
+                        *preparation_error = None;
+                    },
+                }
+            }
             let fingerprint_intent = match &capture_intent {
                 ProjectWorkspaceIntent::AgentCommand { provenance, intent } => {
                     MutationFingerprintIntent::SessionDispatch {
@@ -361,6 +377,7 @@ pub(super) fn apply(
                 }
                 intent @ (ProjectWorkspaceIntent::AnswerInboxQuestion { .. } | ProjectWorkspaceIntent::ReplyToPageTurn { .. } | ProjectWorkspaceIntent::ClaimTurnNotification { .. }) => super::inbox::nodex::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    start,
                     reply_to_page_id,
                     expected_store_epoch,
                     page_id,
@@ -390,6 +407,8 @@ pub(super) fn apply(
                         title.as_deref(),
                         project_id.as_deref(),
                         reply_to_page_id.as_deref(),
+                        start.as_deref(),
+                        &assets_root,
                     )
                 },
                 ProjectWorkspaceIntent::StopInboxSuggestion { page_id } => super::inbox::stop_suggestion(
@@ -406,6 +425,7 @@ pub(super) fn apply(
                     | ProjectWorkspaceIntent::SettleInboxSuggestion { .. }
                     | ProjectWorkspaceIntent::RequestInboxSuggestion { .. }
                     | ProjectWorkspaceIntent::CompleteInboxDispatch { .. }
+                    | ProjectWorkspaceIntent::RecordInboxStartPreparationFailure { .. }
                     | ProjectWorkspaceIntent::FailInboxDispatch { .. }) => super::inbox::apply_reliable(
                         transaction, &library_id, &context, &store_epoch, &request.operation_id,
                         &request_hash, intent.clone(), &assets_root),
@@ -3149,6 +3169,7 @@ mod tests {
                 request(
                     "fresh-inbox-message",
                     ProjectWorkspaceIntent::SendInboxMessage {
+                        start: None,
                         reply_to_page_id: None,
                         expected_store_epoch: None,
                         page_id: "page:inbox".to_owned(),
@@ -3796,7 +3817,7 @@ mod tests {
 
     #[test]
     fn store_upgrade_repairs_only_legacy_primary_resource_names_once() {
-        use crate::infrastructure::migration::prepare_profile_store;
+        use crate::infrastructure::migration::{prepare_profile_store, rewind_inbox_start_to_v223};
         use crate::infrastructure::sqlite::open_writer;
 
         let (directory, kernel, module) = seeded_module();
@@ -3828,7 +3849,8 @@ mod tests {
         drop(module);
         drop(kernel);
         let mut connection = open_writer(&path).expect("open predecessor Store");
-        // Rewind the v223 schema change. The v222 name repair only changes data.
+        // Rewind schema changes after the v222 name repair, which only changes data.
+        rewind_inbox_start_to_v223(&connection).expect("rewind the Capture schema");
         connection
             .execute_batch(include_str!("../../tests/fixtures/rewind-v223-to-v222.sql"))
             .expect("rewind the automation schema");
@@ -3877,7 +3899,10 @@ mod tests {
         );
         let prepared = prepare_profile_store(&mut connection, directory.path()).expect("upgrade");
         assert_eq!(prepared.migrated_from_version, Some(221));
-        assert_eq!(prepared.schema_version, 223);
+        assert_eq!(
+            prepared.schema_version,
+            crate::infrastructure::schema::CURRENT_STORE_REVISION
+        );
         let after = read(&connection);
         assert_eq!(
             after,

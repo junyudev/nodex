@@ -937,7 +937,10 @@ backlog and paused Pages stay out. Quiet answers do not increase the badge.
 ### Inbox entry
 
 An Inbox entry records a message Page's origin, capture Inbox, author, reply
-context, kind, importance and current dispatch proposal. Capture creates the
+context, kind, importance, current dispatch proposal and any request from its
+sender to start work now. A routed start request gives Nodex consent to start a
+chat for that message while it stays as sent. Editing the message or making a
+decision withdraws the consent. Capture creates the
 Page in Triage in the Project's primary Database, or the Library Inbox Database
 when it has no Project. A captured Page in Triage, with no active chat or
 delivery underway, needs its Owner's decision. When the Owner is unavailable,
@@ -967,8 +970,8 @@ additions and skills before confirmation. A skill the user invoked stays part of
 the request. It is versioned and records the
 message it was written for, its Markdown body and Library images; once that message changes it is outdated, still
 reviewable and confirmable, never withdrawn or replaced on its own. A proposal is advice. Only the user's
-confirmation, a user-written dispatch, or the user's standing consent to start their own clear requests
-makes it Dispatch work. Nodex marks each chat proposal that answers a request the user themselves clearly
+confirmation, a user-written dispatch, or the user's consent to start work
+makes it Dispatch work. That consent can apply to one message sent with a routed start request or to the user's own clear requests when their Inbox preference is on. Nodex marks each chat proposal that answers a request the user themselves clearly
 made; under that consent the Host confirms such a proposal for the user's own unchanged messages, and the
 confirmation records that Nodex made it. Deferring the message makes its advice wait for review.
 Plans, Add to Todo, Save to Notes, Later and filing always wait for the user. Confirmed chat
@@ -1339,8 +1342,8 @@ state is rejected rather than replayed.
     and may occur in any Page Document in the same Library. The containing Page
     may resolve only the File's current presentation metadata and bytes.
 28. A Dispatch proposal never starts work, sends a prompt, or moves content by
-    itself; only the user's confirmation or the user's standing consent, applied
-    by the Host to the user's own unchanged messages, does. Agent and
+    itself. The person's confirmation or consent to start work, applied by
+    the Host to their own unchanged messages, authorizes dispatch. Agent and
     command-line Inbox workflow endpoints append entries; their backing Pages
     follow the same full-Profile content model. Core records each entry's actual
     execution source, and confirmed triage owns dispatch intent.

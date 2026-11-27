@@ -59,6 +59,52 @@ impl HostBridge {
         self.inner.lock().is_ok_and(|inner| Self::active(&inner))
     }
 
+    /// A Member's live Inbox submission grants Start for this capture in this Inbox.
+    pub(crate) fn authorizes_inbox_start(
+        &self,
+        token: &str,
+        operation_id: &str,
+        intent: &nodex_core_contracts::workspace::ProjectWorkspaceIntent,
+    ) -> bool {
+        use nodex_core_contracts::{
+            inbox::ProjectWorkspaceInboxStartRequest, workspace::ProjectWorkspaceIntent,
+        };
+        let ProjectWorkspaceIntent::SendInboxMessage {
+            start: Some(start),
+            page_id,
+            document_id,
+            project_id,
+            reply_to_page_id: None,
+            ..
+        } = intent
+        else {
+            return false;
+        };
+        let kind = match start.as_ref() {
+            ProjectWorkspaceInboxStartRequest::NewChat { .. } => "new_chat",
+            ProjectWorkspaceInboxStartRequest::Routed { .. } => "routed",
+        };
+        let Ok(inner) = self.inner.lock() else {
+            return false;
+        };
+        Self::live_call(&inner, token).is_some_and(|pending| {
+            let input = &pending.call.input;
+            let scope_matches = match text(input, &["scope", "kind"]) {
+                Some("project") => project_id.as_deref().is_some_and(|project| {
+                    text(input, &["scope", "projectId"]).map(str::trim) == Some(project)
+                }),
+                Some("library" | "all") => project_id.is_none(),
+                _ => false,
+            };
+            matches!(pending.call.operation, HostOperation::InboxSend)
+                && text(input, &["operationId"]).map(str::trim) == Some(operation_id)
+                && text(input, &["pageId"]).map(str::trim) == Some(page_id.as_str())
+                && text(input, &["documentId"]).map(str::trim) == Some(document_id.as_str())
+                && text(input, &["start", "kind"]) == Some(kind)
+                && scope_matches
+        })
+    }
+
     /// A Member's live delete call for exactly this side chat of theirs.
     pub(crate) fn authorizes_side_chat_delete(&self, token: &str, session: &str) -> bool {
         let Ok(inner) = self.inner.lock() else {

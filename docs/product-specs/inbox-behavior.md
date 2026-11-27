@@ -550,7 +550,13 @@ it says why. They resume
 for messages sent after usage recovers. Asking for advice works while they are
 paused.
 
-Messages sent while advice does not run on its own keep no claim on it: they
+Sending a message with a routed start request asks Nodex for advice right away,
+including in **When I ask** and while automatic suggestions are paused. If
+Suggestions is **Off**, the request starts a new chat using the Inbox's settings.
+If the suggestion fails, **Retry** keeps the sender's consent while the message
+is unchanged.
+
+Other messages sent while advice does not run on its own keep no claim on it: they
 never receive it later because the mode changed or usage recovered. Every
 other change leaves advice where it is. Editing a message's Page makes its
 suggestion outdated without asking again. Reopening a message, returning it
@@ -869,6 +875,25 @@ Work starts when the user confirms a proposal or submits the dispatch editor.
 Confirmation is fenced by the message the user reviewed, including for an
 outdated suggestion.
 
+Every Inbox composer offers **Start** with `Cmd/Ctrl+Enter`. In a Project Inbox,
+Start saves the message and confirms a new chat in that Project together. The
+chat uses the message as written and the Inbox's New chats settings. In the
+Library Inbox, Start asks Nodex to choose where the work goes. With Suggestions
+Off, the Library Inbox starts a new chat without a Project. In a Team Space,
+the Space Host prepares the start with its Inbox settings and submits it on
+behalf of the Member who sent the message.
+
+A routed start lets Nodex confirm a new chat or a send to a chat for that
+unchanged message. Editing the message or deciding what to do with it withdraws
+that consent. Other suggestions wait for the person. Automatic confirmation
+sends the requested work and leaves out optional additions and skills.
+
+If Nodex cannot prepare the requested chat, the message stays in the Inbox with
+the reason and any suggestion that was ready to review. A temporary problem
+reading the Agent catalog makes a routed start wait for another attempt. The
+person can review a suggestion, ask again while suggestions are available, or
+use the dispatch editor to choose what happens next.
+
 With `Let Nodex start chats for me` on, Nodex confirms a new suggestion on the user's behalf
 only when it is a new chat or a send to a chat, every message it covers is the
 user's own, Nodex marked it as the user's clear request for work now, and the
@@ -1035,10 +1060,10 @@ Grouped suggestions and dispatches accept at most 16 messages.
 
 ## Agent and command-line drop-in
 
-The Agent and command-line Inbox interfaces append messages. Triage and dispatch
-remain fenced Inbox workflows; only the user, or the user's own `Let Nodex start chats for me`, confirms work. Inbox
-messages are ordinary Pages and retain the Profile's full content access, including
-for parent, child and background Agents and planning interactions.
+The Agent and command-line Inbox interfaces append messages for triage. Only
+the person can request a start when sending from an Inbox composer. Inbox
+messages are ordinary Pages and retain the Profile's full content access,
+including for parent, child and background Agents and planning interactions.
 
 - **Agent tool:** an Agent uses the `send_to_inbox` application tool. Core records
   its chat and Project from the verified execution source, and the message lands
@@ -1083,7 +1108,11 @@ creates a second message, and does not count against the Agent budget again.
   focuses it instead. Text selected on an app surface starts the message.
   `⌘/Ctrl+Shift+C` also starts the message with selected Page text. A
   capture is never linked to the chat it was written in: the Inbox is for
-  deciding later where it belongs.
+  deciding later where it belongs. From any other app, the same capture is one
+  global shortcut away; see [Mini](mini-behavior.md).
+- Every Inbox composer offers Start beside Send: `Cmd/Ctrl+Enter` sends the
+  message with a request to start its work now, in the Inbox's Project, or,
+  from the Library Inbox, wherever Nodex chooses. A reply is always just sent.
 - The Inbox header offers:
   - the `Inbox`, `Snoozed` and `Activity` views, as pills with their glyphs like a
     Database's views, the Inbox showing its count;
@@ -1170,8 +1199,6 @@ creates a second message, and does not count against the Agent budget again.
   afterward by opening the message Page.
 - Delivery to a busy local chat uses its Runtime queue; it never steers a
   running Turn.
-- Capture happens inside the app window. There is no system-wide capture
-  shortcut.
 - Messages are named only when suggestions run. With no advice asked for, or
   failing, a message keeps its provisional title until the user renames it.
 

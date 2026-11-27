@@ -1,7 +1,14 @@
 import { hasOpenComposerBlockingDialog } from "@/lib/composer-draft-intents";
 import { classifyKeyboardActionSurface } from "@/lib/keyboard-action-runtime";
 import { recordFeatureUsed } from "@/lib/product-analytics";
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import {
   createCommandKeymapState,
@@ -79,6 +86,7 @@ export interface ComposerDictationController {
 
 interface UseComposerDictationInput {
   readonly enabled: boolean;
+  readonly microphoneBusy?: boolean;
   readonly streamingAvailability?: DictationCapabilitySnapshot["streaming"];
   readonly soundsEnabled?: boolean;
   readonly globalTarget: {
@@ -88,8 +96,8 @@ interface UseComposerDictationInput {
   };
   readonly transcript: NonNullable<DictationControllerPorts["transcript"]>;
   readonly getLanguage?: () => Promise<string | undefined>;
-  readonly onTranscriptInsert: (text: string) => void | Promise<void>;
-  readonly onTranscriptSend: (text: string) => void | Promise<void>;
+  readonly onTranscriptInsert: (text: string, signal?: AbortSignal) => void | Promise<void>;
+  readonly onTranscriptSend: (text: string, signal?: AbortSignal) => void | Promise<void>;
   readonly onTranscriptAppend: (text: string) => void | Promise<void>;
   readonly onStartError: (error: DictationError) => void;
   readonly onTranscribeError: (error: DictationError) => void;
@@ -159,6 +167,96 @@ function isVisibleDictationEditor(editor: HTMLElement): boolean {
     !editor.closest('[hidden], [aria-hidden="true"], [inert], [data-base-ui-inert]') &&
     editor.checkVisibility?.({ visibilityProperty: true }) !== false
   );
+}
+
+export function isElectronLikeComposerEnvironment(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  if (window.api) {
+    return true;
+  }
+
+  return document.documentElement.dataset.codexWindowType === "electron";
+}
+
+export function supportsComposerDictation(): boolean {
+  return (
+    isElectronLikeComposerEnvironment() &&
+    typeof navigator.mediaDevices?.getUserMedia === "function" &&
+    typeof MediaRecorder !== "undefined"
+  );
+}
+
+/** Owns the held physical chord until keyup, blur, or the composer losing admission. */
+export function useComposerDictationHold({
+  enabled,
+  keymap,
+  canStart,
+  startDictation,
+  stopDictation,
+}: {
+  readonly enabled: boolean;
+  readonly keymap?: CommandKeymapState;
+  readonly canStart: (event: KeyboardEvent) => boolean;
+} & Pick<ComposerDictationController, "startDictation" | "stopDictation">) {
+  const admit = useEffectEvent(canStart);
+  const startDictationRef = useRef(startDictation);
+  const stopDictationRef = useRef(stopDictation);
+
+  useEffect(() => {
+    startDictationRef.current = startDictation;
+    stopDictationRef.current = stopDictation;
+  }, [startDictation, stopDictation]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    let held: KeyboardEvent | null = null;
+    const releaseActiveShortcut = (): void => {
+      if (!held) return;
+      held = null;
+      stopDictationRef.current("insert");
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || !isComposerDictationShortcut(event, keymap)) return;
+      if (!admit(event)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (held) return;
+      held = event;
+      void startDictationRef.current("hold");
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!held || !isComposerDictationShortcutRelease(held, event)) return;
+      // A modifier keyup still belongs to the rest of the window.
+      if (event.code === held.code && event.key === held.key) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      releaseActiveShortcut();
+    };
+
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState !== "visible") releaseActiveShortcut();
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keyup", handleKeyUp, true);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", releaseActiveShortcut);
+    return () => {
+      releaseActiveShortcut();
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keyup", handleKeyUp, true);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", releaseActiveShortcut);
+    };
+  }, [enabled, keymap]);
 }
 
 const defaultClock: DictationControllerPorts["clock"] = {
@@ -254,7 +352,7 @@ function createComposerDictationOwner(
       if (!dismissedRecovery) publishRecovery(recovery);
     },
     completion: {
-      apply: async ({ sessionId, action, transcript, append }) => {
+      apply: async ({ sessionId, action, transcript, append, signal }) => {
         const completionId = `${sessionId}:${append ? "append" : action}`;
         if (appliedCompletionIds.has(completionId)) return;
         const completion = completionCallbacks ?? callbacks;
@@ -267,7 +365,10 @@ function createComposerDictationOwner(
         }
         const completionSessionId = globalSessionId;
         if (completionSessionId) {
-          await completion.onTranscriptInsert(transcript);
+          const apply =
+            action === "send" ? completion.onTranscriptSend : completion.onTranscriptInsert;
+          await apply(transcript, signal);
+          if (signal.aborted) return;
           appliedCompletionIds.add(completionId);
           globalCompletionReported = true;
           await invokeGlobalDictationEvent({
@@ -281,11 +382,11 @@ function createComposerDictationOwner(
           return;
         }
         if (action === "send") {
-          await completion.onTranscriptSend(transcript);
+          await completion.onTranscriptSend(transcript, signal);
           appliedCompletionIds.add(completionId);
           return;
         }
-        await completion.onTranscriptInsert(transcript);
+        await completion.onTranscriptInsert(transcript, signal);
         appliedCompletionIds.add(completionId);
       },
     },
@@ -294,7 +395,7 @@ function createComposerDictationOwner(
   });
   const globalTarget: Omit<Parameters<typeof useInAppDictationTarget>[0], "id" | "priority"> = {
     admission: () => {
-      if (!callbacks.enabled) return "unavailable";
+      if (!callbacks.enabled || callbacks.microphoneBusy) return "unavailable";
       if (controller.getSnapshot().kind !== "idle") return "busy";
       return callbacks.globalTarget.admission();
     },
@@ -370,8 +471,19 @@ function createComposerDictationOwner(
       callbacks.onUnsupported();
       return;
     }
+    const { kind } = controller.getSnapshot();
+    if (kind !== "idle" && kind !== "retryable-error") return;
+    const previousGlobalSession = globalSessionId;
+    if (previousGlobalSession) {
+      globalSessionId = null;
+      releaseGlobalRoute?.();
+      releaseGlobalRoute = null;
+      void invokeGlobalDictationEvent({
+        type: "cancelled",
+        sessionId: previousGlobalSession,
+      }).catch(() => false);
+    }
     recordFeatureUsed("dictation");
-    globalSessionId = null;
     completionCallbacks = null;
     dismissedRecovery = false;
     publishRecovery(null);

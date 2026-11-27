@@ -537,7 +537,8 @@ export class DictationSessionController {
       this.cancel();
       return;
     }
-    if (session.stopAction === "insert" && action === "send") session.stopAction = "send";
+    const upgradedToSend = session.stopAction === "insert" && action === "send";
+    if (upgradedToSend) session.stopAction = "send";
 
     if (
       this.#snapshot.kind === "requesting-permission" ||
@@ -546,7 +547,10 @@ export class DictationSessionController {
       this.#invalidateAndRelease(session, "cancelled");
       return;
     }
-    if (this.#snapshot.kind === "stopping" || this.#snapshot.kind === "transcribing") return;
+    if (this.#snapshot.kind === "stopping" || this.#snapshot.kind === "transcribing") {
+      if (upgradedToSend) this.#publish({ ...this.#snapshot, action: "send" });
+      return;
+    }
     if (this.#snapshot.kind !== "recording" && !session.recorder) return;
     this.#markStopped(session);
     const durationMs = this.#duration(session);
@@ -844,7 +848,7 @@ export class DictationSessionController {
       if (session.recovery && this.#ports.onRecoveryChange) {
         this.#recoveryChanged(session, "recovered", transcript);
         if (
-          session.surface === "composer" &&
+          (session.surface === "composer" || this.#ports.transcript) &&
           session.diagnostics.attempt > 1 &&
           !session.detached
         ) {

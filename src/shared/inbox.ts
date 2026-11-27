@@ -457,7 +457,16 @@ export interface InboxSendInput {
   readonly title?: string;
   /** The message in Nodex Markdown: its text, then its images. */
   readonly body: string;
+  /** Present when the sender asked for the work to start now instead of waiting in the Inbox. */
+  readonly start?: InboxStartRequest;
 }
+
+/** The sender's request to start a message's work now, given when the message is sent. */
+export type InboxStartRequest =
+  /** Start a chat in the Inbox's Project, or without one, on the Inbox's new-chat settings. */
+  | { readonly kind: "new_chat" }
+  /** Let Nodex choose where the work goes, then start it there without asking again. */
+  | { readonly kind: "routed" };
 
 export interface InboxSendResult {
   readonly pageId: string;

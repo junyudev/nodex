@@ -3045,6 +3045,69 @@ impl HostedChats {
 }
 
 #[test]
+fn member_inbox_start_requires_its_exact_host_submission() {
+    let chats = HostedChats::start();
+    let project_id = "inbox-project";
+    let created = chats.host_apply(
+        None,
+        json!({"kind":"create_project","project_id":project_id,"name":"Inbox",
+            "description":"","source_roots":[]}),
+    );
+    assert_eq!(created["status"], "ok", "{created}");
+    let page_id = "019d0000-0000-7000-8000-000000000305";
+    let document_id = "019d0000-0000-7000-8000-000000000306";
+    let operation_id = team_operation_id();
+    let body = "Draft the release notes";
+    let intent = json!({"kind":"send_inbox_message","page_id":page_id,
+        "document_id":document_id,"project_id":project_id,"body":body,
+        "expected_store_epoch":chats.store_epoch,"start":{"kind":"new_chat",
+            "execution_selection":{"model_selection":{"instanceId":"codex","model":"gpt"},
+                "interaction_mode":"default"}}});
+    let envelope = |intent: Value| {
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "store_epoch":chats.store_epoch,"operation_id":operation_id,"intent":intent})
+    };
+    let path = "/core/v1/modules/workspace/apply";
+    let bob = &chats.bob;
+    let (status, direct) = chats.core.request(
+        path,
+        &bob.session.session_token,
+        Some((&bob.connection.0, &bob.connection.1)),
+        envelope(intent.clone()),
+    );
+    assert_eq!(status, 200, "{direct}");
+    assert_eq!(direct["status"], "error", "{direct}");
+    let input = json!({"operationId":operation_id,"pageId":page_id,"documentId":document_id,
+        "body":body,"storeEpoch":chats.store_epoch,"issuedAt":1,
+        "scope":{"kind":"project","projectId":project_id},"start":{"kind":"new_chat"}});
+    let started = chats.admitted(bob, "inbox_send", input, |proof| {
+        let apply = |intent| {
+            let (status, result) = chats.core.local_request_proof(
+                path,
+                chats.host_binding(),
+                envelope(intent),
+                Some(proof),
+            );
+            assert_eq!(status, 200, "{result}");
+            result
+        };
+        let mut different_scope = intent.clone();
+        different_scope["project_id"] = Value::Null;
+        let refused = apply(different_scope);
+        assert_eq!(refused["status"], "error", "{refused}");
+        let started = apply(intent.clone());
+        assert_eq!(started["status"], "ok", "{started}");
+        let replay = apply(intent);
+        assert_eq!(replay["payload"]["receipt"]["duplicate"], true, "{replay}");
+        started
+    });
+    let session_id = started["payload"]["outcome"]["affected_session_ids"][0]
+        .as_str()
+        .unwrap_or_else(|| panic!("Start did not create a chat: {started}"));
+    assert_eq!(chats.requester(session_id), bob.enrollment.member_id);
+}
+
+#[test]
 fn any_member_who_reads_a_hosted_chat_forks_it_as_their_own() {
     let chats = HostedChats::start();
     let fork = |session: &str| {
