@@ -44,11 +44,6 @@ if (initialRoute === MINI_ROUTE) {
     prepareLanguage(applicationLanguageReader(window.api)),
     import("./mini-renderer"),
   ]).then(([, { mountMiniRenderer }]) => mountMiniRenderer());
-} else if (initialRoute === "/avatar-overlay") {
-  void Promise.all([
-    prepareLanguage(window.avatarOverlay),
-    import("./avatar-overlay-renderer"),
-  ]).then(([, { mountAvatarOverlayRenderer }]) => mountAvatarOverlayRenderer());
 } else if (initialRoute === "/global-dictation") {
   void Promise.all([
     prepareLanguage(window.globalDictation),

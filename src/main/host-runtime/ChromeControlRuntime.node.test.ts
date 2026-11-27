@@ -24,7 +24,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
-import { AvatarOverlayRuntime } from "../avatar/AvatarOverlayRuntime";
+import { MiniRuntime } from "../mini/MiniRuntime";
 import {
   fakeRemoteHostedPipNativePlatform,
   RemoteHostedPipNativePlatform,
@@ -422,7 +422,7 @@ describe("ChromeControlRuntime", () => {
 
 describe("RemoteHostedPipIntegration", () => {
   it.effect(
-    "routes native click, visibility, and avatar events through their semantic owners",
+    "routes native preview clicks, per-task visibility, and Mini docking events to their semantic owners",
     () =>
       Effect.gen(function* () {
         const scope = yield* Scope.make();
@@ -434,7 +434,8 @@ describe("RemoteHostedPipIntegration", () => {
           tabId: string;
         }>();
         const visibilityApplied = yield* Deferred.make<void>();
-        const cursorApplied = yield* Deferred.make<void>();
+        const dockRequested = yield* Deferred.make<void>();
+        const docked = yield* Deferred.make<boolean>();
         const chromeReleased = yield* Deferred.make<{
           browserFamily: string;
           extensionInstanceId: string;
@@ -450,7 +451,6 @@ describe("RemoteHostedPipIntegration", () => {
           taskIds: readonly string[];
           value: "hidden" | "shown";
         }> = [];
-        const cursors: Array<{ x: number; y: number } | null> = [];
 
         const browserUse = BrowserUseRuntime.of({
           availableBackends: () => ["iab"],
@@ -505,21 +505,19 @@ describe("RemoteHostedPipIntegration", () => {
           managedServiceSnapshot: () => ({ generation: 0, status: "pending" }),
           reconcileManagedService: () => Effect.die("unused"),
         });
-        const avatar = AvatarOverlayRuntime.of({
-          applyNativeLayoutState: () => Effect.void,
-          close: Effect.void,
-          handleRendererEvent: () => Effect.succeed(false),
-          hide: Effect.void,
-          ownsWebContents: () => false,
-          setComputerUseCursor: (point) =>
-            Effect.sync(() => cursors.push(point)).pipe(
-              Effect.andThen(Deferred.succeed(cursorApplied, undefined)),
-              Effect.asVoid,
-            ),
-          toggle: Effect.void,
-          wake: Effect.void,
+        const mini = MiniRuntime.of({
+          panel: null,
+          requestPreviewDock: Deferred.succeed(dockRequested, undefined).pipe(Effect.asVoid),
+          setPreviewsDocked: (value) => Deferred.succeed(docked, value).pipe(Effect.asVoid),
+          restingCoverage: () => ({ chats: [], turns: [], notice: false }),
+          syncCommandKeymap: () => Effect.succeed(null),
+          restoreCommandKeymap: () => Effect.void,
+          decorateKeymap: (state) => state,
+          withDialog: (_, open) => open(),
         });
         const remoteHostedPip = RemoteHostedPipRuntime.of({
+          activeChatPreviews: Effect.succeed({}),
+          setChatPreviewVisibility: () => Effect.void,
           deleteTaskVisibility: () => Effect.void,
           diagnosticSnapshot: Effect.succeed([]),
           getAlwaysHide: () => false,
@@ -592,7 +590,7 @@ describe("RemoteHostedPipIntegration", () => {
           live.pipe(
             Layer.provide(
               Layer.mergeAll(
-                Layer.succeed(AvatarOverlayRuntime, avatar),
+                Layer.succeed(MiniRuntime, mini),
                 Layer.succeed(BrowserUseRuntime, browserUse),
                 Layer.succeed(ChromeControlRuntime, chrome),
                 Layer.succeed(ComputerUseRuntime, computerUse),
@@ -659,14 +657,22 @@ describe("RemoteHostedPipIntegration", () => {
         yield* Effect.yieldNow;
         assert.strictEqual(visibility.length, 1);
 
-        native.emit({ point: { x: 10, y: 20 }, type: "computer-use-cursor-changed" });
-        yield* Deferred.await(cursorApplied);
-        assert.deepEqual(cursors, [{ x: 10, y: 20 }]);
+        native.emit({ type: "mini-dock-requested" });
+        yield* Deferred.await(dockRequested);
+        native.emit({
+          type: "host-layout-changed",
+          layoutState: { currentHostID: "mini", stackDisplayHeight: 100 },
+        });
+        assert.isTrue(yield* Deferred.await(docked));
 
         yield* Scope.close(scope, Exit.void);
-        native.emit({ point: { x: 30, y: 40 }, type: "computer-use-cursor-changed" });
-        yield* Effect.yieldNow;
-        assert.deepEqual(cursors, [{ x: 10, y: 20 }]);
+        native.emit({ type: "mini-dock-requested" });
+        yield* Deferred.await(dockRequested);
+        native.emit({
+          type: "host-layout-changed",
+          layoutState: { currentHostID: "mini", stackDisplayHeight: 100 },
+        });
+        assert.isTrue(yield* Deferred.await(docked));
       }),
   );
 
@@ -723,10 +729,7 @@ describe("RemoteHostedPipIntegration", () => {
           live.pipe(
             Layer.provide(
               Layer.mergeAll(
-                Layer.succeed(
-                  AvatarOverlayRuntime,
-                  AvatarOverlayRuntime.of({} as unknown as AvatarOverlayRuntime["Service"]),
-                ),
+                Layer.succeed(MiniRuntime, MiniRuntime.of({} as unknown as MiniRuntime["Service"])),
                 Layer.succeed(
                   BrowserUseRuntime,
                   BrowserUseRuntime.of({} as unknown as BrowserUseRuntime["Service"]),

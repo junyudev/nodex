@@ -373,12 +373,11 @@ describe("codex window runtime helpers", () => {
   });
 
   test("detects compact Codex window routes", () => {
-    expect(isCodexCompactWindowUrl("app://-/avatar-overlay")).toBe(true);
     expect(isCodexCompactWindowUrl("app://-/global-dictation")).toBe(true);
     expect(isCodexCompactWindowUrl("app://-/global-dictation/session")).toBe(true);
     expect(isCodexCompactWindowUrl("app://-/mini")).toBe(true);
     expect(isCodexCompactWindowUrl("app://-/?initialRoute=/mini")).toBe(true);
-    expect(isCodexCompactWindowUrl("app://-/?initialRoute=/avatar-overlay?x=1")).toBe(true);
+    expect(isCodexCompactWindowUrl("app://-/?initialRoute=/mini?x=1")).toBe(true);
     expect(isCodexCompactWindowUrl("app://-/")).toBe(false);
     expect(isCodexCompactWindowUrl("app://-/settings")).toBe(false);
     expect(isCodexCompactWindowUrl("not a url")).toBe(false);

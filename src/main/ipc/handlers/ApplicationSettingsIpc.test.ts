@@ -60,7 +60,7 @@ vi.mock("electron", async (importOriginal) => ({
       [
         { url: "app://-/index.html", send: languageBroadcasts.workbench },
         {
-          url: "app://-/index.html?initialRoute=/avatar-overlay",
+          url: "app://-/index.html?initialRoute=/mini",
           send: languageBroadcasts.overlay,
         },
         { url: "https://example.com", send: languageBroadcasts.browser },
@@ -176,6 +176,8 @@ it.effect("validates and persists settings with the owning window authority", ()
             Layer.succeed(DictationRuntime, dictation),
             Layer.succeed(MiniRuntime, {
               panel: null,
+              requestPreviewDock: Effect.void,
+              setPreviewsDocked: () => Effect.void,
               restingCoverage: () => ({ chats: [], turns: [], notice: false }),
               syncCommandKeymap: () => Effect.sync(() => miniRegistrationIssue),
               restoreCommandKeymap: () => Effect.void,

@@ -450,21 +450,17 @@ describe("WindowRuntime", () => {
       const windowSession = sessions.createFreshSession();
       const primary = fakeWindow(66);
       const auxiliary = fakeWindow(77);
-      const capture = fakeWindow(88);
       const scope = yield* Scope.make();
       const context = yield* Layer.buildWithScope(fromState(sessions), scope);
       const runtime = Context.get(context, WindowRuntime);
       runtime.attach(primary.window, windowSession.id);
 
-      runtime.registerAuxiliary(auxiliary.window, "avatar-overlay");
-      runtime.registerAuxiliary(capture.window, "mini");
+      runtime.registerAuxiliary(auxiliary.window, "mini");
       assert.isTrue(runtime.hasAppRenderer(66));
-      assert.isFalse(runtime.hasAppRenderer(77));
-      assert.isTrue(runtime.hasAppRenderer(88));
-      assert.isTrue(runtime.hasAuxiliaryRole(88, "mini"));
-      assert.isFalse(runtime.has(88));
-      assert.isNull(runtime.resolveSessionId(88));
-      assert.deepEqual(runtime.appRenderers(), [primary.window, capture.window]);
+      assert.isTrue(runtime.hasAppRenderer(77));
+      assert.isTrue(runtime.hasAuxiliaryRole(77, "mini"));
+      assert.isFalse(runtime.hasAuxiliaryRole(66, "mini"));
+      assert.deepEqual(runtime.appRenderers(), [primary.window, auxiliary.window]);
       assert.strictEqual(runtime.count(), 1);
       assert.deepEqual(runtime.all(), [primary.window]);
       assert.isNull(runtime.get(77));
@@ -475,7 +471,7 @@ describe("WindowRuntime", () => {
         focusSequence: null,
         focused: false,
         kind: "auxiliary",
-        role: "avatar-overlay",
+        role: "mini",
         webContentsId: 77,
         windowId: 77,
       });

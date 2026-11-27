@@ -1,3 +1,4 @@
+export const REMOTE_HOSTED_PIP_MINI_HOST_ID = "mini";
 export const REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID = "codex-main-thread";
 export const REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE = "data-pip-anchor-host";
 export const REMOTE_HOSTED_PIP_HOME_SURFACE_ATTRIBUTE = "data-pip-home-surface";

@@ -727,8 +727,14 @@ describe("RemoteHostedPipRuntime", () => {
           yield* runtime.resolveBrowserPresentation('browser:["thread:root","browser-a","1"]'),
           { threadId: target.desktopSessionId, tabId: "1" },
         );
+        assert.deepEqual(yield* runtime.activeChatPreviews, { session: "shown" });
+        yield* runtime.setChatPreviewVisibility(target.desktopSessionId, "hidden");
+        assert.deepEqual((yield* runtime.snapshot).taskVisibilities, {});
         yield* runtime.setNativeTaskVisibilities([target.desktopSessionId], "hidden");
-        assert.deepEqual((yield* runtime.snapshot).taskVisibilities, { [taskId]: "hidden" });
+        assert.deepEqual(yield* runtime.activeChatPreviews, { session: "hidden" });
+        yield* runtime.setChatPreviewVisibility("session", "shown");
+        assert.deepEqual((yield* runtime.snapshot).taskVisibilities, { [taskId]: "shown" });
+        assert.deepEqual(yield* runtime.activeChatPreviews, { session: "shown" });
 
         yield* runtime.observeCodexOccurrence(
           occurrence(computerNotification("item/started", "native-thread")),
@@ -743,6 +749,7 @@ describe("RemoteHostedPipRuntime", () => {
         ]);
         assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
         assert.strictEqual((yield* runtime.snapshot).retainedPresentationCount, 0);
+        assert.deepEqual(yield* runtime.activeChatPreviews, {});
         yield* begin(target, false);
         yield* browser(target, pngDataUrl());
         assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
@@ -763,7 +770,7 @@ describe("RemoteHostedPipRuntime", () => {
         yield* runtime.retireTasks({ action: "archive", threadIds: [taskId] });
         yield* browser(replacement, pngDataUrl());
         assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
-        assert.deepEqual((yield* runtime.snapshot).taskVisibilities, { [taskId]: "hidden" });
+        assert.deepEqual((yield* runtime.snapshot).taskVisibilities, { [taskId]: "shown" });
         yield* runtime.retireTasks({ action: "delete", threadIds: [taskId] });
         assert.deepEqual((yield* runtime.snapshot).taskVisibilities, {});
         yield* Scope.close(scope, Exit.void);

@@ -10,11 +10,13 @@ import {
   SendToChatIcon,
   StopIcon,
 } from "@/components/shared/icons";
+import { PictureInPicture2 } from "@/components/shared/icons/generic-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { companion } from "./mini-host";
 import { pageTurnAskOfReader } from "@/lib/page-turn-phrase";
+import type { MiniPreviewVisibility } from "../../../shared/mini";
 import type { MiniCard as MiniCardModel, MiniTurnReason } from "./mini-model";
 import { sendToChat, stopChat, useMiniChatState } from "./use-mini-chat";
 
@@ -46,6 +48,8 @@ export function MiniCard({
   onDismiss,
   onRetryStart,
   onTakeBackStart,
+  preview,
+  onPreview,
 }: {
   readonly card: MiniCardModel;
   /** The card in front follows its chat live; the ones behind only show how they stand. */
@@ -59,6 +63,9 @@ export function MiniCard({
   readonly onRetryStart: () => void;
   /** For a chat Mini could not start: put its message back in the composer. */
   readonly onTakeBackStart: () => void;
+  /** Whether this chat's live preview shows, while its agent has one. */
+  readonly preview: MiniPreviewVisibility | null;
+  readonly onPreview: (visibility: MiniPreviewVisibility) => void;
 }) {
   const intl = useIntl();
   const chatId = card.kind === "turn" ? null : card.sessionId;
@@ -114,6 +121,24 @@ export function MiniCard({
               onClick={() => onReply(!replying)}
             >
               <SendToChatIcon className="icon-xs" />
+            </CardIcon>
+          ) : null}
+          {preview ? (
+            <CardIcon
+              label={
+                preview === "shown"
+                  ? intl.formatMessage({
+                      id: "mini.card.hidePreview",
+                      defaultMessage: "Hide preview",
+                    })
+                  : intl.formatMessage({
+                      id: "mini.card.showPreview",
+                      defaultMessage: "Show preview",
+                    })
+              }
+              onClick={() => onPreview(preview === "shown" ? "hidden" : "shown")}
+            >
+              <PictureInPicture2 className={cn("icon-xs", preview === "hidden" && "opacity-50")} />
             </CardIcon>
           ) : null}
           {canStop ? (

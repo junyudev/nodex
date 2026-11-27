@@ -12,12 +12,13 @@ import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
 import type { WindowRuntimeSnapshot } from "../window-runtime/window-runtime-lifecycle";
 import { makeRemoteHostedPipHostCoordinator } from "./remote-hosted-pip-host-coordinator";
 
-function fakeWindow(webContentsId: number): BrowserWindow {
+function fakeWindow(webContentsId: number, isVisible = () => true): BrowserWindow {
   return {
     getContentBounds: () => ({ height: 700, width: 1_000, x: 10, y: 20 }),
     getNativeWindowHandle: () => Buffer.from([webContentsId]),
     getTitle: () => `Window ${webContentsId}`,
     isDestroyed: () => false,
+    isVisible,
     webContents: { id: webContentsId },
   } as unknown as BrowserWindow;
 }
@@ -37,9 +38,13 @@ it.effect(
       const scope = yield* Scope.make();
       const started = yield* Deferred.make<void>();
       const focusedSecond = yield* Deferred.make<void>();
+      const miniRegistered = yield* Deferred.make<void>();
+      const miniUnregistered = yield* Deferred.make<void>();
+      let miniVisible = false;
       const windowsByWebContentsId = new Map([
         [11, fakeWindow(11)],
         [22, fakeWindow(22)],
+        [33, fakeWindow(33, () => miniVisible)],
       ]);
       let state: RemoteHostedPipTaskStateSnapshot = {
         activeTaskIds: [],
@@ -73,6 +78,14 @@ it.effect(
             webContentsId: 22,
             windowId: 22,
             windowSessionId: "window-session-b",
+          },
+          {
+            kind: "auxiliary",
+            role: "mini",
+            focusSequence: null,
+            focused: false,
+            webContentsId: 33,
+            windowId: 33,
           },
         ],
       };
@@ -125,7 +138,11 @@ it.effect(
               presentationScope: input.presentationScope,
             });
             return true;
-          }),
+          }).pipe(
+            Effect.tap(() =>
+              input.id === "mini" ? Deferred.succeed(miniRegistered, undefined) : Effect.void,
+            ),
+          ),
         setActiveThreadId: (threadId) =>
           Effect.sync(() => {
             calls.activeThreadIds.push(threadId);
@@ -156,7 +173,11 @@ it.effect(
           Effect.sync(() => {
             calls.unregisteredHostIds.push(hostId);
             return true;
-          }),
+          }).pipe(
+            Effect.tap(() =>
+              hostId === "mini" ? Deferred.succeed(miniUnregistered, undefined) : Effect.void,
+            ),
+          ),
         upsertBrowserContent: () => Effect.succeed(true),
       };
       const windows = {
@@ -181,12 +202,13 @@ it.effect(
       assert.isTrue(
         yield* coordinator.reportLayout(11, {
           ...hostLayout,
-          hostId: "avatar-overlay",
+          hostId: "mini",
           interactionPassthroughRect: { height: 50, width: 50, x: 0, y: 0 },
           presentationScope: "all",
         }),
       );
       assert.isTrue(yield* coordinator.reportLayout(22, hostLayout));
+      assert.isTrue(yield* coordinator.reportLayout(33, hostLayout));
       yield* Effect.yieldNow;
       assert.strictEqual(calls.startCount, 0);
 
@@ -209,7 +231,7 @@ it.effect(
           hide: "Hide",
           hideForAllActiveTasks: "Hide for all active tasks",
           hideForTask: "Hide for this task",
-          placementTooltip: "Send Picture-in-Picture to Pet",
+          placementTooltip: "Send to Mini",
         },
       ]);
       assert.deepEqual(calls.registeredHosts, [
@@ -239,6 +261,22 @@ it.effect(
       assert.strictEqual(calls.registeredHosts.at(-1)?.id, "codex-main-thread");
       assert.strictEqual(calls.activeThreadIds.at(-1), "thread-b");
       assert.deepEqual(calls.visibilityRefreshes, [["thread-a", "thread-b"]]);
+
+      miniVisible = true;
+      const miniLayout = { ...hostLayout, interactionPassthroughRect: hostLayout.anchorRect };
+      assert.isTrue(yield* coordinator.reportLayout(33, miniLayout));
+      yield* Deferred.await(miniRegistered);
+      assert.deepEqual(calls.registeredHosts.at(-1), {
+        id: "mini",
+        presentationScope: "all",
+        interactionPassthroughRect: hostLayout.anchorRect,
+      });
+      assert.deepEqual(calls.unregisteredHostIds, ["codex-main-thread"]);
+      miniVisible = false;
+      assert.isTrue(yield* coordinator.reportLayout(33, null));
+      yield* Deferred.await(miniUnregistered);
+      assert.deepEqual(calls.unregisteredHostIds, ["codex-main-thread", "mini"]);
+      assert.strictEqual(calls.stopCount, 0);
 
       state = {
         ...state,

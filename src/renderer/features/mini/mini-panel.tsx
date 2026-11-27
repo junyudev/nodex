@@ -4,7 +4,9 @@ import { CheckmarkIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_MINI_ANCHOR,
+  NO_MINI_PREVIEWS,
   type MiniAnchor,
+  type MiniPreviews,
   type MiniOpenTarget,
   type MiniPresentationEvent,
 } from "../../../shared/mini";
@@ -16,7 +18,13 @@ import { MiniComposer, useRestoreMiniDraft } from "./mini-composer";
 import { MiniDock } from "./mini-dock";
 import { useChooseMiniLocation } from "./mini-location-menu";
 import { miniHost } from "./mini-host";
-import { miniAttentionCount, miniCoverage, type MiniCard as MiniCardModel } from "./mini-model";
+import {
+  miniAttentionCount,
+  miniCoverage,
+  miniStatus,
+  type MiniCard as MiniCardModel,
+} from "./mini-model";
+import { useMiniDockLayout } from "./use-mini-dock-layout";
 import { useMiniActivity } from "./use-mini-activity";
 import { startMiniDrag } from "./mini-drag";
 
@@ -63,6 +71,9 @@ export function MiniPanel() {
   const [notice, setNotice] = useState<{ readonly scope: InboxScope; readonly at: number } | null>(
     null,
   );
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [previews, setPreviews] = useState<MiniPreviews>(NO_MINI_PREVIEWS);
+  useEffect(() => miniHost.onPreviews(setPreviews), []);
   const dictation = useComposerDictationCapabilityState(supportsComposerDictation());
   const canDictate = dictation?.isEnabled === true && dictation.capabilities.composer;
 
@@ -167,12 +178,14 @@ export function MiniPanel() {
   const replyKey =
     presentation.kind === "focused" && focusTarget.kind === "reply" ? focusTarget.key : null;
   const showCards = cardsShown && cards.length > 0 && presentation.kind !== "hidden";
+  useMiniDockLayout(frameRef, presentation.kind !== "hidden");
   const visibleCards = expanded ? cards : cards.slice(0, 1);
   const stacked = !expanded && cards.length > 1;
   const bottom = anchor.vertical === "bottom";
 
   return (
     <div
+      ref={frameRef}
       data-mini-frame
       onPointerDown={(event) => startMiniDrag(event, DRAWN_SELECTOR)}
       className={cn(
@@ -187,7 +200,11 @@ export function MiniPanel() {
       )}
     >
       {/* Nearest the edge: the composer while it is open, otherwise the dock. */}
-      <div className={cn("w-[520px] select-text", composing ? "block" : "hidden")}>
+      <div
+        data-mini-content={composing || undefined}
+        data-mini-base={composing || undefined}
+        className={cn("w-[520px] select-text", composing ? "block" : "hidden")}
+      >
         <MiniComposer
           projects={activity.projects}
           focusToken={
@@ -212,6 +229,7 @@ export function MiniPanel() {
           cardCount={cards.length}
           attentionCount={miniAttentionCount(cards)}
           cardsShown={cardsShown}
+          status={miniStatus(cards)}
           onNewChat={() => requestFocus({ kind: "composer" })}
           onDictate={() => {
             setDictateToken((token) => token + 1);
@@ -227,6 +245,7 @@ export function MiniPanel() {
         <button
           type="button"
           data-mini-drawn
+          data-mini-content
           className={cn(
             "cursor-interaction inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs",
             MINI_SURFACE_CLASS,
@@ -255,6 +274,7 @@ export function MiniPanel() {
           {visibleCards.map((card, index) => (
             <div
               key={card.key}
+              data-mini-content
               className={cn(
                 "relative",
                 // Room for the plates, which peek out on the side away from the dock.
@@ -268,6 +288,12 @@ export function MiniPanel() {
                 card={card}
                 front={index < FOLLOWED_CARDS}
                 replying={replyKey === card.key}
+                preview={card.sessionId ? (previews.chats[card.sessionId] ?? null) : null}
+                onPreview={(visibility) =>
+                  card.sessionId
+                    ? miniHost.previewVisibility(card.sessionId, visibility)
+                    : undefined
+                }
                 onReply={(openReply) =>
                   openReply ? requestFocus({ kind: "reply", key: card.key }) : release()
                 }
@@ -292,6 +318,7 @@ export function MiniPanel() {
         <button
           type="button"
           data-mini-drawn
+          data-mini-content
           className={cn(
             "cursor-interaction rounded-full px-2.5 py-1 text-[11px] text-token-text-secondary hover:text-token-foreground",
             MINI_SURFACE_CLASS,

@@ -278,6 +278,5 @@ The thread scroll viewport, sticky footer, Home surface, and floating summary
 report observed anchor, obstacle, passthrough, and animation geometry to the
 remote-hosted PiP owner. Geometry never asserts task activity or visibility.
 Unmount clears that host geometry so a stale task cannot continue positioning
-the native layer. Native Browser presentations can focus their exact source tab;
-the same stack can move between an eligible primary window and the auxiliary
-desktop-pet host without changing task truth.
+the native layer. Native Browser presentations can focus their exact source tab.
+**Send to Mini** moves the same stack from the Workbench to Mini.

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { DEFAULT_MINI_ANCHOR, EMPTY_MINI_COVERAGE, MINI_VISIBILITIES } from "../../shared/mini";
-import { miniBounds, MINI_WINDOW_SIZE, nearestMiniAnchor } from "./mini-geometry";
+import {
+  miniBounds,
+  miniPreviewHostLayout,
+  MINI_WINDOW_SIZE,
+  nearestMiniAnchor,
+} from "./mini-geometry";
 import {
   initialMiniPresentation,
   transitionMiniPresentation as dispatch,
@@ -83,6 +88,44 @@ describe("Mini presentation", () => {
     expect(always.event.kind).toBe("resting");
     const idle = dispatch(always, { kind: "presence", update: { visibility: "active" } });
     expect(idle.event).toMatchObject({ kind: "hidden", reason: "idle" });
+  });
+
+  test("a pending handoff and docked previews keep Mini resting through Workbench focus and idleness", () => {
+    const idle = dispatch(initialMiniPresentation("active"), {
+      kind: "presence",
+      update: { workbenchFocused: true },
+    });
+    expect(idle.event.kind).toBe("hidden");
+    const pending = dispatch(idle, {
+      kind: "presence",
+      update: { previewDockRequested: true },
+    });
+    expect(pending.event.kind).toBe("resting");
+    expect(
+      dispatch(pending, {
+        kind: "presence",
+        update: { previewDockRequested: false },
+      }).event.kind,
+    ).toBe("hidden");
+    const docked = dispatch(pending, {
+      kind: "presence",
+      update: { previewDockRequested: false, previewsDocked: true },
+    });
+    expect(docked.event).toBe(pending.event);
+    const focused = dispatch(docked, { kind: "focus" });
+    expect(dispatch(focused, { kind: "blur", dialogOpen: false }).event.kind).toBe("resting");
+    expect(
+      dispatch(focused, {
+        kind: "presence",
+        update: { visibility: "on-demand" },
+      }).event.kind,
+    ).toBe("hidden");
+    expect(
+      dispatch(docked, {
+        kind: "presence",
+        update: { previewsDocked: false },
+      }).event.kind,
+    ).toBe("hidden");
   });
 
   test("a focused Mini keeps the keyboard through policy, activity, and Workbench changes", () => {
@@ -179,5 +222,40 @@ describe("Mini placement", () => {
       vertical,
       horizontal,
     });
+  });
+});
+
+describe("Mini preview placement", () => {
+  const content = { x: 52, y: 400, width: 300, height: 280 };
+  const base = { x: 75, y: 630, width: 200, height: 40 };
+
+  test.each([
+    ["bottom", "left", "bottom-left", 360, 670],
+    ["bottom", "center", "bottom-left", 360, 670],
+    ["bottom", "right", "bottom-right", 44, 670],
+    ["top", "left", "top-left", 360, 630],
+    ["top", "center", "top-left", 360, 630],
+    ["top", "right", "top-right", 44, 630],
+  ] as const)("docks alongside the %s %s placement", (vertical, horizontal, alignment, x, y) => {
+    const layout = miniPreviewHostLayout(
+      { content, base },
+      { vertical, horizontal },
+      undefined,
+      false,
+    );
+    expect(layout).toMatchObject({
+      anchorRect: content,
+      interactionPassthroughRect: content,
+      anchors: [{ alignment, point: { x, y } }],
+      animated: false,
+    });
+  });
+
+  test("only changes of stack alignment use the spring, respecting reduced motion", () => {
+    const anchor = { vertical: "bottom", horizontal: "right" } as const;
+    const layout = { content, base };
+    expect(miniPreviewHostLayout(layout, anchor, "top-right", false).animated).toBe(true);
+    expect(miniPreviewHostLayout(layout, anchor, "top-right", true).animated).toBe(false);
+    expect(miniPreviewHostLayout(layout, anchor, "bottom-right", false).animated).toBe(false);
   });
 });

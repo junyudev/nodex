@@ -40,7 +40,6 @@ export function resolveCodexRendererWindowChrome(
 }
 
 function isCompactRoute(route: string): boolean {
-  if (route === "/avatar-overlay") return true;
   return COMPACT_ROUTE_PREFIXES.some(
     (prefix) => route === prefix || route.startsWith(`${prefix}/`),
   );

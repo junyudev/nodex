@@ -657,7 +657,7 @@ export async function runRealRuntimeBenchmark(input) {
     "baseline",
     "after-latest-frame-replacement",
     "after-task-cycles",
-    `window-avatar-churn-${input.windowCycleCount}`,
+    `window-mini-churn-${input.windowCycleCount}`,
     "before-native-teardown",
     "after-native-teardown",
   ]);
@@ -697,7 +697,7 @@ export async function runRealRuntimeBenchmark(input) {
           currentStage,
           footprintStages.has(currentStage) ||
             /^service-\d+-running$/u.test(currentStage) ||
-            currentStage === `window-avatar-active-${input.windowCycleCount}`,
+            currentStage === `window-mini-active-${input.windowCycleCount}`,
         );
       } finally {
         if (typeof event.checkpointId === "string" && child.stdin.writable) {
@@ -780,7 +780,7 @@ export async function runRealRuntimeBenchmark(input) {
   const workloadStatuses = [
     fixtureReport?.replacement?.status,
     fixtureReport?.taskCycles?.status,
-    fixtureReport?.windowAvatarChurn?.status,
+    fixtureReport?.windowMiniChurn?.status,
     fixtureReport?.serviceReconnect?.status,
   ];
   const nativeHostPassed =

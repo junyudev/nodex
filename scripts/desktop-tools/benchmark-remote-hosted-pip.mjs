@@ -520,14 +520,14 @@ async function runWindowOwnershipEvidence(root) {
   );
   const runtime = Context.get(context, WindowRuntime);
   const primaryWindows = [fakeWindow(101), fakeWindow(102), fakeWindow(103)];
-  const avatarWindow = fakeWindow(201);
+  const miniWindow = fakeWindow(201);
 
   for (const primary of primaryWindows) {
     runtime.attach(primary.window, sessions.createFreshSession().id);
   }
-  runtime.registerAuxiliary(avatarWindow.window, "avatar-overlay");
+  runtime.registerAuxiliary(miniWindow.window, "mini");
   const before = runtime.snapshot();
-  const listenerCountBeforeTeardown = [...primaryWindows, avatarWindow].reduce(
+  const listenerCountBeforeTeardown = [...primaryWindows, miniWindow].reduce(
     (count, candidate) => count + candidate.listenerCount(),
     0,
   );
@@ -537,7 +537,7 @@ async function runWindowOwnershipEvidence(root) {
 
   await Effect.runPromise(Scope.close(scope, Exit.void));
   const after = runtime.snapshot();
-  const listenerCountAfterTeardown = [...primaryWindows, avatarWindow].reduce(
+  const listenerCountAfterTeardown = [...primaryWindows, miniWindow].reduce(
     (count, candidate) => count + candidate.listenerCount(),
     0,
   );
@@ -545,7 +545,7 @@ async function runWindowOwnershipEvidence(root) {
     runtime.count() !== 0 ||
     after.windows.length !== 0 ||
     listenerCountAfterTeardown !== 0 ||
-    [...primaryWindows, avatarWindow].some((candidate) => !candidate.destroyed())
+    [...primaryWindows, miniWindow].some((candidate) => !candidate.destroyed())
   ) {
     throw new Error("Window ownership evidence did not return to its teardown baseline");
   }
@@ -616,7 +616,7 @@ export async function runStateBenchmark(input = {}) {
         proves: [
           "Main runtime rejects remote-host and non-local backend ownership",
           "replacement and task lifecycle state remains bounded with fake native projection",
-          "primary and avatar auxiliary window registry ownership tears down to baseline",
+          "primary and mini auxiliary window registry ownership tears down to baseline",
         ],
         requiredExternalGates: [
           "signed macOS arm64 packaged app and helper with the exact runtime manifest",

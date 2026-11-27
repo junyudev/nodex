@@ -20,12 +20,19 @@ export function useMiniSettings() {
     queryFn: () => invokeRendererQuery("settings:mini:get"),
   });
   const update = useMutation({
-    mutationFn: (change: Partial<MiniSettings>) => invokePlainCommand(updateCommand, change),
+    mutationFn: async (change: Partial<MiniSettings> | "toggle") => {
+      if (change !== "toggle") return invokePlainCommand(updateCommand, change);
+      const current = await invokeRendererQuery("settings:mini:get");
+      return invokePlainCommand(updateCommand, { shown: !current.shown });
+    },
     onSuccess: (settings) => queryClient.setQueryData(MINI_SETTINGS_KEY, settings),
   });
   return {
     settings: query.data ?? DEFAULT_MINI_SETTINGS,
     loading: query.isPending,
     change: (change: Partial<MiniSettings>) => update.mutate(change),
+    toggle: async () => {
+      await update.mutateAsync("toggle");
+    },
   };
 }

@@ -66,7 +66,7 @@ function buildCommands(overrides: Partial<Parameters<typeof buildComposerSlashCo
     model: buildModel(),
     actions: buildActions(),
     intelligence: createTestIntelligenceMenu(),
-    onPetToggle: () => {},
+    onMiniToggle: () => {},
     activateGoalMode: () => {},
     openFeedback: () => {},
     mcp: { statuses: undefined, loading: false, error: null },
@@ -360,13 +360,13 @@ describe("buildComposerSlashCommands", () => {
     expect(onOpenStatusPanel.mock.calls).toEqual([["thread_1"], ["thread_1"]]);
   });
 
-  test("delegates Pet visibility to the native avatar overlay owner", async () => {
-    const onPetToggle = vi.fn();
-    const commands = buildCommands({ onPetToggle });
+  test("runs the Mini visibility action", async () => {
+    const onMiniToggle = vi.fn();
+    const commands = buildCommands({ onMiniToggle });
 
-    await runCommand(getCommand(commands, "pet"));
+    await runCommand(getCommand(commands, "mini"));
 
-    expect(onPetToggle).toHaveBeenCalledOnce();
+    expect(onMiniToggle).toHaveBeenCalledOnce();
   });
 
   test("offers Merge back only in a fork and enables it once the reply finishes", async () => {

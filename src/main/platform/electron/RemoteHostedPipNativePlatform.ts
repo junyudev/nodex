@@ -8,7 +8,10 @@ import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import type { RemoteHostedPipPoint } from "../../../shared/remote-hosted-pip";
+import {
+  REMOTE_HOSTED_PIP_MINI_HOST_ID,
+  type RemoteHostedPipPoint,
+} from "../../../shared/remote-hosted-pip";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { MAIN_RELIABLE_COMMAND_CAPACITY } from "../../runtime-limits";
 import {
@@ -19,6 +22,11 @@ import {
   type SkyRemoteHostedPipHostRegistration,
 } from "../../sky-native";
 
+// The signed addon looks up this exact host ID when its placement control is used.
+const NATIVE_MINI_HOST_ID = "avatar-overlay";
+const toNativeHostId = (hostId: string): string =>
+  hostId === REMOTE_HOSTED_PIP_MINI_HOST_ID ? NATIVE_MINI_HOST_ID : hostId;
+
 export type RemoteHostedPipNativeLayoutState =
   | (Readonly<Record<string, unknown>> & {
       readonly currentHostID: string | null;
@@ -28,10 +36,9 @@ export type RemoteHostedPipNativeLayoutState =
 
 export type RemoteHostedPipNativeEvent =
   | { readonly type: "browser-content-clicked"; readonly presentationId: string }
-  | { readonly type: "computer-use-cursor-changed"; readonly point: RemoteHostedPipPoint | null }
   | { readonly type: "host-layout-changed"; readonly layoutState: RemoteHostedPipNativeLayoutState }
   | { readonly type: "max-display-size-changed"; readonly size: number }
-  | { readonly type: "pet-wake-requested" }
+  | { readonly type: "mini-dock-requested" }
   | { readonly type: "service-connection-lost" }
   | {
       readonly type: "visibility-requested";
@@ -42,10 +49,7 @@ export type RemoteHostedPipNativeEvent =
 type RemoteHostedPipNativeStateEvent = Extract<
   RemoteHostedPipNativeEvent,
   {
-    readonly type:
-      | "computer-use-cursor-changed"
-      | "host-layout-changed"
-      | "max-display-size-changed";
+    readonly type: "host-layout-changed" | "max-display-size-changed";
   }
 >;
 
@@ -266,7 +270,12 @@ function parseLayoutState(value: unknown): RemoteHostedPipNativeLayoutState {
       stackDisplayHeight <= MAX_NATIVE_DIMENSION
     ) {
       if (currentHostID !== null) nonEmpty(currentHostID, "currentHostID");
-      return value as Exclude<RemoteHostedPipNativeLayoutState, null>;
+      return {
+        ...value,
+        currentHostID:
+          currentHostID === NATIVE_MINI_HOST_ID ? REMOTE_HOSTED_PIP_MINI_HOST_ID : currentHostID,
+        stackDisplayHeight,
+      };
     }
   }
   throw new Error("Native layout state is invalid");
@@ -328,10 +337,6 @@ function makeNativePlatform(
     const commands = yield* Queue.bounded<RemoteHostedPipNativeCommandEvent>(
       MAIN_RELIABLE_COMMAND_CAPACITY,
     );
-    const cursorState =
-      yield* Queue.sliding<
-        Extract<RemoteHostedPipNativeStateEvent, { readonly type: "computer-use-cursor-changed" }>
-      >(1);
     const layoutStateEvents =
       yield* Queue.sliding<
         Extract<RemoteHostedPipNativeStateEvent, { readonly type: "host-layout-changed" }>
@@ -371,16 +376,6 @@ function makeNativePlatform(
           // Invalid native callback payloads are rejected at the Adapter seam.
         }
       });
-      addon.setRemoteHostedPIPContentComputerUseCursorLocationHandler((point) => {
-        try {
-          Queue.offerUnsafe(cursorState, {
-            point: point === null ? null : parsePoint(point, "computerUseCursor"),
-            type: "computer-use-cursor-changed",
-          });
-        } catch {
-          // Invalid native callback payloads are rejected at the Adapter seam.
-        }
-      });
       addon.setRemoteHostedPIPContentLayoutStateChangedHandler((nativeLayoutState) => {
         try {
           Queue.offerUnsafe(layoutStateEvents, {
@@ -399,8 +394,9 @@ function makeNativePlatform(
           // Invalid native callback payloads are rejected at the Adapter boundary.
         }
       });
+      // The verified addon exposes the placement button through this ABI export.
       addon.setRemoteHostedPIPContentPetWakeRequestHandler(() =>
-        publishCommand({ type: "pet-wake-requested" }),
+        publishCommand({ type: "mini-dock-requested" }),
       );
       addon.setRemoteHostedPIPContentShouldShowTaskHandler((threadId) => {
         try {
@@ -432,7 +428,6 @@ function makeNativePlatform(
         const addon = currentAddon;
         if (!addon) return;
         addon.setBrowserUsePIPContentClickHandler(null);
-        addon.setRemoteHostedPIPContentComputerUseCursorLocationHandler(null);
         addon.setRemoteHostedPIPContentLayoutStateChangedHandler(null);
         addon.setRemoteHostedPIPContentMaxDisplaySizeChangedHandler(null);
         addon.setRemoteHostedPIPContentPetWakeRequestHandler(null);
@@ -445,7 +440,6 @@ function makeNativePlatform(
           Effect.all(
             [
               Queue.shutdown(commands),
-              Queue.shutdown(cursorState),
               Queue.shutdown(layoutStateEvents),
               Queue.shutdown(maxDisplaySizeState),
             ],
@@ -457,7 +451,6 @@ function makeNativePlatform(
 
     const eventStreams: ReadonlyArray<Stream.Stream<RemoteHostedPipNativeEvent>> = [
       Stream.fromQueue(commands),
-      Stream.fromQueue(cursorState),
       Stream.fromQueue(layoutStateEvents),
       Stream.fromQueue(maxDisplaySizeState),
     ];
@@ -525,7 +518,10 @@ function makeNativePlatform(
       registerHost: (input) =>
         call("register-host", (addon) => {
           validateHostRegistration(input);
-          return addon.registerRemoteHostedPIPContentHost(input);
+          return addon.registerRemoteHostedPIPContentHost({
+            ...input,
+            id: toNativeHostId(input.id),
+          });
         }),
       setActiveThreadId: (threadId) =>
         call("set-active-thread", (addon) =>
@@ -561,7 +557,7 @@ function makeNativePlatform(
       stopHost: call("stop-host", (addon) => addon.stopRemoteHostedPIPContentHost()),
       unregisterHost: (hostId) =>
         call("unregister-host", (addon) =>
-          addon.unregisterRemoteHostedPIPContentHost(nonEmpty(hostId, "hostId")),
+          addon.unregisterRemoteHostedPIPContentHost(toNativeHostId(nonEmpty(hostId, "hostId"))),
         ),
       upsertBrowserContent: (input) =>
         call("upsert-browser-content", (addon) => {

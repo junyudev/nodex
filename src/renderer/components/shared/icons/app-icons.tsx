@@ -1891,7 +1891,7 @@ export function SlashModelIcon({ className }: IconProps) {
   return <ModelStatusGlyph className={className ?? "icon-xs shrink-0"} />;
 }
 
-export function SlashPetIcon({ className }: IconProps) {
+export function SlashMiniIcon({ className }: IconProps) {
   return <Paw16Glyph width={20} height={20} className={className ?? "icon-xs shrink-0"} />;
 }
 

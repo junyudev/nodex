@@ -8,7 +8,10 @@ import type {
   RemoteHostedPipHostLayout,
   RemoteHostedPipTaskStateSnapshot,
 } from "../../shared/remote-hosted-pip";
-import { REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID } from "../../shared/remote-hosted-pip";
+import {
+  REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
+  REMOTE_HOSTED_PIP_MINI_HOST_ID,
+} from "../../shared/remote-hosted-pip";
 import type { RemoteHostedPipPreferencesAdapter } from "../remote-hosted-pip-preference-store";
 import type {
   RemoteHostedPipNativePlatformError,
@@ -19,7 +22,6 @@ import { selectPreferredWindowRuntimeWindow } from "../window-runtime/window-run
 import { getLogger } from "../logging/logger";
 
 const logger = getLogger({ subsystem: "remote-hosted-pip-hosts" });
-const AVATAR_HOST_ID = "avatar-overlay";
 
 interface HostedLayout {
   readonly hostId: string;
@@ -128,8 +130,9 @@ export function makeRemoteHostedPipHostCoordinator(
         for (const window of windowSnapshot.windows) {
           if (
             window.kind === "auxiliary" &&
-            window.role === "avatar-overlay" &&
-            layouts.has(window.webContentsId)
+            window.role === "mini" &&
+            layouts.has(window.webContentsId) &&
+            options.windows.getRegisteredWindow(window.webContentsId)?.isVisible()
           ) {
             eligibleWebContentsIds.add(window.webContentsId);
           }
@@ -152,7 +155,7 @@ export function makeRemoteHostedPipHostCoordinator(
               hide: "Hide",
               hideForAllActiveTasks: "Hide for all active tasks",
               hideForTask: "Hide for this task",
-              placementTooltip: "Send Picture-in-Picture to Pet",
+              placementTooltip: "Send to Mini",
             }),
           );
           if (didStart !== true) return;
@@ -334,10 +337,14 @@ export function makeRemoteHostedPipHostCoordinator(
                 presentationScope: "thread",
               },
             });
-          } else if (registeredWindow.role === "avatar-overlay") {
+          } else if (registeredWindow.role === "mini") {
             layouts.set(webContentsId, {
-              hostId: AVATAR_HOST_ID,
-              layout: { ...layout, hostId: AVATAR_HOST_ID, presentationScope: "all" },
+              hostId: REMOTE_HOSTED_PIP_MINI_HOST_ID,
+              layout: {
+                ...layout,
+                hostId: REMOTE_HOSTED_PIP_MINI_HOST_ID,
+                presentationScope: "all",
+              },
             });
           } else {
             return false;

@@ -1,5 +1,11 @@
 import type { Rectangle } from "electron";
-import { DEFAULT_MINI_ANCHOR, type MiniAnchor } from "../../shared/mini";
+import { DEFAULT_MINI_ANCHOR, type MiniAnchor, type MiniContentLayout } from "../../shared/mini";
+import {
+  REMOTE_HOSTED_PIP_MINI_HOST_ID,
+  type RemoteHostedPipAnchor,
+  type RemoteHostedPipAnchorAlignment,
+  type RemoteHostedPipHostLayout,
+} from "../../shared/remote-hosted-pip";
 
 export const MINI_WINDOW_SIZE = { width: 600, height: 720 } as const;
 const margin = 12;
@@ -46,4 +52,36 @@ export function nearestMiniAnchor(
     best = delta;
   }
   return nearest;
+}
+
+const previewGap = 8;
+const previewSpring = { damping: 18.85, initialVelocity: 0, mass: 1, stiffness: 180 };
+
+/** Place the native stack beside the drawn content, level with the dock or composer. */
+export function miniPreviewHostLayout(
+  { content, base }: MiniContentLayout,
+  anchor: MiniAnchor,
+  previousAlignment: RemoteHostedPipAnchorAlignment | undefined,
+  reducedMotion: boolean,
+): RemoteHostedPipHostLayout & { anchors: [RemoteHostedPipAnchor] } {
+  const stackOnLeft = anchor.horizontal === "right";
+  const alignment = `${anchor.vertical}-${stackOnLeft ? "right" : "left"}` as const;
+  return {
+    anchorRect: content,
+    anchors: [
+      {
+        alignment,
+        point: {
+          x: stackOnLeft ? content.x - previewGap : content.x + content.width + previewGap,
+          y: anchor.vertical === "bottom" ? base.y + base.height : base.y,
+        },
+      },
+    ],
+    animated: previousAlignment !== undefined && previousAlignment !== alignment && !reducedMotion,
+    animationSpring: previewSpring,
+    hostId: REMOTE_HOSTED_PIP_MINI_HOST_ID,
+    interactionPassthroughRect: content,
+    isCodexHomeAvailable: false,
+    presentationScope: "all",
+  };
 }

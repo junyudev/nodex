@@ -9,9 +9,11 @@ you, a Turn that is your move, and what each action does read exactly as they do
 
 ## On screen
 
-- **Dock.** A small pill: `New chat`, `Dictate` when dictation is available, and, while anything
-  is your concern, a control that hides or shows the cards. Hidden cards leave a bell with the
-  number of things waiting on you; working chats show as a spinner and are never counted.
+- **Dock.** A small pill: the Nodex mark, then `New chat` and `Dictate` when dictation is
+  available. A dot beside the mark tells how your chats stand: pulsing green while work is under
+  way, blue when something needs you, amber when something failed, none when all is quiet. While
+  anything is your concern, the mark hides or shows the cards; with the cards hidden it carries the
+  number of things waiting on you, never what is merely running.
 - **Shown or hidden.** Mini starts hidden: only its shortcut opens it. **Show Mini** in the
   account menu at the foot of the rail shows it over other apps, and **Hide Mini** hides it again.
   Settings → General → **Mini** offers the same as `Off`, `When active` (rests on screen only
@@ -37,7 +39,8 @@ you, a Turn that is your move, and what each action does read exactly as they do
   approval, answer with one press. A Page Turn ready for review offers `Accept`; a question Turn
   offers its options. Anything that needs writing more or seeing more offers `Open in Nodex`.
 - Hovering a card offers `Reply` (a follow-up to the chat, waiting behind a Run that is working,
-  or a reply to the Turn), `Stop` while its Run works and you may stop it, and `Dismiss`.
+  or a reply to the Turn), `Show preview` or `Hide preview` while its agent has a live preview of
+  this computer, `Stop` while its Run works and you may stop it, and `Dismiss`.
   Dismissing a finished chat marks it read, as opening it would. A dismissed card returns when
   its chat or Turn changes again.
 - Clicking a card opens it in Nodex.
@@ -119,3 +122,15 @@ and effort. Images imported into the Library attach by their Library File refere
 Mini reads the Library Inbox window and current Page Turns with `inbox.window` and
 `inbox.turns`. It uses `inbox.decide` to accept, start, or reply when the Page Turn is the
 person's move.
+
+## Live previews
+
+When an agent uses this computer (Computer Use, Browser Use), its live preview shows in the
+chat's Nodex window, as before. On macOS, **Send to Mini** on the preview shows Mini and docks
+the previews of every chat in one stack beside Mini's content, level with its dock or composer:
+to the right, or to the left when Mini sits at the right of the screen. The previews stay where
+the person put them when another app comes forward. Dragging or snapping Mini moves the stack
+with it. While previews are docked, Mini stays on screen even with a Workbench window focused or
+while **When active** would otherwise hide it. **Return Picture-in-Picture to Nodex**, **Hide
+Mini**, or setting Mini to **Off** moves the stack back to a Nodex window. A chat card's
+`Hide preview` and `Show preview` set that chat's preview as its own preview controls do.

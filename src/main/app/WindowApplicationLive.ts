@@ -8,10 +8,6 @@ import {
   WorkbenchAgentBridge,
   live as workbenchAgentBridgeLive,
 } from "../app-tools/WorkbenchAgentBridge";
-import {
-  AvatarOverlayRuntime,
-  live as avatarOverlayRuntimeLive,
-} from "../avatar/AvatarOverlayRuntime";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { ChatGptDesktop } from "../codex-application/ChatGptDesktop";
 import { CodexAccount } from "../codex-application/CodexAccount";
@@ -163,23 +159,10 @@ const remoteHostedPip = Layer.unwrap(
 const computerUseSettings = computerUseSettingsRuntimeLive.pipe(
   Layer.provideMerge(remoteHostedPip),
 );
-const avatarOverlay = Layer.unwrap(
-  Effect.gen(function* () {
-    const callbacks = yield* ScopedCallbackRuntime;
-    const config = yield* MainConfig;
-    const remoteHostedPip = yield* RemoteHostedPipRuntime;
-    return avatarOverlayRuntimeLive({
-      onHostLayout: (window, layout) => {
-        callbacks.fork(remoteHostedPip.reportHostLayout(window.webContents.id, layout));
-      },
-      platform: config.platform as NodeJS.Platform,
-      ...(config.rendererUrl ? { rendererUrl: config.rendererUrl } : {}),
-    });
-  }),
-).pipe(Layer.provideMerge(remoteHostedPip));
-const remoteHostedPipIntegration = RemoteHostedPipIntegration.live.pipe(
-  Layer.provideMerge(avatarOverlay),
+const mini = miniRuntimeLive(resolveBundledElectronPreload(__dirname, "index.js")).pipe(
+  Layer.provideMerge(remoteHostedPip),
 );
+const remoteHostedPipIntegration = RemoteHostedPipIntegration.live.pipe(Layer.provideMerge(mini));
 
 const applicationWindows = Layer.unwrap(
   Effect.gen(function* () {
@@ -314,7 +297,6 @@ const workbenchNotifications = workbenchNotificationDeliveryLive.pipe(
 /** Physical Window resources and their bounded, scope-owned shutdown policy. */
 export const live: Layer.Layer<
   | AppUpdateRuntime
-  | AvatarOverlayRuntime
   | ApplicationHostRuntime
   | ApplicationMenuRuntime
   | ApplicationWindowRuntime
@@ -385,7 +367,6 @@ export const live: Layer.Layer<
   applicationHostRuntimeLive(),
   applicationMenu,
   computerUseSettings,
-  miniRuntimeLive(resolveBundledElectronPreload(__dirname, "index.js")),
   remoteHostedPipIntegration,
   codexMedia,
   dictationDictionary,

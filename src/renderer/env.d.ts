@@ -26,10 +26,6 @@ import type {
   GlobalDictationRendererEvent,
 } from "../shared/global-dictation";
 import type { ContentRoutingContext } from "../shared/content-routing-context";
-import type {
-  AvatarOverlayRendererCommand,
-  AvatarOverlayRendererEvent,
-} from "../shared/avatar-overlay";
 
 declare module "*.css";
 
@@ -114,10 +110,6 @@ declare global {
       onMicrophoneRelinquish: (callback: (sessionId: string) => void) => () => void;
       sendEvent: (event: GlobalDictationRendererEvent) => Promise<boolean>;
       showContextMenu: () => Promise<GlobalDictationContextMenuAction>;
-    };
-    avatarOverlay?: import("../shared/i18n/locales").LanguageSettingsReader & {
-      onCommand: (callback: (command: AvatarOverlayRendererCommand) => void) => () => void;
-      sendEvent: (event: AvatarOverlayRendererEvent) => Promise<boolean>;
     };
   }
 }

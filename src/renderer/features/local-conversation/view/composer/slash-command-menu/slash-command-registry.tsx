@@ -17,7 +17,7 @@ import {
   SlashMcpIcon,
   SlashMemoriesIcon,
   SlashModelIcon,
-  SlashPetIcon,
+  SlashMiniIcon,
   SlashReasoningIcon,
   SlashSideIcon,
   SlashStatusIcon,
@@ -57,7 +57,7 @@ interface BuildSlashCommandsInput {
   actions: ThreadStageActions;
   /** The Composer's model, effort and speed choices, shared with its model picker. */
   intelligence: AgentIntelligenceMenu;
-  onPetToggle: () => void;
+  onMiniToggle: () => void | Promise<void>;
   activateGoalMode: () => void;
   openFeedback: () => void;
   mcp: ComposerSlashMcpStatus;
@@ -368,20 +368,22 @@ export function buildComposerSlashCommands(
       action: { kind: "submenu", submenu: buildModelSubmenu(intelligence, intl) },
     },
     {
-      id: "pet",
-      title: "Pet",
-      titleMessage: defineMessage({
-        id: "conversation.slashCommandRegistry.pet",
-        defaultMessage: "Pet",
-      }),
-      description: intl.formatMessage({
-        id: "conversation.slashCommandRegistry.petDescription",
-        defaultMessage: "Wake or tuck away the desktop pet",
-      }),
-      icon: <SlashPetIcon className={iconClassName} />,
-      supersedes: ["pet"],
+      id: "mini",
+      title: "Mini",
+      titleMessage: defineMessage({ id: "settings.mini.label", defaultMessage: "Mini" }),
+      description: `${intl.formatList(
+        [
+          intl.formatMessage({ id: "board.toggleListRulesBody.show", defaultMessage: "Show" }),
+          intl
+            .formatMessage({ id: "board.toggleListRulesBody.hide", defaultMessage: "Hide" })
+            .toLocaleLowerCase(intl.locale),
+        ],
+        { type: "disjunction" },
+      )} Mini`,
+      icon: <SlashMiniIcon className={iconClassName} />,
+      supersedes: ["mini"],
       requiresEmptyComposer: true,
-      action: { kind: "run", run: input.onPetToggle },
+      action: { kind: "run", run: input.onMiniToggle },
     },
     {
       id: "side",

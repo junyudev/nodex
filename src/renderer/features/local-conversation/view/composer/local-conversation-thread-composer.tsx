@@ -194,7 +194,7 @@ import {
   buildComposerSlashCommands,
   canUseComposerGoal,
 } from "./slash-command-menu/slash-command-registry";
-import { toggleAvatarOverlay } from "@/lib/avatar-overlay-control";
+import { useMiniSettings } from "@/lib/use-mini-settings";
 import {
   filterComposerSlashCommands,
   filterComposerSlashSubmenu,
@@ -3157,16 +3157,11 @@ function HydratedThreadComposer({
     promptEditorRef.current?.insertMention(mention);
   }, []);
 
-  const handleToggleDesktopPet = useCallback(() => {
-    void toggleAvatarOverlay().catch(() => {
-      toast.danger(
-        getIntl().formatMessage({
-          id: "conversation.localConversationThreadComposer.openPetFailed",
-          defaultMessage: "Could not open the desktop pet",
-        }),
-      );
+  const { toggle: toggleMini } = useMiniSettings();
+  const handleToggleMini = () =>
+    toggleMini().catch((error: unknown) => {
+      if (error instanceof Error) toast.danger(error.message);
     });
-  }, []);
 
   const activateGoalMode = () => {
     setGoalModeActive(true);
@@ -3679,7 +3674,7 @@ function HydratedThreadComposer({
       model,
       actions,
       intelligence: intelligenceController.menu,
-      onPetToggle: handleToggleDesktopPet,
+      onMiniToggle: handleToggleMini,
       activateGoalMode,
       openFeedback: () => setFeedbackDialogOpen(true),
       mcp: {

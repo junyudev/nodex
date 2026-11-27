@@ -112,7 +112,7 @@ it.effect("binds a single Mini document to its personal Owner and revokes it on 
         ok: false,
         error: { code: "rejected" },
       });
-      role = "avatar-overlay";
+      role = "workbench";
       expect(yield* invoke(event, "inbox.window", inboxWindow)).toMatchObject({
         ok: false,
         error: { code: "rejected" },

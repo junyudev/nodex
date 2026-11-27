@@ -146,7 +146,7 @@ function collectLayerNodes(root) {
 export function deriveNativeWindowAssertions(fixtureReport) {
   const presentation = stageByName(fixtureReport, "01-presentation");
   const moved = stageByName(fixtureReport, "02-moved-owner");
-  const avatarHost = stageByName(fixtureReport, "03-avatar-host");
+  const miniHost = stageByName(fixtureReport, "03-mini-host");
   const completion = stageByName(fixtureReport, "04-completion-effect");
   const stopped = stageByName(fixtureReport, "05-stopped");
   const finalBaseline = stageByName(fixtureReport, "06-process-window-baseline");
@@ -233,28 +233,28 @@ export function deriveNativeWindowAssertions(fixtureReport) {
         presentation?.browserWindowIds?.includes(row.parentWindowNumber) === true,
     );
   const ownerWindowNumber = introspectionRows[0]?.parentWindowNumber ?? null;
-  const avatarHostPanelRows = (avatarHost?.nativeIntrospectionRows ?? []).filter((row) =>
+  const miniHostPanelRows = (miniHost?.nativeIntrospectionRows ?? []).filter((row) =>
     nativeIds.includes(row.windowNumber),
   );
-  const avatarWindowNumber = avatarHost?.browserWindowIds?.find(
+  const miniWindowNumber = miniHost?.browserWindowIds?.find(
     (windowNumber) => windowNumber !== ownerWindowNumber,
   );
-  const avatarWindow = (avatarHost?.nativeIntrospectionRows ?? []).find(
-    (row) => row.windowNumber === avatarWindowNumber,
+  const miniWindow = (miniHost?.nativeIntrospectionRows ?? []).find(
+    (row) => row.windowNumber === miniWindowNumber,
   );
-  const avatarHostWindowObserved =
-    Number.isInteger(avatarWindowNumber) &&
-    avatarWindow?.class === "ElectronNSPanel" &&
-    avatarWindow.classChain?.includes("NSWindow") === true &&
-    avatarWindow.isPanel === false &&
-    avatarWindow.isOpaque === false &&
-    avatarWindow.isVisible === true &&
-    avatarWindow.frame?.width === 384 &&
-    avatarWindow.frame?.height > 0;
-  const nativePanelsStayedOnPrimaryWithAvatarObserved =
-    avatarHostPanelRows.length === 2 &&
+  const miniHostWindowObserved =
+    Number.isInteger(miniWindowNumber) &&
+    miniWindow?.class === "ElectronNSPanel" &&
+    miniWindow.classChain?.includes("NSWindow") === true &&
+    miniWindow.isPanel === false &&
+    miniWindow.isOpaque === false &&
+    miniWindow.isVisible === true &&
+    miniWindow.frame?.width === 600 &&
+    miniWindow.frame?.height > 0;
+  const nativePanelsStayedOnPrimaryWithMiniObserved =
+    miniHostPanelRows.length === 2 &&
     Number.isInteger(ownerWindowNumber) &&
-    avatarHostPanelRows.every(
+    miniHostPanelRows.every(
       (row) => row.isVisible === true && row.parentWindowNumber === ownerWindowNumber,
     );
   const nativePanelsDetachedAndHiddenAfterStop =
@@ -264,8 +264,8 @@ export function deriveNativeWindowAssertions(fixtureReport) {
     );
   const processWindowsReturnedToBaseline = finalBaseline?.rows?.length === 0;
   return {
-    avatarHostWindowObserved,
-    avatarWindowNumber: avatarWindowNumber ?? null,
+    miniHostWindowObserved,
+    miniWindowNumber: miniWindowNumber ?? null,
     calayerHierarchyObserved,
     completionEffectLayerObserved,
     contentImageLayerContractObserved,
@@ -275,7 +275,7 @@ export function deriveNativeWindowAssertions(fixtureReport) {
     nativePanelsDetachedAndHiddenAfterStop,
     nativePanelsParentedToOwner,
     nativePanelsRemovedAfterStop,
-    nativePanelsStayedOnPrimaryWithAvatarObserved,
+    nativePanelsStayedOnPrimaryWithMiniObserved,
     nativeWindowPairCoLocated,
     nativeWindowPairObserved,
     nativeWindowsFollowedOwner,
@@ -298,11 +298,11 @@ export function classifyNativeEvidence(fixtureReport, provenance, hostIdentity =
     ["upsert-browser-presentation", true],
     ["read-has-presentation", true],
     ["register-moved-primary-host", true],
-    ["register-avatar-host", true],
+    ["register-mini-host", true],
     ["complete-thread", true],
     ["invalidate-browser-presentation", true],
     ["read-has-presentation-after-invalidate", false],
-    ["unregister-avatar-host", true],
+    ["unregister-mini-host", true],
     ["unregister-primary-host", true],
     ["clear-active-thread", true],
     ["stop-host", true],
@@ -316,8 +316,8 @@ export function classifyNativeEvidence(fixtureReport, provenance, hostIdentity =
   const activeTaskIds = operation("read-active-task-ids");
   const layoutAfterUpsert = operation("read-layout-after-upsert");
   const layoutAfterMove = operation("read-layout-after-move");
-  const layoutAfterAvatar = operation("read-layout-after-avatar-host");
-  const layoutStates = [layoutAfterUpsert, layoutAfterMove, layoutAfterAvatar];
+  const layoutAfterMini = operation("read-layout-after-mini-host");
+  const layoutStates = [layoutAfterUpsert, layoutAfterMove, layoutAfterMini];
   const activeTaskStateObserved =
     activeTaskIds?.status === "success" &&
     activeTaskIds.value?.length === 1 &&
@@ -342,10 +342,10 @@ export function classifyNativeEvidence(fixtureReport, provenance, hostIdentity =
     ["native-window-pair-co-located", windowAssertions.nativeWindowPairCoLocated],
     ["native-windows-followed-owner", windowAssertions.nativeWindowsFollowedOwner],
     ["native-panels-parented-to-owner", windowAssertions.nativePanelsParentedToOwner],
-    ["avatar-host-window-observed", windowAssertions.avatarHostWindowObserved],
+    ["mini-host-window-observed", windowAssertions.miniHostWindowObserved],
     [
-      "native-panels-stayed-on-primary-with-avatar-observed",
-      windowAssertions.nativePanelsStayedOnPrimaryWithAvatarObserved,
+      "native-panels-stayed-on-primary-with-mini-observed",
+      windowAssertions.nativePanelsStayedOnPrimaryWithMiniObserved,
     ],
     ["native-panels-removed-after-stop", windowAssertions.nativePanelsRemovedAfterStop],
     [
@@ -1037,15 +1037,15 @@ async function runElectronFixture(arguments_) {
     await recordOperation("read-layout-after-move", native.readLayoutState);
     await snapshotWindows("02-moved-owner");
 
-    const avatarWidth = Math.min(384, display.width);
-    const avatarHeight = display.height;
-    const avatar = new BrowserWindow({
+    const miniWidth = Math.min(600, display.width);
+    const miniHeight = Math.min(720, display.height);
+    const mini = new BrowserWindow({
       backgroundColor: "#00000000",
       focusable: false,
       frame: false,
       fullscreenable: false,
       hasShadow: false,
-      height: avatarHeight,
+      height: miniHeight,
       maximizable: false,
       minimizable: false,
       resizable: false,
@@ -1054,37 +1054,37 @@ async function runElectronFixture(arguments_) {
       transparent: true,
       type: "panel",
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
-      width: avatarWidth,
-      x: display.x + display.width - avatarWidth,
-      y: display.y,
+      width: miniWidth,
+      x: display.x + display.width - miniWidth,
+      y: display.y + display.height - miniHeight,
     });
-    windows.push(avatar);
-    await avatar.loadURL(
+    windows.push(mini);
+    await mini.loadURL(
       `data:text/html;charset=utf-8,${encodeURIComponent(
-        "<!doctype html><style>html,body{margin:0;width:100%;height:100%;background:transparent}.avatar{position:absolute;right:24px;bottom:24px;width:112px;height:121px;border-radius:50%;display:grid;place-items:center;background:#f3c956;font:700 16px system-ui;color:#302b1f}</style><div class=avatar>avatar host</div>",
+        "<!doctype html><style>html,body{margin:0;width:100%;height:100%;background:transparent}.mini{position:absolute;right:12px;bottom:12px;width:176px;height:48px;border-radius:24px;display:grid;place-items:center;background:#f3c956;font:700 16px system-ui;color:#302b1f}</style><div class=mini>Mini</div>",
       )}`,
     );
-    avatar.setAlwaysOnTop(true, "floating");
-    avatar.setVisibleOnAllWorkspaces(true, {
+    mini.setAlwaysOnTop(true, "floating");
+    mini.setVisibleOnAllWorkspaces(true, {
       skipTransformProcessType: true,
       visibleOnFullScreen: true,
     });
-    avatar.showInactive();
-    const avatarBounds = avatar.getContentBounds();
-    const mascot = {
-      height: 121,
-      width: 112,
-      x: avatarBounds.width - 112 - 24,
-      y: avatarBounds.height - 121 - 24,
+    mini.showInactive();
+    const miniBounds = mini.getContentBounds();
+    const dock = {
+      height: 48,
+      width: 176,
+      x: miniBounds.width - 176 - 12,
+      y: miniBounds.height - 48 - 12,
     };
     await recordOperation(
-      "register-avatar-host",
+      "register-mini-host",
       native.registerHost({
-        anchorRect: mascot,
+        anchorRect: dock,
         anchors: [
           {
-            alignment: "top-right",
-            point: { x: mascot.x + mascot.width / 2, y: mascot.y + mascot.height / 2 },
+            alignment: "bottom-right",
+            point: { x: dock.x - 8, y: dock.y + dock.height },
           },
         ],
         animated: reduceMotion !== true,
@@ -1092,18 +1092,18 @@ async function runElectronFixture(arguments_) {
           reduceMotion === true
             ? null
             : { damping: 18.85, initialVelocity: 0, mass: 1, stiffness: 180 },
-        contentBounds: avatarBounds,
-        id: "avatar-overlay",
-        interactionPassthroughRect: mascot,
+        contentBounds: miniBounds,
+        id: "mini",
+        interactionPassthroughRect: dock,
         isCodexHomeAvailable: false,
-        nativeWindowHandle: avatar.getNativeWindowHandle(),
+        nativeWindowHandle: mini.getNativeWindowHandle(),
         presentationScope: "all",
-        title: "Nodex Native PiP Evidence Avatar",
+        title: "Nodex Native PiP Evidence Mini",
       }),
     );
     await delay(500);
-    await recordOperation("read-layout-after-avatar-host", native.readLayoutState);
-    await snapshotWindows("03-avatar-host");
+    await recordOperation("read-layout-after-mini-host", native.readLayoutState);
+    await snapshotWindows("03-mini-host");
 
     await recordOperation("complete-thread", native.completeThread(threadId));
     await delay(450);
@@ -1114,7 +1114,7 @@ async function runElectronFixture(arguments_) {
     );
     await delay(250);
     await recordOperation("read-has-presentation-after-invalidate", native.hasAnyPresentation);
-    await recordOperation("unregister-avatar-host", native.unregisterHost("avatar-overlay"));
+    await recordOperation("unregister-mini-host", native.unregisterHost("mini"));
     await recordOperation(
       "unregister-primary-host",
       native.unregisterHost("native-evidence-primary"),
@@ -1290,9 +1290,9 @@ export async function runNativeProbe(arguments_ = parseProbeArguments()) {
   if (classification.windowAssertions.nativeWindowsFollowedOwner) {
     provenClaims.push("both native panel window IDs follow a disposable owner move and resize");
   }
-  if (classification.windowAssertions.avatarHostWindowObserved) {
+  if (classification.windowAssertions.miniHostWindowObserved) {
     provenClaims.push(
-      "a production-shaped transparent avatar host window can coexist without stealing the primary host",
+      "a production-shaped transparent mini host window can coexist without stealing the primary host",
     );
   }
   if (classification.windowAssertions.completionEffectLayerObserved) {
@@ -1308,7 +1308,7 @@ export async function runNativeProbe(arguments_ = parseProbeArguments()) {
         "Computer Use CALayer producer transport because the harness never spawns or connects it",
         "real Chrome extension/native-messaging routing",
         "Browser PiP click callback because safe automation does not inject a global mouse event",
-        "placement-control transfer from the primary owner to the avatar host",
+        "placement-control transfer from the primary owner to the mini host",
         "native drag and resize gestures because the harness does not synthesize pointer input",
         "Reduce Motion transition parity unless the read-only system preference was already enabled",
         "a packaged and notarized Nodex distribution because the host is a disposable Electron copy signed only for this test",

@@ -168,7 +168,6 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
         ...buildOptimization,
         rollupOptions: {
           input: {
-            "avatar-overlay": resolve(repositoryRoot, "src/preload/avatar-overlay.ts"),
             "browser-guest": resolve(repositoryRoot, "src/preload/browser-guest.ts"),
             "global-dictation": resolve(repositoryRoot, "src/preload/global-dictation.ts"),
             index: resolve(repositoryRoot, "src/preload/index.ts"),

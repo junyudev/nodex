@@ -1,13 +1,21 @@
-import { BrowserWindow, screen } from "electron";
+import { BrowserWindow, screen, systemPreferences } from "electron";
 import type { Display, Point, Rectangle } from "electron";
 import {
   DEFAULT_MINI_ANCHOR,
   EMPTY_MINI_COVERAGE,
   MINI_PRESENTATION_CHANNEL,
+  MINI_PREVIEWS_CHANNEL,
   MINI_ROUTE,
+  NO_MINI_PREVIEWS,
+  type MiniContentLayout,
+  type MiniPreviews,
   type MiniCoverage,
   type MiniVisibility,
 } from "../../shared/mini";
+import type {
+  RemoteHostedPipAnchorAlignment,
+  RemoteHostedPipHostLayout,
+} from "../../shared/remote-hosted-pip";
 import { safeSendToWindow } from "../ipc-safe-send";
 import { getLogger } from "../logging/logger";
 import type { NativeMiniPanelBridge } from "../platform/electron/native-clipboard";
@@ -16,7 +24,12 @@ import type {
   MiniPlacementSettings,
 } from "../settings/application-settings-persistence";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
-import { miniBounds, MINI_WINDOW_SIZE, nearestMiniAnchor } from "./mini-geometry";
+import {
+  miniBounds,
+  miniPreviewHostLayout,
+  MINI_WINDOW_SIZE,
+  nearestMiniAnchor,
+} from "./mini-geometry";
 import {
   initialMiniPresentation,
   transitionMiniPresentation,
@@ -28,6 +41,9 @@ const logger = getLogger({ component: "mini" });
 export class MiniWindowController {
   #window: BrowserWindow | null = null;
   #rendererReady = false;
+  #contentLayout: MiniContentLayout | null = null;
+  #lastPreviewHost: { alignment: RemoteHostedPipAnchorAlignment; geometry: string } | null = null;
+  #previewChats = NO_MINI_PREVIEWS.chats;
   #disposed = false;
   #recreate: ReturnType<typeof setTimeout> | null = null;
   #state;
@@ -49,6 +65,10 @@ export class MiniWindowController {
       readonly miniFocusProbe: boolean;
       readonly visibility: MiniVisibility;
       readonly placement: MiniPlacementSettings;
+      readonly onHostLayout: (
+        webContentsId: number,
+        layout: RemoteHostedPipHostLayout | null,
+      ) => void;
       readonly savePlacement: (placement: MiniPlacement) => void;
     },
   ) {
@@ -117,10 +137,13 @@ export class MiniWindowController {
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.webContents.on("will-redirect", (event) => event.preventDefault());
     window.webContents.on("did-start-navigation", (details) => {
-      if (!details.isMainFrame || details.isSameDocument || !this.#rendererReady) return;
+      if (!details.isMainFrame || details.isSameDocument) return;
+      const wasReady = this.#rendererReady;
       this.#rendererReady = false;
-      this.apply({ kind: "renderer-lost" });
+      this.reportLayout(null);
+      if (wasReady) this.apply({ kind: "renderer-lost" });
     });
+    window.on("move", () => this.#syncPreviewHost());
     window.on("blur", () => {
       if (this.#window !== window || this.#shownGeneration !== this.generation) return;
       this.syncWorkbenchFocus();
@@ -133,6 +156,8 @@ export class MiniWindowController {
       if (this.#window !== window) return;
       this.#window = null;
       this.#rendererReady = false;
+      this.#contentLayout = null;
+      this.#lastPreviewHost = null;
       this.#blurHolds.clear();
       this.#shownGeneration = null;
       this.#cancelMove();
@@ -156,9 +181,87 @@ export class MiniWindowController {
     this.#rendererReady = true;
     if (this.#shownGeneration === this.generation) {
       this.#sendPresentation();
+      this.#syncPreviewHost();
+    } else {
+      this.#present(this.#state.event.kind !== "hidden");
+    }
+    this.#sendPreviews();
+  }
+
+  reportLayout(layout: MiniContentLayout | null): void {
+    this.#contentLayout = layout;
+    this.#syncPreviewHost();
+  }
+
+  setPreviewChats(chats: MiniPreviews["chats"]): void {
+    const entries = Object.entries(chats);
+    if (
+      entries.length === Object.keys(this.#previewChats).length &&
+      entries.every(([id, visibility]) => this.#previewChats[id] === visibility)
+    )
+      return;
+    this.#previewChats = chats;
+    this.#sendPreviews();
+  }
+
+  /** A transfer can succeed directly when the shortcut already has an otherwise hidden Mini open. */
+  setPreviewsDocked(docked: boolean): boolean {
+    if (this.#state.previewsDocked === docked) return false;
+    const extendPresence =
+      docked &&
+      this.#state.visibility === "on-demand" &&
+      this.#state.event.kind === "focused" &&
+      this.#window?.isVisible() === true;
+    this.apply({
+      kind: "presence",
+      update: { previewsDocked: docked, ...(docked ? { previewDockRequested: false } : {}) },
+    });
+    this.#sendPreviews();
+    return extendPresence;
+  }
+
+  #sendPreviews(): void {
+    if (!this.#rendererReady) return;
+    const previews: MiniPreviews = {
+      chats: this.#previewChats,
+      docked: this.#state.previewsDocked,
+    };
+    safeSendToWindow(this.#window, MINI_PREVIEWS_CHANNEL, [previews]);
+  }
+
+  #prefersReducedMotion(): boolean {
+    try {
+      return systemPreferences.getAnimationSettings().prefersReducedMotion;
+    } catch {
+      return false;
+    }
+  }
+
+  #syncPreviewHost(): void {
+    const window = this.#window;
+    if (!window || window.isDestroyed()) return;
+    const contentLayout = this.#contentLayout;
+    if (
+      !this.#rendererReady ||
+      !contentLayout ||
+      this.#state.event.kind === "hidden" ||
+      !window.isVisible()
+    ) {
+      if (this.#lastPreviewHost) this.options.onHostLayout(window.webContents.id, null);
+      this.#lastPreviewHost = null;
       return;
     }
-    this.#present(this.#state.event.kind !== "hidden");
+    const layout = miniPreviewHostLayout(
+      contentLayout,
+      this.#state.anchor,
+      this.#lastPreviewHost?.alignment,
+      this.#prefersReducedMotion(),
+    );
+    const [anchor] = layout.anchors;
+    const geometry = JSON.stringify([window.getContentBounds(), anchor, layout.anchorRect]);
+    if (this.#lastPreviewHost?.geometry === geometry) return;
+    this.options.onHostLayout(window.webContents.id, layout);
+    this.#lastPreviewHost = { alignment: anchor.alignment, geometry };
   }
 
   get generation(): number {
@@ -187,6 +290,7 @@ export class MiniWindowController {
     }
     if (next === previous.kind) {
       if (this.#shownGeneration === previous.generation) this.#sendPresentation();
+      this.#syncPreviewHost();
       return;
     }
     this.#present(previous.kind === "hidden");
@@ -318,6 +422,10 @@ export class MiniWindowController {
   #animateSnap(window: BrowserWindow, from: Rectangle, to: Rectangle): void {
     if (from.x === to.x && from.y === to.y && from.width === to.width && from.height === to.height)
       return;
+    if (this.#prefersReducedMotion()) {
+      window.setBounds(to);
+      return;
+    }
     if (this.options.native) {
       window.setBounds(to, true);
       return;
@@ -409,6 +517,7 @@ export class MiniWindowController {
       });
     }
     this.#sendPresentation();
+    this.#syncPreviewHost();
   }
 
   dispose(): void {
