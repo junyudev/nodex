@@ -523,7 +523,7 @@ export const settingsMessages = defineMessages({
   generalMini: { id: "settings.mini.label", defaultMessage: "Mini" },
   generalMiniDescription: {
     id: "settings.mini.description",
-    defaultMessage: "When Mini shows your chats over other apps.",
+    defaultMessage: "Show your chats over other apps.",
   },
   generalShowTips: { id: "settings.general.tips.label", defaultMessage: "Show tips" },
   generalShowTipsDescription: {

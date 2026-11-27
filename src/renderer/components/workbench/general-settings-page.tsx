@@ -1,4 +1,5 @@
 import { isRemoteSpace } from "@/lib/renderer-space";
+import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { startTransition } from "react";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { useTipsState } from "@/features/tips/tips-state";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import { AppUpdateSettingRows } from "./app-update-settings-control";
 import { AppComponentsSettingsSection } from "@/features/app-components/app-components-settings-section";
-import { MiniVisibilitySettingRow } from "./mini-visibility-setting-row";
+import { MiniSettingRow } from "./mini-setting-row";
 import { OpenAtLoginSettingRow } from "./open-at-login-setting-row";
 import {
   DiagnosticsSettingRows,
@@ -47,7 +48,7 @@ export function GeneralSettingsPage({ onPathChange, open }: SettingsSectionPageP
         </SettingRow>
         <TerminalShellSettingRow />
         <OpenAtLoginSettingRow open={open} />
-        {isRemoteSpace() ? null : <MiniVisibilitySettingRow />}
+        {isRemoteSpace() || !readSettingsHostPresentation().mini ? null : <MiniSettingRow />}
         <SettingRow
           label={intl.formatMessage(settingsMessages.generalShowTips)}
           description={intl.formatMessage(settingsMessages.generalShowTipsDescription)}

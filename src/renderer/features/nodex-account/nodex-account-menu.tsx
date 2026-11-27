@@ -6,6 +6,7 @@ import {
   type SpaceConnectionSummary,
 } from "../../../shared/space-connection";
 import { ActivitySpinnerIcon, SettingsGeneralIcon } from "@/components/shared/icons";
+import { PictureInPicture2 } from "@/components/shared/icons/generic-icons";
 import { SignInIcon, SignOutIcon } from "@/components/shared/icons/account-icons";
 import { NodexButton } from "@/components/ui/button";
 import {
@@ -30,6 +31,8 @@ import {
   type NodexAccountView,
 } from "./nodex-account-identity";
 import { useNodexAccount } from "./use-nodex-account";
+import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
+import { useMiniSettings } from "@/lib/use-mini-settings";
 
 const TRIGGER_LABEL = defineMessage({
   id: "account.nodexAccountMenu.spacesAndSettings",
@@ -216,6 +219,7 @@ function NodexAccountMenuContent({
           {view.identity.label}
         </AccountMenuItem>
       ) : null}
+      {current.kind === "team" || !readSettingsHostPresentation().mini ? null : <MiniMenuItem />}
       <AccountMenuItem
         icon={<SettingsGeneralIcon />}
         keyboardShortcut={
@@ -232,6 +236,24 @@ function NodexAccountMenuContent({
       <CommunityMenu openAfterClose={openAfterClose} />
       <AccountMenuActions account={account} view={view} />
     </NodexDropdownContent>
+  );
+}
+
+/** Shows or hides Mini over other apps; how it rests while shown stays in Settings. */
+function MiniMenuItem() {
+  const { settings, loading, change } = useMiniSettings();
+  return (
+    <AccountMenuItem
+      disabled={loading}
+      icon={<PictureInPicture2 />}
+      onSelect={() => change({ shown: !settings.shown })}
+    >
+      {settings.shown ? (
+        <FormattedMessage id="account.nodexAccountMenu.hideMini" defaultMessage="Hide Mini" />
+      ) : (
+        <FormattedMessage id="account.nodexAccountMenu.showMini" defaultMessage="Show Mini" />
+      )}
+    </AccountMenuItem>
   );
 }
 

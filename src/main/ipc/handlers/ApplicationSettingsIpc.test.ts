@@ -380,19 +380,19 @@ it.effect("validates and persists settings with the owning window authority", ()
       [{ channel: "composer-prediction-settings-changed", value: { enabled: false } }],
     );
     assert.strictEqual(providerRefreshes, 1);
-    const readVisibility = handlers.get("settings:mini-visibility:get")!;
-    const updateVisibility = handlers.get("settings:mini-visibility:update")!;
-    assert.strictEqual(yield* readVisibility(event), "active");
+    const readMini = handlers.get("settings:mini:get")!;
+    const updateMini = handlers.get("settings:mini:update")!;
+    assert.deepEqual(yield* readMini(event), { shown: false, resting: "always" });
     assert.strictEqual(
-      (yield* Effect.result(updateVisibility(untrustedEvent, "always")))._tag,
+      (yield* Effect.result(updateMini(untrustedEvent, { shown: true })))._tag,
       "Failure",
     );
     assert.strictEqual(
-      (yield* Effect.result(updateVisibility(event, "automatic")))._tag,
+      (yield* Effect.result(updateMini(event, { resting: "on-demand" })))._tag,
       "Failure",
     );
-    assert.strictEqual(yield* updateVisibility(event, "on-demand"), "on-demand");
-    assert.strictEqual(yield* readVisibility(event), "on-demand");
+    assert.deepEqual(yield* updateMini(event, { shown: true }), { shown: true, resting: "always" });
+    assert.deepEqual(yield* readMini(event), { shown: true, resting: "always" });
 
     const readProfiles = handlers.get("settings:agent-profiles:get")!;
     const saveProfiles = handlers.get("settings:agent-profiles:update")!;

@@ -30,6 +30,23 @@ export interface MiniAnchor {
 
 export const DEFAULT_MINI_ANCHOR: MiniAnchor = { vertical: "bottom", horizontal: "center" };
 
+/** How a shown Mini rests on screen: while anything is your concern, or always. */
+export const MINI_RESTING_MODES = ["active", "always"] as const;
+
+export type MiniResting = (typeof MINI_RESTING_MODES)[number];
+
+/**
+ * Whether Mini is shown over other apps, and how it rests while shown. It starts hidden, and once
+ * someone asks to see it, it stays in view; its shortcut opens it either way, and hiding it keeps
+ * how it rests for when it is shown again.
+ */
+export interface MiniSettings {
+  readonly shown: boolean;
+  readonly resting: MiniResting;
+}
+
+export const DEFAULT_MINI_SETTINGS: MiniSettings = { shown: false, resting: "always" };
+
 /**
  * When Mini is on screen without being asked for: `always`; `active` while any chat works or
  * something needs the person; `on-demand` only while its shortcut has it open.
@@ -38,7 +55,8 @@ export const MINI_VISIBILITIES = ["always", "active", "on-demand"] as const;
 
 export type MiniVisibility = (typeof MINI_VISIBILITIES)[number];
 
-export const DEFAULT_MINI_VISIBILITY: MiniVisibility = "active";
+export const miniVisibility = ({ shown, resting }: MiniSettings): MiniVisibility =>
+  shown ? resting : "on-demand";
 
 export type MiniHideReason =
   /** Escape, or the renderer released the keyboard with nothing to show. */

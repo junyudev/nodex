@@ -1,8 +1,9 @@
 import {
-  DEFAULT_MINI_VISIBILITY,
-  MINI_VISIBILITIES,
+  DEFAULT_MINI_SETTINGS,
+  MINI_RESTING_MODES,
   type MiniAnchor,
-  type MiniVisibility,
+  type MiniResting,
+  type MiniSettings,
 } from "../../shared/mini";
 import { withAgentSecretChanges } from "./agent-environment-storage";
 import {
@@ -182,7 +183,8 @@ export interface MiniPlacementSettings {
 }
 
 interface ServerTomlConfig {
-  mini_visibility?: MiniVisibility;
+  mini_shown?: boolean;
+  mini_resting?: MiniResting;
   mini_last_display_id?: number;
   mini_display_anchors?: Record<string, MiniAnchor>;
   home?: string;
@@ -1688,9 +1690,15 @@ export function updateLanguagePreference(
   writeTomlConfig(source.settingsPath, document);
 }
 
-export function getMiniVisibility(source: ApplicationSettingsDocumentSource): MiniVisibility {
-  const value = loadProfileServerTomlConfig(source).mini_visibility;
-  return value && MINI_VISIBILITIES.includes(value) ? value : DEFAULT_MINI_VISIBILITY;
+export function getMiniSettings(source: ApplicationSettingsDocumentSource): MiniSettings {
+  const { mini_shown, mini_resting } = loadProfileServerTomlConfig(source);
+  return {
+    shown: typeof mini_shown === "boolean" ? mini_shown : DEFAULT_MINI_SETTINGS.shown,
+    resting:
+      mini_resting && MINI_RESTING_MODES.includes(mini_resting)
+        ? mini_resting
+        : DEFAULT_MINI_SETTINGS.resting,
+  };
 }
 
 export function getMiniPlacementSettings(
@@ -1718,13 +1726,15 @@ export function getMiniPlacementSettings(
   };
 }
 
-export function updateMiniVisibility(
-  visibility: MiniVisibility,
+export function updateMiniSettings(
+  change: Partial<MiniSettings>,
   source: ApplicationSettingsDocumentSource,
 ): void {
+  const next = { ...getMiniSettings(source), ...change };
   writeProfileServerTomlConfig(source, {
     ...loadProfileServerTomlConfig(source),
-    mini_visibility: visibility,
+    mini_shown: next.shown,
+    mini_resting: next.resting,
   });
 }
 

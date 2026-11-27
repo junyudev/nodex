@@ -717,7 +717,7 @@ export interface RendererDiagnosticsLogInput {
   fields?: Record<string, unknown>;
 }
 
-import type { MiniCompanionEvent, MiniIpcApi, MiniPresentationEvent, MiniVisibility } from "./mini";
+import type { MiniCompanionEvent, MiniIpcApi, MiniPresentationEvent, MiniSettings } from "./mini";
 
 export interface IpcApi
   extends
@@ -1799,8 +1799,8 @@ export interface IpcApi
     args: [input: import("./terminal-shell-settings").TerminalShellSettings];
     result: import("./terminal-shell-settings").TerminalShellSettings;
   };
-  "settings:mini-visibility:get": { args: []; result: MiniVisibility };
-  "settings:mini-visibility:update": { args: [visibility: MiniVisibility]; result: MiniVisibility };
+  "settings:mini:get": { args: []; result: MiniSettings };
+  "settings:mini:update": { args: [change: Partial<MiniSettings>]; result: MiniSettings };
   "settings:window-restore:get": { args: []; result: WindowRestoreSettings };
   "settings:language:get": { args: []; result: import("./i18n/locales").LanguageSettings };
   "settings:language:update": {

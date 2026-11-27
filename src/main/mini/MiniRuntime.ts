@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { BrowserWindow } from "electron";
-import { EMPTY_MINI_COVERAGE, type MiniCoverage } from "../../shared/mini";
+import { EMPTY_MINI_COVERAGE, miniVisibility, type MiniCoverage } from "../../shared/mini";
 import { APP_RENDERER_URL } from "../../shared/app-renderer-policy";
 import type {
   CommandKeybindingRejection,
@@ -99,7 +99,7 @@ export const live = (preloadPath: string) =>
               preloadPath,
               rendererUrl: config.rendererUrl ?? APP_RENDERER_URL,
               miniFocusProbe,
-              visibility: initial.miniVisibility,
+              visibility: miniVisibility(initial.mini),
               placement: initial.miniPlacement,
               savePlacement: (placement) => {
                 Queue.offerUnsafe(placements, placement);

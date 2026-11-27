@@ -13,6 +13,8 @@ export function resolveSettingsHostPresentation(platform: string) {
     /** Hosts where parts of Nodex install after the app; the section lists what this build has. */
     components: platform === "darwin",
     launchAtLogin: platform === "darwin" || platform === "win32" || platform === "windows",
+    /** Mini's floating panel, over other apps. */
+    mini: platform === "darwin" || platform === "win32" || platform === "windows",
   };
 }
 

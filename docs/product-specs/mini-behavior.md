@@ -10,10 +10,13 @@ you, a Turn that is your move, and what each action does read exactly as they do
 ## On screen
 
 - **Dock.** A small pill: `New chat`, `Dictate` when dictation is available, and, while anything
-  is your concern, a control that hides or shows the cards. Settings → General → **Mini**
-  chooses when it rests on screen: while something is happening (the default), always, or only
-  with the shortcut. Hidden cards leave a bell with the number of things waiting on you; working
-  chats show as a spinner and are never counted.
+  is your concern, a control that hides or shows the cards. Hidden cards leave a bell with the
+  number of things waiting on you; working chats show as a spinner and are never counted.
+- **Shown or hidden.** Mini starts hidden: only its shortcut opens it. **Show Mini** in the
+  account menu at the foot of the rail shows it over other apps, and **Hide Mini** hides it again.
+  Settings → General → **Mini** offers the same as `Off`, `When active` (rests on screen only
+  while something is your concern) and `Always` (the default once shown); hiding and showing keep
+  the last of the two.
 - **Cards.** One card per chat or Page Turn that is your concern. A chat you just started from
   Mini comes first until it is under way, so you see it take; then, most urgent first: what needs
   your answer, approval, review or reply; what failed; a chat that finished and you have not seen;
@@ -81,11 +84,11 @@ system notification already shown, and chat snooze notifications follow their us
   brings a Workbench window forward; Mini takes the keyboard without activating
   Nodex and gives it back to the other app when released, and it stays on
   screen when Nodex is hidden. Global Dictation can use a focused Mini composer.
-- The Profile's Mini visibility is **Always**, **When active** (the default),
-  or **On demand**. When active follows the activity reported by the panel.
-  On demand shows Mini only when focused. A resting Mini steps aside while a
-  Workbench window is focused and returns according to the same visibility
-  setting. Opening a Page, Inbox, or chat from Mini brings the personal
+- The Profile keeps whether Mini is shown (off by default) and how a shown Mini
+  rests: **Always** (the default) keeps it on screen, **When active** follows
+  the activity reported by the panel. A hidden Mini is on screen only while
+  focused. A resting Mini steps aside while a Workbench window is focused and
+  returns according to the same settings. Opening a Page, Inbox, or chat from Mini brings the personal
   Workbench forward.
 - Mini sits a short distance from the edge of its display's work area. Its
   first placement is bottom center. Holding anywhere on Mini outside a text

@@ -184,6 +184,7 @@ describe("settings host presentation", () => {
       appUpdates: false,
       components: false,
       launchAtLogin: false,
+      mini: false,
     });
   });
 
@@ -196,6 +197,7 @@ describe("settings host presentation", () => {
       appUpdates: true,
       components: true,
       launchAtLogin: true,
+      mini: true,
     });
   });
 
@@ -208,6 +210,7 @@ describe("settings host presentation", () => {
       appUpdates: true,
       components: false,
       launchAtLogin: true,
+      mini: true,
     });
   });
 });

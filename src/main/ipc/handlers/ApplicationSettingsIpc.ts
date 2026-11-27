@@ -31,7 +31,7 @@ import {
   COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL,
   ComposerPredictionSettingsSchema,
 } from "../../../shared/composer-prediction-settings";
-import { MINI_VISIBILITIES } from "../../../shared/mini";
+import { MINI_RESTING_MODES } from "../../../shared/mini";
 import { APP_LOCALES } from "../../../shared/i18n/locales";
 import {
   activateElectronLanguagePreference,
@@ -113,7 +113,7 @@ type SettingsReadChannel =
   | "settings:telemetry:get"
   | "settings:thread-notifications:get"
   | "settings:terminal-shell:get"
-  | "settings:mini-visibility:get"
+  | "settings:mini:get"
   | "settings:window-restore:get"
   | "settings:link-opening:get"
   | "settings:model-policy:get"
@@ -121,6 +121,11 @@ type SettingsReadChannel =
   | "settings:agent-runtime:get"
   | "settings:composer-predictions:get"
   | "settings:inbox:get";
+
+const MiniSettingsChange = z.strictObject({
+  shown: z.boolean().optional(),
+  resting: z.enum(MINI_RESTING_MODES).optional(),
+});
 
 const BackupUpdate = z
   .object({
@@ -736,22 +741,12 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handleRead(
-      "settings:mini-visibility:get",
-      "Mini visibility",
-      (value) => value.miniVisibility,
-    );
-    yield* ipc.handlePlainCommand("settings:mini-visibility:update", (event, input: unknown) =>
-      authorize(event, "Mini visibility").pipe(
-        Effect.andThen(
-          parse("parse-mini-visibility", () => z.enum(MINI_VISIBILITIES).parse(input)),
-        ),
+    yield* handleRead("settings:mini:get", "Mini settings", (value) => value.mini);
+    yield* ipc.handlePlainCommand("settings:mini:update", (event, input: unknown) =>
+      authorize(event, "Mini settings").pipe(
+        Effect.andThen(parse("parse-mini", () => MiniSettingsChange.parse(input))),
         Effect.flatMap((parsed) =>
-          update(
-            "update-mini-visibility",
-            { type: "update-mini-visibility", input: parsed },
-            (value) => value.miniVisibility,
-          ),
+          update("update-mini", { type: "update-mini", input: parsed }, (value) => value.mini),
         ),
       ),
     );

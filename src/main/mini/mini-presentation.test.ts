@@ -61,7 +61,7 @@ describe("Mini presentation", () => {
   );
 
   test("policy, activity, and Workbench focus re-evaluate resting presence right away", () => {
-    const hidden = initialMiniPresentation();
+    const hidden = initialMiniPresentation("active");
     const active = dispatch(hidden, { kind: "presence", update: { coverage: notice } });
     expect(active.event.kind).toBe("resting");
     const behindWorkbench = dispatch(active, {
@@ -132,7 +132,7 @@ describe("Mini presentation", () => {
   });
 
   test("renderer loss clears its activity before a replacement is ready", () => {
-    const active = dispatch(initialMiniPresentation(), {
+    const active = dispatch(initialMiniPresentation("active"), {
       kind: "presence",
       update: { coverage: notice },
     });

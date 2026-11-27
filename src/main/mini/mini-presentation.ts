@@ -1,6 +1,7 @@
 import {
   DEFAULT_MINI_ANCHOR,
-  DEFAULT_MINI_VISIBILITY,
+  DEFAULT_MINI_SETTINGS,
+  miniVisibility,
   EMPTY_MINI_COVERAGE,
   miniCoverageIsEmpty,
   type MiniAnchor,
@@ -32,7 +33,7 @@ export type MiniPresentationAction =
   | { readonly kind: "renderer-lost" };
 
 export function initialMiniPresentation(
-  visibility = DEFAULT_MINI_VISIBILITY,
+  visibility = miniVisibility(DEFAULT_MINI_SETTINGS),
 ): MiniPresentationState {
   return {
     visibility,

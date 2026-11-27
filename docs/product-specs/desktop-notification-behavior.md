@@ -75,11 +75,12 @@ record; replacement is lifecycle behavior, not producer deduplication.
 
 ## Mini
 
-While [Mini](mini-behavior.md) is resting on screen, Main skips desktop banners for
-chat completion, failure, interruption, approval and questions, and for Page Turns
-in the personal Space. Resolving a request still withdraws its existing banner.
-Snooze notifications and Team Space Page Turns continue to follow their usual rules.
-When Mini is focused, hidden, set to On demand, or the screen is locked, the usual
+While [Mini](mini-behavior.md) is resting on screen, Main skips the desktop banner
+for a chat's completion, failure, interruption, approval or question when Mini
+shows a card for that chat, and for a personal Space Page Turn when Mini shows that
+Turn's episode. Resolving a request still withdraws its existing banner. Snooze
+notifications, Team Space Page Turns and anything Mini does not show follow their
+usual rules. When Mini is focused, hidden, or the screen is locked, the usual
 desktop rules apply. Phone delivery follows its own presence and notification rules.
 
 ## Presence

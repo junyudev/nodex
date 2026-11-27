@@ -203,6 +203,7 @@ describe("Nodex account menu", () => {
     // With only the personal Space there is nothing to switch to, only a Space to join.
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "Join a Space",
+      "Show Mini",
       "Settings⇧⌘,",
       "Feedback & community",
     ]);
@@ -233,6 +234,7 @@ describe("Nodex account menu", () => {
     expect(
       controls.invoke.mock.calls
         .map(([channel]) => channel)
+        .filter((channel) => channel.startsWith("nodex-account:"))
         .filter((channel) => channel !== "nodex-account:refresh-models"),
     ).toEqual(["nodex-account:read", "nodex-account:sign-in", "nodex-account:cancel-sign-in"]);
     expect(controls.nativeAction).not.toHaveBeenCalled();

@@ -99,12 +99,13 @@ it.effect("persists disabled components without changing other Profile settings"
   }),
 );
 
-it.effect("persists Mini visibility and the last-used anchor for each display", () =>
+it.effect("persists whether Mini is shown, how it rests, and its anchor for each display", () =>
   Effect.gen(function* () {
-    const { root, settingsPath } = fixture('[server]\nmini_visibility = "unknown"\n');
+    const { root, settingsPath } = fixture('[server]\nmini_resting = "unknown"\n');
     const input = { environment: {}, hostHomeDirectory: root, settingsPath };
     const settings = yield* makeApplicationSettings(input);
-    assert.strictEqual((yield* settings.snapshot()).miniVisibility, "active");
+    // Mini starts hidden; an unknown resting mode reads as the default.
+    assert.deepEqual((yield* settings.snapshot()).mini, { shown: false, resting: "always" });
     const first = { vertical: "top", horizontal: "right" } as const;
     const second = { vertical: "bottom", horizontal: "left" } as const;
     yield* settings.update({
@@ -115,10 +116,11 @@ it.effect("persists Mini visibility and the last-used anchor for each display", 
       type: "update-mini-placement",
       input: { displayId: 22, anchor: second },
     });
-    yield* settings.update({ type: "update-mini-visibility", input: "on-demand" });
+    yield* settings.update({ type: "update-mini", input: { resting: "active" } });
+    yield* settings.update({ type: "update-mini", input: { shown: true } });
     const reopened = yield* makeApplicationSettings(input);
     const snapshot = yield* reopened.snapshot();
-    assert.strictEqual(snapshot.miniVisibility, "on-demand");
+    assert.deepEqual(snapshot.mini, { shown: true, resting: "active" });
     assert.deepEqual(snapshot.miniPlacement, {
       lastDisplayId: 22,
       anchors: { 11: first, 22: second },
