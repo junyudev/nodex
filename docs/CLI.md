@@ -210,6 +210,18 @@ identities or an explicitly unique supported name or path. Missing or deleted al
 windows retain opaque continuations; SQL queries are complete or fail their
 budget and do not provide a cursor session.
 
+## GitHub Sources
+
+```text
+nodex sources list
+nodex sources status
+nodex sources links --thread URL
+nodex sources triggers --thread URL [--limit N] [--before ID]
+```
+
+`sources links` returns up to 50 Pages linked to a GitHub issue or pull request
+and the active chat on each Page when it has one.
+
 ## SQL reads and configuration
 
 ```text

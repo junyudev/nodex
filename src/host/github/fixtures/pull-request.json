@@ -1,0 +1,243 @@
+{
+  "data": {
+    "repository": {
+      "viewerPermission": "READ",
+      "isArchived": false,
+      "isLocked": false,
+      "mergeCommitAllowed": true,
+      "squashMergeAllowed": true,
+      "rebaseMergeAllowed": false,
+      "viewerDefaultMergeMethod": "SQUASH",
+      "pullRequest": {
+        "url": "https://github.com/cli/cli/pull/15100",
+        "title": "Revoke CLI OAuth tokens on logout",
+        "body": "Update the logout flow.",
+        "createdAt": "2026-11-18T23:08:00Z",
+        "updatedAt": "2026-11-24T22:39:55Z",
+        "closedAt": "2026-11-24T22:39:52Z",
+        "locked": false,
+        "state": "MERGED",
+        "viewerCanClose": false,
+        "viewerCanReopen": false,
+        "author": {
+          "login": "BagToad",
+          "avatarUrl": "https://avatars.githubusercontent.com/u/47394200?u=38155c9aa3b997813620b354b92bae0516cb8b86&v=4",
+          "url": "https://github.com/BagToad",
+          "__typename": "User"
+        },
+        "labels": {
+          "nodes": []
+        },
+        "assignees": {
+          "nodes": []
+        },
+        "isDraft": false,
+        "viewerCanUpdate": false,
+        "baseRefName": "trunk",
+        "headRefName": "bagtoad/oauth-logout-revocation",
+        "headRefOid": "fe9ea5c35b64183e94ba4cdfd2cb679cc42b2a19",
+        "isCrossRepository": false,
+        "headRepository": {
+          "nameWithOwner": "cli/cli"
+        },
+        "additions": 1409,
+        "deletions": 70,
+        "changedFiles": 10,
+        "mergedAt": "2026-11-24T22:39:52Z",
+        "mergedBy": {
+          "login": "BagToad",
+          "avatarUrl": "https://avatars.githubusercontent.com/u/47394200?u=38155c9aa3b997813620b354b92bae0516cb8b86&v=4",
+          "url": "https://github.com/BagToad",
+          "__typename": "User"
+        },
+        "mergeable": "UNKNOWN",
+        "mergeStateStatus": "UNKNOWN",
+        "reviewDecision": "APPROVED",
+        "autoMergeRequest": null,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviewRequests": {
+          "nodes": [
+            {
+              "requestedReviewer": {
+                "combinedSlug": "cli/reviewers"
+              }
+            }
+          ]
+        },
+        "latestOpinionatedReviews": {
+          "nodes": [
+            {
+              "author": {
+                "login": "babakks",
+                "avatarUrl": "https://avatars.githubusercontent.com/u/36728931?v=4",
+                "url": "https://github.com/babakks",
+                "__typename": "User"
+              },
+              "state": "APPROVED",
+              "isMinimized": false
+            }
+          ]
+        },
+        "reviewThreads": {
+          "nodes": [
+            {
+              "diffSide": "RIGHT",
+              "isOutdated": true,
+              "isResolved": true,
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDODKw3uc8AAAABE4BItg"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "commits": {
+          "totalCount": 7,
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "contexts": {
+                    "pageInfo": {
+                      "hasNextPage": true
+                    },
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "id": "CR_kwDODKw3uc8AAAAgTEINFA",
+                        "name": "govulncheck",
+                        "status": "COMPLETED",
+                        "conclusion": "FAILURE",
+                        "detailsUrl": "https://github.com/cli/cli/actions/runs/45470926478/job/138718350612",
+                        "startedAt": "2026-11-24T19:30:32Z",
+                        "completedAt": "2026-11-24T19:30:59Z",
+                        "isRequired": true,
+                        "checkSuite": {
+                          "workflowRun": {
+                            "workflow": {
+                              "name": "Lint"
+                            }
+                          }
+                        },
+                        "title": "Dependency check failed"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "timelineItems": {
+          "pageInfo": {
+            "hasPreviousPage": true
+          },
+          "nodes": [
+            {
+              "__typename": "PullRequestCommit",
+              "id": "PURC_lADODKw3uc8AAAABQQJcz9oAKDI0OTY4YjZhYjJmNzU1NjE4MzI0NmM5ZDcyOWVkZDA2YWNhY2FmOTg",
+              "commit": {
+                "oid": "24968b6ab2f7556183246c9d729edd06acacaf98",
+                "messageHeadline": "Revoke CLI OAuth tokens on logout",
+                "committedDate": "2026-11-18T23:07:11Z",
+                "url": "https://github.com/cli/cli/commit/24968b6ab2f7556183246c9d729edd06acacaf98",
+                "author": {
+                  "name": "BagToad",
+                  "user": {
+                    "login": "BagToad",
+                    "avatarUrl": "https://avatars.githubusercontent.com/u/47394200?u=38155c9aa3b997813620b354b92bae0516cb8b86&v=4",
+                    "url": "https://github.com/BagToad",
+                    "__typename": "User"
+                  }
+                }
+              }
+            },
+            {
+              "__typename": "PullRequestReview",
+              "id": "PRR_kwDODKw3uc8AAAABY6SNoQ",
+              "author": {
+                "login": "copilot-pull-request-reviewer",
+                "avatarUrl": "https://avatars.githubusercontent.com/in/946600?v=4",
+                "url": "https://github.com/apps/copilot-pull-request-reviewer",
+                "__typename": "Bot"
+              },
+              "isMinimized": false,
+              "state": "COMMENTED",
+              "body": "",
+              "submittedAt": "2026-11-18T23:12:36Z",
+              "url": "https://github.com/cli/cli/pull/15100#pullrequestreview-5966695841",
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDODKw3uc8AAAABE4BItg",
+                    "author": {
+                      "login": "copilot-pull-request-reviewer",
+                      "avatarUrl": "https://avatars.githubusercontent.com/in/946600?v=4",
+                      "url": "https://github.com/apps/copilot-pull-request-reviewer",
+                      "__typename": "Bot"
+                    },
+                    "isMinimized": false,
+                    "body": "Keep this check separate from the fallback path.",
+                    "createdAt": "2026-11-18T23:12:35Z",
+                    "url": "https://github.com/cli/cli/pull/15100#discussion_r4622141622",
+                    "path": "pkg/cmd/auth/logout/logout.go",
+                    "line": null,
+                    "startLine": null,
+                    "diffHunk": "@@ -71,2 +71,3 @@\n+\treturn err",
+                    "outdated": true,
+                    "replyTo": null
+                  }
+                ]
+              }
+            },
+            {
+              "__typename": "CrossReferencedEvent",
+              "id": "CRE_kwDODKw3uc8AAAAFwr1VdA",
+              "createdAt": "2026-11-24T21:42:00Z",
+              "actor": {
+                "login": "BagToad",
+                "avatarUrl": "https://avatars.githubusercontent.com/u/47394200?u=38155c9aa3b997813620b354b92bae0516cb8b86&v=4",
+                "url": "https://github.com/BagToad",
+                "__typename": "User"
+              },
+              "source": {
+                "__typename": "PullRequest",
+                "number": 15152,
+                "url": "https://github.com/cli/cli/pull/15152",
+                "title": "Clear Git helper credentials on logout",
+                "state": "MERGED",
+                "isDraft": false,
+                "repository": {
+                  "name": "cli",
+                  "owner": {
+                    "login": "cli"
+                  }
+                }
+              }
+            },
+            {
+              "__typename": "MergedEvent",
+              "id": "ME_lADODKw3uc8AAAABgicr6s8AAAAIqJVbSw",
+              "createdAt": "2026-11-24T22:39:52Z",
+              "actor": {
+                "login": "BagToad",
+                "avatarUrl": "https://avatars.githubusercontent.com/u/47394200?u=38155c9aa3b997813620b354b92bae0516cb8b86&v=4",
+                "url": "https://github.com/BagToad",
+                "__typename": "User"
+              },
+              "commit": {
+                "oid": "d298dbd5dfd410a99707ecd958c59ad29bacfe33"
+              },
+              "mergeRefName": "trunk"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

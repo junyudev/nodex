@@ -15,6 +15,7 @@ impl RemoteAdmission for ProjectWorkspaceRead {
                 | SourceRead::OpenProblems { .. }
                 | SourceRead::KnownPullRequests { .. }
                 | SourceRead::PageFollows { .. }
+                | SourceRead::GitHubThreadLinks { .. }
                 | SourceRead::Deliveries { .. } => true,
                 SourceRead::EventAutomationWatching { .. }
                 | SourceRead::ChannelOutbox { .. }

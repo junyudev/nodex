@@ -5249,6 +5249,22 @@ export interface components {
             readonly host: string;
             readonly repositories: readonly components["schemas"]["SourceRepository"][];
         };
+        readonly GitHubThreadLinkedChat: {
+            readonly sessionId: string;
+            readonly title: string;
+        };
+        readonly GitHubThreadLinkedPage: {
+            readonly activeChat: components["schemas"]["GitHubThreadLinkedChat"] | null;
+            readonly pageId: string;
+            readonly projectId: string | null;
+            readonly role: components["schemas"]["GitHubThreadLinkRole"];
+            readonly title: string;
+        };
+        /** @enum {string} */
+        readonly GitHubThreadLinkRole: "own_pr" | "origin" | "intake" | "context";
+        readonly GitHubThreadLinks: {
+            readonly pages: readonly components["schemas"]["GitHubThreadLinkedPage"][];
+        };
         /** @description Host-supplied original text and prepared binary attachments, read from Runtime. */
         readonly HandbackMessage: {
             readonly files: readonly components["schemas"]["LibraryFileChange"][];
@@ -15623,6 +15639,13 @@ export interface components {
             readonly limit: number;
             readonly page_id: string;
         } | {
+            readonly host: string;
+            /** @enum {string} */
+            readonly kind: "github_thread_links";
+            /** Format: int32 */
+            readonly number: number;
+            readonly repository: string;
+        } | {
             readonly after_id?: string | null;
             /** @enum {string} */
             readonly kind: "deliveries";
@@ -15690,6 +15713,10 @@ export interface components {
             readonly follows: readonly components["schemas"]["PageThreadFollow"][];
             /** @enum {string} */
             readonly kind: "page_follows";
+        } | {
+            /** @enum {string} */
+            readonly kind: "github_thread_links";
+            readonly links: components["schemas"]["GitHubThreadLinks"];
         } | {
             readonly deliveries: readonly components["schemas"]["ThreadDelivery"][];
             /** @enum {string} */

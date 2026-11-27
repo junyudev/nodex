@@ -130,6 +130,8 @@ export interface GitHubRestInput {
   readonly timeout?: Duration.Input;
   /** Overrides `SourceControlRateLimit.Interactive` for this one request. */
   readonly allowReserve?: boolean;
+  /** Defaults to the reserve policy. Set false to honor known pauses when spending reserve. */
+  readonly allowPaused?: boolean;
 }
 
 export interface GitHubGraphQlInput {
@@ -138,6 +140,8 @@ export interface GitHubGraphQlInput {
   readonly query: string;
   readonly variables?: Readonly<Record<string, unknown>>;
   readonly allowReserve?: boolean;
+  /** Defaults to the reserve policy. Set false to honor known pauses when spending reserve. */
+  readonly allowPaused?: boolean;
   readonly maxResponseBytes?: number;
 }
 
@@ -371,6 +375,7 @@ export const make = Effect.gen(function* () {
     readonly maxResponseBytes: number;
     readonly timeout?: Duration.Input | undefined;
     readonly allowReserve: boolean;
+    readonly allowPaused: boolean;
     readonly acceptNotModified: boolean;
     /** Reads the body for GraphQL `errors`, which GitHub sends with HTTP 200. */
     readonly graphql?: boolean;
@@ -394,9 +399,7 @@ export const make = Effect.gen(function* () {
     const run = Effect.gen(function* () {
       const lease = yield* quota
         .admit(host, resource, { allowReserve: input.allowReserve })
-        .pipe(
-          Effect.andThen(limits.check(key, input.allowReserve ? { allowPaused: true } : undefined)),
-        )
+        .pipe(Effect.andThen(limits.check(key, { allowPaused: input.allowPaused })))
         .pipe(
           Effect.tapError((paused) =>
             Effect.annotateCurrentSpan({
@@ -525,6 +528,7 @@ export const make = Effect.gen(function* () {
           maxResponseBytes: input.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES,
           timeout: input.timeout,
           allowReserve: input.allowReserve ?? interactive,
+          allowPaused: input.allowPaused ?? input.allowReserve ?? interactive,
           acceptNotModified: input.ifNoneMatch !== undefined,
         }),
       ),
@@ -556,6 +560,7 @@ export const make = Effect.gen(function* () {
         ),
         maxResponseBytes: input.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES,
         allowReserve,
+        allowPaused: input.allowPaused ?? allowReserve,
         acceptNotModified: false,
         graphql: true,
       });

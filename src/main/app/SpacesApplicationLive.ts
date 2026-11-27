@@ -1,4 +1,5 @@
 import type { IpcApi } from "../../shared/ipc-api";
+import type { GitHubUnavailable } from "../../shared/github-thread";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { miniInboxChannels } from "../ipc/handlers/InboxIpc";
 import * as ApplicationWindowIpc from "../ipc/handlers/ApplicationWindowIpc";
@@ -221,6 +222,18 @@ export const live = Layer.effectDiscard(
           }
           if (DEVICE_CAPABILITY_CHANNELS.includes(channel)) return yield* personal(bound.args);
           if (bound.spaceId === spaces.personalSpaceId) return yield* personal(bound.args);
+          if (
+            channel === "github:thread" ||
+            channel === "github:thread-files" ||
+            channel === "github:thread-command"
+          ) {
+            return {
+              status: "unavailable",
+              reason: "team_space",
+              message: null,
+              retryAt: null,
+            } satisfies GitHubUnavailable;
+          }
           const context = yield* Effect.scoped(desktops.contextEffect(bound.spaceId));
           return yield* Context.get(context, RemoteSpaceDesktop.RemoteSpaceDesktop).invoke(
             channel,

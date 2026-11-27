@@ -1,3 +1,10 @@
+import type {
+  GitHubPullRequestFilesResult,
+  GitHubThreadCommand,
+  GitHubThreadCommandResult,
+  GitHubThreadReadResult,
+  GitHubThreadRef,
+} from "./github-thread";
 import type { DeepLinkOpenEvents } from "./nodex-deeplink";
 import type { AgentProfile, AgentProfilesUpdate } from "./agents/profiles";
 import type { ChangelogFeed } from "./changelog-feed";
@@ -328,21 +335,10 @@ import type {
   GitPullRequestMessageGenerateInput,
   GitPullRequestMessageGenerateResult,
   GitPushInput,
-  GhCliStatusResult,
-  GhPrChecksRequest,
-  GhPrChecksResult,
-  GhPrCommentInput,
-  GhPrCommentResult,
-  GhPrCommentsRequest,
-  GhPrCommentsResult,
   GhPrCreateInput,
-  GhPrDiffRequest,
-  GhPrDiffResult,
-  GhPrMergeInput,
   GhPrMutationResult,
   GhPrStatusRequest,
   GhPrStatusResult,
-  GhPrUpdateInput,
   CodexComposerAppshotCaptureInput,
   CodexComposerAppshotContext,
   CodexComposerAppshotTargetResult,
@@ -1750,6 +1746,10 @@ export interface IpcApi
     args: [input: UpdateAppUpdateSettingsInput];
     result: AppUpdateSettings;
   };
+  "settings:link-opening:effective": {
+    args: [];
+    result: import("./link-opening-settings").EffectiveLinkOpeningSettings;
+  };
   "settings:link-opening:get": {
     args: [];
     result: import("./link-opening-settings").LinkOpeningSettings;
@@ -1809,6 +1809,10 @@ export interface IpcApi
   };
   "sources:automation-options": { args: []; result: readonly import("./sources").SourceOption[] };
   "sources:settings": { args: []; result: import("./sources").SourcesSettingsSnapshot };
+  "github:thread-links": {
+    args: [ref: import("./github-thread").GitHubThreadRef];
+    result: import("./github-thread").GitHubThreadLinks;
+  };
   "sources:connect": { args: []; result: import("./core-result").CoreLocalCommitResult<void> };
   "sources:update": {
     args: [input: import("./sources").UpdateSourceSettingsInput];
@@ -2229,32 +2233,18 @@ export interface IpcApi
     result: GitActionCancelResult;
   };
 
-  // GitHub pull request review
-  "gh-cli-status": {
-    args: [input: { cwd: string }];
-    result: GhCliStatusResult;
+  // GitHub tabs
+  "github:thread": { args: [ref: GitHubThreadRef]; result: GitHubThreadReadResult };
+  "github:thread-files": { args: [ref: GitHubThreadRef]; result: GitHubPullRequestFilesResult };
+  "github:thread-command": {
+    args: [ref: GitHubThreadRef, command: GitHubThreadCommand];
+    result: GitHubThreadCommandResult;
   };
+
+  // Checkout-bound pull request operations
   "gh-pr-status": {
     args: [input: GhPrStatusRequest];
     result: GhPrStatusResult;
-  };
-  "gh-pr-checks": {
-    args: [input: GhPrChecksRequest];
-    result: GhPrChecksResult;
-  };
-  "gh-pr-comments": {
-    args: [input: GhPrCommentsRequest];
-    result: GhPrCommentsResult;
-  };
-  "gh-pr-diff": { args: [input: GhPrDiffRequest]; result: GhPrDiffResult };
-  "gh-pr-comment": {
-    args: [input: GhPrCommentInput];
-    result: GhPrCommentResult;
-  };
-  "gh-pr-merge": { args: [input: GhPrMergeInput]; result: GhPrMutationResult };
-  "gh-pr-update": {
-    args: [input: GhPrUpdateInput];
-    result: GhPrMutationResult;
   };
   "gh-pr-create": {
     args: [input: GhPrCreateInput];

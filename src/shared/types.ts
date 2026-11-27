@@ -1,3 +1,4 @@
+import type { GitHubThreadSurfaceConfig } from "./github-thread";
 import type { AgentsMapScope } from "./agents-map";
 import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import type { PageTurn } from "./page-turn";
@@ -773,7 +774,8 @@ export type WorkbenchTabKind =
   | "plugin_app"
   | "image_editor"
   | "side_chat"
-  | "agents";
+  | "agents"
+  | "github_thread";
 
 export const PROJECT_SESSION_SINGLETON_TAB_KINDS = [
   "review",
@@ -946,6 +948,7 @@ export interface WorkbenchProjectionTabConfigByKind {
   image_editor: WorkbenchImageEditorSurfaceConfig;
   side_chat: WorkbenchSideChatSurfaceConfig;
   agents: AgentsMapScope;
+  readonly github_thread: GitHubThreadSurfaceConfig;
 }
 
 export type WorkbenchProjectionTabConfig = WorkbenchProjectionTabConfigByKind[WorkbenchTabKind];
@@ -4497,13 +4500,6 @@ export type GhCliAvailability =
   | "missing-remote"
   | "error";
 
-export interface GhCliStatusResult {
-  cwd: string;
-  available: boolean;
-  status: GhCliAvailability;
-  message: string | null;
-}
-
 export interface GhPrStatusRequest {
   cwd: string;
   headBranch?: string;
@@ -4523,117 +4519,6 @@ export interface GhPrStatusResult {
   state: string | null;
   mergeStateStatus: string | null;
   message: string | null;
-}
-
-export interface GhPrCheckRun {
-  name: string;
-  status: string | null;
-  conclusion: string | null;
-  detailsUrl: string | null;
-}
-
-export interface GhPrChecksRequest {
-  cwd: string;
-  prNumber?: number | null;
-}
-
-export interface GhPrChecksResult {
-  cwd: string;
-  available: boolean;
-  disabledReason: GhCliAvailability | null;
-  checks: GhPrCheckRun[];
-  message: string | null;
-}
-
-export interface GhPrComment {
-  id: string;
-  path: string | null;
-  line: number | null;
-  side?: "LEFT" | "RIGHT" | null;
-  startLine?: number | null;
-  startSide?: "LEFT" | "RIGHT" | null;
-  replyToId?: string | null;
-  outdated?: boolean | null;
-  body: string;
-  author: string | null;
-  url: string | null;
-}
-
-export interface GhPrCommentsRequest {
-  cwd: string;
-  prNumber?: number | null;
-}
-
-export interface GhPrCommentsResult {
-  cwd: string;
-  available: boolean;
-  disabledReason: GhCliAvailability | null;
-  comments: GhPrComment[];
-  message: string | null;
-}
-
-export interface GhPrDiffRequest {
-  cwd: string;
-  prNumber?: number | null;
-}
-
-export interface GhPrDiffResult {
-  cwd: string;
-  available: boolean;
-  disabledReason: GhCliAvailability | null;
-  patch: string;
-  message: string | null;
-}
-
-export interface GhPrBaseCommentInput {
-  cwd: string;
-  prNumber: number;
-  body: string;
-}
-
-export interface GhPrIssueCommentInput extends GhPrBaseCommentInput {
-  type?: "comment";
-}
-
-export interface GhPrInlineCommentInput extends GhPrBaseCommentInput {
-  type: "inline";
-  path: string;
-  line: number;
-  side: "LEFT" | "RIGHT";
-  startLine?: number;
-  startSide?: "LEFT" | "RIGHT";
-  commitSha?: string | null;
-}
-
-export interface GhPrReplyCommentInput extends GhPrBaseCommentInput {
-  type: "reply";
-  commentId: string;
-}
-
-export type GhPrCommentInput =
-  | GhPrIssueCommentInput
-  | GhPrInlineCommentInput
-  | GhPrReplyCommentInput;
-
-export interface GhPrCommentResult {
-  cwd: string;
-  available: boolean;
-  disabledReason: GhCliAvailability | null;
-  url: string | null;
-  message: string | null;
-}
-
-export interface GhPrMergeInput {
-  cwd: string;
-  prNumber: number;
-  method?: "merge" | "squash" | "rebase";
-}
-
-export interface GhPrUpdateInput {
-  cwd: string;
-  prNumber: number;
-  title?: string | null;
-  body?: string | null;
 }
 
 export interface GhPrCreateInput {

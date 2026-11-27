@@ -21,6 +21,7 @@ import {
   type Position,
   type ExternalThread,
 } from "./GitHubSourceAdapter";
+import { readSources } from "./SourceCatalog";
 type Model = components["schemas"];
 export class SourceSupervisorError extends Schema.TaggedError<SourceSupervisorError>()(
   "SourceSupervisorError",
@@ -70,21 +71,7 @@ export const make = Effect.gen(function* () {
         )
         .pipe(Effect.mapError(unavailable)),
     );
-  const allSources = Effect.gen(function* () {
-    const sources: Source[] = [];
-    let after: string | null = null;
-    while (true) {
-      const value: Model["SourceReadValue"] = yield* read({
-        kind: "sources",
-        after_id: after,
-        limit: 100,
-      });
-      if (value.kind !== "sources") return yield* unavailable();
-      sources.push(...value.sources);
-      if (value.sources.length < 100) return sources;
-      after = value.sources.at(-1)!.id;
-    }
-  });
+  const allSources = readSources(core).pipe(Effect.mapError(unavailable));
   const positions = Effect.fn("Sources.positions")(function* (sourceId: string) {
     const positions: Position[] = [];
     let after: string | null = null;

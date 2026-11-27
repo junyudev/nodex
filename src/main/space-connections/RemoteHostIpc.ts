@@ -9,6 +9,7 @@ import type { components } from "@nodex/core-protocol";
 import type { IpcApi } from "../../shared/ipc-api";
 import { CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { registerGitHubThreadLinksQuery } from "../ipc/handlers/GitHubThreadLinksIpc";
 import { createHash } from "node:crypto";
 import { ElectronIpc } from "../platform/electron/ElectronIpc";
 import { rendererLocalCommitApply } from "../core-client/types";
@@ -56,6 +57,7 @@ export const live = Layer.effectDiscard(
         }),
       ),
     );
+    yield* registerGitHubThreadLinksQuery(ipc, core);
     yield* ipc.handleQuery("work:effective-hold", (_, target) => effectiveHolds(core, target));
     yield* ipc.handleQuery("work:holds", () =>
       Effect.gen(function* () {

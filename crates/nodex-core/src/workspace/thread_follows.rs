@@ -49,6 +49,117 @@ pub(super) fn follows(
     }
     Ok(c.prepare("SELECT f.page_id,t.thread_json,f.role,f.provenance,f.created_at FROM page_thread_follows f JOIN external_threads t ON t.id=f.external_thread_id JOIN blocks b ON b.id=f.page_id WHERE b.library_id=?1 AND f.page_id=?2 AND (?3 IS NULL OR t.id>?3) ORDER BY t.id LIMIT ?4")?.query_map(params![library,page,after,limit],|r|Ok(PageThreadFollow{page_id:r.get(0)?,thread:decode(r.get(1)?)?,role:decode(format!("\"{}\"",r.get::<_,String>(2)?))?,provenance:r.get(3)?,created_at:r.get(4)?}))?.collect::<rusqlite::Result<Vec<_>>>()?)
 }
+
+pub(super) fn linked_work(
+    connection: &Connection,
+    library: &str,
+    host: &str,
+    repository: &str,
+    number: i32,
+) -> Result<GitHubThreadLinks, StoreError> {
+    let Some((owner, repo)) = repository.split_once('/') else {
+        return Err(invalid("Expected a GitHub repository in owner/repo form"));
+    };
+    if !(1..=253).contains(&host.len())
+        || !host
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b".-".contains(&b))
+        || !(1..=39).contains(&owner.len())
+        || !owner
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        || !(1..=100).contains(&repo.len())
+        || !repo
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        || number < 1
+    {
+        return Err(invalid("Invalid GitHub thread address"));
+    }
+    let host = host.to_ascii_lowercase();
+    let pull_request_url = format!("https://{host}/{repository}/pull/{number}");
+    // Observations are keyed by immutable repository ID. A URL only carries a name, so a
+    // renamed repository matches once its new name is recorded in Core.
+    // For a Workspace PR the stored URL identifies the base repository. The repository
+    // column can name the checkout of a fork, whose PR numbers are independent.
+    let pages = connection
+        .prepare(
+            "WITH matching_threads AS (
+               SELECT id FROM external_threads
+               WHERE library_id=?1 AND provider='github' AND host=?2 AND number=?4
+                 AND json_extract(thread_json, '$.repository')=?3 COLLATE NOCASE
+             ), links(page_id, priority) AS (
+               SELECT follow.page_id, CASE follow.role WHEN 'own_pr' THEN 1 WHEN 'origin' THEN 2 ELSE 4 END
+               FROM matching_threads thread JOIN page_thread_follows follow ON follow.external_thread_id=thread.id
+               UNION ALL
+               SELECT intake.page_id, 3
+               FROM matching_threads thread JOIN github_intakes intake ON intake.external_thread_id=thread.id
+               UNION ALL
+               SELECT pr.page_id, 1 FROM page_pull_requests pr
+               WHERE pr.number=?4 AND pr.url=?5 COLLATE NOCASE
+             ), linked_pages AS (
+               SELECT links.page_id, MIN(links.priority) AS priority
+               FROM links JOIN blocks block ON block.id=links.page_id
+               WHERE block.library_id=?1 AND block.lifecycle<>'deleted'
+               GROUP BY links.page_id
+               ORDER BY priority, links.page_id
+               LIMIT 50
+             )
+             SELECT linked.page_id, COALESCE(model.title, ''), linked.priority,
+                    COALESCE(placement.project_id, workspace_project.id),
+                    chat.id, chat.no_thread_fallback_title, thread.thread_name, thread.thread_preview
+             FROM linked_pages linked
+             JOIN pages page ON page.block_id=linked.page_id AND page.library_id=?1
+             LEFT JOIN page_read_model model ON model.page_block_id=page.block_id AND model.library_id=?1
+             LEFT JOIN data_sources source ON page.parent_kind='data_source' AND source.id=page.parent_id
+             LEFT JOIN project_database_bindings placement ON placement.database_block_id=source.home_database_block_id
+               AND placement.library_id=?1 AND placement.lifecycle='active'
+             LEFT JOIN page_workspaces workspace ON workspace.page_id=page.block_id
+             LEFT JOIN projects workspace_project ON workspace_project.id=workspace.project_id AND workspace_project.library_id=?1
+             LEFT JOIN page_active_chats active ON active.page_id=page.block_id
+             LEFT JOIN project_sessions chat ON chat.id=active.session_id AND chat.archived=0
+               AND (chat.project_id IS NULL OR EXISTS (
+                 SELECT 1 FROM projects project WHERE project.id=chat.project_id AND project.library_id=?1
+               ))
+             LEFT JOIN project_session_threads binding ON binding.session_id=chat.id
+             LEFT JOIN codex_threads thread ON thread.thread_id=binding.thread_id
+             ORDER BY linked.priority, linked.page_id",
+        )?
+        .query_map(params![library, host, repository, number, pull_request_url], |row| {
+            let role = match row.get::<_, u8>(2)? {
+                1 => GitHubThreadLinkRole::OwnPr,
+                2 => GitHubThreadLinkRole::Origin,
+                3 => GitHubThreadLinkRole::Intake,
+                4 => GitHubThreadLinkRole::Context,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
+            let active_chat = if let Some(session_id) = row.get(4)? {
+                let fallback: String = row.get(5)?;
+                let name: Option<String> = row.get(6)?;
+                let preview: Option<String> = row.get(7)?;
+                Some(GitHubThreadLinkedChat {
+                    session_id,
+                    title: super::read::project_session_display_title(
+                        name.as_deref(),
+                        preview.as_deref(),
+                        &fallback,
+                    ),
+                })
+            } else {
+                None
+            };
+            Ok(GitHubThreadLinkedPage {
+                page_id: row.get(0)?,
+                title: row.get(1)?,
+                role,
+                project_id: row.get(3)?,
+                active_chat,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(GitHubThreadLinks { pages })
+}
+
 pub(super) fn add_follow(
     c: &Connection,
     library: &str,

@@ -79,6 +79,7 @@ import * as CodexRealtimeVoiceIpc from "../ipc/handlers/CodexRealtimeVoiceIpc";
 import * as DictationIpc from "../ipc/handlers/DictationIpc";
 import * as DictationStreamingIpc from "../ipc/handlers/DictationStreamingIpc";
 import * as ExecutionHostIpc from "../ipc/handlers/ExecutionHostIpc";
+import * as GitHubThreadIpc from "../ipc/handlers/GitHubThreadIpc";
 import * as GitApplicationIpc from "../ipc/handlers/GitApplicationIpc";
 import * as GitWorkerIpc from "../ipc/handlers/GitWorkerIpc";
 import * as RemoteHostedPipIpc from "../ipc/handlers/RemoteHostedPipIpc";
@@ -190,6 +191,7 @@ export const live = Layer.mergeAll(
   DocumentRecoveryIpc.live,
   DatabaseProjectionIpc.live,
   GitApplicationIpc.live,
+  GitHubThreadIpc.live,
   ManagedMediaIpc.live,
   StructuralClipboardIpc.live,
   NativeShellIpc.live,

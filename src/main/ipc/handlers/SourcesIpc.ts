@@ -2,15 +2,18 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { updateSourceSettingsSchema } from "../../../shared/sources";
 import { MainConfig } from "../../app/MainConfig";
+import { CoreModules } from "../../core-runtime/CoreModules";
 import { rendererLocalCommitApply } from "../../core-client/types";
 import { SourceSupervisor, SourceSupervisorError } from "../../../host/sources/SourceSupervisor";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import { registerGitHubThreadLinksQuery } from "./GitHubThreadLinksIpc";
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
     const ipc = yield* ElectronIpc;
     const sources = yield* SourceSupervisor;
+    const core = yield* CoreModules;
     const config = yield* MainConfig;
     const windows = yield* WindowRuntime;
     const handlers = mapElectronIpcHandlers(
@@ -25,12 +28,13 @@ export const live = Layer.effectDiscard(
             },
             catch: () =>
               new SourceSupervisorError({
-                message: "Source settings require an active Nodex window",
+                message: "Source requests require an active Nodex window",
               }),
           }).pipe(Effect.andThen(handler(event, ...args))),
     );
     yield* handlers.handleQuery("sources:automation-options", () => sources.automationOptions);
     yield* handlers.handleQuery("sources:settings", () => sources.snapshot);
+    yield* registerGitHubThreadLinksQuery(handlers, core);
     yield* handlers.handleLocalCommitCommand("sources:connect", () =>
       sources.connect.pipe(
         Effect.map((result) => ({

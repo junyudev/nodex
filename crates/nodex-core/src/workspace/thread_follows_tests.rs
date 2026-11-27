@@ -219,6 +219,130 @@ fn own_pr(w: &TestWorkspace) -> ExternalThread {
     batch(w, "observe-pr", pull_request("nodex-1-work"), vec![]);
     current_thread(w)
 }
+
+#[test]
+fn github_thread_links_return_each_visible_pages_strongest_role_and_active_chat() {
+    let w = setup();
+    board(&w);
+    card(&w, PAGE, "origin-chat", true);
+    let own_pr = "019d0000-0000-7000-8000-000000000092";
+    let own_pr_with_follow = "019d0000-0000-7000-8000-000000000093";
+    let intake = "019d0000-0000-7000-8000-000000000094";
+    let context_page = "019d0000-0000-7000-8000-000000000095";
+    let deleted = "019d0000-0000-7000-8000-000000000096";
+    let other_host = "019d0000-0000-7000-8000-000000000097";
+    let fork = "019d0000-0000-7000-8000-000000000098";
+    for page in [
+        own_pr,
+        own_pr_with_follow,
+        intake,
+        context_page,
+        deleted,
+        other_host,
+        fork,
+    ] {
+        create_library_page(&w, page, "project:work");
+    }
+    let thread = pull_request("linked-work");
+    let number = thread.number.try_into().unwrap();
+    batch(&w, "observe-linked-work", thread.clone(), vec![]);
+    w.kernel.writer().call(move |c| {
+        use rusqlite::params;
+        c.execute_batch(
+            "INSERT INTO profiles VALUES ('other-profile', 'today', 'today');
+             INSERT INTO libraries(id, profile_id, created_at, updated_at)
+               VALUES ('other-library', 'other-profile', 'today', 'today');
+             INSERT INTO blocks(id, library_id, type, created_at, updated_at)
+               VALUES ('other-page', 'other-library', 'page', 'today', 'today');
+             INSERT INTO documents(id, library_id, schema_key, schema_version, created_at, updated_at)
+               VALUES ('other-document', 'other-library', 'nodex.page', 1, 'today', 'today');
+             INSERT INTO block_documents(block_id, library_id, document_id, created_at)
+               VALUES ('other-page', 'other-library', 'other-document', 'today');
+             INSERT INTO pages(block_id, library_id, document_id, parent_kind, parent_id, created_at, updated_at)
+               VALUES ('other-page', 'other-library', 'other-document', 'library', 'other-library', 'today', 'today');",
+        )?;
+        for (page, role) in [
+            (PAGE, "origin"), (own_pr_with_follow, "origin"), (intake, "context"),
+            (context_page, "context"), (deleted, "context"), ("other-page", "context"),
+        ] {
+            c.execute(
+                "INSERT INTO page_thread_follows(page_id, external_thread_id, role, provenance, created_at, status_fence)
+                 VALUES (?1, ?2, ?3, 'test', ?4, 0)",
+                params![page, thread.id, role, NOW],
+            )?;
+        }
+        for (page, repository, base) in [
+            (own_pr, "https://github.com/another/fork", "https://github.com/Alice/Repo"),
+            (own_pr_with_follow, "https://github.com/Alice/Repo", "https://github.com/Alice/Repo"),
+            (other_host, "https://github.example.com/Alice/Repo", "https://github.example.com/Alice/Repo"),
+            (fork, "https://github.com/Alice/Repo", "https://github.com/another/base"),
+        ] {
+            c.execute(
+                "INSERT INTO page_pull_requests(page_id, repository, number, url, state, observed_at)
+                 VALUES (?1, ?2, ?3, ?4, 'OPEN', ?5)",
+                params![page, repository, thread.number, format!("{base}/pull/{}", thread.number), NOW],
+            )?;
+        }
+        c.execute(
+            "INSERT INTO inbox_entries(page_id, library_id, seq, submitted_at, source_kind, source_label, updated_at)
+             VALUES (?1, 'library-1', 1, ?2, 'github', 'GitHub', ?2)",
+            params![intake, NOW],
+        )?;
+        c.execute("INSERT INTO github_intakes VALUES (?1, ?2)", params![thread.id, intake])?;
+        c.execute("UPDATE blocks SET lifecycle='deleted' WHERE id=?1", [deleted])?;
+        Ok(())
+    }).unwrap();
+
+    let ProjectWorkspaceReadValue::Sources {
+        value: SourceReadValue::GitHubThreadLinks { links },
+    } = w
+        .module
+        .read(
+            &enroll_remote_member(&w, "Reviewer"),
+            nodex_core_contracts::ModuleReadRequest {
+                contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: ProjectWorkspaceRead::Sources {
+                    read: SourceRead::GitHubThreadLinks {
+                        host: "github.com".into(),
+                        repository: "ALICE/rEPO".into(),
+                        number,
+                    },
+                },
+            },
+        )
+        .unwrap()
+        .value
+    else {
+        panic!("Expected GitHub thread links");
+    };
+    assert_eq!(
+        links
+            .pages
+            .iter()
+            .map(|p| (p.page_id.as_str(), p.role))
+            .collect::<Vec<_>>(),
+        [
+            (own_pr, GitHubThreadLinkRole::OwnPr),
+            (own_pr_with_follow, GitHubThreadLinkRole::OwnPr),
+            (PAGE, GitHubThreadLinkRole::Origin),
+            (intake, GitHubThreadLinkRole::Intake),
+            (context_page, GitHubThreadLinkRole::Context),
+        ]
+    );
+    let origin = &links.pages[2];
+    assert_eq!(origin.title, "Work");
+    assert_eq!(origin.project_id.as_deref(), Some("project:work"));
+    assert_eq!(
+        origin.active_chat,
+        Some(GitHubThreadLinkedChat {
+            session_id: "origin-chat".into(),
+            title: "Work".into(),
+        })
+    );
+    assert_eq!(links.pages[0].project_id, None);
+    assert_eq!(links.pages[0].active_chat, None);
+}
+
 #[test]
 fn context_follows_fan_out_once_with_frozen_chat_identity() {
     let w = setup();

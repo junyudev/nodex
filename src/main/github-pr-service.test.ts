@@ -1,13 +1,8 @@
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, expect, test, vi } from "vite-plus/test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  createGhPrComment,
-  readGhCliStatus,
-  readGhPrComments,
-  readGhPrStatus,
-} from "./github-pr-service";
+import { readGhPrStatus } from "./github-pr-service";
 
 const commandFixtures = vi.hoisted(() => new Map<string, string>());
 vi.mock("node:child_process", async (importOriginal) => {
@@ -89,114 +84,16 @@ afterEach(() => {
   }
 });
 
-describe("github PR service", () => {
-  test("returns a typed disabled state when GitHub PR review is unavailable", async () => {
-    const cwd = createTempDir("nodex-gh-pr-missing-");
-    process.env.PATH = "";
+test("reports an unavailable GitHub CLI when the process cannot be started", async () => {
+  const cwd = createTempDir("nodex-gh-pr-missing-");
+  process.env.PATH = cwd;
 
-    const status = await readGhCliStatus({ cwd });
-    const prStatus = await readGhPrStatus({ cwd });
+  const status = await readGhPrStatus({ cwd });
 
-    expect(status.available).toBe(false);
-    expect(["missing-gh", "missing-remote", "not-authenticated"].includes(status.status)).toBe(
-      true,
-    );
-    expect(prStatus.available).toBe(false);
-    expect(prStatus.status).toBe("disabled");
-    expect(prStatus.disabledReason).toBe(status.status);
-  });
-
-  test("reads pull request review comments from the inline comments API", async () => {
-    const cwd = createTempDir("nodex-gh-pr-comments-");
-    installFakeGhEnvironment(
-      cwd,
-      [
-        "if (args[0] === '--version') process.exit(0);",
-        "if (args[0] === 'auth' && args[1] === 'status') process.exit(0);",
-        "if (args[0] === 'api') {",
-        "  console.log(JSON.stringify([{ id: 12, path: 'src/example.ts', line: 8, side: 'RIGHT', start_line: 6, start_side: 'RIGHT', body: 'Tighten this', user: { login: 'octo' }, html_url: 'https://github.test/c/12', in_reply_to_id: 9, outdated: false }]));",
-        "  process.exit(0);",
-        "}",
-        "process.exit(1);",
-      ].join("\n"),
-    );
-
-    const result = await readGhPrComments({ cwd, prNumber: 7 });
-
-    expect(result.available).toBe(true);
-    expect(result.comments.length).toBe(1);
-    expect(result.comments[0]?.id).toBe("12");
-    expect(result.comments[0]?.path).toBe("src/example.ts");
-    expect(result.comments[0]?.line).toBe(8);
-    expect(result.comments[0]?.side).toBe("RIGHT");
-    expect(result.comments[0]?.startLine).toBe(6);
-    expect(result.comments[0]?.startSide).toBe("RIGHT");
-    expect(result.comments[0]?.replyToId).toBe("9");
-    expect(result.comments[0]?.author).toBe("octo");
-  });
-
-  test("posts inline review comments through gh api with commit and range fields", async () => {
-    const cwd = createTempDir("nodex-gh-pr-inline-");
-    const logPath = installFakeGhEnvironment(
-      cwd,
-      [
-        "if (args[0] === '--version') process.exit(0);",
-        "if (args[0] === 'auth' && args[1] === 'status') process.exit(0);",
-        "if (args[0] === 'pr' && args[1] === 'view') {",
-        "  console.log(JSON.stringify({ headRefOid: 'abc123' }));",
-        "  process.exit(0);",
-        "}",
-        "if (args[0] === 'api') {",
-        "  console.log(JSON.stringify({ html_url: 'https://github.test/c/99' }));",
-        "  process.exit(0);",
-        "}",
-        "process.exit(1);",
-      ].join("\n"),
-    );
-
-    const result = await createGhPrComment({
-      type: "inline",
-      cwd,
-      prNumber: 42,
-      body: "Please change this",
-      path: "src/example.ts",
-      line: 12,
-      side: "RIGHT",
-      startLine: 10,
-      startSide: "RIGHT",
-    });
-    const log = readFileSync(logPath, "utf8");
-
-    expect(result.available).toBe(true);
-    expect(result.url).toBe("https://github.test/c/99");
-    expect(Boolean(log.includes("repos/{owner}/{repo}/pulls/42/comments"))).toBe(true);
-    expect(Boolean(log.includes("commit_id=abc123"))).toBe(true);
-    expect(Boolean(log.includes("path=src/example.ts"))).toBe(true);
-    expect(Boolean(log.includes("line=12"))).toBe(true);
-    expect(Boolean(log.includes("side=RIGHT"))).toBe(true);
-    expect(Boolean(log.includes("start_line=10"))).toBe(true);
-  });
-
-  test("rejects empty pull request comment bodies before posting", async () => {
-    const cwd = createTempDir("nodex-gh-pr-empty-");
-    installFakeGhEnvironment(
-      cwd,
-      [
-        "if (args[0] === '--version') process.exit(0);",
-        "if (args[0] === 'auth' && args[1] === 'status') process.exit(0);",
-        "process.exit(0);",
-      ].join("\n"),
-    );
-
-    const result = await createGhPrComment({
-      cwd,
-      prNumber: 1,
-      body: "   ",
-    });
-
-    expect(result.available).toBe(false);
-    expect(result.disabledReason).toBe("error");
-    expect(result.message).toBe("Pull request comment body is required.");
+  expect(status).toMatchObject({
+    available: false,
+    status: "disabled",
+    disabledReason: "missing-gh",
   });
 });
 

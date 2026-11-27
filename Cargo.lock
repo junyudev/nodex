@@ -1417,6 +1417,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
+ "url",
  "utoipa",
  "yaml-rust2",
 ]
