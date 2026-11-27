@@ -83,6 +83,7 @@ import { InboxDeleteDialog, type InboxDeleteRequest } from "./inbox-delete-dialo
 import { InboxIconAction } from "./inbox-icon-action";
 import { InboxImportantBar } from "./inbox-important";
 import { InboxMessage, InboxMessageMenu } from "./inbox-message";
+import { followUpHandoffAction } from "./follow-ups";
 import { INBOX_EASE_OUT, InboxStreamItem } from "./inbox-stream-item";
 import {
   inboxChatPageIds,
@@ -551,7 +552,7 @@ export function InboxRoute({
       onDecided: (pageIds, decision) => {
         if (
           decision.kind === "chat" &&
-          decision.type === "new_chat" &&
+          (decision.type === "new_chat" || decision.type === "fork_chat") &&
           settings.showPageBesideNewChats
         )
           void onShowPagesInChat({
@@ -779,6 +780,17 @@ export function InboxRoute({
         rowOffers={rowOffers}
         handlers={{
           onDispatch: handleManually,
+          onReturnToSource:
+            item.source.kind === "agent" && item.source.sessionId
+              ? (type) => {
+                  if (item.source.kind !== "agent" || !item.source.sessionId) return;
+                  void actions.dispatch(
+                    [item.pageId],
+                    followUpHandoffAction(type, item.source.sessionId),
+                    [item.basis],
+                  );
+                }
+              : undefined,
           onSuggestAgain: suggestionsOffered
             ? () =>
                 void actions.requestSuggestion(

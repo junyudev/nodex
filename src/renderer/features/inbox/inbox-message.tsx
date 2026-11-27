@@ -14,11 +14,13 @@ import {
   ClockIcon,
   DeleteIcon,
   DispatchIcon,
+  ForkIcon,
   ImportantFilledIcon,
   ImportantIcon,
   NoteIcon,
   PageIcon,
   RefreshIcon,
+  SendToChatIcon,
   TagsIcon,
   TodoIcon,
 } from "@/components/shared/icons";
@@ -52,11 +54,15 @@ import {
   INBOX_HOLD_LABELS,
   type InboxHold,
   inboxPageStatusMark,
+  inboxSourceChatOffers,
   type InboxRowOffers,
+  type InboxSourceChatOffer,
 } from "./inbox-presentation";
 
 export interface InboxMessageMenuHandlers {
   readonly onDispatch: () => void;
+  /** Hands an Agent's message back to the chat that sent it, or to a fork of that chat. */
+  readonly onReturnToSource?: (type: InboxSourceChatOffer) => void;
   /** Absent while suggestions are off. */
   readonly onSuggestAgain?: () => void;
   readonly onSetDone: (done: boolean) => void;
@@ -84,12 +90,19 @@ export function InboxMessageMenu({
   const intl = useIntl();
   if (item.source.kind === "nodex") return null;
   const kind = inboxEntryKind(item);
+  const sourceChat = item.source.kind === "agent" ? item.source.label : null;
   const suggestAgain =
     item.waiting && !rowOffers.suggest && !item.automationDecision ? handlers.onSuggestAgain : null;
   const holds = inboxMenuHolds(item, rowOffers);
   const canMarkDone = item.waiting && !rowOffers.done;
+  const sourceChatOffers =
+    sourceChat && handlers.onReturnToSource ? inboxSourceChatOffers(item) : [];
   const hasHandlingActions =
-    !rowOffers.handleManually || suggestAgain || holds.length > 0 || canMarkDone;
+    !rowOffers.handleManually ||
+    sourceChatOffers.length > 0 ||
+    suggestAgain ||
+    holds.length > 0 ||
+    canMarkDone;
   return (
     <NodexDropdownMenu
       align="end"
@@ -119,6 +132,32 @@ export function InboxMessageMenu({
           />
         </NodexDropdownItem>
       )}
+      {sourceChatOffers.map((type) => (
+        <NodexDropdownItem
+          key={type}
+          leftSlot={
+            type === "fork_chat" ? (
+              <ForkIcon className="icon-xs" />
+            ) : (
+              <SendToChatIcon className="icon-xs" />
+            )
+          }
+          onSelect={() => handlers.onReturnToSource?.(type)}
+        >
+          {type === "fork_chat"
+            ? intl.formatMessage(
+                { id: "inbox.inboxMessage.forkSource", defaultMessage: "Fork “{chat}”" },
+                { chat: sourceChat },
+              )
+            : intl.formatMessage(
+                {
+                  id: "inbox.inboxMessage.sendBackToSource",
+                  defaultMessage: "Send back to “{chat}”",
+                },
+                { chat: sourceChat },
+              )}
+        </NodexDropdownItem>
+      ))}
       {/* A held Automation decision carries its frozen action, never routing advice. */}
       {suggestAgain ? (
         <NodexDropdownItem leftSlot={<RefreshIcon className="icon-xs" />} onSelect={suggestAgain}>

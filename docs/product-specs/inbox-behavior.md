@@ -970,7 +970,17 @@ instructions.
   and opening preview using [chat search text matching](command-palette-behavior.md#text-matching).
   A local chat receives the message into its Runtime queue even while busy.
   Its own queue controls when execution starts.
-- Both make every message Page a Linked Page of the receiving chat in the same
+- **Fork chat:** for a message an Agent sent, starts a new chat forked from the
+  chat that sent it, so the work keeps that chat's conversation without
+  interrupting it. Core creates the fork's Session with the confirmation, in the
+  sending chat's Project and titled after the first message, and the fork runs on
+  that chat's Agent. Main forks the sending chat at its latest finished Run and
+  then sends the composed message as the fork's first turn. The fork works in a
+  new managed worktree when the sending chat's directory is a Git repository, and
+  in the same directory otherwise, unless the decision names one. A sending chat
+  that was deleted, cannot be forked, or has no finished Run to fork from fails
+  the delivery with that reason.
+- All three make every message Page a Linked Page of the receiving chat in the same
   transaction. If the Page has no Assignee, that transaction assigns it to the
   receiving chat's Agent instance, model and effort, without automatic-start consent.
   An existing Member or Agent Assignee stays unchanged. The Page then shows that chat and its live status on its Board,
@@ -1106,6 +1116,8 @@ including for parent, child and background Agents and planning interactions.
   at most five messages. When the native protocol cannot prove a Run, Core leaves
   it null and applies the same five-message budget to that native connection,
   independently of foreground Runs. Model-authored fields cannot replace the source.
+  The sending chat shows the message as a follow-up; see
+  [Follow-ups in the chat that raised them](#follow-ups-in-the-chat-that-raised-them).
 - **Command line:** `nodex inbox send [TEXT] [--title TITLE]` reads TEXT or
   redirected stdin.
   Inside a Project's source or managed worktree, or with `--project`, the
@@ -1116,6 +1128,41 @@ Both paths accept an optional title, which is final. Without one, the message
 gets a provisional title like any other message. Both paths also accept an
 idempotency key. A retry with the same key returns the original receipt, never
 creates a second message, and does not count against the Agent budget again.
+
+## Follow-ups in the chat that raised them
+
+A message an Agent sends is that chat's follow-up. Its source chat stays a
+first-class destination: the chat can see what it left in the Inbox and what
+became of it, and the person can hand it back without leaving the chat.
+
+- Core reads a chat's follow-ups from the messages whose verified source is that
+  chat: up to 50, newest first, each with its Page's current title, Status and
+  where it stands: waiting for a decision, snoozed, being delivered to a chat, in
+  a chat, held as work, saved to Notes, done, or returned after a failed start. An
+  erased message is not listed.
+- The chat shows them in three places: the `send_to_inbox` activity row names the
+  message Page as it is now; the turn that sent them lists them as cards beneath
+  its reply (see [Codex Thread Transcript Behavior](codex-thread-transcript-behavior.md));
+  and the summary panel's Follow-ups section lists them all (see
+  [Thread Summary Panel Behavior](thread-summary-panel-behavior.md#follow-ups)).
+- A follow-up still waiting for a decision, snoozed, or back after a failed start
+  offers two decisions in the chat: `Continue here` sends it to this chat, and Fork
+  starts a [fork of this chat](#dispatch) with it. Each is a direct dispatch fenced
+  by the message the chat showed, exactly as from the Inbox, so the Inbox, the
+  Board, Activity and the chat agree on where it went. The chat receives the
+  message as any send from the Inbox composes it, with the prompt asking it to
+  handle the follow-up it left. Forking confirms with a notice that opens the new
+  chat.
+- In the Inbox, a waiting message from an Agent keeps its source chat at hand.
+  Its menu offers `Send back to “<chat>”` and `Fork “<chat>”`, less whichever
+  its open suggestion already proposes for that chat, and the dispatch editor
+  starts `Send to chat` at that chat and offers `Fork chat`. Nodex's advice
+  reads the source chat's title, whether it still exists, is archived or busy,
+  whether it can be forked and whether its workspace remains. It suggests sending
+  back a small, closely related follow-up to an idle chat whose workspace remains,
+  a fork when the work is larger or the chat is busy but its context helps, and a
+  new chat when the message stands alone. A message from an Agent is never the
+  person's own, so none of these starts without the person.
 
 ## Entry points and settings
 

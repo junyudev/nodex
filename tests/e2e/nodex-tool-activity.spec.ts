@@ -221,39 +221,30 @@ test("Agent tool rows name what they touched in plain language", async () => {
     const groupHeader = page.getByRole("button", { name: /^Created/ });
     await expect(groupHeader).toBeVisible();
     // Two reads settle into one clause, and nothing in the summary is an identity.
-    await expect(groupHeader).toContainText("read 2 pages");
+    await expect(groupHeader).toHaveAccessibleName(/read 2 pages/);
     await saveEvidence(page, "01-group-collapsed");
     await groupHeader.click();
     const readRow = page.getByRole("button", { name: "Read Launch plan", exact: true });
     await expect(readRow).toBeVisible();
     await saveEvidence(page, "02-group-open");
 
-    // Review evidence only: lift the group's height bound so every row fits one screenshot.
-    const unbound = await page.addStyleTag({
-      content:
-        ".vertical-scroll-fade-mask { max-height: none !important; mask-image: none !important; }",
-    });
-    const rows = readRow.locator(
-      "xpath=ancestor::div[contains(@class,'vertical-scroll-fade-mask')]",
-    );
+    const rows = page.getByTestId("agent-activity-group-body").filter({ has: readRow });
     const rowsText = (await rows.innerText()).replace(/\s+/gu, " ");
     expect(rowsText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/u);
     expect(rowsText).not.toContain("as markdown");
     expect(rowsText).toContain("Read Launch checklist");
     expect(rowsText).toContain("Couldn't read page");
-    expect(rowsText).toMatch(/Searched pages for “Launch” · \d+ results/u);
+    expect(rowsText).toMatch(/Searched Space for “Launch” · \d+ results/u);
     expect(rowsText).toContain("Moved Launch FAQ to Library");
     expect(rowsText).toContain("Listed projects");
     expect(rowsText).toContain("Read chat Prepare the launch plan.");
     expect(rowsText).toContain("Couldn't check usage limits");
-    expect(rowsText).toContain("Sent to Inbox “Review the launch plan”");
     await saveEvidence(page, "03-group-open-all-rows");
 
     await page.emulateMedia({ colorScheme: "dark" });
     await page.waitForTimeout(300);
     await saveEvidence(page, "04-all-rows-dark");
     await page.emulateMedia({ colorScheme: "light" });
-    await unbound.evaluate((element) => (element as HTMLElement).remove());
 
     // A row's name is its own link, so the disclosure is toggled from the leading icon and verb.
     const toggle = async (row: Locator) => await row.click({ position: { x: 6, y: 8 } });
@@ -268,7 +259,7 @@ test("Agent tool rows name what they touched in plain language", async () => {
     await saveEvidence(page, "05-read-opened");
     await toggle(readRow);
 
-    const searchRow = page.getByRole("button", { name: /^Searched pages for/ });
+    const searchRow = page.getByRole("button", { name: /^Searched Space for/ });
     await toggle(searchRow);
     await expect(page.locator("[data-nodex-tool-results]")).toContainText("Launch checklist");
     await settle(page);

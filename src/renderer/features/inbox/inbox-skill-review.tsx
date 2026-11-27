@@ -19,7 +19,8 @@ const skillTarget = (action: InboxDispatchAction | null | undefined): InboxSkill
       projectId: action.projectId,
       instanceId: action.agent?.instanceId ?? null,
     };
-  if (action?.type === "send_to_chat") return { type: action.type, sessionId: action.sessionId };
+  if (action?.type === "send_to_chat" || action?.type === "fork_chat")
+    return { type: "send_to_chat", sessionId: action.sessionId };
   return null;
 };
 

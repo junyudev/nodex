@@ -165,6 +165,19 @@ describe("NodexToolActivityRow", () => {
     ).toBe("false");
   });
 
+  test("links a sent Inbox message by its current Page title", async () => {
+    targets.current = available("Review the launch plan");
+    const sent = buildCall({
+      tool: "send_to_inbox",
+      arguments: { title: "Launch plan follow-up", body: "Check owners before Friday." },
+      contentItems: [{ type: "inputText", text: JSON.stringify({ data: { pageId: PAGE_ID } }) }],
+    });
+    const view = renderRow(<DynamicToolCall item={buildEntry(sent)} />);
+
+    const link = await view.findByRole("link", { name: "Review the launch plan" });
+    expect(link.getAttribute("href")).toBe(`nodex://pages/${PAGE_ID}`);
+  });
+
   test("says what it can when a Page is unavailable and offers nothing to open", () => {
     targets.current = { ...authority, status: "missing", targetPageId: PAGE_ID };
     const view = renderRow(

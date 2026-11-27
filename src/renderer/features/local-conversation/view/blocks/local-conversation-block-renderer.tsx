@@ -1,5 +1,6 @@
 import { AsyncQuestionTranscript } from "../composer/async-question-surface";
 import { LocalConversationEndResources } from "../local-conversation-end-resources";
+import { LocalConversationFollowUps } from "../local-conversation-follow-ups";
 import {
   ThreadAutomaticApprovalReviewBlock,
   ThreadAgentActivityGroupBlock,
@@ -405,6 +406,10 @@ export function ThreadBlockRenderer({
         workspaceRoot={projectWorkspacePath}
       />
     );
+  }
+
+  if (block.type === "turnFollowUps") {
+    return <LocalConversationFollowUps pageIds={block.pageIds} />;
   }
 
   if (block.type === "generatedImageGallery") {

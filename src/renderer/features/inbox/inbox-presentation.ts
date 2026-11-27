@@ -57,8 +57,8 @@ export type InboxTriageModel =
 /** Starts a chat or sends to one, so it carries a prompt. */
 export const isChatAction = (
   action: InboxDispatchAction,
-): action is Extract<InboxDispatchAction, { type: "new_chat" | "send_to_chat" }> =>
-  action.type === "new_chat" || action.type === "send_to_chat";
+): action is Extract<InboxDispatchAction, { type: "new_chat" | "send_to_chat" | "fork_chat" }> =>
+  action.type === "new_chat" || action.type === "send_to_chat" || action.type === "fork_chat";
 
 /**
  * What a row changed on one suggestion before deciding: a model or a place to work chosen on its
@@ -116,7 +116,7 @@ export const isWorkAction = (
   action: InboxDispatchAction,
 ): action is Extract<
   InboxDispatchAction,
-  { type: "new_chat" | "send_to_chat" | "execute_decision" }
+  { type: "new_chat" | "send_to_chat" | "fork_chat" | "execute_decision" }
 > => isChatAction(action) || action.type === "execute_decision";
 
 export function isInboxItemHandled(item: InboxItem): boolean {
@@ -234,6 +234,22 @@ export function inboxMenuHolds(item: InboxItem, offers: InboxRowOffers): readonl
   const lead = inboxLeadHold(item);
   return (["todo", "notes"] as const).filter(
     (hold) => hold !== decision && !(offers.hold && hold === lead),
+  );
+}
+
+/** Handing an Agent's message back to the chat it came from, or to a fork of that chat. */
+export type InboxSourceChatOffer = "send_to_chat" | "fork_chat";
+
+/**
+ * What a waiting Agent message's menu offers toward the chat that sent it: both ways back, less
+ * the one its open suggestion already proposes for that chat.
+ */
+export function inboxSourceChatOffers(item: InboxItem): readonly InboxSourceChatOffer[] {
+  if (!item.waiting || item.source.kind !== "agent" || !item.source.sessionId) return [];
+  const sourceId = item.source.sessionId;
+  const action = item.proposal?.state === "open" ? item.proposal.action : null;
+  return (["send_to_chat", "fork_chat"] as const).filter(
+    (type) => !(action?.type === type && action.sessionId === sourceId),
   );
 }
 
@@ -454,13 +470,23 @@ const decisionAutomationName = (item: InboxItem, intl: IntlShape): string =>
 
 /** Work Nodex started on the person's standing consent says so; the person's own does not. */
 const chatLabel = (
-  type: "new_chat" | "send_to_chat",
+  type: "new_chat" | "send_to_chat" | "fork_chat",
   delivered: boolean,
   title: string,
   projectName: string | null,
   byNodex: boolean,
   intl: IntlShape,
 ) => {
+  if (type === "fork_chat")
+    return delivered
+      ? intl.formatMessage(
+          { id: "inbox.inboxPresentation.startedValue", defaultMessage: "Started “{value1}”" },
+          { value1: title },
+        )
+      : intl.formatMessage(
+          { id: "inbox.inboxPresentation.startingValue2", defaultMessage: "Starting “{value1}”" },
+          { value1: title },
+        );
   if (byNodex) {
     if (type === "send_to_chat")
       return delivered
@@ -729,7 +755,7 @@ export type InboxDecision =
   | { readonly kind: "move"; readonly projectName: string | null }
   | {
       readonly kind: "chat";
-      readonly type: "new_chat" | "send_to_chat";
+      readonly type: "new_chat" | "send_to_chat" | "fork_chat";
       readonly sessionId: string;
       /** The receiving chat's title, when it already has one. */
       readonly chatTitle: string | null;
@@ -926,6 +952,21 @@ export function describeInboxAction(
               defaultMessage: "New projectless chat",
             }),
       };
+    case "fork_chat": {
+      const verb = intl.formatMessage({
+        id: "inbox.inboxPresentation.fork",
+        defaultMessage: "Fork",
+      });
+      return {
+        verb,
+        target: context.chat
+          ? intl.formatMessage(
+              { id: "inbox.inboxPresentation.forkChat", defaultMessage: "Fork “{chat}”" },
+              { chat: presentSessionTitle(context.chat, intl) },
+            )
+          : verb,
+      };
+    }
     case "send_to_chat": {
       const title = context.chat
         ? presentSessionTitle(context.chat, intl)

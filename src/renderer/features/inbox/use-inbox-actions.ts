@@ -270,6 +270,7 @@ export function useInboxActions(
     sessionId: string,
     chat: InboxChat | null,
     selection: InboxExecutionSelection | null | undefined,
+    firstPageId?: string,
   ): InboxDecision => {
     switch (action.type) {
       case "plan":
@@ -298,14 +299,31 @@ export function useInboxActions(
               : null,
         };
       }
-      case "send_to_chat":
+      case "fork_chat":
+        return {
+          kind: "chat",
+          type: action.type,
+          sessionId,
+          chatTitle: visibleItems.find((item) => item.pageId === firstPageId)?.title ?? null,
+          projectName: chat?.projectName ?? null,
+          worktree: action.newWorktree ?? null,
+        };
+      case "send_to_chat": {
+        // A message handed back to the chat that sent it names that chat by its own source.
+        const source = visibleItems.find((item) => item.pageId === firstPageId)?.source;
         return {
           kind: "chat",
           type: "send_to_chat",
           sessionId: action.sessionId,
-          chatTitle: chat?.sessionId === action.sessionId ? chat.displayTitle : null,
+          chatTitle:
+            chat?.sessionId === action.sessionId
+              ? chat.displayTitle
+              : source?.kind === "agent" && source.sessionId === action.sessionId
+                ? source.label
+                : null,
           projectName: null,
         };
+      }
       case "execute_decision": {
         const source = visibleItems.find(
           (item) => item.automationDecision?.dispatchId === action.decisionId,
@@ -341,7 +359,13 @@ export function useInboxActions(
         if (action) {
           onDecided(
             draft.basis.map((basis) => basis.pageId),
-            decisionOf(action, prepared.sessionId, chat, prepared.executionSelection),
+            decisionOf(
+              action,
+              prepared.sessionId,
+              chat,
+              prepared.executionSelection,
+              draft.basis[0]?.pageId,
+            ),
           );
         }
         if (

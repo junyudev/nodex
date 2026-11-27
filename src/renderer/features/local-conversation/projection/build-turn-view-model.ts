@@ -22,11 +22,13 @@ import type {
   ThreadTranscriptBlockModel,
   ThreadTurnModel,
   ThreadTurnRenderBuckets,
+  ThreadTurnFollowUpsBlockModel,
   ThreadTurnOutputsBlockModel,
   ThreadTurnSubagentActivityState,
   ThreadWorkedForBlockModel,
 } from "../thread-stage-types";
 import type { ThreadSummaryPanelOutputRow } from "./thread-summary-panel-output-model";
+import { sentInboxPageId } from "./tool-metadata/nodex-tool-activity";
 import { projectThreadActivityPresentation } from "./thread-activity-presentation";
 import {
   countAgentBodyUnits,
@@ -302,6 +304,38 @@ function buildTurnOutputsBlock(
     searchableText: "",
     type: "turnOutputs",
     resources,
+  };
+}
+
+/** The Inbox messages a settled turn sent, in the order it sent them. */
+export function collectTurnFollowUpPageIds(turn: CodexConversationTurn): string[] {
+  const pageIds = new Set<string>();
+  for (const item of turn.items) {
+    const pageId = item.dynamicToolCall ? sentInboxPageId(item.dynamicToolCall) : null;
+    if (pageId) pageIds.add(pageId);
+  }
+  return [...pageIds];
+}
+
+function buildTurnFollowUpsBlock(
+  turnId: string | null,
+  turnKey: string,
+  turn: CodexConversationTurn | null,
+  isStreamingTurn: boolean,
+): ThreadTurnFollowUpsBlockModel | null {
+  if (!turn || isStreamingTurn) return null;
+  const pageIds = collectTurnFollowUpPageIds(turn);
+  if (pageIds.length === 0) return null;
+  const timestamps = turn.items.flatMap((item) => [item.createdAt, item.updatedAt]);
+  const updatedAt = timestamps.length === 0 ? 0 : Math.max(...timestamps);
+  return {
+    id: `${turnKey}:follow-ups`,
+    turnId,
+    createdAt: updatedAt,
+    updatedAt,
+    searchableText: "",
+    type: "turnFollowUps",
+    pageIds,
   };
 }
 
@@ -597,6 +631,13 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     input.turn,
     input.endResources,
   );
+  // What the turn left in the Inbox follows what it delivered.
+  const turnFollowUpsBlock = buildTurnFollowUpsBlock(
+    input.turnId,
+    turnKey,
+    input.turn,
+    input.isStreamingTurn,
+  );
   const nextAssistantItem =
     buckets.assistantItem === null
       ? null
@@ -610,6 +651,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
             assistantAfterBlocks: [
               ...(generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),
               ...(turnOutputsBlock ? [turnOutputsBlock] : []),
+              ...(turnFollowUpsBlock ? [turnFollowUpsBlock] : []),
               ...buckets.postAssistantItems,
               ...(buckets.unifiedDiffItem ? [buckets.unifiedDiffItem] : []),
             ].filter((block) => !turnOwnerHiddenBlockIds.has(block.id)),
@@ -728,6 +770,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     ...(buckets.assistantItem ? [buckets.assistantItem] : []),
     ...(!buckets.assistantItem && generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),
     ...(turnOutputsBlock ? [turnOutputsBlock] : []),
+    ...(turnFollowUpsBlock ? [turnFollowUpsBlock] : []),
     ...(deferredAssistantActionsBlock ? [deferredAssistantActionsBlock] : []),
     ...buckets.postAssistantItems,
     ...buckets.mcpServerElicitationItems,

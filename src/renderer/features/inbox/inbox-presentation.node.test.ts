@@ -17,6 +17,7 @@ import {
   inboxPageRoutingContext,
   inboxRowAction,
   inboxRowProject,
+  inboxSourceChatOffers,
   inboxTimestampSeparators,
   inboxTriageModel,
   isInboxItemHandled,
@@ -87,6 +88,36 @@ describe("inbox presentation", () => {
     createdAt: "2026-10-11T10:00:01.000Z",
     updatedAt: "2026-10-11T10:00:01.000Z",
     ...overrides,
+  });
+
+  test("offers an Agent's message back to its chat, less what its suggestion proposes", () => {
+    const fromChat = item({
+      source: {
+        kind: "agent",
+        sessionId: "session:origin",
+        threadId: null,
+        runId: null,
+        projectId: null,
+        label: "Theme bridge",
+      },
+    });
+    expect(inboxSourceChatOffers(fromChat)).toEqual(["send_to_chat", "fork_chat"]);
+    const suggestedBack = proposal({
+      action: {
+        type: "send_to_chat",
+        sessionId: "session:origin",
+        prompt: "Handle it",
+        additions: [],
+      },
+    });
+    expect(inboxSourceChatOffers({ ...fromChat, proposal: suggestedBack })).toEqual(["fork_chat"]);
+    // Sending it to some other chat leaves both ways back on offer.
+    const elsewhere = proposal({
+      action: { type: "send_to_chat", sessionId: "session:other", prompt: "Do", additions: [] },
+    });
+    expect(inboxSourceChatOffers({ ...fromChat, proposal: elsewhere })).toHaveLength(2);
+    expect(inboxSourceChatOffers({ ...fromChat, waiting: false })).toEqual([]);
+    expect(inboxSourceChatOffers(item())).toEqual([]);
   });
 
   const chat = {

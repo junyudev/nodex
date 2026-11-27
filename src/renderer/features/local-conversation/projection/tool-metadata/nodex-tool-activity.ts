@@ -184,11 +184,11 @@ function inlineMarkdownText(value: string | null): string | null {
   return text || null;
 }
 
-const firstOutputText = (call: CodexDynamicToolCallView): string | null =>
+const firstOutputText = (call: Pick<CodexDynamicToolCallView, "contentItems">): string | null =>
   call.contentItems?.find((item) => item.type === "inputText")?.text ?? null;
 
 /** The settled timeline carries a compact digest in the result's shape; an opened row, all of it. */
-function outputData(call: CodexDynamicToolCallView): UnknownRecord | null {
+function outputData(call: Pick<CodexDynamicToolCallView, "contentItems">): UnknownRecord | null {
   const text = firstOutputText(call);
   if (text === null || text.length > MAX_DERIVED_OUTPUT_CHARS) return null;
   const output = unwrapToolResult(text);
@@ -197,6 +197,18 @@ function outputData(call: CodexDynamicToolCallView): UnknownRecord | null {
 
 const isFailed = (call: CodexDynamicToolCallView): boolean =>
   call.status === "failed" || (call.completed && call.success === false);
+
+/** The Inbox message Page a settled `send_to_inbox` call created; null until it has one. */
+export function sentInboxPageId(
+  call: Pick<
+    CodexDynamicToolCallView,
+    "namespace" | "tool" | "status" | "success" | "contentItems"
+  >,
+): string | null {
+  if (call.namespace !== "nodex_app" || call.tool !== "send_to_inbox") return null;
+  if (call.status !== "completed" || call.success === false) return null;
+  return stringValue(outputData(call), "pageId");
+}
 
 function activityPhase(call: CodexDynamicToolCallView): "failed" | "completed" | "active" {
   if (isFailed(call)) return "failed";
@@ -1704,7 +1716,9 @@ const NODEX_TOOL_ACTIVITY = {
     );
   },
   send_to_inbox: (call) => {
+    // The message is a Page: once sent, the row names it as it is now, renamed or not.
     const title = chatTitleArgument(call);
+    const pageId = sentInboxPageId(call);
     return activity(
       call,
       "inbox",
@@ -1713,7 +1727,7 @@ const NODEX_TOOL_ACTIVITY = {
         defaultMessage:
           "{phase, select, active {Sending to Inbox} failed {Couldn't send to Inbox} other {Sent to Inbox}}",
       },
-      title ? [text(quoted(title))] : [],
+      pageId ? [pagePart(pageId, title)] : title ? [text(quoted(title))] : [],
       authored(call),
     );
   },
