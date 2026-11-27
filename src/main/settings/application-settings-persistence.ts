@@ -211,6 +211,7 @@ interface ServerTomlConfig {
   open_link_in_target?: LinkOpeningSettings["openLinkInTarget"];
   open_local_url_in_target?: LinkOpeningSettings["openLocalUrlInTarget"];
   external_browser_link_shortcut?: LinkOpeningSettings["externalBrowserLinkShortcut"];
+  open_github_threads_in_nodex?: boolean;
   inbox_suggestions?: InboxSuggestionMode;
   inbox_dispatch_mode?: InboxSettings["dispatchMode"];
   /** Read only to migrate the former boolean preference. */
@@ -1884,6 +1885,10 @@ export function getLinkOpeningSettings(
       LinkOpeningSettingsSchema.shape.externalBrowserLinkShortcut.safeParse(
         config.external_browser_link_shortcut,
       ).data ?? DEFAULT_LINK_OPENING_SETTINGS.externalBrowserLinkShortcut,
+    openGitHubThreadsInNodex:
+      LinkOpeningSettingsSchema.shape.openGitHubThreadsInNodex.safeParse(
+        config.open_github_threads_in_nodex,
+      ).data ?? DEFAULT_LINK_OPENING_SETTINGS.openGitHubThreadsInNodex,
   };
 }
 export function updateLinkOpeningSettings(
@@ -1896,6 +1901,7 @@ export function updateLinkOpeningSettings(
     open_link_in_target: settings.openLinkInTarget,
     open_local_url_in_target: settings.openLocalUrlInTarget,
     external_browser_link_shortcut: settings.externalBrowserLinkShortcut,
+    open_github_threads_in_nodex: settings.openGitHubThreadsInNodex,
   });
   return settings;
 }

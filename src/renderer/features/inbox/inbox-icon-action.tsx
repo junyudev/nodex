@@ -1,3 +1,4 @@
+import type { ComponentPropsWithoutRef } from "react";
 import type { ComponentType } from "react";
 import type { InboxDispatchAction, InboxEntryKind } from "../../../shared/inbox";
 import {
@@ -45,13 +46,15 @@ export function InboxIconAction({
   tone = "default",
   disabled,
   onClick,
+  ...linkHandlers
 }: {
   readonly label: string;
   readonly icon: InboxIcon;
   readonly tone?: "default" | "danger";
   readonly disabled?: boolean;
-  readonly onClick: () => void;
-}) {
+} & Pick<ComponentPropsWithoutRef<"button">, "onAuxClick" | "onContextMenu" | "onKeyDown"> & {
+    readonly onClick: NonNullable<ComponentPropsWithoutRef<"button">["onClick"]>;
+  }) {
   return (
     <NodexTooltip tooltipContent={label} side="top">
       <NodexButton
@@ -59,6 +62,7 @@ export function InboxIconAction({
         variant="ghost"
         aria-label={label}
         disabled={disabled}
+        {...linkHandlers}
         onClick={onClick}
         className={cn(
           "text-token-description-foreground hover:text-token-foreground",

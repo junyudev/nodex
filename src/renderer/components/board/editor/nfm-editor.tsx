@@ -1,3 +1,6 @@
+import { useLinkOpening } from "@/lib/web-link-navigation";
+import { openLink } from "@/lib/link-opening";
+import { resolveNfmLinkAction } from "@/lib/nfm-link-actions";
 import { getIntl } from "@/lib/i18n";
 import type { PageSearchReveal } from "@/lib/page-search-reveal";
 import { PageSkillMentionProvider, type OpenSkillMention } from "./skill-mention-chip";
@@ -2311,15 +2314,35 @@ function NfmEditorInstance({
   };
 
   const referenceRouter = useNodexReferenceRouter();
-  /** Nodex links follow the shared reference grammar; the editor's host opens Pages in place. */
+  const links = useLinkOpening();
+  /** Keep link activation at the editor boundary so each destination sees the gesture. */
   const handleEditorClickCapture = (event: ReactMouseEvent) => {
     if (event.button !== 0 && event.button !== 1) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
     const anchor = target.closest("a");
     if (!(anchor instanceof HTMLAnchorElement)) return;
-    const destination = parseNodexDestination(readNfmLinkHrefAtElement(editor, anchor)?.trim());
-    if (!destination) return;
+    const href = readNfmLinkHrefAtElement(editor, anchor)?.trim();
+    const destination = parseNodexDestination(href);
+    if (!destination) {
+      if (!editor.isEditable || anchor.closest("[contenteditable]") !== editor.prosemirrorView?.dom)
+        return;
+      const action = resolveNfmLinkAction(href);
+      if (action?.kind !== "web-url") return;
+      const selection = anchor.ownerDocument.getSelection();
+      if (selection && !selection.isCollapsed && selection.containsNode(anchor, true)) {
+        event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      void (links?.openLink ?? openLink)({
+        url: action.url,
+        initiator: "page_link_mark",
+        activation: snapshotLinkActivation(event),
+      });
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     void referenceRouter?.open(destination, {

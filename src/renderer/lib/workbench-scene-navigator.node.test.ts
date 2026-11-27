@@ -1,3 +1,4 @@
+import { parseGitHubThreadUrl } from "../../shared/github-thread";
 import { updateWorkbenchPageFileConfig } from "./workbench-page-file-surface-state";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
@@ -25,6 +26,9 @@ import {
   listWorkbenchPanelLeaves,
 } from "../../shared/workbench-panel-layout";
 import {
+  cloneWorkbenchSceneLayoutForNewWindow,
+  moveWorkbenchSceneSurface,
+  getWorkbenchSurfaceReuseKey,
   insertWorkbenchSceneLeaf,
   patchWorkbenchScenePanel,
   updateWorkbenchSceneSurface,
@@ -908,6 +912,59 @@ test("opens host files in Project, Library, and Inbox Scenes without a Session",
     });
     expect(harness.scenes[makeWorkbenchSceneKey(owner)]!.primary?.kind).not.toBe("conversation");
   }
+});
+
+test("reuses a moved GitHub tab across link variants and delivers a fresh reveal", async () => {
+  const harness = createHarness();
+  const owner = { kind: "library" } as const;
+  const key = makeWorkbenchSceneKey(owner);
+  const open = (url: string) => {
+    const { ref, kind, reveal } = parseGitHubThreadUrl(url)!;
+    return harness.navigator.presentPanelSurface({
+      owner,
+      request: {
+        kind: "github_thread",
+        config: { thread: ref, kind },
+        reveal: { kind: "github_thread", ...reveal },
+      },
+      target: { panelId: "right" },
+      mode: "durable",
+      navigation: "background",
+    });
+  };
+  const first = await open("https://GitHub.com/Org/Repo/issues/9#issuecomment-7");
+  if (first.status !== "presented") throw new Error(first.reason);
+  expect(
+    harness.windowOwner.read().ephemeralPanels.gitHubThreadRevealsByScene[key]?.[first.surfaceId]
+      ?.target,
+  ).toMatchObject({ view: "overview", anchor: "issuecomment-7" });
+  harness.windowOwner.setScene(
+    owner,
+    moveWorkbenchSceneSurface(harness.scenes[key]!, {
+      surfaceId: first.surfaceId,
+      targetPanelId: "bottom",
+    }),
+  );
+  expect(await open("https://github.com/org/repo/pull/9/files#r20")).toEqual({
+    status: "presented",
+    surfaceId: first.surfaceId,
+    reused: true,
+  });
+  const scene = harness.scenes[key]!;
+  expect(Object.keys(scene.panelSurfacesById)).toEqual([first.surfaceId]);
+  expect(
+    findWorkbenchPanelLeafForTab(scene.panels.bottom.layout, first.surfaceId)?.activeTabId,
+  ).toBe(first.surfaceId);
+  const surface = scene.panelSurfacesById[first.surfaceId]!;
+  expect(surface).toMatchObject({ config: { kind: "issue" }, state: { view: "overview" } });
+  expect(
+    harness.windowOwner.read().ephemeralPanels.gitHubThreadRevealsByScene[key]?.[first.surfaceId]
+      ?.target,
+  ).toMatchObject({ view: "files", anchor: "discussion_r20" });
+  const cloned = cloneWorkbenchSceneLayoutForNewWindow({ scenesByOwnerKey: { [key]: scene } });
+  const clonedSurface = Object.values(cloned.scenesByOwnerKey[key]!.panelSurfacesById)[0]!;
+  expect(clonedSurface.id).not.toBe(first.surfaceId);
+  expect(getWorkbenchSurfaceReuseKey(clonedSurface)).toBe(getWorkbenchSurfaceReuseKey(surface));
 });
 
 test("reuses a file preview and durable tab while delivering each precise reveal", async () => {

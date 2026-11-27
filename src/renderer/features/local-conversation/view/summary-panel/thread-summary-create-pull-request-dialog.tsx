@@ -1,3 +1,5 @@
+import { useLinkOpening, useRoutedWebLink } from "@/lib/web-link-navigation";
+import { openLink } from "@/lib/link-opening";
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
@@ -201,11 +203,6 @@ function shouldPushBeforePullRequest(status: GitActionStatusResult): boolean {
   return status.pushNeedsUpstream && status.remotes.includes("origin");
 }
 
-function openPullRequestUrl(url: string | null): void {
-  if (!url) return;
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
 export function ThreadSummaryCreatePullRequestDialog({
   open,
   cwd,
@@ -215,6 +212,8 @@ export function ThreadSummaryCreatePullRequestDialog({
   onWorkflowChange,
 }: ThreadSummaryCreatePullRequestDialogProps) {
   const intl = useIntl();
+  const openWebLink = useLinkOpening()?.openLink ?? openLink;
+  const routeLink = useRoutedWebLink();
   const [readState, setReadState] = useState<CreatePrReadState>(() => ({
     ...EMPTY_READ_STATE,
     loading: Boolean(open && cwd),
@@ -471,7 +470,12 @@ export function ThreadSummaryCreatePullRequestDialog({
             return;
           }
 
-          if (openInBrowser) openPullRequestUrl(result.url);
+          if (openInBrowser && result.url)
+            void openWebLink({
+              url: result.url,
+              initiator: "create_pull_request",
+              webOnly: true,
+            });
           onCompleted?.();
           onOpenChange(false);
         },
@@ -504,6 +508,7 @@ export function ThreadSummaryCreatePullRequestDialog({
       onCompleted,
       onOpenChange,
       onWorkflowChange,
+      openWebLink,
       readState.status,
       title,
     ],
@@ -632,7 +637,11 @@ export function ThreadSummaryCreatePullRequestDialog({
               type="button"
               size="sm"
               disabled={!existingPullRequestUrl}
-              onClick={() => openPullRequestUrl(existingPullRequestUrl)}
+              {...routeLink({
+                url: existingPullRequestUrl,
+                initiator: "create_pull_request",
+                webOnly: true,
+              })}
             >
               <BrowserExternalIcon className="icon-xs" />
               {intl.formatMessage({

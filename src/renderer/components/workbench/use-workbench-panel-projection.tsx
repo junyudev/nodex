@@ -1,3 +1,4 @@
+import { gitHubThreadTabChrome, WorkbenchGitHubThreadSurface } from "./workbench-github-thread-tab";
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { presentWorkbenchPanelTabTitle } from "@/lib/workbench-panel-tab-title";
 import type { IntlShape } from "@/lib/i18n";
@@ -208,6 +209,7 @@ interface WorkbenchPanelProjectionInput {
     >["onOpenLocalEnvironmentsSettings"];
   };
   readonly onTogglePageStageHistoryModal: SurfaceProps["onTogglePageStageHistoryModal"];
+  readonly openWebLink?: import("@/lib/link-opening").LinkRouter["openLink"];
   readonly onUpdateSessionViewTab: SurfaceProps["onUpdateTab"];
   readonly onOpenAgentsChat: (sessionId: string) => void;
 }
@@ -227,7 +229,10 @@ const sideChatDeleteMessages = defineMessages({
   },
 });
 
-function getTabIcon(kind: WorkbenchTabProjection["kind"]): ComponentType<{ className?: string }> {
+function getTabIcon(
+  kind: WorkbenchTabProjection["kind"],
+): ComponentType<{ className?: string }> | undefined {
+  if (kind === "github_thread") return undefined;
   if (kind === "plugin_app") return PluginsIcon;
   if (kind === "image_editor") return ImageEditorTabIcon;
   if (kind === "skill") return SkillCubeIcon;
@@ -292,6 +297,7 @@ export function useWorkbenchPanelProjection({
   automation,
   onTogglePageStageHistoryModal,
   onUpdateSessionViewTab,
+  openWebLink,
   onOpenAgentsChat,
 }: WorkbenchPanelProjectionInput) {
   const intl = useIntl();
@@ -421,6 +427,10 @@ export function useWorkbenchPanelProjection({
             },
             intl,
           );
+      const githubChrome =
+        !transientPanelTab && tab.kind === "github_thread"
+          ? gitHubThreadTabChrome({ config: tab.config, titleSnapshot: title }, intl, openWebLink)
+          : undefined;
       const filesIcon =
         !transientPanelTab && tab.kind === "files"
           ? resolveFileResourceIcon("path" in tab.config ? tab.config.path : undefined)
@@ -490,7 +500,8 @@ export function useWorkbenchPanelProjection({
         pinBehavior: isImageEditorPanelTab(tab) ? tab.pinBehavior : undefined,
         placement: getPanelTabPlacement(tab),
         contextMenuItems:
-          !transientPanelTab && tab.kind === "browser"
+          githubChrome?.contextMenuItems ??
+          (!transientPanelTab && tab.kind === "browser"
             ? [
                 {
                   id: "browser-new-tab-right",
@@ -553,7 +564,9 @@ export function useWorkbenchPanelProjection({
                       onSelect: () => void deleteSideChat(tab.id, tab.config.sessionId),
                     },
                   ]
-                : undefined,
+                : undefined),
+        location: githubChrome?.location ?? locationChrome.location,
+        renderPresentation: githubChrome?.renderPresentation,
         renderPanel: (_closeTab, panelContext) => {
           if (isSideChatPanelTab(tab)) {
             const updateSideChatTabs = (update: (tabs: SideChatPanelTab[]) => SideChatPanelTab[]) =>
@@ -819,6 +832,19 @@ export function useWorkbenchPanelProjection({
                   />
                 )}
               </ReviewRouteOpenAdapter>
+            );
+          }
+          if (tab.kind === "github_thread") {
+            return (
+              <WorkbenchGitHubThreadSurface
+                sceneOwner={{ kind: "session", sessionId: session.id }}
+                surfaceId={tab.id}
+                config={tab.config}
+                state={tab.state}
+                onAddToChatComposer={(promptInput) =>
+                  addToChatComposer({ sessionId: session.id, promptInput })
+                }
+              />
             );
           }
           if (tab.kind === "agents") {

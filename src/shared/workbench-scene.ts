@@ -1,3 +1,4 @@
+import { gitHubThreadKey, type GitHubThreadSurfaceConfig } from "./github-thread";
 import type { AgentsMapScope } from "./agents-map";
 import { pluginAppBindingKey, type PluginAppBinding } from "./agent-plugins/app-entrypoints";
 import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
@@ -190,7 +191,8 @@ export type WorkbenchSurfaceKind =
   | "plugin_app"
   | "image_editor"
   | "side_chat"
-  | "agents";
+  | "agents"
+  | "github_thread";
 
 export interface WorkbenchConversationSurfaceConfig {
   readonly sessionId: string;
@@ -292,6 +294,7 @@ export interface WorkbenchSurfaceConfigByKind {
   readonly image_editor: WorkbenchImageEditorSurfaceConfig;
   readonly side_chat: WorkbenchSideChatSurfaceConfig;
   readonly agents: AgentsMapScope;
+  readonly github_thread: GitHubThreadSurfaceConfig;
 }
 
 type WorkbenchSurfaceVariant = {
@@ -652,7 +655,7 @@ export function isWorkbenchAgentsPanelAllowed(
 
 /** Library Scenes present Library content and explicitly addressed host files without a Project. */
 export function isLibrarySceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
-  if (surface.kind === "skill") return true;
+  if (surface.kind === "skill" || surface.kind === "github_thread") return true;
   if (surface.kind === "files")
     return (
       surface.config.projectId === null &&
@@ -1517,6 +1520,8 @@ export function getWorkbenchSurfaceReuseKey(
       return "review";
     case "agents":
       return "agents";
+    case "github_thread":
+      return gitHubThreadKey(surface.config.thread);
     case "files":
       return workbenchFilesResourceKey(surface.config);
     case "plugin_app":

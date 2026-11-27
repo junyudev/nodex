@@ -1,3 +1,5 @@
+import { GitHubSettingsNavigationProvider } from "@/lib/github-settings-navigation";
+import { WorkbenchGitHubThreadSurface } from "./workbench-github-thread-tab";
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { useWorkbenchChatSearchReveal } from "@/lib/workbench-surface-reveal";
@@ -402,6 +404,7 @@ import type {
   ProjectSession as ProjectSessionDomain,
   WorkbenchTabProjection,
   WorkbenchTabCreateInput,
+  CodexPromptInput,
 } from "@/lib/types";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
@@ -3208,12 +3211,36 @@ export function WorkbenchRuntime({
     return createLinkRouter({
       ...desktopLinkOpeningAdapter,
       browserAvailable: linkBrowserAvailable,
+      github: () => {
+        const location = getWorkbenchSceneReturnLocation(
+          linkWindowOwner.read().windowState.location,
+        );
+        const owner =
+          location.kind === "library" || location.kind === "inbox"
+            ? location
+            : linkBrowserOwner(location);
+        if (!owner) return null;
+        return async ({ ref, kind, reveal }) => {
+          const result = await sceneNavigator.presentPanelSurface({
+            owner,
+            request: {
+              kind: "github_thread",
+              config: { thread: ref, kind },
+              reveal: { kind: "github_thread", ...reveal },
+            },
+            mode: "durable",
+            target: { panelId: "right" },
+            navigation: "background",
+          });
+          return result.status === "presented";
+        };
+      },
       browser: () => {
         const owner = getOwner();
         return { available: owner !== null, open: linkPresenterForOwner(owner) };
       },
     });
-  }, [linkBrowserAvailable, linkWindowOwner, linkPresenterForOwner]);
+  }, [linkBrowserAvailable, linkWindowOwner, linkPresenterForOwner, sceneNavigator]);
   useEffect(
     () =>
       resolveRendererTransport().subscribeLinkOpenRequests?.((request) => {
@@ -3810,6 +3837,7 @@ export function WorkbenchRuntime({
 
   const { panelGroupTabs, browserRetentionTabs, visibleBrowserTabIds } =
     useWorkbenchPanelProjection({
+      openWebLink: linkRouter.openLink,
       activeRenderSession,
       activeSessionPanelModel,
       projects,
@@ -5276,6 +5304,24 @@ export function WorkbenchRuntime({
     context: { readonly active: boolean; readonly panelId: PanelId },
   ) => {
     if (!activeProjectScene || !activeProject || !projectSceneKey) return null;
+    const activeProjectId = activeProject.id;
+    /** The Project's Agent Dock chat is the beside chat whose draft Project tabs can add to. */
+    const projectDockAddToChatComposer =
+      (dock: NonNullable<typeof activeProjectScene.agentDock>, sessionId: string) =>
+      (promptInput: CodexPromptInput) =>
+        sessionCommands.addToChatComposer({
+          sessionId,
+          promptInput,
+          ...(dock.binding.kind === "new"
+            ? {
+                projectDraft: {
+                  kind: "project-draft",
+                  projectId: activeProjectId,
+                  draftId: dock.newDraftId,
+                },
+              }
+            : {}),
+        });
     const previewEntry =
       listWorkbenchScenePreviewEntries(activeProjectScene, previewSurfacesByPanel).find(
         (entry) => entry.surface.id === surface.id,
@@ -5336,6 +5382,22 @@ export function WorkbenchRuntime({
           onClose={closeSurface}
         />
       );
+    if (surface.kind === "github_thread") {
+      const dock = activeProjectScene.agentDock;
+      return (
+        <WorkbenchGitHubThreadSurface
+          sceneOwner={activeProjectScene.owner}
+          surfaceId={surface.id}
+          config={surface.config}
+          state={surface.state}
+          {...(dock && projectAgentDockSession
+            ? {
+                onAddToChatComposer: projectDockAddToChatComposer(dock, projectAgentDockSession.id),
+              }
+            : {})}
+        />
+      );
+    }
     if (surface.kind === "agents")
       return renderOwnedSceneAgentsSurface(activeProjectScene.owner, surface, context.active);
     if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
@@ -5615,20 +5677,7 @@ export function WorkbenchRuntime({
                   canStartThreadInSession:
                     dock.binding.kind === "session" && dockTarget?.kind === "launch",
                   sessionTitle: dockSession.displayTitle,
-                  onAddToChatComposer: (promptInput) =>
-                    sessionCommands.addToChatComposer({
-                      sessionId: dockSession.id,
-                      promptInput,
-                      ...(dock.binding.kind === "new"
-                        ? {
-                            projectDraft: {
-                              kind: "project-draft",
-                              projectId: activeProject.id,
-                              draftId: dock.newDraftId,
-                            },
-                          }
-                        : {}),
-                    }),
+                  onAddToChatComposer: projectDockAddToChatComposer(dock, dockSession.id),
                 }
               : null
           }
@@ -5803,6 +5852,15 @@ export function WorkbenchRuntime({
       );
     if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
     if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
+    if (surface.kind === "github_thread")
+      return (
+        <WorkbenchGitHubThreadSurface
+          sceneOwner={librarySceneOwner}
+          surfaceId={surface.id}
+          config={surface.config}
+          state={surface.state}
+        />
+      );
     if (surface.kind === "agents")
       return renderOwnedSceneAgentsSurface(librarySceneOwner, surface, context.active);
 
@@ -5994,6 +6052,7 @@ export function WorkbenchRuntime({
   const projectScenePanels =
     projectScenePresentation && activeProject && panelController.sceneDurable
       ? buildWorkbenchScenePanels({
+          openWebLink: linkRouter.openLink,
           intl,
           scene: projectScenePresentation.scene,
           project: activeProject,
@@ -6058,6 +6117,7 @@ export function WorkbenchRuntime({
   const libraryScenePanels =
     libraryScenePresentation && panelController.sceneDurable
       ? buildWorkbenchScenePanels({
+          openWebLink: linkRouter.openLink,
           intl,
           scene: libraryScenePresentation.scene,
           project: null,
@@ -7094,7 +7154,11 @@ export function WorkbenchRuntime({
             >
               <OpenAgentsTabContext value={agentsTabScene ? openAgentsTab : null}>
                 <DictationRecordingNavigationContext value={openVoiceSettings}>
-                  <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+                  <GitHubSettingsNavigationProvider
+                    openGitHubSettings={() => openSettingsAt("github")}
+                  >
+                    <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+                  </GitHubSettingsNavigationProvider>
                 </DictationRecordingNavigationContext>
               </OpenAgentsTabContext>
             </SkillNavigationContext>

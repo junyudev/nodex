@@ -20,7 +20,10 @@ vi.mock("./file-reference-open-targets", () => ({
   readFileReferenceOpenTargets: operations.targets,
   openFileReferenceTarget: operations.native,
 }));
-vi.mock("./file-system-operations", () => ({ openFileLink: operations.external }));
+vi.mock("./file-system-operations", () => ({
+  openFileLink: operations.external,
+  openExternalUrl: vi.fn(async () => true),
+}));
 beforeEach(() => {
   vi.clearAllMocks();
   operations.metadata.mockResolvedValue({ isFile: true });

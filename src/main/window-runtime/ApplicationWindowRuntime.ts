@@ -5,10 +5,15 @@ import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
 import { BrowserWindow, shell } from "electron";
 import { BROWSER_SIDEBAR_PARTITION } from "../../shared/browser-sidebar";
-import { resolveLinkOpenRequest } from "../../shared/link-opening";
-import { getWorkbenchSceneReturnLocation } from "../../shared/workbench-layout";
+import { implicitGitHubThreadLink } from "../../shared/link-opening";
+import { rendererSpaceParameter } from "../../shared/space-ipc-policy";
+import type { CoreModules } from "../core-runtime/CoreModules";
+import { readEffectiveLinkOpeningSettings } from "../settings/effective-link-opening";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { installApplicationWindowLinkRouting } from "./application-window-link-opening";
+import {
+  installApplicationWindowLinkRouting,
+  resolveApplicationWindowLinkDestination,
+} from "./application-window-link-opening";
 import type { AppUpdateStatus } from "../../shared/types";
 import type { WindowSessionRecord } from "../../shared/window-session";
 import { MainCleanup } from "../app/MainCleanup";
@@ -63,6 +68,8 @@ export interface ApplicationWindowRuntimeOptions {
   readonly pageFileHtml: PageFileHtmlRuntime["Service"];
   readonly mcpAppSandbox: McpAppSandboxRuntime["Service"];
   readonly platform: NodeJS.Platform;
+  readonly personalSpaceId: string;
+  readonly workspace: CoreModules["Service"]["workspace"];
   readonly rendererClients: RendererClientRuntimeService;
   readonly rendererLoaded: Stream.Stream<number>;
   readonly shell: ApplicationWindowShellRuntimeService;
@@ -121,29 +128,37 @@ export const live = (
           },
           openLink: (request) =>
             callbacks.fork(
-              settings.snapshot().pipe(
-                Effect.flatMap((snapshot) => {
-                  if (window.isDestroyed()) return Effect.void;
-                  const location = getWorkbenchSceneReturnLocation(
-                    options.windows.bootstrap(webContentsId).layout.location,
-                  );
-                  const resolved = resolveLinkOpenRequest({
-                    request,
-                    preferences: snapshot.linkOpening,
-                    browserAvailable: location.kind === "project" || location.kind === "session",
-                  });
-                  if (!resolved) return Effect.void;
-                  if (resolved.target === "in-app-browser")
-                    return Effect.sync(() => {
-                      safeSendToWindow(window, "link:open-requested", [
-                        { ...resolved, openTarget: "in-app-browser" },
-                      ]);
-                    });
-                  return Effect.tryPromise({
-                    try: () => shell.openExternal(resolved.url),
-                    catch: (cause) => new ApplicationWindowLinkOpenError({ cause }),
-                  }).pipe(Effect.asVoid);
-                }),
+              Effect.gen(function* () {
+                if (window.isDestroyed()) return;
+                const windowSession = options.windows.bootstrap(webContentsId);
+                const activeSpaceId =
+                  rendererSpaceParameter(window.webContents.getURL()) ??
+                  windowSession.activeSpaceId;
+                const snapshot = yield* settings.snapshot();
+                const preferences = implicitGitHubThreadLink(request)
+                  ? yield* readEffectiveLinkOpeningSettings({
+                      preferences: snapshot.linkOpening,
+                      activeSpaceId,
+                      personalSpaceId: options.personalSpaceId,
+                      workspace: options.workspace,
+                    })
+                  : snapshot.linkOpening;
+                if (window.isDestroyed()) return;
+                const destination = resolveApplicationWindowLinkDestination(
+                  request,
+                  preferences,
+                  windowSession.layout.location,
+                );
+                if (!destination) return;
+                if (destination.kind === "workbench") {
+                  safeSendToWindow(window, "link:open-requested", [destination.request]);
+                  return;
+                }
+                yield* Effect.tryPromise({
+                  try: () => shell.openExternal(destination.url),
+                  catch: (cause) => new ApplicationWindowLinkOpenError({ cause }),
+                });
+              }).pipe(
                 Effect.catch((cause) =>
                   Effect.sync(() => logger.warn("Could not open link", { cause })),
                 ),

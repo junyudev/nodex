@@ -639,6 +639,43 @@ describe("SessionPresentationAppTools", () => {
     }),
   );
 
+  it.effect("opens only thread URLs as native GitHub tabs and retains their reveal", () =>
+    Effect.gen(function* () {
+      const subject = fixture();
+      const execute = yield* subject.build;
+      const invalid = yield* execute(
+        context("open_in_nodex", {
+          target: { kind: "github", url: "https://github.com/org/repo/blob/main/README.md" },
+        }),
+      );
+      assert.isTrue(invalid.isError);
+      assert.isFalse(subject.requests.some((request) => request.body.kind === "command"));
+
+      const url = "https://github.com/Org/Repo/pull/12/files#r9";
+      const opened = yield* execute(context("open_in_nodex", { target: { kind: "github", url } }));
+      assert.deepInclude(opened.structuredContent, {
+        surface: "github_thread",
+        url: "https://github.com/Org/Repo/pull/12",
+      });
+      assert.deepInclude(lastCommand(subject), {
+        kind: "open_surface",
+        surface: {
+          kind: "github_thread",
+          titleSnapshot: "Org/Repo#12",
+          config: {
+            thread: { host: "github.com", owner: "Org", repo: "Repo", number: 12 },
+            kind: "pull_request",
+          },
+        },
+        reveal: { kind: "github_thread", view: "files", anchor: "discussion_r9" },
+      });
+      const browser = yield* execute(
+        context("open_in_nodex", { target: { kind: "browser", url } }),
+      );
+      assert.deepInclude(browser.structuredContent, { surface: "browser", url });
+    }),
+  );
+
   it.effect("keeps the web in Browser tabs of their own", () =>
     Effect.gen(function* () {
       const subject = fixture({

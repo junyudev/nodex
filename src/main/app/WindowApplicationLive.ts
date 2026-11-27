@@ -231,6 +231,8 @@ const applicationWindows = Layer.unwrap(
       mcpAppSandbox,
       pageFileHtml,
       platform: config.platform as NodeJS.Platform,
+      personalSpaceId: (yield* CoreAuthority).identity.libraryId,
+      workspace: (yield* CoreModules).workspace,
       rendererClients,
       rendererLoaded: initialization.rendererLoaded,
       shell,

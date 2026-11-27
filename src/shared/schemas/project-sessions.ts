@@ -1,3 +1,4 @@
+import { gitHubThreadSurfaceConfigSchema } from "../github-thread";
 import { WorkbenchSkillSurfaceConfigSchema } from "./workbench-skill";
 import { WorkbenchPageFileSurfaceConfigSchema } from "./workbench-page-file";
 import { AgentBackendBindingSchema } from "./agent-backend";
@@ -123,6 +124,8 @@ export function parseWorkbenchProjectionTabConfig<Kind extends WorkbenchTabKind>
   else if (kind === "plugin_app") parsed = WorkbenchPanelPluginAppBindingSchema.parse(config);
   else if (kind === "image_editor") {
     parsed = WorkbenchImageEditorSurfaceConfigSchema.parse(config);
+  } else if (kind === "github_thread") {
+    parsed = gitHubThreadSurfaceConfigSchema.parse(config);
   } else if (kind === "agents") {
     parsed = WorkbenchAgentsSurfaceConfigSchema.parse(config);
   } else if (kind === "side_chat") {

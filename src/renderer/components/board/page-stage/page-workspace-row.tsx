@@ -10,7 +10,7 @@ import { NodexIconButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { writeTextToClipboard } from "@/lib/clipboard";
-import { openExternalUrl } from "@/lib/file-system-operations";
+import { useRoutedWebLink } from "@/lib/web-link-navigation";
 import { usePageWorkspace } from "@/lib/page-workspace-runtime";
 import { cn } from "@/lib/utils";
 import { PageStagePropertyRow } from "./property-row";
@@ -21,11 +21,6 @@ type Follow = components["schemas"]["PageThreadFollow"];
 const titleCase = (state: string) => state.charAt(0).toUpperCase() + state.slice(1).toLowerCase();
 const LINK_CLASS_NAME =
   "inline-flex shrink-0 items-center gap-1 text-sm text-token-text-secondary hover:text-token-text-primary";
-const open = (url: string) => (event: { preventDefault(): void; stopPropagation(): void }) => {
-  event.preventDefault();
-  event.stopPropagation();
-  void openExternalUrl(url);
-};
 
 /** The Page's own pull request: its number and state, or a marked number on a card. */
 export function PagePullRequestLink({
@@ -36,6 +31,7 @@ export function PagePullRequestLink({
   readonly compact?: boolean;
 }) {
   const intl = useIntl();
+  const routeLink = useRoutedWebLink();
 
   const state = intl.formatMessage(
     {
@@ -54,7 +50,7 @@ export function PagePullRequestLink({
       href={pullRequest.url}
       aria-label={label}
       className={cn(LINK_CLASS_NAME, compact && "text-xs")}
-      onClick={open(pullRequest.url)}
+      {...routeLink({ url: pullRequest.url, initiator: "page_github_link" })}
     >
       {compact ? (
         <>
@@ -70,6 +66,7 @@ export function PagePullRequestLink({
 /** A GitHub thread the Page follows, beyond its own PR; its title and repository wait in a tooltip. */
 function FollowedThreadLink({ follow }: { readonly follow: Follow }) {
   const intl = useIntl();
+  const routeLink = useRoutedWebLink();
 
   const { thread } = follow;
   const label = intl.formatMessage(
@@ -81,7 +78,11 @@ function FollowedThreadLink({ follow }: { readonly follow: Follow }) {
   );
   return (
     <NodexTooltip tooltipContent={`${thread.repository} · ${thread.title}`}>
-      <a href={thread.url} className={LINK_CLASS_NAME} onClick={open(thread.url)}>
+      <a
+        href={thread.url}
+        className={LINK_CLASS_NAME}
+        {...routeLink({ url: thread.url, initiator: "page_github_link" })}
+      >
         {label}
       </a>
     </NodexTooltip>

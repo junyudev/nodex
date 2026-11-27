@@ -31,6 +31,7 @@ export function resolveWorkbenchSceneTabPresentation(
     return { title, icon: ImageEditorTabIcon };
   }
 
+  if (surface.kind === "github_thread") return { title };
   if (surface.kind === "plugin_app") return { title, icon: PluginsIcon };
   if (surface.kind === "skill") return { title, icon: SkillCubeIcon };
   if (surface.kind === "page_file")

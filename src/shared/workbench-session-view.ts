@@ -1,3 +1,4 @@
+import type { GitHubThreadSurfaceConfig } from "./github-thread";
 import type { AgentsMapScope } from "./agents-map";
 import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import type {
@@ -73,7 +74,8 @@ export type WorkbenchSessionViewTabKind =
   | "files"
   | "image_editor"
   | "side_chat"
-  | "agents";
+  | "agents"
+  | "github_thread";
 
 export interface WorkbenchDbViewTabConfig {
   projectId: string;
@@ -129,6 +131,7 @@ export interface WorkbenchSessionViewTabConfigByKind {
   image_editor: WorkbenchImageEditorSurfaceConfig;
   side_chat: WorkbenchSideChatSurfaceConfig;
   agents: AgentsMapScope;
+  readonly github_thread: GitHubThreadSurfaceConfig;
 }
 
 type WorkbenchSessionViewTabVariant = {

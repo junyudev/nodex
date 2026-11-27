@@ -356,6 +356,7 @@ export function updateSessionTab(
   };
   switch (tab.kind) {
     case "plugin_app":
+    case "github_thread":
       return { ...tab, ...common };
     case "skill":
       return {

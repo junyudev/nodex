@@ -1,3 +1,4 @@
+import { gitHubThreadLabel, gitHubThreadUrl } from "../../shared/github-thread";
 import {
   withPageUrl,
   withSessionUrl,
@@ -95,6 +96,20 @@ export const make = Effect.gen(function* () {
         sessionId: surface.config.sessionId,
         title: surface.titleSnapshot.slice(0, 300),
       });
+    }
+    if (surface.kind === "github_thread") {
+      const { thread, kind } = surface.config;
+      const location = gitHubThreadLabel(thread);
+      return {
+        ...base,
+        status: "available",
+        kind: surface.kind,
+        thread,
+        threadKind: kind,
+        title: (surface.titleSnapshot || location).slice(0, 300),
+        location,
+        url: gitHubThreadUrl(thread, kind),
+      };
     }
     if (surface.kind === "files" || surface.kind === "review" || surface.kind === "agents") {
       return {

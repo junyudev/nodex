@@ -1,3 +1,4 @@
+import { gitHubThreadSurfaceConfigSchema, gitHubThreadSurfaceStateSchema } from "../github-thread";
 import type { PluginAppBinding } from "../agent-plugins/app-entrypoints";
 
 import { WorkbenchSkillSurfaceConfigSchema } from "./workbench-skill";
@@ -387,6 +388,12 @@ export const WorkbenchSurfaceDescriptorSchema = z
       ...surfaceBaseSchema,
       kind: z.literal("agents"),
       config: WorkbenchAgentsSurfaceConfigSchema,
+    }),
+    z.strictObject({
+      ...surfaceBaseSchema,
+      kind: z.literal("github_thread"),
+      config: gitHubThreadSurfaceConfigSchema,
+      state: gitHubThreadSurfaceStateSchema,
     }),
   ])
   .superRefine((surface, context) => {
@@ -780,7 +787,12 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
   if (ownerKind === "session") return record.kind !== "conversation" && record.kind !== "inbox";
   if (ownerKind !== "library" && ownerKind !== "inbox") return true;
 
-  if (record.kind === "skill" || record.kind === "page_stage" || record.kind === "page_file")
+  if (
+    record.kind === "skill" ||
+    record.kind === "page_stage" ||
+    record.kind === "page_file" ||
+    record.kind === "github_thread"
+  )
     return true;
   const config = record.config;
   if (!config || typeof config !== "object" || Array.isArray(config)) return false;

@@ -1,4 +1,16 @@
 import { z } from "zod";
+import { gitHubThreadViewSchema } from "../github-thread";
+
+export const WorkbenchGitHubThreadRevealSchema = z.strictObject({
+  kind: z.literal("github_thread"),
+  view: gitHubThreadViewSchema,
+  anchor: z
+    .string()
+    .max(200)
+    .regex(/^[\w.-]+$/u)
+    .nullable(),
+});
+export type WorkbenchGitHubThreadReveal = z.infer<typeof WorkbenchGitHubThreadRevealSchema>;
 
 /** A one-shot semantic presentation request, never arbitrary saved view state. */
 export const WorkbenchSurfaceRevealSchema = z.discriminatedUnion("kind", [
@@ -16,6 +28,7 @@ export const WorkbenchSurfaceRevealSchema = z.discriminatedUnion("kind", [
     baseBranch: z.string().min(1).max(512).optional(),
     path: z.string().min(1).max(4_096).optional(),
   }),
+  WorkbenchGitHubThreadRevealSchema,
 ]);
 export type WorkbenchSurfaceReveal = z.infer<typeof WorkbenchSurfaceRevealSchema>;
 

@@ -1,3 +1,4 @@
+import type { GitHubThreadReveal } from "../../shared/github-thread";
 import type {
   AgentPanelTab,
   AutomationPanelTab,
@@ -31,7 +32,13 @@ export function makeWorkbenchSurfaceReveal(
   return { sceneKey: makeWorkbenchSceneKey(sceneOwner), surfaceId, target, operationId };
 }
 
+export interface PendingGitHubThreadReveal {
+  readonly operationId: string;
+  readonly target: GitHubThreadReveal;
+}
+
 export interface WorkbenchEphemeralPanelState {
+  readonly gitHubThreadRevealsByScene: Record<string, Record<string, PendingGitHubThreadReveal>>;
   /** A foreground open intent belongs to one mounted surface in this window. */
   readonly pendingSurfaceReveal: WorkbenchPendingSurfaceReveal | null;
   readonly previewTabsByPanel: Record<string, ProjectSessionPreviewTab>;
@@ -131,6 +138,7 @@ export type WorkbenchEphemeralPanelAction =
 export function createWorkbenchEphemeralPanelState(): WorkbenchEphemeralPanelState {
   return {
     pendingSurfaceReveal: null,
+    gitHubThreadRevealsByScene: {},
     previewTabsByPanel: {},
     previewSurfacesByPanel: {},
     sideChatTabsBySession: {},
@@ -185,6 +193,7 @@ function pruneOwner(
     ...state,
     pendingSurfaceReveal:
       state.pendingSurfaceReveal?.sceneKey === ownerKey ? null : state.pendingSurfaceReveal,
+    gitHubThreadRevealsByScene: removeRecordKey(state.gitHubThreadRevealsByScene, ownerKey),
     previewSurfacesByPanel: removeOwnerSlotKeys(state.previewSurfacesByPanel, ownerKey),
     panelCollapsedOverrides: removeOwnerSlotKeys(state.panelCollapsedOverrides, ownerKey),
     tabOrderByPanelGroup: removeOwnerSlotKeys(state.tabOrderByPanelGroup, ownerKey),

@@ -318,7 +318,17 @@ function handleMenuNavigation(event: KeyboardEvent<HTMLDivElement>) {
   items[(currentIndex + direction + items.length) % items.length]?.focus();
 }
 
-function WorkspaceTabMenuRow({
+function WorkspaceTabMenuRow(props: Parameters<typeof WorkspaceTabMenuRowBody>[0]) {
+  return props.tab.renderPresentation ? (
+    props.tab.renderPresentation((chrome) => (
+      <WorkspaceTabMenuRowBody {...props} tab={{ ...props.tab, ...chrome }} />
+    ))
+  ) : (
+    <WorkspaceTabMenuRowBody {...props} />
+  );
+}
+
+function WorkspaceTabMenuRowBody({
   tab,
   active,
   onSelect,
@@ -337,6 +347,7 @@ function WorkspaceTabMenuRow({
         role="menuitem"
         tabIndex={-1}
         aria-label={label}
+        aria-description={tab.renderPresentation ? tab.location?.join(" / ") : undefined}
         aria-current={active ? "true" : undefined}
         disabled={tab.disabled}
         className="no-drag flex h-full min-w-0 flex-1 cursor-interaction items-center gap-2 rounded-lg ps-2 pe-9 text-start text-[length:calc(var(--text-xs)*11/12)] leading-normal text-token-text-primary outline-hidden disabled:cursor-default disabled:opacity-40"

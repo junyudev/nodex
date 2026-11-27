@@ -13,7 +13,6 @@ import { InboxTurnRow } from "./inbox-turn-row";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { acceptReviewWithUndo, reviewKey, useAcceptedReviews } from "@/lib/page-accept-undo";
-import { openExternalUrl } from "@/lib/file-system-operations";
 import { startWork } from "../../lib/work-graph-runtime";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -768,9 +767,6 @@ export function InboxRoute({
           onStart={() =>
             startWork({ pageId: item.pageId, again: false, turnEpisode: data.turn.episode })
           }
-          onOpenPR={() => {
-            if (data.pull_request_url) void openExternalUrl(data.pull_request_url);
-          }}
           onSnooze={(until) => void actions.snooze([item.pageId], until)}
         />
       );

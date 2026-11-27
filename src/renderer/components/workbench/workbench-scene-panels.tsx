@@ -1,3 +1,4 @@
+import { gitHubThreadTabChrome } from "./workbench-github-thread-tab";
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import { AgentsTabIcon } from "@/features/agents/agents-surface";
 import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
@@ -65,6 +66,7 @@ export interface WorkbenchScenePanelsProps {
   readonly bottomPanelGlobalHeaderInsetWidth: number;
   readonly renderNewTab?: (panelId: PanelId, leafId: string) => ReactNode;
   readonly renderEmptyLeaf?: (panelId: PanelId, leafId: string) => ReactNode;
+  readonly openWebLink?: import("@/lib/link-opening").LinkRouter["openLink"];
   readonly renderSurface: (
     surface: WorkbenchSurfaceDescriptor,
     context: { readonly active: boolean; readonly panelId: PanelId },
@@ -110,6 +112,7 @@ function makePanelItems(
   renderSurface: WorkbenchScenePanelsProps["renderSurface"],
   locationOf: ContentTabLocationLookup,
   intl: IntlShape,
+  openWebLink: WorkbenchScenePanelsProps["openWebLink"],
 ): {
   readonly itemsByLeafId: Record<string, AppShellTabItem[]>;
   readonly activeTabIdsByLeafId: Record<string, string | null>;
@@ -161,6 +164,13 @@ function makePanelItems(
           { projects, home, location: locationOf(surface) },
           intl,
         ),
+        ...(surface.kind === "github_thread"
+          ? gitHubThreadTabChrome(
+              { config: surface.config, titleSnapshot: title },
+              intl,
+              openWebLink,
+            )
+          : {}),
         icon: presentation.icon,
         iconElement:
           surface.kind === "browser" ? (
@@ -230,6 +240,7 @@ export function buildWorkbenchScenePanels({
   renderNewTab,
   renderEmptyLeaf,
   renderSurface,
+  openWebLink,
   onOpenAction,
   onOpenDestination,
   onFocusGroup,
@@ -251,6 +262,7 @@ export function buildWorkbenchScenePanels({
       renderSurface,
       locationOf,
       intl,
+      openWebLink,
     );
     return (
       <WorkbenchPanelHost

@@ -1,3 +1,4 @@
+import { parseGitHubThreadUrl, type GitHubThreadLink } from "./github-thread";
 import {
   isExternallyOpenableUrl,
   isHttpUrl,
@@ -8,6 +9,7 @@ import {
 import {
   DEFAULT_LINK_OPENING_SETTINGS,
   type ExternalBrowserLinkShortcut,
+  type EffectiveLinkOpeningSettings,
   type LinkOpeningSettings,
 } from "./link-opening-settings";
 
@@ -27,6 +29,8 @@ export interface LinkOpenRequest {
   readonly initiator: string;
   readonly source?: string;
   readonly openTarget?: LinkOpenTarget;
+  /** Apply the ordinary web-link preferences, even for a URL with a native destination. */
+  readonly webOnly?: boolean;
   readonly useExternalBrowser?: boolean;
   readonly disposition?: LinkDisposition;
   readonly presentationIntent?: LinkPresentationIntent;
@@ -114,20 +118,63 @@ export function deriveLinkOpenIntent(input: {
   };
 }
 
-export interface ResolvedLinkOpenRequest extends LinkOpenRequest {
-  readonly target: LinkOpenTarget;
+interface ResolvedLinkOpenIntent extends LinkOpenRequest {
   readonly disposition: LinkDisposition;
   readonly download: boolean;
+}
+
+export type ResolvedWebLinkOpenRequest = ResolvedLinkOpenIntent & {
+  readonly target: LinkOpenTarget;
+};
+
+export type ResolvedLinkOpenRequest =
+  | ResolvedWebLinkOpenRequest
+  | (ResolvedLinkOpenIntent & {
+      readonly target: "github-thread";
+      readonly thread: GitHubThreadLink;
+    });
+
+/** A GitHub tab is an implicit destination for a plain activation only. */
+export function implicitGitHubThreadLink(request: LinkOpenRequest): GitHubThreadLink | null {
+  const activation = request.activation;
+  if (
+    request.webOnly ||
+    request.openTarget ||
+    request.useExternalBrowser ||
+    request.presentationIntent ||
+    (request.disposition && request.disposition !== "default") ||
+    (activation?.button != null && activation.button !== 0) ||
+    activation?.ctrlKey ||
+    activation?.metaKey ||
+    activation?.shiftKey ||
+    activation?.altKey
+  )
+    return null;
+  return parseGitHubThreadUrl(request.url);
 }
 
 /** Shared routing precedence for renderer activations and trusted Desktop window fallback. */
 export function resolveLinkOpenRequest(input: {
   readonly request: LinkOpenRequest;
   readonly browserAvailable: boolean;
-  readonly preferences?: LinkOpeningSettings;
+  readonly preferences?: LinkOpeningSettings &
+    Partial<Pick<EffectiveLinkOpeningSettings, "nativeGitHubHosts">>;
+  readonly githubAvailable?: boolean;
 }): ResolvedLinkOpenRequest | null {
   const { request, browserAvailable } = input;
   const preferences = input.preferences ?? DEFAULT_LINK_OPENING_SETTINGS;
+  const nativeHosts = input.preferences?.nativeGitHubHosts;
+  if (input.githubAvailable && preferences.openGitHubThreadsInNodex && nativeHosts?.length) {
+    const thread = implicitGitHubThreadLink(request);
+    if (thread && nativeHosts.includes(thread.ref.host))
+      return {
+        ...request,
+        target: "github-thread",
+        thread,
+        disposition: "default",
+        download: false,
+      };
+  }
   const intent = deriveLinkOpenIntent({
     ...request,
     markdownContext: browserAvailable && request.markdownContext,

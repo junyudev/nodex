@@ -1,3 +1,5 @@
+import { GitHubThreadTabChrome } from "./workbench-github-thread-tab";
+import { gitHubThreadLabel } from "../../../shared/github-thread";
 import { useIntl, type IntlShape } from "@/lib/i18n";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import {
@@ -544,6 +546,31 @@ export function useWorkbenchNewTabAddressSuggestions(
   const tabs = (observation?.tabs ?? [])
     .filter((tab) => tab.tabId !== surfaceId)
     .map((tab): BrowserAddressWorkspaceOption => {
+      if (tab.surface?.kind === "github_thread") {
+        const { config, titleSnapshot } = tab.surface;
+        const location = gitHubThreadLabel(config.thread);
+        return {
+          id: `tab:${tab.tabId}`,
+          kind: "switch-tab",
+          title: titleSnapshot || location,
+          label: (
+            <GitHubThreadTabChrome
+              config={config}
+              titleSnapshot={titleSnapshot}
+              render={(chrome) => chrome.title}
+            />
+          ),
+          icon: (
+            <GitHubThreadTabChrome
+              config={config}
+              titleSnapshot={titleSnapshot}
+              render={(chrome) => chrome.iconElement}
+            />
+          ),
+          detail: location,
+          onSelect: () => open({ kind: "tab", tabId: tab.tabId }),
+        };
+      }
       const Icon =
         tab.surface?.kind === "plugin_app"
           ? PluginsIcon

@@ -218,6 +218,7 @@ describe("FileLinkAnchor", () => {
           openLinkInTarget: "in-app-browser",
           openLocalUrlInTarget: "in-app-browser",
           externalBrowserLinkShortcut: "primary",
+          openGitHubThreadsInNodex: true,
         }),
         openExternal: external,
         saveLink: save,

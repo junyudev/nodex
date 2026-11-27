@@ -1,3 +1,4 @@
+import { gitHubThreadUrl } from "../../shared/github-thread";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
@@ -29,6 +30,8 @@ const presentedSurface = (opening: SessionPresentationOpening) => {
     return { surface: kind, url: buildPageDeepLink({ pageId: config.pageId }) };
   if (kind === "db_view" && config.target.kind === "database-view")
     return { surface: kind, url: buildViewDeepLink({ viewId: config.target.databaseViewId }) };
+  if (kind === "github_thread")
+    return { surface: kind, url: gitHubThreadUrl(config.thread, config.kind) };
   return { surface: kind, ...(kind === "browser" && config.url ? { url: config.url } : {}) };
 };
 

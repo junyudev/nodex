@@ -1,3 +1,4 @@
+import { useRoutedWebLink } from "@/lib/web-link-navigation";
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { toastFailure } from "@/lib/failure-toast";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -362,6 +363,7 @@ function SummarySourceIcon({
   canOpenMcpApps: boolean;
   onOpenSource: (action: ThreadSummaryPanelSourceOpenAction) => void;
 }) {
+  const routeLink = useRoutedWebLink();
   const resolvedMcpAppInput = useSummarySourceMcpAppInput(item, canOpenMcpApps);
   const openAction =
     item.openAction?.type === "url"
@@ -381,7 +383,9 @@ function SummarySourceIcon({
       type="button"
       aria-label={item.label}
       className="flex size-6 shrink-0 cursor-interaction items-center justify-center rounded-sm text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-foreground"
-      onClick={() => onOpenSource(openAction)}
+      {...(openAction.type === "url"
+        ? routeLink({ url: openAction.url, initiator: "chat_summary_source" })
+        : { onClick: () => onOpenSource(openAction) })}
     >
       {icon}
     </button>
@@ -1076,6 +1080,7 @@ export function ThreadSummaryPanelSurface({
     },
     [createBranch],
   );
+  const routeLink = useRoutedWebLink();
   const { data: mcpApps } = useCodexMcpApps({ enabled: isVisible });
   const sourceModel = useMemo(
     () => buildThreadSummaryPanelSourceModel(turns, mcpApps ?? []),
@@ -1083,12 +1088,7 @@ export function ThreadSummaryPanelSurface({
   );
   const handleOpenSource = useCallback(
     (action: ThreadSummaryPanelSourceOpenAction) => {
-      if (action.type === "url") {
-        window.open(action.url, "_blank", "noopener,noreferrer");
-        return;
-      }
-
-      void actions?.onOpenMcpAppSidePanel?.(action.input);
+      if (action.type === "mcpApp") void actions?.onOpenMcpAppSidePanel?.(action.input);
     },
     [actions],
   );
@@ -1787,19 +1787,20 @@ export function ThreadSummaryPanelSurface({
                           ) : undefined
                         }
                         trailingVisible={Boolean(createPullRequestWorkflow)}
-                        onClick={() => {
-                          if (existingPullRequestUrl) {
-                            window.open(existingPullRequestUrl, "_blank", "noopener,noreferrer");
-                            return;
-                          }
-
-                          if (createPullRequestNeedsBranchSetup) {
-                            handleOpenBranchSetup("create-pull-request");
-                            return;
-                          }
-
-                          handleOpenCreatePullRequestDialog();
-                        }}
+                        {...(existingPullRequestUrl
+                          ? routeLink({
+                              url: existingPullRequestUrl,
+                              initiator: "chat_summary_pull_request",
+                            })
+                          : {
+                              onClick: () => {
+                                if (createPullRequestNeedsBranchSetup) {
+                                  handleOpenBranchSetup("create-pull-request");
+                                  return;
+                                }
+                                handleOpenCreatePullRequestDialog();
+                              },
+                            })}
                       />
                     </ThreadSummaryPanelSection>
                   );

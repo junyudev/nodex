@@ -220,14 +220,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     pageKey: "github",
     icon: WebsiteGitHubIcon,
     groupKey: "integrations",
-    searchMessages: [
-      "GitHub",
-      "Sources",
-      "Assigned to me",
-      "Review requests",
-      "Mentions",
-      "Repositories",
-    ],
   }),
   section({
     id: "git",
