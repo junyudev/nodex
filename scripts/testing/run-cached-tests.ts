@@ -355,17 +355,45 @@ async function preparePass(
 const isPass = (candidate: CachedPass | readonly CacheExclusion[]): candidate is CachedPass =>
   "globalKey" in candidate;
 
-function comparablePass(pass: CachedPass) {
-  const pairs = (record: Readonly<Record<string, unknown>> = {}) =>
-    Object.entries(record).sort(([a], [b]) => a.localeCompare(b));
-  return JSON.stringify([
-    pairs(pass.deps),
-    pairs(pass.local?.probes),
-    pairs(pass.local?.globs),
-    pass.local?.topology,
-    pass.local?.missingModules,
-    pass.local?.observed?.toSorted((a, b) => observationKey(a).localeCompare(observationKey(b))),
-  ]);
+/** Names each recorded input that differs between two passes of one test file. */
+export function passDifferences(previous: CachedPass, current: CachedPass) {
+  type Inputs = ReadonlyMap<string, readonly [label: string, value: string]>;
+  const record = (value: Readonly<Record<string, unknown>> = {}): Inputs =>
+    new Map(Object.entries(value).map(([key, entry]) => [key, [key, JSON.stringify(entry)]]));
+  // The recorder keeps one observation per key, so keyed comparison sees every entry.
+  const observed = ({ local }: CachedPass): Inputs =>
+    new Map(
+      (local?.observed ?? []).map((entry) => [
+        observationKey(entry),
+        [`${entry.kind} ${entry.path}`, JSON.stringify(entry.evidence)],
+      ]),
+    );
+  const whole = (value: unknown): Inputs => new Map([["", ["", JSON.stringify(value ?? null)]]]);
+  const fields: readonly (readonly [string, Inputs, Inputs])[] = [
+    ["deps", record(previous.deps), record(current.deps)],
+    ["probes", record(previous.local?.probes), record(current.local?.probes)],
+    ["globs", record(previous.local?.globs), record(current.local?.globs)],
+    ["observed", observed(previous), observed(current)],
+    ["topology", whole(previous.local?.topology), whole(current.local?.topology)],
+    [
+      "missing modules",
+      whole(previous.local?.missingModules),
+      whole(current.local?.missingModules),
+    ],
+  ];
+  const mark = (sign: string, label: string) => (label ? sign + label : "changed");
+  return fields.flatMap(([name, before, after]) => {
+    const changes = [
+      ...[...after].flatMap(([key, [label]]) => (before.has(key) ? [] : [mark("+", label)])),
+      ...[...before].flatMap(([key, [label, value]]) => {
+        const next = after.get(key);
+        return !next ? [mark("-", label)] : next[1] === value ? [] : [mark("~", label)];
+      }),
+    ];
+    if (!changes.length) return [];
+    const more = changes.length > 3 ? ` (+${changes.length - 3} more)` : "";
+    return [`${name} ${changes.slice(0, 3).join(" ")}${more}`];
+  });
 }
 
 export async function memoizeSuite(
@@ -373,7 +401,7 @@ export async function memoizeSuite(
   inputs: SuiteInputs,
   context: CachedSuiteContext,
   started: number,
-  fallback: (stage: "lookup" | "recording") => Promise<number>,
+  fallback: (stage: "lookup" | "recording" | "invalidated") => Promise<number>,
   runBatch: (files: readonly string[]) => Promise<{
     started: number;
     exitCode: number;
@@ -391,10 +419,12 @@ export async function memoizeSuite(
   const retained = new Map<string, CachedPass>();
   const log = context.onStdout ?? ((chunk: string) => process.stdout.write(chunk));
   const error = context.onStderr ?? ((chunk: string) => process.stderr.write(chunk));
-  const invalidate = async (message: string, exit = 1) => {
+  // Invalidation distrusts reused passes, not tests: unless a test already failed, the suite
+  // runs again so its own results decide the exit code.
+  const invalidate = async (message: string, exit = 0) => {
     await invalidateCache(directory);
     error(`[test-cache] ${message}. Invalidated ${suite} passes.\n`);
-    return exit;
+    return exit || fallback("invalidated");
   };
   const lookups = new Map<string, PassLookup>();
   try {
@@ -466,8 +496,16 @@ export async function memoizeSuite(
     for (const [id, pass] of passes) {
       if (id === audit) {
         const previous = retained.get(id);
-        if (!isPass(pass) || !previous || comparablePass(previous) !== comparablePass(pass))
-          return invalidate(`Audit could not reproduce ${id}`, exitCode || 1);
+        const differences = !isPass(pass)
+          ? pass.map(({ reason, input }) => (input ? `${reason}: ${input}` : reason))
+          : previous
+            ? passDifferences(previous, pass)
+            : ["no retained pass"];
+        if (differences.length)
+          return invalidate(
+            `Audit could not reproduce ${id} (${differences.join("; ")})`,
+            exitCode,
+          );
         auditedAt[id] = Date.now();
       }
       if (!isPass(pass)) exclusions.set(id, pass);
@@ -597,10 +635,15 @@ export async function runCachedSuite(
       suiteContext,
       start,
       (stage) => {
-        // Static checks can finish writing temporary files while lookup is in progress.
-        if (stage === "lookup" && retry)
+        // Static checks can finish writing temporary files while lookup is in progress, and an
+        // invalidated cache records the suite again under its new epoch.
+        if (stage !== "recording" && retry)
           return validate({ ...suiteContext, workspace: undefined }, false);
-        return fallback("inputs changed during validation");
+        return fallback(
+          stage === "invalidated"
+            ? "running without result reuse after invalidation"
+            : "inputs changed during validation",
+        );
       },
       (files) => executeBatch(suite, files, priority, inputs, suiteContext),
     );

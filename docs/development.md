@@ -1358,7 +1358,10 @@ matching inputs. Lookups reuse digests for stable file stamps and identify
 Chromium by Playwright's installed revision and its executable. Linux also
 binds the hosted image and the Electron or Chromium distribution contents.
 The runner audits one file hit per file-based suite or CI shard and samples
-Chromium at one in 64 hits. An audit failure or corrupted record invalidates the suite's saved passes and fails the check.
+Chromium at one in 64 hits. If the audited file fails, the check fails as for
+any test failure. If it passes but records different inputs, or a record is
+corrupted, the runner invalidates the suite's saved passes, logs which inputs
+differed, and records the suite again, so test results alone decide the check.
 
 ### Runtime conversation work
 

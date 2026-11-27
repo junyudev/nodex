@@ -18,12 +18,14 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { TestModule } from "vite-plus/test/node";
 import { mergePathLists, validationConcurrency } from "./check-changed.ts";
+import { memoizeSuite } from "./run-cached-tests.ts";
 import { chooseCacheAudits } from "./test-cache-policy.ts";
 import { dependencyReader, graphInputs, virtualModuleReason } from "./test-cache-graph.ts";
 import type { TestEvidence } from "./test-cache-evidence.ts";
 import { pathSnapshot } from "./test-observation.mts";
 import { localInputReader } from "./test-cache-inputs.ts";
 import {
+  cacheEpoch,
   CorruptCachedPass,
   fileHasher,
   findPass,
@@ -578,6 +580,72 @@ describe("test result cache", () => {
       await expect(findPass(root, file, "key", hash)).rejects.toBeInstanceOf(CorruptCachedPass);
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("lets the audited test's own result, not the cache's, decide the exit code", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "nodex-cache-audit-"));
+    const root = path.join(directory, "worktree");
+    const store = path.join(directory, "unit");
+    const file = "src/sample.test.ts";
+    const stages: string[] = [];
+    let errors = "";
+    const run = async (deps: readonly string[], exitCode = 0) =>
+      memoizeSuite(
+        "unit",
+        {
+          units: [{ id: file, files: [file] }],
+          globalKey: "key",
+          directory: store,
+          workspace: await workspaceInputs(root),
+          hash: fileHasher(root),
+          browser: false,
+          stable: async () => true,
+        },
+        {
+          repositoryRoot: root,
+          env: {},
+          signal: new AbortController().signal,
+          linuxCI: { host: "runner", directory: store, select: () => true },
+          onStdout: () => {},
+          onStderr: (chunk) => {
+            errors += chunk;
+          },
+        },
+        performance.now(),
+        async (stage) => {
+          stages.push(stage);
+          return 0;
+        },
+        async () => ({
+          started: Number.MAX_SAFE_INTEGER,
+          exitCode,
+          evidence: [
+            {
+              file,
+              passed: exitCode === 0,
+              deps: [file, ...deps],
+              local: { probes: {}, globs: {} },
+            },
+          ],
+        }),
+      );
+    try {
+      await mkdir(path.join(root, "src"), { recursive: true });
+      for (const name of [file, "src/used.ts", "src/lazy.ts"])
+        await writeFile(path.join(root, name), name);
+      expect(await run(["src/used.ts"])).toBe(0);
+      const epoch = await cacheEpoch(store);
+      // The only retained pass is audited. Recording other inputs distrusts reused passes, so
+      // the suite runs again instead of failing.
+      expect(await run(["src/used.ts", "src/lazy.ts"])).toBe(0);
+      expect(stages).toEqual(["invalidated"]);
+      expect(errors).toContain("deps +src/lazy.ts");
+      expect(await cacheEpoch(store)).not.toBe(epoch);
+      expect(await run(["src/used.ts"], 1)).toBe(1);
+      expect(stages).toEqual(["invalidated"]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
   });
 

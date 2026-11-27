@@ -316,7 +316,8 @@ The cache key includes suite, shard, runner image, and runtime versions. GitHub
 looks on the current ref before falling back to the base or default branch.
 PR runs publish to their merge ref, and Main pushes publish to `main`.
 Archives are capped at 8 MiB compressed per shard and refreshed when there
-is new passing evidence or an audit invalidates the prior archive. Set the
+is new passing evidence or an audit invalidates the prior archive. An
+invalidated shard runs every file again and warns instead of failing. Set the
 `NODEX_TEST_CACHE` Actions variable to `off` to execute every file in the same
 matrix. Each shard logs its hit and execution counts and raw and compressed sizes.
 
