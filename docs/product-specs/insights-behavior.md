@@ -48,14 +48,15 @@ times are not a reliable history.
 
 ## The page
 
-The header holds Share and `Stop reading history`. Below it, a period (`7 days`, `30 days`, `90 days`,
-`12 months`, `All time`) and a scope (`All agents`, `Nodex only`) apply to everything on the page. Days
-follow the device's time zone, including zones a quarter hour off the hour.
+The header holds `Stop reading history`. Below it, a period (`7 days`, `30 days`, `90 days`,
+`12 months`, `All time`) and a scope (`All agents`, `Nodex only`) apply to everything on the page,
+including the cards. Days follow the device's time zone, including zones a quarter hour off the hour.
 
-From the top: tokens processed with cost and cache share; agents at once, tasks done, messages and
-longest streak; three plain-language findings; an activity calendar switchable between tokens,
-messages, tasks and pages; tokens over time by model family with the model table beside it; rhythm by
-hour; agent totals; and Library totals. Library totals describe the Library now, whatever the period.
+From the top: both share cards; tokens processed with cost and cache share, agents at once, tasks
+done, messages and longest streak; three plain-language findings; an activity calendar switchable
+between tokens, messages, tasks and pages; tokens over time by model family with the model table
+beside it; rhythm by hour; agent totals; and Library totals. Library totals describe the Library now,
+whatever the period.
 
 While history is being read the page stays usable. It reads the newest files first, says how many are
 left, and the numbers grow as it goes. A file that cannot be read is retried on the next pass rather
@@ -63,8 +64,8 @@ than counted as empty. Without Core, content numbers show `—` and everything e
 
 ## Sharing
 
-Share opens a dialog with a large preview. It offers two 4:5 cards, a period, a `Show cost` switch and
-an optional `Name on card`.
+The page opens on two 4:5 cards side by side, drawn for its period and scope. Under them sit an
+optional `Name on card` and, when there is a cost, a `Show cost` switch; both apply to both cards.
 
 - **Skyline** draws activity as a city, one tower per day, with the tallest labelled. `7 days` draws
   hours instead of days. Empty weeks before the first activity are left out so a short history still
@@ -79,6 +80,7 @@ give them something to wear; neither compares anyone with anyone.
 A card contains no project names, Page titles, prompts, paths or account identity. A name appears only
 if the person types one. Cost can be hidden.
 
-The preview is the export: one image, drawn on the device at 2160×2700. `Copy image` puts it on the
-clipboard, `Save PNG` asks where to put it, and `Post on X` copies it and opens a compose window with
-the numbers as text, ready to paste. Nothing is uploaded unless the person posts it.
+The card on the page is the export: one image, drawn on the device at 2160×2700. Hovering a card
+offers `Copy image`, which puts it on the clipboard, `Save PNG`, which asks where to put it, and
+`Post on X`, which copies it and opens a compose window with the numbers as text, ready to paste.
+Nothing is uploaded unless the person posts it.

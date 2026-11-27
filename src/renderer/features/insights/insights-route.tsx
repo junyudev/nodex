@@ -27,7 +27,7 @@ import {
   type InsightsPeriod,
   type InsightsView,
 } from "./insights-model";
-import { InsightsShareDialog } from "./insights-share-dialog";
+import { InsightsShareCards } from "./insights-share-cards";
 import {
   insightsTimeZone,
   useInsightsAccess,
@@ -152,22 +152,17 @@ function InsightsOverview({ view }: { readonly view: InsightsView }) {
         : null;
   return (
     <div className="flex flex-col gap-8 pb-10">
-      <div className="grid grid-cols-[minmax(0,1.7fr)_repeat(4,minmax(0,1fr))] items-end gap-6">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="text-xs text-tertiary">
-            {intl.formatMessage({
-              id: "insights.insightsRoute.tokensProcessed",
-              defaultMessage: "Tokens processed",
-            })}
-          </div>
-          <div
-            data-insights-tokens
-            className="text-5xl leading-none font-semibold tracking-tight text-(--color-text)"
-          >
-            {compactNumber(view.tokens, intl)}
-          </div>
-          {costNote ? <div className="text-xs text-tertiary">{costNote}</div> : null}
-        </div>
+      <InsightsShareCards view={view} />
+
+      <div className="grid grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))] gap-6">
+        <Stat
+          label={intl.formatMessage({
+            id: "insights.insightsRoute.tokensProcessed",
+            defaultMessage: "Tokens processed",
+          })}
+          value={compactNumber(view.tokens, intl)}
+          note={costNote}
+        />
         <Stat
           label={intl.formatMessage({
             id: "insights.insightsRoute.concurrentAgents",
@@ -424,7 +419,6 @@ export function InsightsRoute() {
   const intl = useIntl();
   const [period, setPeriod] = useState<InsightsPeriod>("12m");
   const [origin, setOrigin] = useState<"all" | "nodex">("all");
-  const [sharing, setSharing] = useState(false);
   const [stopping, setStopping] = useState(false);
   const usage = useInsightsUsage(origin);
   const content = useInsightsContent();
@@ -434,14 +428,9 @@ export function InsightsRoute() {
   const today = localToday(insightsTimeZone(), usage.dataUpdatedAt);
   const snapshot = usage.data;
   const contentSnapshot = content.data ?? null;
-  const viewFor = (forPeriod: InsightsPeriod) =>
-    snapshot
-      ? projectInsights(
-          { usage: snapshot, content: contentSnapshot, period: forPeriod, today },
-          intl,
-        )
-      : null;
-  const view = viewFor(period);
+  const view = snapshot
+    ? projectInsights({ usage: snapshot, content: contentSnapshot, period, today }, intl)
+    : null;
   const granted = snapshot?.access === "granted";
   const scanning = snapshot?.scan.state === "scanning";
 
@@ -476,27 +465,17 @@ export function InsightsRoute() {
       }
       headerAction={
         granted ? (
-          <div className="flex items-center gap-2">
-            <NodexButton
-              variant="ghostSecondary"
-              size="sm"
-              disabled={access.isPending}
-              onClick={() => setStopping(true)}
-            >
-              {intl.formatMessage({
-                id: "insights.insightsRoute.stopReading",
-                defaultMessage: "Stop reading history",
-              })}
-            </NodexButton>
-            <NodexButton
-              variant="primary"
-              size="sm"
-              disabled={!view || view.tokens === 0}
-              onClick={() => setSharing(true)}
-            >
-              {intl.formatMessage({ id: "insights.insightsRoute.share", defaultMessage: "Share" })}
-            </NodexButton>
-          </div>
+          <NodexButton
+            variant="ghostSecondary"
+            size="sm"
+            disabled={access.isPending}
+            onClick={() => setStopping(true)}
+          >
+            {intl.formatMessage({
+              id: "insights.insightsRoute.stopReading",
+              defaultMessage: "Stop reading history",
+            })}
+          </NodexButton>
         ) : null
       }
       stickyControls={
@@ -642,18 +621,6 @@ export function InsightsRoute() {
           </NodexDialogFooter>
         </NodexDialogContent>
       </NodexDialog>
-      {sharing && snapshot ? (
-        <InsightsShareDialog
-          onClose={() => setSharing(false)}
-          initialPeriod={period}
-          viewFor={(forPeriod) =>
-            projectInsights(
-              { usage: snapshot, content: contentSnapshot, period: forPeriod, today },
-              intl,
-            )
-          }
-        />
-      ) : null}
     </SearchablePageLayout>
   );
 }

@@ -16,7 +16,12 @@ const pngSize = (bytes: Buffer) => ({
 const tab = (page: Page, list: string, name: string) =>
   page.getByRole("tablist", { name: list }).getByRole("tab", { name, exact: true });
 
-test("reads agent history into Insights and makes a card to share", async ({}, testInfo) => {
+const stat = (page: Page, label: string) =>
+  page
+    .locator("div", { hasText: new RegExp(`^${label}$`) })
+    .locator("xpath=following-sibling::div[1]");
+
+test("reads agent history into Insights and shares its cards", async ({}, testInfo) => {
   test.setTimeout(300_000);
   const artifacts =
     process.env.NODEX_INSIGHTS_ARTIFACT_DIR ?? testInfo.outputPath("insights-review");
@@ -60,14 +65,12 @@ test("reads agent history into Insights and makes a card to share", async ({}, t
         await test.step("history fills the page", async () => {
           await page.getByRole("button", { name: "Read my agent history", exact: true }).click();
           await tab(page, "Period", "All time").click();
-          const hero = page.locator("[data-insights-tokens]");
-          await expect(hero).toHaveText(compactNumber(totals.tokens), { timeout: 120_000 });
-          await expect(page.getByText("Messages sent", { exact: true })).toBeVisible();
-          await expect(
-            page
-              .locator("div", { hasText: /^Messages sent$/ })
-              .locator("xpath=following-sibling::div[1]"),
-          ).toHaveText(totals.messages.toLocaleString("en-US"));
+          await expect(stat(page, "Tokens processed")).toHaveText(compactNumber(totals.tokens), {
+            timeout: 120_000,
+          });
+          await expect(stat(page, "Messages sent")).toHaveText(
+            totals.messages.toLocaleString("en-US"),
+          );
           await expect(page.getByRole("cell", { name: "Claude Opus 5.5" })).toBeVisible();
           await expect(page.getByRole("cell", { name: "GPT-6.1 Sol" })).toBeVisible();
           await expect(page.getByText(/at API list price/)).toBeVisible();
@@ -83,60 +86,58 @@ test("reads agent history into Insights and makes a card to share", async ({}, t
 
         await test.step("Nodex only leaves out other agents' history", async () => {
           // A scenario Profile's Codex home is its own Agent home, so only Codex counts as Nodex's.
-          const hero = page.locator("[data-insights-tokens]");
+          const hero = stat(page, "Tokens processed");
           await tab(page, "Agents", "Nodex only").click();
           await expect(hero).toHaveText(compactNumber(totals.codexTokens));
           await tab(page, "Agents", "All agents").click();
           await expect(hero).toHaveText(compactNumber(totals.tokens));
         });
 
-        await test.step("a card previews and exports exactly", async () => {
-          await page.getByRole("button", { name: "Share", exact: true }).click();
-          const preview = page.getByRole("img", { name: /card:/ });
-          await expect(preview).toBeVisible();
-          await expect
-            .poll(() => preview.evaluate((image: HTMLImageElement) => image.naturalWidth))
-            .toBe(1080);
-          await page.screenshot({ path: path.join(artifacts, "3-share-skyline.png") });
+        await test.step("both cards are on the page, exported exactly as shown", async () => {
+          const skyline = page.getByRole("figure", { name: "Skyline" });
+          const receipt = page.getByRole("figure", { name: "Receipt" });
+          for (const card of [skyline, receipt]) {
+            await expect
+              .poll(() =>
+                card.getByRole("img").evaluate((image: HTMLImageElement) => image.naturalWidth),
+              )
+              .toBe(1080);
+          }
+          await skyline.hover();
+          await page.screenshot({ path: path.join(artifacts, "3-cards.png") });
 
-          const save = async (name: string) => {
+          const save = async (card: typeof skyline, name: string) => {
             const destination = path.join(artifacts, name);
             await application.evaluate(({ dialog }, target) => {
               dialog.showSaveDialog = async () => ({ canceled: false, filePath: target });
             }, destination);
-            await page.getByRole("button", { name: "Save PNG", exact: true }).click();
+            await card.getByRole("button", { name: "Save PNG", exact: true }).click();
             await expect(page.getByText("Card saved").first()).toBeVisible();
             return pngSize(await readFile(destination));
           };
 
-          expect(await save("card-skyline-12m.png")).toEqual({
+          expect(await save(skyline, "card-skyline-12m.png")).toEqual({
             signature: "PNG",
             width: 2160,
             height: 2700,
           });
+          expect((await save(receipt, "card-receipt-12m.png")).width).toBe(2160);
 
-          await tab(page, "Card", "Receipt").click();
-          await page.screenshot({ path: path.join(artifacts, "4-share-receipt.png") });
-          expect((await save("card-receipt-12m.png")).width).toBe(2160);
+          await tab(page, "Period", "7 days").click();
+          await save(skyline, "card-skyline-7d.png");
 
-          await tab(page, "Card period", "7 days").click();
-          await tab(page, "Card", "Skyline").click();
-          await save("card-skyline-7d.png");
-
-          await tab(page, "Card period", "12 months").click();
+          await tab(page, "Period", "12 months").click();
           await page.getByLabel("Name on card").fill("Ada");
           await page.getByRole("switch", { name: "Show cost" }).click();
-          await save("card-skyline-named-no-cost.png");
-          await tab(page, "Card", "Receipt").click();
-          await save("card-receipt-named-no-cost.png");
+          await save(skyline, "card-skyline-named-no-cost.png");
+          await save(receipt, "card-receipt-named-no-cost.png");
 
-          await page.getByRole("button", { name: "Copy image", exact: true }).click();
+          await receipt.getByRole("button", { name: "Copy image", exact: true }).click();
           await expect(page.getByText("Image copied", { exact: true })).toBeVisible();
           const hasImage = await application.evaluate(async ({ clipboard }) =>
             (await clipboard.read()).some((item) => item.types.includes("image/png")),
           );
           expect(hasImage).toBe(true);
-          await page.keyboard.press("Escape");
         });
 
         await test.step("Go to Insights works from the keyboard", async () => {
@@ -150,7 +151,7 @@ test("reads agent history into Insights and makes a card to share", async ({}, t
         await test.step("stopping forgets what was read", async () => {
           await page.getByRole("button", { name: "Stop reading history", exact: true }).click();
           await page.getByRole("button", { name: "Keep reading", exact: true }).click();
-          await expect(page.locator("[data-insights-tokens]")).toBeVisible();
+          await expect(stat(page, "Tokens processed")).toBeVisible();
           await page.getByRole("button", { name: "Stop reading history", exact: true }).click();
           await page.getByRole("button", { name: "Stop and forget", exact: true }).click();
           await expect(page.getByText("See everything your agents have done")).toBeVisible();
