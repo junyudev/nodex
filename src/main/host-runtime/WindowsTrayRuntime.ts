@@ -3,23 +3,15 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { app, Menu, nativeTheme, shell, Tray, type MenuItemConstructorOptions } from "electron";
+import { Menu, nativeTheme, Tray, type MenuItemConstructorOptions } from "electron";
 import { join } from "node:path";
-import type { WindowsStartupStatus } from "../../shared/windows-startup";
 import { getMainIntl } from "../i18n/main-intl";
 import { MainConfig } from "../app/MainConfig";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { getLogger } from "../logging/logger";
 import { parseWindowsAppUpdateConfig } from "../windows-app-update-config";
-import {
-  trayChatLabel,
-  windowsLoginItemEnabled,
-  WINDOWS_STARTUP_ARGUMENT,
-  windowsTrayGuid,
-  type TrayChatGroup,
-} from "../windows-desktop-policy";
+import { trayChatLabel, windowsTrayGuid, type TrayChatGroup } from "../windows-desktop-policy";
 
 export type WindowsTrayAction =
   | { readonly kind: "open" | "new-chat" | "menu" | "quit" }
@@ -40,8 +32,6 @@ export interface WindowsTrayNativePort {
   };
   readonly isDark: () => boolean;
   readonly subscribeTheme: (refresh: () => void) => () => void;
-  readonly startupEnabled: (executable: string) => boolean;
-  readonly openStartupSettings: () => Promise<void>;
 }
 
 const native: WindowsTrayNativePort = {
@@ -121,17 +111,7 @@ const native: WindowsTrayNativePort = {
     nativeTheme.on("updated", refresh);
     return () => nativeTheme.off("updated", refresh);
   },
-  startupEnabled: (executable) => {
-    const status = app.getLoginItemSettings({ path: executable, args: [WINDOWS_STARTUP_ARGUMENT] });
-    return windowsLoginItemEnabled(executable, status);
-  },
-  openStartupSettings: () => shell.openExternal("ms-settings:startupapps"),
 };
-
-export class WindowsTrayError extends Schema.TaggedError<WindowsTrayError>()("WindowsTrayError", {
-  operation: Schema.String,
-  cause: Schema.Defect(),
-}) {}
 
 export class WindowsTrayRuntime extends Context.Service<
   WindowsTrayRuntime,
@@ -141,8 +121,6 @@ export class WindowsTrayRuntime extends Context.Service<
     readonly markApplicationReady: Effect.Effect<void>;
     readonly markApplicationFailed: Effect.Effect<void>;
     readonly showMenu: (groups: readonly TrayChatGroup[]) => Effect.Effect<void>;
-    readonly startupStatus: Effect.Effect<WindowsStartupStatus, WindowsTrayError>;
-    readonly openStartupSettings: Effect.Effect<void, WindowsTrayError>;
   }
 >()("nodex/main/host-runtime/WindowsTrayRuntime") {}
 
@@ -174,7 +152,6 @@ export const live = (
         if (accepting) callbacks.fork(Queue.offer(actions, action));
       };
       const windows = config.platform === "win32";
-      const supported = windows && config.isPackaged;
       const iconPath = () =>
         join(
           config.isPackaged ? config.resourcesPath : join(config.projectRootPath, "resources"),
@@ -229,19 +206,6 @@ export const live = (
           Effect.sync(() => {
             if (accepting) tray?.showMenu(groups, emit);
           }),
-        startupStatus: Effect.try({
-          try: () => ({
-            supported,
-            enabled: supported && port.startupEnabled(config.runtimeBinaryPath),
-          }),
-          catch: (cause) => new WindowsTrayError({ operation: "read-startup-status", cause }),
-        }),
-        openStartupSettings: windows
-          ? Effect.tryPromise({
-              try: port.openStartupSettings,
-              catch: (cause) => new WindowsTrayError({ operation: "open-startup-settings", cause }),
-            })
-          : Effect.void,
       });
     }),
   );

@@ -9,7 +9,6 @@ import type {
   BrowserWindow,
   BrowserWindowConstructorOptions,
   Display,
-  NativeImage,
   WebContents,
 } from "electron";
 import { it } from "@effect/vitest";
@@ -123,130 +122,101 @@ describe("ApplicationWindowShellRuntime", () => {
     });
   });
 
-  it.effect("keeps startup activation hidden through native and renderer readiness", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const restored = session("startup", 1);
-        const windows = {
-          attach: () => restored,
-          markFocused: () => undefined,
-          selectStartupSessions: () => [restored],
-        } as unknown as WindowRuntimeService;
-        const context = yield* Layer.build(
-          live({
-            createIcon: () => ({}) as NativeImage,
-            createWindow: () => new FakeBrowserWindow() as unknown as BrowserWindow,
-            displays: {
-              getAllDisplays: () => [
-                { bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 } as Display,
-              ],
-              getDisplayMatching: () => ({ scaleFactor: 1 }) as Display,
-              getPrimaryDisplay: () => ({ scaleFactor: 1 }) as Display,
-            },
-            iconPath: "/tmp/nodex-icon.png",
-            installContextMenu: () => () => undefined,
-            platform: "win32",
-            preloadPath: "/tmp/nodex-preload.js",
-            rendererUrl: "app://-/index.html",
-            theme: { prefersReducedTransparency: false, shouldUseDarkColors: false },
-            windows,
-          }),
-        );
-        const shell = Context.get(context, ApplicationWindowShellRuntime);
-        const opened = shell.openInitial("all", "hidden")[0] as unknown as FakeBrowserWindow;
-        opened.emit("ready-to-show");
-        opened.webContents.emit("did-finish-load");
-        expect(opened.backgroundThrottling).toBe(false);
-        for (const lease of shell.claimPendingActivation())
-          shell.completeActivation(lease.window.webContents.id);
-        // An activated window may stop redrawing while hidden; startup never waits on that.
-        expect(opened.backgroundThrottling).toBe(true);
-        shell.reportRenderer(opened.webContents.id);
-        yield* TestClock.adjust("10 seconds");
-        expect(opened.showCount).toBe(0);
-        expect(opened.isDestroyed()).toBe(false);
-        opened.show();
-        expect(opened.showCount).toBe(1);
-      }),
-    ),
+  it.effect.each(["last-focused", "personal"] as const)(
+    "restores windows on demand once and activates the %s window first",
+    (target) => {
+      const sessions = [
+        { ...session("team", 3), activeSpaceId: "team-space" },
+        session("personal", 2),
+        session("tertiary", 1),
+      ];
+      const windows = {
+        attach: (_window: BrowserWindow, sessionId: string) =>
+          sessions.find((candidate) => candidate.id === sessionId)!,
+        markFocused: () => undefined,
+        selectStartupSessions: () => sessions,
+      } as unknown as WindowRuntimeService;
+
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(
+            live({
+              createWindow: (_options: BrowserWindowConstructorOptions) =>
+                new FakeBrowserWindow() as unknown as BrowserWindow,
+              displays: {
+                getAllDisplays: () => [
+                  {
+                    bounds: { height: 1_080, width: 1_920, x: 0, y: 0 },
+                    scaleFactor: 2,
+                  } as Display,
+                ],
+                getDisplayMatching: () => ({ scaleFactor: 2 }) as Display,
+                getPrimaryDisplay: () => ({ scaleFactor: 2 }) as Display,
+              },
+              iconPath: "",
+              initialRestorePolicy: "all",
+              installContextMenu: () => () => undefined,
+              platform: "darwin",
+              preloadPath: "/tmp/nodex-preload.js",
+              rendererUrl: "app://-/index.html",
+              theme: { prefersReducedTransparency: false, shouldUseDarkColors: false },
+              windows,
+            }),
+          );
+          const shell = Context.get(context, ApplicationWindowShellRuntime);
+          expect(shell.claimPendingActivation()).toEqual([]);
+          const opened = shell.openInitial(target === "personal" ? target : undefined);
+          expect(opened).toHaveLength(3);
+          const primary = opened[0] as unknown as FakeBrowserWindow;
+          primary.zoomFactor = 1.5;
+          primary.webContents.emit("did-finish-load");
+          expect(primary.windowButtonPosition).toEqual({ x: 16, y: 28 });
+          primary.zoomFactor = 1;
+          primary.webContents.emit("did-finish-load");
+          expect(primary.windowButtonPosition).toEqual({ x: 16, y: 16 });
+
+          const leases = shell.claimPendingActivation();
+          expect(leases.map((lease) => lease.session.id)).toEqual(
+            target === "personal"
+              ? ["personal", "team", "tertiary"]
+              : ["team", "personal", "tertiary"],
+          );
+          for (const lease of leases) {
+            shell.completeActivation(lease.window.webContents.id);
+          }
+          yield* shell.awaitActivation(opened[0]!.webContents.id);
+
+          const secondary = yield* shell
+            .awaitActivation(opened[1]!.webContents.id)
+            .pipe(Effect.forkScoped);
+          expect(secondary.pollUnsafe()).toBeUndefined();
+
+          shell.reportRenderer(opened[0]!.webContents.id);
+          yield* Fiber.join(secondary);
+          const tertiary = yield* shell
+            .awaitActivation(opened[2]!.webContents.id)
+            .pipe(Effect.forkScoped);
+          expect(tertiary.pollUnsafe()).toBeUndefined();
+
+          shell.reportRenderer(opened[1]!.webContents.id);
+          yield* Fiber.join(tertiary);
+          shell.reportRenderer(opened[2]!.webContents.id);
+
+          const dynamicSession = session("dynamic", 4);
+          sessions.push(dynamicSession);
+          const dynamic = shell.create(dynamicSession);
+          const [dynamicLease] = shell.claimPendingActivation();
+          expect(dynamicLease?.window).toBe(dynamic);
+          shell.completeActivation(dynamic.webContents.id);
+          yield* shell.awaitActivation(dynamic.webContents.id);
+
+          for (const window of [...opened, dynamic]) window.destroy();
+          expect(shell.openInitial()).toEqual([]);
+          expect(shell.claimPendingActivation()).toEqual([]);
+        }),
+      );
+    },
   );
-
-  it.effect("opens restored renderer gates primary-first with concurrency one", () => {
-    const sessions = [session("primary", 3), session("secondary", 2), session("tertiary", 1)];
-    const windows = {
-      attach: (_window: BrowserWindow, sessionId: string) =>
-        sessions.find((candidate) => candidate.id === sessionId)!,
-      markFocused: () => undefined,
-      selectStartupSessions: () => sessions,
-    } as unknown as WindowRuntimeService;
-
-    return Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(
-          live({
-            createWindow: (_options: BrowserWindowConstructorOptions) =>
-              new FakeBrowserWindow() as unknown as BrowserWindow,
-            displays: {
-              getAllDisplays: () => [
-                {
-                  bounds: { height: 1_080, width: 1_920, x: 0, y: 0 },
-                  scaleFactor: 2,
-                } as Display,
-              ],
-              getDisplayMatching: () => ({ scaleFactor: 2 }) as Display,
-              getPrimaryDisplay: () => ({ scaleFactor: 2 }) as Display,
-            },
-            iconPath: "",
-            installContextMenu: () => () => undefined,
-            platform: "darwin",
-            preloadPath: "/tmp/nodex-preload.js",
-            rendererUrl: "app://-/index.html",
-            theme: { prefersReducedTransparency: false, shouldUseDarkColors: false },
-            windows,
-          }),
-        );
-        const shell = Context.get(context, ApplicationWindowShellRuntime);
-        const opened = shell.openInitial("all");
-        expect(opened).toHaveLength(3);
-        const primary = opened[0] as unknown as FakeBrowserWindow;
-        primary.zoomFactor = 1.5;
-        primary.webContents.emit("did-finish-load");
-        expect(primary.windowButtonPosition).toEqual({ x: 16, y: 28 });
-        primary.zoomFactor = 1;
-        primary.webContents.emit("did-finish-load");
-        expect(primary.windowButtonPosition).toEqual({ x: 16, y: 16 });
-
-        for (const lease of shell.claimPendingActivation()) {
-          shell.completeActivation(lease.window.webContents.id);
-        }
-        yield* shell.awaitActivation(opened[0]!.webContents.id);
-
-        const secondary = yield* shell
-          .awaitActivation(opened[1]!.webContents.id)
-          .pipe(Effect.forkScoped);
-        expect(secondary.pollUnsafe()).toBeUndefined();
-
-        shell.reportRenderer(opened[0]!.webContents.id);
-        yield* Fiber.join(secondary);
-        const tertiary = yield* shell
-          .awaitActivation(opened[2]!.webContents.id)
-          .pipe(Effect.forkScoped);
-        expect(tertiary.pollUnsafe()).toBeUndefined();
-
-        shell.reportRenderer(opened[1]!.webContents.id);
-        yield* Fiber.join(tertiary);
-        shell.reportRenderer(opened[2]!.webContents.id);
-
-        const dynamicSession = session("dynamic", 4);
-        sessions.push(dynamicSession);
-        const dynamic = shell.create(dynamicSession);
-        const [dynamicLease] = shell.claimPendingActivation();
-        expect(dynamicLease?.window).toBe(dynamic);
-        shell.completeActivation(dynamic.webContents.id);
-        yield* shell.awaitActivation(dynamic.webContents.id);
-      }),
-    );
-  });
 
   it.effect("releases each window's menu and watchdogs after Electron destroys it", () => {
     const sessions = [session("primary", 2), session("secondary", 1)];
@@ -275,6 +245,7 @@ describe("ApplicationWindowShellRuntime", () => {
               getPrimaryDisplay: () => ({ scaleFactor: 2 }) as Display,
             },
             iconPath: "",
+            initialRestorePolicy: "all",
             installContextMenu,
             platform: "darwin",
             preloadPath: "/tmp/nodex-preload.js",
@@ -284,7 +255,7 @@ describe("ApplicationWindowShellRuntime", () => {
           }),
         );
         const shell = Context.get(context, ApplicationWindowShellRuntime);
-        const [opened, secondary] = shell.openInitial("all");
+        const [opened, secondary] = shell.openInitial();
         if (!opened || !secondary) throw new Error("Expected both initial windows");
 
         expect(installContextMenu).toHaveBeenCalledTimes(2);
@@ -331,6 +302,7 @@ describe("ApplicationWindowShellRuntime", () => {
                 getPrimaryDisplay: () => ({ scaleFactor: 2 }) as Display,
               },
               iconPath: "",
+              initialRestorePolicy: "all",
               installContextMenu: () => () => undefined,
               onRendererDocumentLoadFailure,
               platform: "darwin",
@@ -341,7 +313,7 @@ describe("ApplicationWindowShellRuntime", () => {
             }),
           );
           const shell = Context.get(context, ApplicationWindowShellRuntime);
-          const [opened] = shell.openInitial("all");
+          const [opened] = shell.openInitial();
           if (!opened) throw new Error("Expected the initial window");
 
           yield* Effect.yieldNow;

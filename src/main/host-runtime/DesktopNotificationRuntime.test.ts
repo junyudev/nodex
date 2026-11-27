@@ -297,6 +297,45 @@ it.effect(
     }),
 );
 
+it.effect("shows a notification without a renderer and keeps its click actionable", () =>
+  Effect.gen(function* () {
+    const created = yield* Deferred.make<Electron.NotificationConstructorOptions>();
+    const notification = new FakeNotification();
+    const actions: DesktopNotificationActionPayload[] = [];
+    yield* useRuntime(
+      {
+        createNotification: (options) => {
+          Deferred.doneUnsafe(created, Effect.succeed(options));
+          return notification;
+        },
+      },
+      (runtime) =>
+        Effect.gen(function* () {
+          runtime.show(
+            {
+              id: "background-completion",
+              kind: "turn-complete",
+              title: "Complete",
+              body: "Review the result",
+              replyPlaceholder: "Reply",
+            },
+            null,
+            (action) => actions.push(action),
+          );
+          const options = yield* Deferred.await(created);
+          assert.isTrue(notification.shown);
+          assert.isFalse(options.hasReply);
+          runtime.dismissByOriginWebContentsId(7);
+          assert.isFalse(notification.closed);
+          notification.emit("click");
+          assert.deepEqual(actions, [
+            { notificationId: "background-completion", actionType: "open", actionId: null },
+          ]);
+        }),
+    );
+  }),
+);
+
 it.effect("closes native resources and fences late actions with the Main Scope", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();

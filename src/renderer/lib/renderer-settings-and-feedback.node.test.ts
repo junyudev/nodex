@@ -195,7 +195,7 @@ describe("settings host presentation", () => {
       browserControl: true,
       appUpdates: true,
       components: true,
-      launchAtLogin: false,
+      launchAtLogin: true,
     });
   });
 

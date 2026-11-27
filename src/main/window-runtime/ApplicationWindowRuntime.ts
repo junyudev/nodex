@@ -364,6 +364,13 @@ export const live = (
           );
           captureMainException(cause, { tags: { phase } });
         },
+        restoreInitial: (target) => {
+          try {
+            return options.shell.openInitial(target)[0] ?? null;
+          } finally {
+            activateClaimedWindows();
+          }
+        },
         windows: options.windows,
       });
       yield* options.rendererLoaded.pipe(

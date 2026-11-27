@@ -46,10 +46,6 @@ it.effect("owns the tray, theme listener and pre-ready actions through the same 
           events.push("theme-off");
         };
       },
-      startupEnabled: () => {
-        throw new Error("Development must not read login registration");
-      },
-      openStartupSettings: () => Promise.resolve(),
     };
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
@@ -71,7 +67,6 @@ it.effect("owns the tray, theme listener and pre-ready actions through the same 
     yield* tray.markApplicationFailed;
     assert.isFalse(tray.canHideLastWindow());
     yield* tray.markApplicationReady;
-    assert.deepEqual(yield* tray.startupStatus, { supported: false, enabled: false });
     dark = true;
     refresh();
     yield* tray.showMenu([]);
@@ -91,7 +86,7 @@ it.effect("owns the tray, theme listener and pre-ready actions through the same 
   }),
 );
 
-it.effect("macOS never acquires a Windows tray or reads startup settings", () =>
+it.effect("macOS never acquires a Windows tray", () =>
   Effect.gen(function* () {
     const forbidden = () => {
       throw new Error("Windows integration used on macOS");
@@ -100,8 +95,6 @@ it.effect("macOS never acquires a Windows tray or reads startup settings", () =>
       create: forbidden,
       isDark: forbidden,
       subscribeTheme: forbidden,
-      startupEnabled: forbidden,
-      openStartupSettings: forbidden,
     };
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
@@ -115,7 +108,6 @@ it.effect("macOS never acquires a Windows tray or reads startup settings", () =>
     const tray = Context.get(context, WindowsTrayRuntime);
     yield* tray.markApplicationReady;
     assert.isFalse(tray.canHideLastWindow());
-    assert.deepEqual(yield* tray.startupStatus, { supported: false, enabled: false });
     yield* Scope.close(scope, Exit.void);
   }),
 );

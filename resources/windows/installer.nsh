@@ -99,11 +99,6 @@
 !macroend
 
 !macro customInstall
-  ; Windows owns startup approval. Never reset a user's disabled state on upgrade.
-  ReadRegStr $R0 HKCU "${NODEX_RUN_KEY}" "Nodex"
-  ${If} $R0 == ""
-    WriteRegStr HKCU "${NODEX_RUN_KEY}" "Nodex" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --startup'
-  ${EndIf}
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}" "" "URL:Nodex Deep Link"
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}" "URL Protocol" ""
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}\DefaultIcon" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}",0'
@@ -132,7 +127,9 @@
   ; Install-over preserves both registration and Windows' approval decision.
   ${IfNot} ${isUpdated}
     ReadRegStr $R0 HKCU "${NODEX_RUN_KEY}" "Nodex"
+    ; Electron only quotes the executable when its path requires quoting.
     ${If} $R0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --startup'
+    ${OrIf} $R0 == '$INSTDIR\${APP_EXECUTABLE_FILENAME} --startup'
       DeleteRegValue HKCU "${NODEX_RUN_KEY}" "Nodex"
       DeleteRegValue HKCU "${NODEX_STARTUP_APPROVED_KEY}" "Nodex"
     ${EndIf}

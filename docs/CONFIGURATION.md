@@ -439,6 +439,13 @@ which cache to reopen and persists that choice. No existing origin is deleted.
 The port can also be explicitly selected when setting up a new home. Built
 Desktop runs continue to use the packaged application origin.
 
+## Open at login
+
+**Settings > General > Open at login** controls the installed app’s login item
+on macOS and Windows. The operating system stores this setting for the current
+user independently of the Profile and its `config.toml`. Fresh installations
+start with the setting off. See [Desktop Startup Behavior](product-specs/desktop-startup-behavior.md).
+
 ## Components
 
 Supported Components install in the background at startup or on first use. Each Profile keeps its

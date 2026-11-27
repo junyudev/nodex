@@ -42,6 +42,7 @@ import {
 } from "../../src/main/core-client/isolated-run-ownership";
 import { readCoreArtifactDigest } from "../../src/main/core-client/core-artifact";
 import { CoreClient } from "../../src/main/core-client/core-client";
+import type { OpenAtLoginResult } from "../../src/shared/open-at-login";
 import { readCoreRuntimeConnection } from "../../src/main/core-client/runtime-descriptor";
 import { cleanupIsolatedCore } from "../isolated-core-cleanup";
 import {
@@ -437,9 +438,8 @@ async function main(): Promise<void> {
     const registration = queryProtocol();
     if (!registration?.includes(`"${executable}" "%1"`) || !registration.includes("URL Protocol"))
       throw new Error("NSIS did not register nodex:// for the current user");
-    const loginRegistration = queryStartupValue(startupRunKey);
-    if (!loginRegistration?.includes(`"${executable}" ${WINDOWS_STARTUP_ARGUMENT}`))
-      throw new Error("NSIS did not register per-user background startup");
+    if (queryStartupValue(startupRunKey) || queryStartupValue(startupApprovedKey))
+      throw new Error("NSIS registered background startup without consent");
     const core = join(installRoot, "resources/bin/nodex-core.exe");
     desktopTools = existsSync(desktopToolsRoot)
       ? await probeWindowsDesktopTools({
@@ -476,7 +476,7 @@ async function main(): Promise<void> {
       [ISOLATED_RUN_ID_ENV]: runId,
       [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
     });
-    let startupDisabled = false;
+    let startupEnabled = false;
     const launchInstalled = async (startup = false): Promise<void> => {
       recordPhase("startup");
       application = await _electron.launch({
@@ -504,10 +504,10 @@ async function main(): Promise<void> {
         WINDOWS_STARTUP_ARGUMENT,
       );
       writeFileSync(
-        join(artifacts, `startup-status-${startupDisabled ? "disabled" : "enabled"}.json`),
+        join(artifacts, `startup-status-${startupEnabled ? "enabled" : "disabled"}.json`),
         `${JSON.stringify(loginStatus, null, 2)}\n`,
       );
-      if (windowsLoginItemEnabled(executable, loginStatus) === startupDisabled)
+      if (windowsLoginItemEnabled(executable, loginStatus) !== startupEnabled)
         throw new Error("Installed Electron startup status differs from Windows approval");
       const sdkLoaded = await application.evaluate(
         (_electron, url) => {
@@ -645,6 +645,22 @@ async function main(): Promise<void> {
       lease = acquireIsolatedRunLease({ nodexHome: profile, runId, supervisorPid: process.pid });
       rmSync(join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE), { force: true });
     };
+    await launchInstalled();
+    if (!application) throw new Error("Desktop is missing");
+    const settingsPage = await application.firstWindow();
+    const login = await settingsPage.evaluate(async () => {
+      if (!window.api) throw new Error("Installed renderer bridge is unavailable");
+      return (await window.api.invoke("settings:open-at-login:set", true)) as OpenAtLoginResult;
+    });
+    if (login.status !== "enabled" || login.error)
+      throw new Error("Nodex could not enable per-user background startup");
+    const loginRegistration = queryStartupValue(startupRunKey);
+    if (!loginRegistration?.trimEnd().endsWith(` ${WINDOWS_STARTUP_ARGUMENT}`))
+      throw new Error("The login item did not register the background startup argument");
+    startupEnabled = true;
+
+    await quitNormally();
+    renewHostClaim();
     await launchInstalled(true);
     if (!application) throw new Error("Background Desktop is missing");
     const backgroundWindows = await application.evaluate(({ BrowserWindow }) =>
@@ -654,17 +670,18 @@ async function main(): Promise<void> {
         focused: window.isFocused(),
       })),
     );
-    if (
-      backgroundWindows.length !== 1 ||
-      backgroundWindows.some((window) => window.visible || window.focused)
-    )
-      throw new Error("Startup activation displayed or focused an application window");
-    const retainedWindowId = backgroundWindows[0]!.id;
+    if (backgroundWindows.length !== 0)
+      throw new Error("Startup activation created an application window");
     const coreBeforeHide = readCoreRuntimeConnection(profile).descriptor.pid;
+    await application.evaluate(({ app }) => {
+      app.emit("second-instance", {}, [process.execPath], process.cwd(), {});
+    });
+    const interactive = await application.firstWindow();
+    const retainedWindowId = await (
+      await application.browserWindow(interactive)
+    ).evaluate((window) => window.id);
     await application.evaluate(({ BrowserWindow }, id) => {
-      const window = BrowserWindow.fromId(id);
-      window?.show();
-      window?.close();
+      BrowserWindow.fromId(id)?.close();
     }, retainedWindowId);
     await delay(2_000);
     const retained = await application.evaluate(({ BrowserWindow }, id) => {
@@ -699,7 +716,7 @@ async function main(): Promise<void> {
       "/f",
     ]);
     const disabledApproval = queryStartupValue(startupApprovedKey);
-    startupDisabled = true;
+    startupEnabled = false;
     recordPhase("upgrade");
     const upgradeStarted = Date.now();
     rmSync(maintenanceLog, { force: true });

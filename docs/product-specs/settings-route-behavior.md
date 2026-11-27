@@ -134,7 +134,7 @@ first-run setup navigation. Its profile contract is described in
 Agents > Codex owns the speed new Codex chats start with, and Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 
-General is grouped by what a setting affects, in this order: App ([display language](localization-behavior.md), window restore, Terminal shell and start at login on Windows,
+General is grouped by what a setting affects, in this order: App ([display language](localization-behavior.md), window restore, Terminal shell and **Open at login**,
 [`Show tips`](first-run-behavior.md#tips), `Run setup again`), Notifications, Privacy (crash reports, session replays and usage analytics; see
 [Product Analytics Behavior](product-analytics-behavior.md)), About (the running version with its update actions and preferences, and open source licenses),
 Add-ons (see [Components](components-behavior.md)) and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
@@ -145,6 +145,12 @@ It offers models from Agents that support structured text generation and uses th
 offered effort. See [Agent Runtime behavior](agent-runtime-behavior.md). Request diagnostics are captured only while the General page is
 open and show bounded recent request timing, scheduling, transport, and failure data for local
 troubleshooting.
+
+On macOS and Windows, General’s **Open at login** switch is off on a fresh install.
+Opening General or returning from system settings refreshes the current OS
+state. If macOS requires approval, the row offers **Open System Settings**.
+Linux omits the row.
+
 On Windows, General's Terminal shell row lists Automatic first, followed by only
 discovered PowerShell 7, Windows PowerShell, Command Prompt and Git Bash choices.
 The saved Profile choice synchronizes across windows and applies to new terminals.

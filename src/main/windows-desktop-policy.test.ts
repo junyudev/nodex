@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { ChatCatalogEntry } from "../shared/chat-search";
+import { startupWindowPolicy } from "./app/startup-window-policy";
 import {
   isWindowsStartupActivation,
   shouldHideLastWindow,
@@ -10,6 +11,21 @@ import {
   windowsTrayChatGroups,
   windowsTrayGuid,
 } from "./windows-desktop-policy";
+
+describe("Desktop startup windows", () => {
+  test.each([
+    ["darwin", [], true, "defer"],
+    ["darwin", ["--startup"], false, "restore"],
+    ["win32", ["--startup"], false, "defer"],
+    ["win32", [], false, "restore"],
+    ["linux", ["--startup"], false, "restore"],
+  ] as const)(
+    "%s with %j and macOS login marker %s chooses %s",
+    (platform, argv, wasOpenedAtLogin, expected) => {
+      expect(startupWindowPolicy({ platform, argv, wasOpenedAtLogin })).toBe(expected);
+    },
+  );
+});
 
 describe("Windows desktop policy", () => {
   test("startup status observes the named per-user registration independently of the AUMID", () => {

@@ -285,10 +285,11 @@ registration, or an existing Nodex login registration. It installs with `/S /cur
 launches with a fresh isolated Profile, and requires the exact host's ready claim
 plus a matching, authenticated named-pipe Core generation. A missing descriptor,
 Unix-only Core transport, stale digest, or startup exit fails with diagnostic
-logs. Its first launch uses `--startup` and verifies that no window is visible or
-focused. Showing and closing the last window must retain that same hidden window
-and live Core generation. `tray-lifecycle.json` records this evidence. The probe
-also verifies the per-user login command, writes a disabled Windows startup
+logs. The probe checks that a fresh install leaves login startup off and enables
+it through Nodex. It then launches with `--startup` and verifies that no window
+was created. After interactive activation, closing the last window must retain
+that same hidden window and live Core generation. `tray-lifecycle.json` records
+this evidence. The probe also verifies the per-user login command, writes a disabled Windows startup
 approval before install-over, verifies that it stays disabled, and checks both
 owned values are removed by uninstall. It then requests normal Electron quit and requires the
 selected Core and exact Main PID to exit within 15 seconds of that request. This covers the full

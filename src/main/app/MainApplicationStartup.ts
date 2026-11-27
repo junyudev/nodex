@@ -2,6 +2,7 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import * as Scope from "effect/Scope";
 import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationInitializationRuntime";
 import { WindowsTrayRuntime } from "../host-runtime/WindowsTrayRuntime";
 import { getLogger } from "../logging/logger";
@@ -71,12 +72,29 @@ const startupFailureLive = (
       yield* tray.markApplicationFailed;
       shell.failAll(error);
 
-      const revealFailure = Effect.sync(() => {
-        const window = windows.getLastFocused();
-        if (!window || window.isDestroyed()) return;
-        if (config.platform === "win32" && window.isMinimized()) window.restore();
-        window.show();
-        window.focus();
+      const quitWhenClosed = Effect.fnUntraced(function* (window: Electron.BrowserWindow) {
+        const onClosed = (): void => {
+          if (windows.count() > 0) return;
+          callbacks.fork(shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid));
+        };
+        yield* Effect.acquireRelease(
+          Effect.sync(() => window.once("closed", onClosed)),
+          () => Effect.sync(() => void window.removeListener("closed", onClosed)),
+        );
+      });
+      const scope = yield* Effect.scope;
+      const revealFailure = Effect.gen(function* () {
+        const existing = windows.getLastFocused();
+        if (existing && !existing.isDestroyed()) {
+          if (existing.isMinimized()) existing.restore();
+          existing.show();
+          existing.focus();
+          return;
+        }
+        const session = windows.acquireSessionForNewWindow().session;
+        const window = shell.create(session);
+        shell.failAll(error);
+        yield* quitWhenClosed(window).pipe(Effect.provideService(Scope.Scope, scope));
       });
       yield* tray.actions.pipe(
         Stream.runForEach((action) => {
@@ -88,18 +106,7 @@ const startupFailureLive = (
         Effect.forkScoped,
       );
 
-      for (const window of windows.all()) {
-        const onClosed = (): void => {
-          if (windows.count() > 0) return;
-          callbacks.fork(shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid));
-        };
-        window.once("closed", onClosed);
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
-            window.removeListener("closed", onClosed);
-          }),
-        );
-      }
+      for (const window of windows.all()) yield* quitWhenClosed(window);
 
       return MainApplication.of({
         activate: revealFailure,
