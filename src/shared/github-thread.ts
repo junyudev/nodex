@@ -169,6 +169,8 @@ export interface GitHubThreadSummary {
   readonly title: string;
   readonly state: "open" | "closed" | "merged";
   readonly draft: boolean;
+  /** Why a closed issue closed, when GitHub says. */
+  readonly stateReason?: GitHubIssueStateReason | null;
 }
 
 export type GitHubIssueStateReason = "completed" | "not_planned" | "duplicate";
@@ -489,3 +491,21 @@ export interface GitHubThreadLinkedPage {
 export interface GitHubThreadLinks {
   readonly pages: readonly GitHubThreadLinkedPage[];
 }
+
+// ---------------------------------------------------------------------------------------------
+// Summaries: the title and state of many threads at once, for links that name them inline.
+
+export const GITHUB_THREAD_SUMMARY_BATCH_LIMIT = 50;
+
+export const gitHubThreadSummariesInputSchema = z
+  .array(gitHubThreadRefSchema)
+  .min(1)
+  .max(GITHUB_THREAD_SUMMARY_BATCH_LIMIT);
+
+export type GitHubThreadSummariesResult =
+  | {
+      readonly status: "ready";
+      /** One entry per requested thread, keyed by `gitHubThreadKey`; null when GitHub has none. */
+      readonly summaries: Readonly<Record<string, GitHubThreadSummary | null>>;
+    }
+  | GitHubUnavailable;

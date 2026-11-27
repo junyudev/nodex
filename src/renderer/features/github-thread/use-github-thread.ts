@@ -6,6 +6,7 @@ import {
   gitHubPullRequestFilesQueryOptions,
   gitHubThreadMutationOptions,
   gitHubThreadQueryOptions,
+  gitHubThreadSummaryQueryOptions,
 } from "@/lib/github-threads";
 import { gitHubThreadLinksQueryOptions } from "@/lib/github-thread-links";
 import { createPastedTextAttachment } from "@/lib/api";
@@ -15,6 +16,7 @@ import type {
   GitHubThreadCommandResult,
   GitHubThreadReadResult,
   GitHubThreadRef,
+  GitHubThreadSummary,
 } from "../../../shared/github-thread";
 import { summarizeGitHubChecks, type GitHubChatContext } from "./github-thread-model";
 import { gitHubUnavailableTitle } from "./github-thread-copy";
@@ -135,4 +137,16 @@ export async function gitHubChatContextPromptInput(
 ): Promise<CodexPromptInput> {
   const attachment = await createPastedTextAttachment({ text: context.text });
   return { text: "", textAttachments: [{ ...attachment, preview: context.preview }] };
+}
+
+/**
+ * A thread's title and state for a link that names it inline, read in batches with every other
+ * link on screen. Null until known, and whenever it cannot be known.
+ */
+export function useGitHubThreadSummary(
+  ref: GitHubThreadRef,
+  enabled: boolean,
+): GitHubThreadSummary | null {
+  const { data } = useQuery({ ...gitHubThreadSummaryQueryOptions(ref), enabled });
+  return data?.status === "ready" ? data.summary : null;
 }

@@ -1,0 +1,49 @@
+{
+  "data": {
+    "r0": {
+      "name": "cli",
+      "owner": {
+        "login": "cli"
+      },
+      "t0": {
+        "__typename": "PullRequest",
+        "number": 15100,
+        "url": "https://github.com/cli/cli/pull/15100",
+        "title": "Revoke CLI OAuth tokens on logout",
+        "pullState": "MERGED",
+        "isDraft": false
+      },
+      "t1": {
+        "__typename": "Issue",
+        "number": 15170,
+        "url": "https://github.com/cli/cli/issues/15170",
+        "title": "gh ssh-key list",
+        "issueState": "CLOSED",
+        "stateReason": "NOT_PLANNED"
+      }
+    },
+    "r1": {
+      "name": "go-gh",
+      "owner": {
+        "login": "cli"
+      },
+      "t0": null
+    }
+  },
+  "errors": [
+    {
+      "type": "NOT_FOUND",
+      "path": [
+        "r1",
+        "t0"
+      ],
+      "locations": [
+        {
+          "line": 22,
+          "column": 7
+        }
+      ],
+      "message": "Could not resolve to an issue or pull request with the number of 2147483647."
+    }
+  ]
+}

@@ -2,7 +2,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { GitHubThreads } from "../../../host/github/GitHubThreads";
-import { gitHubThreadCommandSchema, gitHubThreadRefSchema } from "../../../shared/github-thread";
+import {
+  gitHubThreadCommandSchema,
+  gitHubThreadRefSchema,
+  gitHubThreadSummariesInputSchema,
+} from "../../../shared/github-thread";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 
 class GitHubThreadIpcError extends Schema.TaggedError<GitHubThreadIpcError>()(
@@ -23,6 +27,11 @@ export const live = Layer.effectDiscard(
     const threads = yield* GitHubThreads;
     yield* ipc.handleQuery("github:thread", (_, ref) =>
       parse(() => gitHubThreadRefSchema.parse(ref)).pipe(Effect.flatMap(threads.read)),
+    );
+    yield* ipc.handleQuery("github:thread-summaries", (_, refs) =>
+      parse(() => gitHubThreadSummariesInputSchema.parse(refs)).pipe(
+        Effect.flatMap(threads.summaries),
+      ),
     );
     yield* ipc.handleQuery("github:thread-files", (_, ref) =>
       parse(() => gitHubThreadRefSchema.parse(ref)).pipe(Effect.flatMap(threads.files)),

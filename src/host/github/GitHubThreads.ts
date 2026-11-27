@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { z } from "zod";
 import {
+  gitHubThreadKey,
   type GitHubPullRequestFiles,
   type GitHubPullRequestFilesResult,
   type GitHubThreadCommand,
@@ -19,6 +20,7 @@ import {
   type GitHubThreadDetail,
   type GitHubThreadReadResult,
   type GitHubThreadRef,
+  type GitHubThreadSummariesResult,
   type GitHubUnavailable,
   type GitHubUnavailableReason,
 } from "../../shared/github-thread";
@@ -28,6 +30,7 @@ import { GitHubAccount, type GitHubAccountVerificationError } from "./GitHubAcco
 import {
   readGitHubIssue,
   readGitHubPullRequest,
+  readGitHubThreadSummaries,
   resolveGitHubThread,
   setGitHubPullRequestDraft,
 } from "./GitHubThreadDocuments";
@@ -37,6 +40,7 @@ import {
   issueResponse,
   projectIssue,
   projectPullRequest,
+  projectThreadSummaries,
   pullRequestResponse,
 } from "./GitHubThreadProjection";
 
@@ -144,11 +148,15 @@ function rejection(
   return projectError(error);
 }
 
-function decode<T>(schema: z.ZodType<T>, body: string) {
+function decodeBody<T>(parse: (value: unknown) => T, body: string) {
   return Effect.try({
-    try: () => schema.parse(JSON.parse(body)),
+    try: () => parse(JSON.parse(body)),
     catch: () => unavailable("failed", "GitHub returned an incomplete or unexpected response."),
   });
+}
+
+function decode<T>(schema: z.ZodType<T>, body: string) {
+  return decodeBody((value) => schema.parse(value), body);
 }
 
 function decodeRest<T>(schema: z.ZodType<T>, response: GitHubRestResponse) {
@@ -306,6 +314,27 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
     timeToLive: 0,
     lookup: ([login, key]: readonly [string, ThreadLookupKey]) => readDetail(threadRef(key), login),
   });
+  const summaryReads = yield* Cache.make({
+    capacity: Infinity,
+    timeToLive: 0,
+    lookup: Effect.fn("GitHubThreads.readSummaries")(function* ([host, , refs]: readonly [
+      string,
+      string,
+      readonly ThreadLookupKey[],
+    ]) {
+      const { query, variables, repositories } = readGitHubThreadSummaries(refs.map(threadRef));
+      const body = yield* api.graphql({
+        host,
+        operation: "thread.summaries",
+        query,
+        variables,
+        allowMissingFields: true,
+        maxResponseBytes: smallResponseBytes,
+        ...admission,
+      });
+      return yield* decodeBody((value) => projectThreadSummaries(value, repositories), body);
+    }),
+  });
   const fileReads = yield* Cache.make({
     capacity: Infinity,
     timeToLive: 0,
@@ -319,6 +348,26 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
         Cache.get(detailReads, [account.login, lookupKey(ref, account.fingerprint)]),
       );
       return { status: "ready", detail };
+    },
+    Effect.catch((error) => Effect.succeed(projectError(error))),
+  );
+  const summaries = Effect.fn("GitHubThreads.summaries")(
+    function* (
+      refs: readonly GitHubThreadRef[],
+    ): Effect.fn.Return<GitHubThreadSummariesResult, ThreadError> {
+      const first = refs[0];
+      if (!first) return { status: "ready", summaries: {} };
+      const { host } = first;
+      if (refs.some((ref) => ref.host !== host)) return unavailable("not_connected");
+      const account = yield* verify(host);
+      const byKey = new Map(refs.map((ref) => [gitHubThreadKey(ref), ref]));
+      const normalized = [...byKey]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([, ref]) => lookupKey(ref, account.fingerprint));
+      const summaries = yield* account.use(
+        Cache.get(summaryReads, [host, account.fingerprint, normalized]),
+      );
+      return { status: "ready", summaries };
     },
     Effect.catch((error) => Effect.succeed(projectError(error))),
   );
@@ -419,7 +468,7 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
     Effect.catch((error) => Effect.succeed(projectError(error))),
   );
 
-  return { read, files, command };
+  return { read, summaries, files, command };
 });
 
 export class GitHubThreads extends Context.Service<

@@ -225,6 +225,7 @@ export const live = Layer.effectDiscard(
           if (
             channel === "github:thread" ||
             channel === "github:thread-files" ||
+            channel === "github:thread-summaries" ||
             channel === "github:thread-command"
           ) {
             return {
