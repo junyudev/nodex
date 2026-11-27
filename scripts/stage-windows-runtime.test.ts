@@ -21,8 +21,8 @@ const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true });
 });
-const nativeImage = () => windowsPeFixture(0x8664);
-function fixture() {
+const nativeImage = (arch: "x64" | "arm64") => windowsPeFixture(arch === "x64" ? 0x8664 : 0xaa64);
+function fixture(arch: "x64" | "arm64") {
   const root = mkdtempSync(join(tmpdir(), "nodex-windows-stage-"));
   roots.push(root);
   const lock = JSON.parse(
@@ -31,12 +31,12 @@ function fixture() {
       "utf8",
     ),
   );
-  const build = lock.builds["win32-x64"];
+  const build = lock.builds[`win32-${arch}`];
   const source = join(root, "source");
   for (const file of build.requiredArtifacts as string[]) {
     const path = join(source, file);
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, /\.(?:exe|dll)$/u.test(file) ? nativeImage() : "fixture data");
+    writeFileSync(path, /\.(?:exe|dll)$/u.test(file) ? nativeImage(arch) : "fixture data");
   }
   writeFileSync(
     join(source, "codex-package.json"),
@@ -47,7 +47,7 @@ function fixture() {
       target: build.targetTriple,
     }),
   );
-  build.entrypointSha256 = createHash("sha256").update(nativeImage()).digest("hex");
+  build.entrypointSha256 = createHash("sha256").update(nativeImage(arch)).digest("hex");
   build.runtimeMetadataSha256 = "0".repeat(64);
   const lockPath = join(root, "lock.json");
   writeFileSync(lockPath, JSON.stringify(lock));
@@ -64,7 +64,7 @@ function fixture() {
     lockPath,
     options: {
       targetPlatform: "win32" as const,
-      targetArch: "x64" as const,
+      targetArch: arch,
       outputPath: join(root, "output"),
       projectRootPath: root,
       sourceRoot: source,
@@ -73,32 +73,35 @@ function fixture() {
   };
 }
 
-test("stages a lock-bound x64 Codex package without Desktop Tools", async () => {
-  const input = fixture();
-  const candidate = await stageCodexRuntimeCandidate(input.options);
-  input.build.runtimeMetadataSha256 = candidate.metadataSha256;
-  writeFileSync(input.lockPath, JSON.stringify(input.lock));
-  const staged = await stageCodexRuntime({ ...input.options, reuseExisting: true });
-  expect(staged).toEqual(candidate.metadata);
-  expect(staged.entrypoint).toBe("bin/codex.exe");
-  expect(staged.targetArch).toBe("x64");
-  expect(
-    staged.artifacts
-      .filter((artifact) => artifact.executable)
-      .every((artifact) => /\.(?:exe|dll)$/u.test(artifact.path)),
-  ).toBe(true);
-  expect(existsSync(join(input.options.outputPath, "agent-runtime/browser-runtime"))).toBe(false);
-});
+test.each(["x64", "arm64"] as const)(
+  "stages a lock-bound %s Codex package without Desktop Tools",
+  async (arch) => {
+    const input = fixture(arch);
+    const candidate = await stageCodexRuntimeCandidate(input.options);
+    input.build.runtimeMetadataSha256 = candidate.metadataSha256;
+    writeFileSync(input.lockPath, JSON.stringify(input.lock));
+    const staged = await stageCodexRuntime({ ...input.options, reuseExisting: true });
+    expect(staged).toEqual(candidate.metadata);
+    expect(staged.entrypoint).toBe("bin/codex.exe");
+    expect(staged.targetArch).toBe(arch);
+    expect(
+      staged.artifacts
+        .filter((artifact) => artifact.executable)
+        .every((artifact) => /\.(?:exe|dll)$/u.test(artifact.path)),
+    ).toBe(true);
+    expect(existsSync(join(input.options.outputPath, "agent-runtime/browser-runtime"))).toBe(false);
+  },
+);
 
 test("rejects a foreign native image before publishing the runtime", async () => {
-  const input = fixture();
-  writeFileSync(join(input.source, "codex-path/rg.exe"), windowsPeFixture(0x14c));
-  await expect(stageCodexRuntimeCandidate(input.options)).rejects.toThrow("Unsupported PE Machine");
+  const input = fixture("arm64");
+  writeFileSync(join(input.source, "codex-path/rg.exe"), nativeImage("x64"));
+  await expect(stageCodexRuntimeCandidate(input.options)).rejects.toThrow("architecture mismatch");
   expect(existsSync(join(input.options.outputPath, "agent-runtime"))).toBe(false);
 });
 
 test("derives upstream metadata without the Windows build host's CRT", async () => {
-  const input = fixture();
+  const input = fixture("x64");
   writeFileSync(
     join(input.source, "codex-path/rg.exe"),
     windowsPeFixture(0x8664, ["vcruntime140.dll"]),
@@ -113,47 +116,59 @@ test("derives upstream metadata without the Windows build host's CRT", async () 
 });
 
 test("rejects metadata that is not bound by the Windows release lock", async () => {
-  const input = fixture();
+  const input = fixture("x64");
   await expect(stageCodexRuntime(input.options)).rejects.toThrow(
     "metadata does not match the release lock",
   );
 });
 
-test("relocks the Windows x64 archive and retains the macOS pin", async () => {
-  const input = fixture();
-  const archive = join(input.root, input.build.assetName);
-  const tar =
-    process.platform === "win32"
-      ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
-      : "/usr/bin/tar";
-  execFileSync(tar, [
-    "-czf",
-    archive,
-    "-C",
-    input.source,
-    "bin",
-    "codex-package.json",
-    "codex-path",
-    "codex-resources",
-  ]);
-  const manifest = `${createHash("sha256").update(readFileSync(archive)).digest("hex")}  ${input.build.assetName}\n`;
-  input.lock.upstream.checksumManifest.sha256 = createHash("sha256").update(manifest).digest("hex");
-  input.lock.upstream.checksumManifest.size = Buffer.byteLength(manifest);
-  writeFileSync(join(input.root, input.lock.upstream.checksumManifest.assetName), manifest);
-  writeFileSync(input.lockPath, JSON.stringify(input.lock));
-  const candidate = await createAgentRuntimeRelockCandidate({
-    lockPath: input.lockPath,
-    projectRootPath: input.root,
-    outputPath: join(input.root, "candidate.json"),
-    windowsX64ArchivePath: archive,
+test("relocks both Windows archives independently and retains the macOS pin", async () => {
+  const inputs = [fixture("arm64"), fixture("x64")];
+  const first = inputs[0]!;
+  const archives = inputs.map((input) => {
+    const archive = join(first.root, input.build.assetName);
+    const tar =
+      process.platform === "win32"
+        ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+        : "/usr/bin/tar";
+    execFileSync(tar, [
+      "-czf",
+      archive,
+      "-C",
+      input.source,
+      "bin",
+      "codex-package.json",
+      "codex-path",
+      "codex-resources",
+    ]);
+    return archive;
   });
-  expect(candidate.builds["darwin-arm64"]).toEqual(input.lock.builds["darwin-arm64"]);
-  writeFileSync(input.lockPath, JSON.stringify(candidate));
-
-  const staged = await stageCodexRuntime(input.options);
-  expect(staged.targetArch).toBe("x64");
-  expect(staged.packageManifest.execServer).toBe("bin/codex-exec-server.exe");
-  expect(candidate.builds["win32-x64"].entrypointSha256).toBe(
-    createHash("sha256").update(nativeImage()).digest("hex"),
-  );
+  const manifest = archives
+    .map(
+      (archive) =>
+        `${createHash("sha256").update(readFileSync(archive)).digest("hex")}  ${archive.split(/[\\/]/u).at(-1)}\n`,
+    )
+    .join("");
+  first.lock.upstream.checksumManifest.sha256 = createHash("sha256").update(manifest).digest("hex");
+  first.lock.upstream.checksumManifest.size = Buffer.byteLength(manifest);
+  writeFileSync(join(first.root, first.lock.upstream.checksumManifest.assetName), manifest);
+  writeFileSync(first.lockPath, JSON.stringify(first.lock));
+  const candidate = await createAgentRuntimeRelockCandidate({
+    lockPath: first.lockPath,
+    projectRootPath: first.root,
+    outputPath: join(first.root, "candidate.json"),
+    windowsArm64ArchivePath: archives[0]!,
+    windowsX64ArchivePath: archives[1]!,
+  });
+  expect(candidate.builds["darwin-arm64"]).toEqual(first.lock.builds["darwin-arm64"]);
+  writeFileSync(first.lockPath, JSON.stringify(candidate));
+  for (const [index, arch] of (["arm64", "x64"] as const).entries()) {
+    const input = inputs[index]!;
+    const staged = await stageCodexRuntime({ ...input.options, lockPath: first.lockPath });
+    expect(staged.targetArch).toBe(arch);
+    expect(staged.packageManifest.execServer).toBe("bin/codex-exec-server.exe");
+    expect(candidate.builds[`win32-${arch}`].entrypointSha256).toBe(
+      createHash("sha256").update(nativeImage(arch)).digest("hex"),
+    );
+  }
 });

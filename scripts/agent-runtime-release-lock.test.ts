@@ -75,6 +75,7 @@ function makeLock(): Record<string, unknown> {
       "darwin-arm64": build("aarch64-apple-darwin"),
       "linux-arm64": managedBuild("aarch64-unknown-linux-musl"),
       "linux-x64": managedBuild("x86_64-unknown-linux-musl"),
+      "win32-arm64": managedBuild("aarch64-pc-windows-msvc"),
       "win32-x64": managedBuild("x86_64-pc-windows-msvc"),
     },
     notices: {
@@ -154,7 +155,7 @@ test("requires exact supported targets and the canonical runtime artifacts", () 
   const builds = extraTarget.builds as Record<string, unknown>;
   builds["darwin-arm64-debug"] = builds["darwin-arm64"];
   expect(() => parseCodexAppServerReleaseLock(extraTarget)).toThrow(
-    "the four supported release targets",
+    "the five supported release targets",
   );
 
   const missingArtifact = makeLock();
@@ -244,7 +245,7 @@ test("rejects managed installation archives from another release or target", () 
 
   const wrongTarget = makeLock();
   const targetBuilds = wrongTarget.builds as Record<string, Record<string, unknown>>;
-  targetBuilds["win32-x64"]!.targetTriple = "x86_64-unknown-linux-musl";
+  targetBuilds["win32-arm64"]!.targetTriple = "x86_64-pc-windows-msvc";
   expect(() => parseCodexAppServerReleaseLock(wrongTarget)).toThrow("targetTriple");
 });
 

@@ -8,6 +8,11 @@ on:
     - cron: "20 4 * * *"
   workflow_dispatch:
     inputs:
+      arch:
+        description: Native Windows architecture
+        type: choice
+        default: x64
+        options: [x64, arm64]
       installer_run_id:
         description: "Reprobe this run's installers without rebuilding (diagnostics only)"
         type: string
@@ -24,9 +29,9 @@ concurrency:
 jobs:
   rust:
     if: inputs.installer_run_id == ''
-    name: rust x64
+    name: rust ${{ inputs.arch || 'x64' }}
     timeout-minutes: 45
-    runs-on: windows-latest
+    runs-on: ${{ inputs.arch == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,16 +58,16 @@ jobs:
 
   app:
     if: inputs.installer_run_id == ''
-    name: app ${{ matrix.suite }} x64
+    name: app ${{ matrix.suite }} ${{ inputs.arch || 'x64' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         suite: [unit, core-client, main, renderer, integration]
-    runs-on: windows-latest
+    runs-on: ${{ inputs.arch == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     env:
       CI_SOURCE_SHA: ${{ github.sha }}
-      CI_TIMING_JOB: windows-app-${{ matrix.suite }}-x64
+      CI_TIMING_JOB: windows-app-${{ matrix.suite }}-${{ inputs.arch || 'x64' }}
       NODEX_TEST_TIMINGS: .generated/ci-timings
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -86,7 +91,7 @@ jobs:
         if: matrix.suite == 'integration'
         env:
           NODEX_REQUIRE_STAGED_DESKTOP_TOOLS: "1"
-          DESKTOP_TOOLS_ARCH: x64
+          DESKTOP_TOOLS_ARCH: ${{ inputs.arch || 'x64' }}
         run: |
           $lock = Get-Content -Raw resources/browser-runtime/browser-runtime.lock.json | ConvertFrom-Json -AsHashtable
           $asset = $lock.assets["win32-$env:DESKTOP_TOOLS_ARCH"]
@@ -138,7 +143,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: windows-app-${{ matrix.suite }}-x64-failure-${{ github.run_attempt }}
+          name: windows-app-${{ matrix.suite }}-${{ inputs.arch || 'x64' }}-failure-${{ github.run_attempt }}
           path: |
             .vitest-attachments/
             test-results/
@@ -149,7 +154,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: timings-windows-app-${{ matrix.suite }}-x64-${{ github.run_attempt }}
+          name: timings-windows-app-${{ matrix.suite }}-${{ inputs.arch || 'x64' }}-${{ github.run_attempt }}
           path: .generated/ci-timings/
           if-no-files-found: ignore
           retention-days: 14
@@ -160,5 +165,6 @@ jobs:
     with:
       source_sha: ${{ github.sha }}
       release: false
+      arch: ${{ inputs.arch || 'x64' }}
       installer_run_id: ${{ inputs.installer_run_id || '' }}
       retention_days: 14

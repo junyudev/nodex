@@ -99,10 +99,13 @@ installer maintenance and Core named pipes, and Windows Desktop Tools under
 Electron.
 
 `.github/workflows/windows.yml` runs the Rust workspace and application unit,
-Core-client, Main, renderer and integration suites on `windows-latest` (x64).
-The nightly schedule, `codex/windows-**` pushes, and manual runs also build,
-silently install, and probe the unsigned NSIS installer through the reusable Windows distribution, with updates disabled.
-A manual run with `installer_run_id` re-probes its installer without rebuilding.
+Core-client, Main, renderer and integration suites. The schedule and
+`codex/windows-**` pushes run on `windows-latest` (x64). Manual dispatch defaults to
+`arch=x64` and accepts `arch=arm64` to run all suites on `windows-11-arm`.
+The workflow also builds, silently installs, and probes the unsigned NSIS installer
+on the selected native runner, then uploads it as a workflow artifact with updates
+disabled. Set `installer_run_id` and the matching `arch` to re-probe an installer
+without rebuilding.
 These jobs use no signing credentials and publish neither a Release nor an
 update feed.
 

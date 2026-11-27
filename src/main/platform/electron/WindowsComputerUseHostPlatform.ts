@@ -136,7 +136,7 @@ export function resolveWindowsComputerUse(
   const { manifest, paths } = runtime.bundle;
   if (
     manifest.targetPlatform !== "win32" ||
-    host.architecture !== "x64" ||
+    manifest.targetArch !== host.architecture ||
     !hostCapabilities("win32", host.architecture, {
       computerUseReady: manifest.capabilities.computerUse.status === "available",
     }).computerControl

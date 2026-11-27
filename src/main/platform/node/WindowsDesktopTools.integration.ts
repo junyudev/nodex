@@ -272,6 +272,8 @@ testOnWindows(
       child.stdin!.end("MCP message");
       const [line] = await result;
       const received = JSON.parse(line);
+      // Windows on ARM adds this to every process it creates; nothing passed it on.
+      delete received.env.PROCESSOR_ARCHITECTURE;
       expect(received).toEqual({
         argv: argument,
         input: "MCP message",

@@ -48,7 +48,11 @@ async function fixture<T>(use: (root: string) => Promise<T>): Promise<T> {
   }
 }
 
-const verifiedFixture = async (home: string, arch: "x64", minimumWindowsVersion?: string) => {
+const verifiedFixture = async (
+  home: string,
+  arch: "x64" | "arm64",
+  minimumWindowsVersion?: string,
+) => {
   const root = join(home, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
   const manifestPath = join(root, BROWSER_RUNTIME_MANIFEST_FILENAME);
   const manifest = writeWindowsBrowserRuntimeFixture(root, arch);
@@ -89,37 +93,39 @@ const verifiedFixture = async (home: string, arch: "x64", minimumWindowsVersion?
   return bundle;
 };
 
-test("requires a verified x64 closure and its Windows floor", () =>
-  fixture(async (root) => {
-    const arch = "x64";
-    const runtime = await verifiedFixture(root, arch);
-    expect(
-      resolveWindowsComputerUse(runtime, { architecture: arch, osRelease: "10.0.19041" }),
-    ).toMatchObject({
-      status: "available",
-      serviceExecutablePath: join(runtime.bundle.rootPath, "bin", "service.exe"),
-    });
-    expect(
-      resolveWindowsComputerUse(runtime, { architecture: arch, osRelease: "10.0.19040" }),
-    ).toMatchObject({ reason: "windows-version-unsupported" });
-    const older = await verifiedFixture(join(root, "older"), arch, "10.0.17763");
-    expect(
-      resolveWindowsComputerUse(older, { architecture: arch, osRelease: "10.0.19040" }),
-    ).toMatchObject({ reason: "windows-version-unsupported" });
-    const later = await verifiedFixture(join(root, "later"), arch, "10.0.22000");
-    expect(
-      resolveWindowsComputerUse(later, { architecture: arch, osRelease: "10.0.19045" }),
-    ).toMatchObject({ reason: "windows-version-unsupported" });
-    expect(
-      resolveWindowsComputerUse(runtime, { architecture: "ia32", osRelease: "10.0.26100" }),
-    ).toMatchObject({ reason: "architecture-unsupported" });
-    expect(
-      resolveWindowsComputerUse(
-        { status: "unavailable", reason: "artifact-invalid", message: "Invalid DLL" },
-        { architecture: arch, osRelease: "10.0.26100" },
-      ),
-    ).toMatchObject({ reason: "runtime-unavailable", message: "Invalid DLL" });
-  }));
+test.each(["x64", "arm64"] as const)(
+  "requires a verified %s closure and its Windows floor",
+  (arch) =>
+    fixture(async (root) => {
+      const runtime = await verifiedFixture(root, arch);
+      expect(
+        resolveWindowsComputerUse(runtime, { architecture: arch, osRelease: "10.0.19041" }),
+      ).toMatchObject({
+        status: "available",
+        serviceExecutablePath: join(runtime.bundle.rootPath, "bin", "service.exe"),
+      });
+      expect(
+        resolveWindowsComputerUse(runtime, { architecture: arch, osRelease: "10.0.19040" }),
+      ).toMatchObject({ reason: "windows-version-unsupported" });
+      const older = await verifiedFixture(join(root, "older"), arch, "10.0.17763");
+      expect(
+        resolveWindowsComputerUse(older, { architecture: arch, osRelease: "10.0.19040" }),
+      ).toMatchObject({ reason: "windows-version-unsupported" });
+      const later = await verifiedFixture(join(root, "later"), arch, "10.0.22000");
+      expect(
+        resolveWindowsComputerUse(later, { architecture: arch, osRelease: "10.0.19045" }),
+      ).toMatchObject({ reason: "windows-version-unsupported" });
+      expect(
+        resolveWindowsComputerUse(runtime, { architecture: "ia32", osRelease: "10.0.26100" }),
+      ).toMatchObject({ reason: "architecture-unsupported" });
+      expect(
+        resolveWindowsComputerUse(
+          { status: "unavailable", reason: "artifact-invalid", message: "Invalid DLL" },
+          { architecture: arch, osRelease: "10.0.26100" },
+        ),
+      ).toMatchObject({ reason: "runtime-unavailable", message: "Invalid DLL" });
+    }),
+);
 
 type HelperInput = {
   id: number;

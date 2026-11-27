@@ -89,7 +89,7 @@ export function createWindowsAppUpdaterPlatform(
               .then(async () => {
                 signal.throwIfAborted();
                 const feed = await fetchUpdate(
-                  config.feedUrls![selectedChannel],
+                  config.feedUrls[selectedChannel],
                   ports.fetch,
                   signal,
                 );
@@ -178,7 +178,7 @@ export function createWindowsAppUpdaterPlatform(
 
 export function createPackagedWindowsAppUpdaterPlatform(options: {
   readonly resourcesPath: string;
-  readonly architecture: "x64";
+  readonly architecture: WindowsAppUpdateConfig["architecture"];
   readonly directory: string;
 }): AppUpdaterPlatform | null {
   const config = readWindowsAppUpdateConfig(options.resourcesPath);

@@ -121,19 +121,25 @@ Prepare additional architectures explicitly in a dedicated checkout by setting
 `supportedArchitectures` before installation; this installs optional packages,
 not cross-compiled native addons.
 
-### Windows 11 (x64)
+### Windows 11
 
-Use a native x64 toolchain. Install Git, the pinned
+Use a toolchain native to the host, x64 or arm64. Install Git, the pinned
 Node version, [Rustup](https://rustup.rs/), and the
 [Vite+ CLI](https://viteplus.dev/guide/install). Install Visual Studio 2022
-Build Tools with **Desktop development with C++**, the Windows SDK, and the
-MSVC x64/x86 tools. Also install the x64/x86 **Spectre-mitigated libraries**
-(`Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre`), a separate optional
-component. `vp install` runs `electron-builder install-app-deps`; rebuilding
-node-pty's winpty/conpty projects fails with **MSB8040** when it is missing.
+Build Tools with **Desktop development with C++**, the Windows SDK, the MSVC
+tools for the host architecture, and their **Spectre-mitigated libraries**, a
+separate optional component:
+`Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre` on x64, or
+`Microsoft.VisualStudio.Component.VC.Tools.ARM64` and
+`Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre` on arm64.
+`vp install` runs `electron-builder install-app-deps`; rebuilding node-pty's
+winpty/conpty projects fails with **MSB8040** when the Spectre libraries are
+missing. On arm64, also put LLVM's `clang.exe` on PATH: Rust's `ring`
+dependency requires Clang there.
 
 For an existing Build Tools installation, run the VS 2022 bootstrapper from an
-administrator PowerShell, adjusting `--installPath` if needed:
+administrator PowerShell, adjusting `--installPath` if needed. On an arm64 host,
+`--add` the arm64 component IDs instead:
 
 ```powershell
 .\vs_BuildTools.exe modify --installPath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools" --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --passive --wait --norestart
@@ -142,7 +148,8 @@ administrator PowerShell, adjusting `--installPath` if needed:
 These IDs come from the [VS 2022 release component catalog](https://aka.ms/vs/17/release/channel).
 Install Python 3 for node-gyp. Use a Developer PowerShell with these tools on
 PATH when a native dependency needs rebuilding. `node -p process.arch` and
-`rustc -vV` must report x64 and the MSVC host.
+`rustc -vV` must match the host: `x64` and `x86_64-pc-windows-msvc`, or
+`arm64` and `aarch64-pc-windows-msvc`.
 
 From the worktree root, in PowerShell:
 
@@ -151,13 +158,14 @@ vp install --frozen-lockfile
 vp run core:binaries:prepare:dev
 vp run build
 vp run dev --home "$env:USERPROFILE/repo/nodex/runs.local/windows-build"
-vp run package:win:x64
+vp run package:win
 ```
 
 Adjust the development home to the primary checkout's `runs.local` directory.
 It must be absolute and belong to this worktree. The installed Profile defaults
 to `%USERPROFILE%\.nodex`; development continues to use the launcher's isolated
-`<home>/.nodex`. Windows builds, staging and packaging target x64 only.
+`<home>/.nodex`. `package:win` uses the host architecture. Use
+`package:win:x64` or `package:win:arm64` to specify it explicitly.
 
 Development HTTP, HMR and renderer port checks use loopback only; no Windows
 Firewall network-access permission is needed. The pinned Vite+ patch skips its

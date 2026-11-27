@@ -210,15 +210,15 @@ Browser keeps the built-in Browser's history, downloads, credentials, extensions
 permissions and link preferences. Profile import and control of external browsers
 are absent because their host integrations are unavailable. General retains the
 running Nodex version and the shared app-update status, preferences and actions.
-Packaged builds support updates when their distribution channel is
-enabled; local and CI packages report that updates are disabled in that build.
+Packaged x64 builds support updates when their distribution channel is enabled.
+Local and CI packages, including arm64 installers, have updates disabled.
 Unpackaged builds report that updates require a packaged build. Host capability policy determines this presentation; temporary readiness
 of a supported feature remains visible within its owning page.
 
 ## App updates
 
 Windows uses the same Main-owned update states and renderer controls as macOS.
-Stable and Nightly have their own feeds, and only strictly newer
+Stable and Nightly have their own x64 feeds, and only strictly newer
 Release Identity build versions are eligible. Feed and download errors are
 recoverable. A staged installer becomes ready only after its byte length and
 pinned Ed25519 signature are verified.

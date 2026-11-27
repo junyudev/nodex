@@ -9,8 +9,8 @@ const require = createRequire(import.meta.url);
 export default function preparePackagedWindowsUpdates(context) {
   if (context.electronPlatformName !== "win32") return;
   const architecture = Arch[context.arch];
-  if (architecture !== "x64") {
-    throw new Error("Windows updates require an x64 package.");
+  if (architecture !== "x64" && architecture !== "arm64") {
+    throw new Error("Windows updates require an x64 or arm64 package.");
   }
   execFileSync(
     process.execPath,

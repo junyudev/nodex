@@ -111,7 +111,7 @@ Upgrade runtime provenance separately from protocol or product changes:
 1. Select one reviewed `rust-v<version>` tag and verify its peeled source
    commit.
 2. Require the official macOS arm64 package, the Linux arm64 and x64 and the
-   Windows x64 `codex-package-<target>.tar.gz` assets plus
+   Windows x64 and arm64 `codex-package-<target>.tar.gz` assets plus
    `codex-package_SHA256SUMS`.
 3. Compare the checksum-manifest entry, GitHub asset digest, downloaded archive
    digest, and byte length for the macOS arm64 package; bind every managed
@@ -127,7 +127,8 @@ Upgrade runtime provenance separately from protocol or product changes:
      --out /path/to/candidate-lock.json
    ```
 
-   Add `--windows-x64 /path/to/windows-x64.tar.gz` to derive the Windows pin.
+   Use `--windows-x64` and `--windows-arm64` with their matching archives to derive
+   the Windows pins.
    Each archive is checked against the reviewed checksum manifest, exact file
    inventory and native architecture before its metadata is recorded. Relocking
    also records the macOS archive's unpacked file bytes for the Component store. These

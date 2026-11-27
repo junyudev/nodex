@@ -97,8 +97,21 @@ export function verifyReleaseDistributionWorkflows(
       "Windows job-level env cannot use runner context; use a step or workspace path.",
     );
   }
-  if (installer.strategy || installer["runs-on"] !== "windows-latest")
-    throw new Error("Windows distribution must build x64 on its native runner.");
+  const reusable = requireRecord(
+    requireRecord(windows.on, "Windows triggers").workflow_call,
+    "Reusable Windows trigger",
+  );
+  const architecture = requireRecord(
+    requireRecord(reusable.inputs, "Windows inputs").arch,
+    "Windows architecture",
+  );
+  if (
+    architecture.default !== "x64" ||
+    installer.strategy ||
+    installer["runs-on"] !==
+      "${{ !inputs.release && inputs.arch == 'arm64' && 'windows-11-arm' || 'windows-latest' }}"
+  )
+    throw new Error("Official Windows distribution must default to the native runner for x64.");
   const validation = requireRecord(
     requireRecord(workflows.get("windows.yml"), "Windows validation").jobs,
     "Windows validation jobs",
@@ -150,7 +163,9 @@ export function verifyReleaseDistributionWorkflows(
       if (
         distribution.uses !== WINDOWS_WORKFLOW ||
         distribution.steps ||
-        (isRecord(distribution.with) && distribution.with.release === false)
+        (isRecord(distribution.with) &&
+          (distribution.with.release === false ||
+            (distribution.with.arch !== undefined && distribution.with.arch !== "x64")))
       )
         throw new Error(`${filename} must consume the official Windows distribution.`);
       assertNeeds(distribution, ["certification"], filename);

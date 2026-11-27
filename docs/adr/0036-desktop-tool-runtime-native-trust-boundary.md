@@ -50,7 +50,7 @@ Packaging signs Nodex-owned artifacts, restores the entire vendor-signed Desktop
 Tool closure, refreshes the enclosing manifests, and reseals the outer app. It
 does not replace nested Desktop Tool signing identities with Nodex's team.
 
-Windows x64 has its own sealed closure. Main verifies every
+Windows x64 and arm64 each have a sealed closure. Main verifies every
 manifest digest, rejects reparse points and untrusted owners or write grants,
 and requires embedded Authenticode signatures with a trusted code-signing
 chain, revocation evidence, and the manifest's subject and issuer. Windows

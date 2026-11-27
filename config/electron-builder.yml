@@ -190,9 +190,7 @@ win:
   executableName: Nodex
   signExecutable: false
   requestedExecutionLevel: asInvoker
-  target:
-    - target: nsis
-      arch: [x64]
+  target: nsis
   artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
   extraResources:
     - from: .generated/codex-runtime/agent-runtime

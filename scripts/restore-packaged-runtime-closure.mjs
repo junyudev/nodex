@@ -190,10 +190,10 @@ export default async function restorePackagedRuntimeClosure(context) {
     throw new Error("Packaged prepared manifest differs from the verified build");
   // electron-builder Arch: x64=1, arm64=3. Reject every other desktop target.
   const arch =
-    context.electronPlatformName === "win32" && context.arch === 1
-      ? "x64"
-      : context.electronPlatformName === "darwin" && context.arch === 3
-        ? "arm64"
+    context.arch === 3
+      ? "arm64"
+      : context.electronPlatformName === "win32" && context.arch === 1
+        ? "x64"
         : null;
   if (!arch) throw new Error(`Unsupported desktop package architecture: ${context.arch}`);
   assertDesktopRuntimePayload({

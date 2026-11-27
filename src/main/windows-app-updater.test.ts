@@ -84,6 +84,7 @@ describe("windows-app-updater", () => {
       for (const invalid of [
         { publicKey },
         { architecture: "ia32" },
+        { architecture: "arm64" },
         { schemaVersion: 2 },
         { buildVersion: "1.1" },
         { feedUrls: { ...windowsUpdateFeedUrls("x64"), stable: "http://example.com" } },
@@ -95,38 +96,57 @@ describe("windows-app-updater", () => {
         expect(() => parseWindowsAppUpdateConfig({ ...config(), ...invalid })).toThrow();
       }
     });
-    test("disabled packages have no feeds and acquire no network or installer capability", () => {
-      expect(
-        parseWindowsAppUpdateConfig({ ...config(), updates: "disabled", feedUrls: null }).updates,
-      ).toBe("disabled");
-      expect(() => parseWindowsAppUpdateConfig({ ...config(), updates: "disabled" })).toThrow();
-    });
-    test("packaged entry point enforces key and update availability before acquisition", async () => {
-      const root = directory();
-      await mkdir(join(root, "native"));
-      await writeFile(
-        join(root, "native", "app-update.json"),
-        JSON.stringify({ ...config(), publicKey }),
-      );
-      expect(() =>
-        createPackagedWindowsAppUpdaterPlatform({
-          resourcesPath: root,
-          architecture: "x64",
-          directory: join(root, "updates"),
-        }),
-      ).toThrow();
-      await writeFile(
-        join(root, "native", "app-update.json"),
-        JSON.stringify({ ...config(), updates: "disabled", feedUrls: null }),
-      );
-      expect(
-        createPackagedWindowsAppUpdaterPlatform({
-          resourcesPath: root,
-          architecture: "x64",
-          directory: root,
-        }),
-      ).toBeNull();
-    });
+    test.each(["x64", "arm64"] as const)(
+      "disabled %s packages reject update feeds",
+      (architecture) => {
+        expect(
+          parseWindowsAppUpdateConfig({
+            ...config(),
+            architecture,
+            updates: "disabled",
+            feedUrls: null,
+          }).updates,
+        ).toBe("disabled");
+        expect(() =>
+          parseWindowsAppUpdateConfig({ ...config(), architecture, updates: "disabled" }),
+        ).toThrow();
+      },
+    );
+    test.each(["x64", "arm64"] as const)(
+      "packaged %s entry point enforces key and update availability before acquisition",
+      async (architecture) => {
+        const root = directory();
+        await mkdir(join(root, "native"));
+        await writeFile(
+          join(root, "native", "app-update.json"),
+          JSON.stringify({
+            ...config(),
+            architecture,
+            updates: "disabled",
+            feedUrls: null,
+            publicKey,
+          }),
+        );
+        expect(() =>
+          createPackagedWindowsAppUpdaterPlatform({
+            resourcesPath: root,
+            architecture,
+            directory: join(root, "updates"),
+          }),
+        ).toThrow();
+        await writeFile(
+          join(root, "native", "app-update.json"),
+          JSON.stringify({ ...config(), architecture, updates: "disabled", feedUrls: null }),
+        );
+        expect(
+          createPackagedWindowsAppUpdaterPlatform({
+            resourcesPath: root,
+            architecture,
+            directory: root,
+          }),
+        ).toBeNull();
+      },
+    );
   });
 
   describe("Windows appcast selection", () => {

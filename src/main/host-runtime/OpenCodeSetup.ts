@@ -84,7 +84,7 @@ export const make = Effect.gen(function* () {
   const initial: OpenCodeSetupState = {
     revision: 0,
     supported,
-    command: openCodeInstallCommand(config.platform),
+    command: openCodeInstallCommand(config.platform, config.arch),
     executable: { status: "missing" },
     installation: { phase: "idle" },
   };

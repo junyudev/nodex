@@ -144,7 +144,7 @@ async function main(): Promise<void> {
     const value = args[index + 1];
     if (!key || !["--arch", "--artifacts", "--installer-timeout-ms"].includes(key) || !value)
       throw new Error(
-        "Usage: probe-windows-installer.ts --arch <x64> --artifacts <directory> [--installer-timeout-ms <milliseconds>]",
+        "Usage: probe-windows-installer.ts --arch <x64|arm64> --artifacts <directory> [--installer-timeout-ms <milliseconds>]",
       );
     options.set(key, value);
   }

@@ -11,7 +11,7 @@ export const CODEX_APP_SERVER_REQUIRED_ARTIFACTS: readonly [
 ];
 export const OFFICIAL_CODEX_MACOS_SIGNING_TEAM_ID: "2DC432GLL2";
 
-export type CodexReleaseTargetKey = "darwin-arm64" | "win32-x64" | `linux-${"arm64" | "x64"}`;
+export type CodexReleaseTargetKey = "darwin-arm64" | `${"linux" | "win32"}-${"arm64" | "x64"}`;
 
 export interface CodexReleaseArchive {
   archiveSha256: string;
@@ -45,7 +45,7 @@ export interface CodexAppServerReleaseLock {
   appServerRuntimeVersion: string;
   builds: Record<CodexReleaseTargetKey, CodexReleaseArchive> &
     Record<AgentRuntimeTargetKey, AgentRuntimeBuild> &
-    Record<"win32-x64", WindowsAgentRuntimeBuild>;
+    Record<`win32-${"arm64" | "x64"}`, WindowsAgentRuntimeBuild>;
   notices: {
     licensePath: string;
     licenseSha256: string;

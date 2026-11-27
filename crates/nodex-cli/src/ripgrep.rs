@@ -521,6 +521,7 @@ fn staged_rg_path(cli_executable: &Path) -> Option<PathBuf> {
     let target = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => "darwin-arm64",
         ("windows", "x86_64") => "win32-x64",
+        ("windows", "aarch64") => "win32-arm64",
         _ => return None,
     };
     Some(

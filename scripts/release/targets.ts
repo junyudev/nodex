@@ -2,7 +2,8 @@ import type { WindowsArchitecture } from "../desktop-build-target";
 import type { BuildIdentity } from "./model";
 
 export type MacArchitecture = "arm64";
-export type WindowsReleaseArchitecture = `windows-${WindowsArchitecture}`;
+export type WindowsPublishedArchitecture = (typeof WINDOWS_ARCHITECTURES)[number];
+export type WindowsReleaseArchitecture = `windows-${WindowsPublishedArchitecture}`;
 export type ReleaseArchitecture = MacArchitecture | WindowsReleaseArchitecture;
 export const RELEASE_ARCHITECTURES = ["arm64", "windows-x64"] as const;
 export const WINDOWS_ARCHITECTURES = ["x64"] as const;

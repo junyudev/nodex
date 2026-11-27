@@ -161,6 +161,7 @@ function fixture(
       "darwin-arm64": build("aarch64-apple-darwin", "codex-package-aarch64-apple-darwin.tar.gz"),
       "linux-arm64": managedBuild("aarch64-unknown-linux-musl"),
       "linux-x64": managedBuild("x86_64-unknown-linux-musl"),
+      "win32-arm64": managedBuild("aarch64-pc-windows-msvc"),
       "win32-x64": managedBuild("x86_64-pc-windows-msvc"),
     },
     notices: {

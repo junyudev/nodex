@@ -2,7 +2,6 @@ import { mkdirSync, readFileSync, readdirSync, existsSync, statSync, writeFileSy
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { DOMImplementation, XMLSerializer } from "@xmldom/xmldom";
-import type { WindowsArchitecture } from "../desktop-build-target";
 import { materializeSparkleRuntime } from "../materialize-sparkle-runtime";
 import {
   publicationIdentity,
@@ -20,7 +19,11 @@ import {
   signFile,
   verifyFileSignature,
 } from "./signing";
-import { windowsInstallerName, type WindowsReleaseArchitecture } from "./targets";
+import {
+  windowsInstallerName,
+  type WindowsPublishedArchitecture,
+  type WindowsReleaseArchitecture,
+} from "./targets";
 
 const SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle";
 
@@ -105,7 +108,7 @@ export function parseWindowsArchitectureUpdateManifest(
 
 /** The finalizer uses sign_update; tests supply an independent generated Ed25519 key. */
 export function createWindowsArchitectureUpdate(options: {
-  readonly architecture: WindowsArchitecture;
+  readonly architecture: WindowsPublishedArchitecture;
   readonly identity: ReleaseIdentity;
   readonly installerPath: string;
   readonly outputDirectory: string;
@@ -198,7 +201,7 @@ export function createWindowsArchitectureUpdate(options: {
 }
 
 export async function finalizeWindowsArchitectureUpdate(options: {
-  readonly architecture: WindowsArchitecture;
+  readonly architecture: WindowsPublishedArchitecture;
   readonly architectureDirectory: string;
   readonly outputDirectory: string;
   readonly privateKey: string;
