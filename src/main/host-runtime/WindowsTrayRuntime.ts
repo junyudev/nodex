@@ -36,7 +36,8 @@ export interface WindowsTrayNativePort {
 
 const native: WindowsTrayNativePort = {
   create: (icon, guid) => {
-    const tray = new Tray(icon, guid);
+    // Electron rejects an explicit undefined GUID; unpackaged builds have none.
+    const tray = guid === undefined ? new Tray(icon) : new Tray(icon, guid);
     tray.setToolTip("Nodex");
     return {
       destroy: () => tray.destroy(),
