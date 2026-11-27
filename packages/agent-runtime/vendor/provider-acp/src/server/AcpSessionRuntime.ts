@@ -40,12 +40,15 @@ import { signalProcessGroup } from "@nodex/provider-core/server/processGroup";
 import { redactProviderApiKey } from "@nodex/provider-core/server/failure";
 import { ACP_STDERR_TAIL_MAX_CHARS, appendAcpStderrTail, sanitizeAcpStderrExcerpt } from "./stderr.ts";
 import {
+  boundAcpToolDataImages,
   collectSessionConfigOptionValues,
   decideToolCallUpdateEmission,
   extractModelConfigId,
   findModelConfigOption,
   findSessionConfigOption,
+  makeAcpToolOutputImageLimit,
   mergeToolCallState,
+  offerAcpToolEvent,
   toolCallProgressLength,
   parseSessionModeState,
   parseSessionUpdateEvent,
@@ -3134,11 +3137,21 @@ const handleSessionUpdate = ({
           // A call still running is already on screen, even if it aged out.
           if (!active) yield* closeActiveAssistantSegment({ queue, assistantSegmentRef });
         }
-        yield* BoundedQueue.offer(queue, {
-          _tag: "ToolCallUpdated",
-          toolCall: merged,
-          rawPayload: event.rawPayload,
-        });
+        yield* offerAcpToolEvent(
+          queue,
+          {
+            _tag: "ToolCallUpdated",
+            toolCall: merged,
+            rawPayload: makeAcpToolOutputImageLimit(0)(event.rawPayload),
+          } satisfies AcpSessionRuntimeEvent,
+          (event, maxBytes) => {
+            if (event._tag !== "ToolCallUpdated") return event;
+            const data = boundAcpToolDataImages(event.toolCall.data, maxBytes);
+            return data === event.toolCall.data
+              ? event
+              : { ...event, toolCall: { ...event.toolCall, data } };
+          },
+        );
         continue;
       }
       if (event._tag === "ContentDelta") {

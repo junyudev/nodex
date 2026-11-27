@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import {
+  ChatAttachmentId,
   CheckpointId,
   CheckpointRef,
   CheckpointScopeId,
@@ -1769,6 +1770,74 @@ layer("ProviderEventIngestorV2", (it) => {
         ),
         [{ mimeType: "image/png", data: screenshotBase64 }],
       );
+    }),
+  );
+
+  it.effect("keeps a completed inspection's owned image when a recap loses the source", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      const threadId = threadEvent.threadId;
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      const itemId = TurnItemId.make("turn-item:repeated-read");
+      const picture = {
+        type: "image",
+        id: ChatAttachmentId.make("kept-image"),
+        name: "seen.png",
+        mimeType: "image/png",
+        sizeBytes: 8,
+      } as const;
+      const read = {
+        id: itemId,
+        threadId,
+        runId: null,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        status: "completed",
+        title: "Read seen.png",
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+        type: "dynamic_tool",
+        toolName: "Read",
+        viewedImagePath: "/tmp/seen.png",
+        input: { path: "/tmp/seen.png" },
+        attachments: [picture],
+      } satisfies OrchestrationV2TurnItem;
+      const ingest = (turnItem: OrchestrationV2TurnItem) =>
+        ingestor.ingestNormalized({
+          providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+          event: { type: "turn_item.updated", driver: CODEX_DRIVER, turnItem },
+        });
+      yield* eventSink.write({ events: [threadEvent] });
+      yield* ingest(read);
+      yield* ingest({
+        ...read,
+        attachments: undefined,
+        output: "Read completed",
+        unavailableImages: [
+          { name: "seen.png", sourcePath: read.viewedImagePath, reason: "source_missing" },
+        ],
+      });
+
+      const stored = yield* projectionStore.getTurnItem({ threadId, itemId });
+      if (stored?.type !== "dynamic_tool") return assert.fail("Missing completed inspection");
+      assert.deepEqual(stored.attachments, [picture]);
+      assert.isUndefined(stored.unavailableImages);
+      assert.equal(stored.output, "Read completed");
     }),
   );
 

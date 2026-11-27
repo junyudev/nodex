@@ -110,7 +110,9 @@ actual applied state. Run admission captures its own model selection, so editing
 Composer cannot rewrite queued work.
 
 Conversation events retain text, thought, tools, plans, files, usage, supported images and native
-extensions through the existing normalized Runtime history. ACP Agents offer Ask for approval
+extensions through the existing normalized Runtime history. Completed image reads keep an owned
+copy or name the unavailable source. Identified MCP calls keep typed results and any supported,
+bounded result images on the original tool step. ACP Agents offer Ask for approval
 and Full access; native permission requests and client terminals follow the chat's mode, and
 questions that need user information remain interactive. Dedicated compatibility adapters require
 evidence of their native capability and never infer it solely from an executable basename.

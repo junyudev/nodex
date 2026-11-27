@@ -57,6 +57,7 @@ import { type SelfInvocation, selfInvocationArgs } from "@nodex/runtime-shared/n
 const resolveNodexMcpToolId = (name: string) =>
   resolveNodexAppTool(name, new Set([HTML_RENDER_TOOL_NAME]));
 import {
+  boundedToolOutputImage,
   compactDynamicToolOutput,
   htmlRenderFromToolItem,
   mcpToolResultOutput,
@@ -87,19 +88,24 @@ import type * as EffectAcpProtocol from "effect-acp/protocol";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { formatReadToolLabel, formatSearchToolLabel } from "@nodex/runtime-shared/toolActivity";
-import { isWorkspaceImagePreviewPath } from "@nodex/runtime-shared/filePreview";
+import { toolReadImagePath } from "@nodex/runtime-shared/filePreview";
 import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
+import { normalizeMcpToolCall } from "@nodex/provider-core/server/mcpToolCall";
 import { mcpToolPresentation } from "@nodex/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import * as McpProviderSession from "@nodex/provider-core/server/mcpSession";
 import {
   applyAcpAgentTerminalUpdate,
   acpContentBlockDisplayText,
+  acpReportedToolResult,
+  acpToolContentBlocks,
   embeddedTerminalIdsFromSessionUpdate,
   extractMcpToolCallIdentity,
   isAcpDesktopToolPermission,
   findModelConfigOption,
+  makeAcpToolOutputImageLimit,
   mergeToolCallState,
+  offerAcpToolEvent,
   parsePermissionRequest,
   parseSessionUpdateEvent,
   toolCallVisibleOutputChanged,
@@ -1213,6 +1219,62 @@ export function acpMcpToolCallInput(
   return identity.input ?? unknownRecord(record?.arguments) ?? record ?? {};
 }
 
+/** ACP can report MCP blocks either in rawOutput or in its display-content wrappers. */
+export function acpMcpToolCall(
+  identity: NonNullable<ReturnType<typeof extractMcpToolCallIdentity>>,
+  tool: AcpToolCallState,
+  input: Omit<
+    Parameters<typeof normalizeMcpToolCall>[0],
+    "server" | "tool" | "arguments" | "output" | "errorMessage"
+  >,
+) {
+  const rawOutput = tool.data.rawOutput;
+  const { envelope, result, blocks: reported } = acpReportedToolResult(rawOutput);
+  const reportedContent = result?.content ?? rawOutput;
+  const displayed = acpToolContentBlocks(tool.data.content);
+  const images = displayed.filter(boundedToolOutputImage);
+  const text = reported.length > 0 ? undefined : textFromUnknown(reportedContent);
+  const content =
+    reported.length > 0
+      ? [...reported, ...images]
+      : text === undefined
+        ? displayed
+        : [{ type: "text", text }, ...images];
+  const errorMessage = unknownRecord(envelope?.error)?.message;
+  return normalizeMcpToolCall({
+    ...input,
+    server: identity.server,
+    tool: identity.tool,
+    arguments: acpMcpToolCallInput(identity, tool.data.rawInput),
+    output:
+      rawOutput === undefined && content.length === 0
+        ? undefined
+        : {
+            ...result,
+            content: makeAcpToolOutputImageLimit(BoundedQueue.DEFAULT_MAX_BYTES)(content),
+          },
+    ...(typeof errorMessage === "string" ? { errorMessage } : {}),
+  });
+}
+
+export function acpReadToolOutput(tool: AcpToolCallState): unknown {
+  const raw = tool.data.rawOutput;
+  if (boundedToolOutputImage(raw)) return raw;
+  const rawRecord = unknownRecord(raw);
+  const reported = acpToolContentBlocks(rawRecord?.content ?? raw);
+  if (reported.some(boundedToolOutputImage)) return { ...rawRecord, content: reported };
+  const blocks = acpToolContentBlocks(tool.data.content);
+  // Preserve raw diagnostics and make an ACP image in the separate content list readable.
+  if (blocks.some(boundedToolOutputImage)) return { content: blocks, structuredContent: raw };
+  return raw ?? tool.data.content;
+}
+
+function appendAcpToolImage(content: unknown, block: EffectAcpSchema.ToolCallContent): unknown {
+  const previous: readonly unknown[] = Array.isArray(content) ? content : [];
+  // The merged state budgets all streamed chunks together with raw output.
+  return [...previous, block];
+}
+
 function acpMcpToolCallOutput(rawOutput: unknown): unknown {
   const record = unknownRecord(rawOutput);
   if (record === undefined) return rawOutput;
@@ -1226,6 +1288,47 @@ function acpMcpToolCallOutput(rawOutput: unknown): unknown {
   return resultOutput === undefined
     ? { error: errorMessage }
     : { error: errorMessage, result: resultOutput };
+}
+
+function boundAcpProviderToolEventImages(
+  event: ProviderAdapter.ProviderAdapterV2Event,
+  maxBytes: number,
+): ProviderAdapter.ProviderAdapterV2Event {
+  if (event.type !== "turn_item.updated" || event.turnItem.type !== "dynamic_tool") return event;
+  const item = event.turnItem;
+  const call = item.mcpToolCall;
+  const result = call?.result;
+  const publishesImages = item.status === "completed" || item.status === "failed";
+  // A typed MCP result is the single copy sent to the Runtime. A completed inspection
+  // has already used its output bytes to keep an owned copy before reaching this queue.
+  const canKeepOutputImages =
+    publishesImages &&
+    !call &&
+    !(item.viewedImagePath && item.attachments?.some((attachment) => attachment.type === "image"));
+  const output = makeAcpToolOutputImageLimit(canKeepOutputImages ? maxBytes : 0)(item.output);
+  let mcpToolCall = call;
+  if (call && result) {
+    const limitResult = makeAcpToolOutputImageLimit(maxBytes);
+    const content = limitResult(result.content) as typeof result.content;
+    const structuredContent = limitResult(result.structuredContent) as typeof result.structuredContent;
+    if (content !== result.content || structuredContent !== result.structuredContent) {
+      mcpToolCall = {
+        ...call,
+        result: {
+          ...result,
+          content,
+          ...(structuredContent === result.structuredContent
+            ? {}
+            : { structuredContent: structuredContent ?? null }),
+        },
+      };
+    }
+  }
+  if (output === item.output && mcpToolCall === call) return event;
+  return {
+    ...event,
+    turnItem: { ...item, output, ...(mcpToolCall === undefined ? {} : { mcpToolCall }) },
+  };
 }
 
 function nonEmptyText(value: unknown, fallback: string): string {
@@ -1538,7 +1641,7 @@ function resolvedPathInfo(
     }
   }
   const rawInput = unknownRecord(toolCall.data.rawInput);
-  for (const key of ["path", "filePath", "file_path", "url"]) {
+  for (const key of ["path", "filePath", "file_path", "absolute_path", "AbsolutePath", "url"]) {
     const candidate = rawInput?.[key];
     if (typeof candidate === "string" && candidate.trim().length > 0) {
       return { path: candidate.trim(), fromQuery: false };
@@ -2876,7 +2979,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           });
 
         const emitProviderEvent = (event: ProviderAdapter.ProviderAdapterV2Event) =>
-          BoundedQueue.offer(events, event).pipe(Effect.asVoid);
+          offerAcpToolEvent(events, event, boundAcpProviderToolEventImages);
         let scheduleDeferredFinalize: (context: ActiveAcpTurn) => Effect.Effect<void> = () =>
           Effect.void;
         let refreshModelSwitchCapability: Effect.Effect<void> = Effect.void;
@@ -3795,12 +3898,18 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           subagent.toolSessionIds.set(key, sessionId);
           const previous = context.tools.get(key);
           if ("sessionUpdate" in toolCall) {
-            if (toolCall.content.type !== "content") return;
-            const text = acpContentBlockDisplayText(toolCall.content.content);
-            if (text === undefined || text.length === 0) return;
+            const content = toolCall.content;
+            if (content.type !== "content") return;
+            const image = boundedToolOutputImage(content.content);
+            const text = image ? undefined : acpContentBlockDisplayText(content.content);
+            if (!image && !text) return;
             toolCall = {
               toolCallId: toolCall.toolCallId,
-              data: { content: appendToolContentText(previous?.data.content, text) },
+              data: {
+                content: image
+                  ? appendAcpToolImage(previous?.data.content, content)
+                  : appendToolContentText(previous?.data.content, text!),
+              },
             };
           }
           const merged = mergeToolCallState(previous, toolCall);
@@ -3829,44 +3938,71 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const startedAt = context.toolStartedAt.get(key) ?? now;
           context.toolStartedAt.set(key, startedAt);
           const ordinal = resolveSubagentChildOrdinal(subagent, key);
+          const mcpToolCall =
+            mcpIdentity === undefined
+              ? undefined
+              : acpMcpToolCall(mcpIdentity, merged, {
+                  nativeItemId: toolCall.toolCallId,
+                  status: status === "pending" || status === "waiting" ? "running" : status,
+                  startedAtMs: DateTime.toEpochMillis(startedAt),
+                  updatedAtMs: DateTime.toEpochMillis(now),
+                });
+          const readPath =
+            mcpIdentity === undefined && merged.kind === "read"
+              ? pathFromToolCall(merged)
+              : undefined;
+          const viewedImagePath = toolReadImagePath(readPath);
+          const turnItem: OrchestrationV2TurnItem = {
+            id: providerTurnItemId(key),
+            threadId: subagent.childThreadId,
+            runId: null,
+            nodeId: subagent.childRootNodeId,
+            providerThreadId: subagent.task.providerThreadId,
+            providerTurnId: null,
+            nativeItemRef: { driver, nativeId: key, strength: "strong" },
+            parentItemId: null,
+            ordinal,
+            status,
+            title: readPath
+              ? formatReadToolLabel(readPath)
+              : (merged.title ?? merged.kind ?? "Tool"),
+            startedAt,
+            completedAt: completedAtForStatus(status, now),
+            updatedAt: now,
+            type: "dynamic_tool",
+            ...(mcpToolCall === undefined ? {} : { mcpToolCall }),
+            ...(viewedImagePath === undefined ? {} : { viewedImagePath }),
+            ...(mcpIdentity === undefined
+              ? {}
+              : mcpToolPresentation({
+                  serverName: mcpIdentity.server,
+                  toolName: mcpIdentity.tool,
+                  source: unknownRecord(
+                    (
+                      unknownRecord(unknownRecord(merged.data.rawOutput)?.result) ??
+                      unknownRecord(merged.data.rawOutput)
+                    )?._meta,
+                  )?.source,
+                })),
+            toolName:
+              mcpIdentity === undefined
+                ? merged.kind === "read"
+                  ? "Read"
+                  : (merged.title ?? merged.kind ?? "Tool")
+                : `${mcpIdentity.server}.${mcpIdentity.tool}`,
+            input: mcpToolCall?.arguments ?? merged.data.rawInput ?? null,
+            output:
+              readPath === undefined
+                ? (merged.data.rawOutput ?? merged.data.content ?? null)
+                : acpReadToolOutput(merged),
+          };
           yield* emitProviderEvent({
             type: "turn_item.updated",
             driver,
-            turnItem: {
-              id: providerTurnItemId(key),
-              threadId: subagent.childThreadId,
-              runId: null,
-              nodeId: subagent.childRootNodeId,
-              providerThreadId: subagent.task.providerThreadId,
-              providerTurnId: null,
-              nativeItemRef: { driver, nativeId: key, strength: "strong" },
-              parentItemId: null,
-              ordinal,
-              status,
-              title: merged.title ?? merged.kind ?? "Tool",
-              startedAt,
-              completedAt: completedAtForStatus(status, now),
-              updatedAt: now,
-              type: "dynamic_tool",
-              ...(mcpIdentity === undefined
-                ? {}
-                : mcpToolPresentation({
-                    serverName: mcpIdentity.server,
-                    toolName: mcpIdentity.tool,
-                    source: unknownRecord(
-                      (
-                        unknownRecord(unknownRecord(merged.data.rawOutput)?.result) ??
-                        unknownRecord(merged.data.rawOutput)
-                      )?._meta,
-                    )?.source,
-                  })),
-              toolName:
-                mcpIdentity === undefined
-                  ? (merged.title ?? merged.kind ?? "Tool")
-                  : `${mcpIdentity.server}.${mcpIdentity.tool}`,
-              input: merged.data.rawInput ?? null,
-              output: merged.data.rawOutput ?? merged.data.content ?? null,
-            },
+            turnItem:
+              viewedImagePath !== undefined && host.keepViewedImage
+                ? yield* host.keepViewedImage(turnItem, owner?.input.runtimePolicy.cwd ?? null)
+                : turnItem,
           });
         });
 
@@ -4986,6 +5122,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               );
             }
           } else if (mcpIdentity !== undefined) {
+            const mcpToolCall = acpMcpToolCall(mcpIdentity, toolCall, {
+              nativeItemId: toolCall.toolCallId,
+              status: status === "pending" || status === "waiting" ? "running" : status,
+              startedAtMs: DateTime.toEpochMillis(startedAt),
+              updatedAtMs: DateTime.toEpochMillis(now),
+            });
             const toolName = `${mcpIdentity.server}.${mcpIdentity.tool}`;
             const input = acpMcpToolCallInput(mcpIdentity, rawInput);
             let output = rawOutput === undefined ? undefined : acpMcpToolCallOutput(rawOutput);
@@ -5038,6 +5180,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               type: "dynamic_tool",
               toolName,
               input,
+              mcpToolCall,
               ...(output === undefined ? {} : { output }),
             };
             yield* emitProviderEvent({ type: "turn_item.updated", driver, turnItem });
@@ -5053,26 +5196,24 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             };
           } else {
             switch (toolCall.kind) {
-              case "read":
+              case "read": {
+                const viewedImagePath = toolReadImagePath(path);
+                const output = acpReadToolOutput(toolCall);
                 turnItem = {
                   ...base,
                   title: path ? formatReadToolLabel(path) : (title ?? "Read file"),
                   type: "dynamic_tool",
                   toolName: "Read",
-                  ...(path !== undefined &&
-                  path.length <= 4096 &&
-                  !/[\r\n]/.test(path) &&
-                  isWorkspaceImagePreviewPath(path)
-                    ? { viewedImagePath: path }
-                    : {}),
+                  ...(viewedImagePath === undefined ? {} : { viewedImagePath }),
                   input:
                     path === undefined ||
                     ["path", "filePath", "file_path"].some((key) => rawInputRecord?.[key] === path)
                       ? (rawInputRecord ?? {})
                       : { ...rawInputRecord, path },
-                  ...(rawOutput === undefined ? {} : { output: rawOutput }),
+                  ...(output === undefined ? {} : { output }),
                 };
                 break;
+              }
               case "search": {
                 const backendSearch = acpBackendWebSearch(
                   rawInputRecord,
@@ -5213,6 +5354,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 }
             }
           }
+          if (
+            turnItem.type === "dynamic_tool" &&
+            turnItem.viewedImagePath !== undefined &&
+            host.keepViewedImage
+          )
+            turnItem = yield* host.keepViewedImage(turnItem, context.input.runtimePolicy.cwd);
           yield* emitProviderEvent({ type: "turn_item.updated", driver, turnItem });
           if (
             observedCommands !== undefined &&
@@ -6482,6 +6629,15 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               break;
             }
             case "tool_call_content_chunk": {
+              const content = update.content;
+              if (content.type === "content" && boundedToolOutputImage(content.content)) {
+                const previous = context.tools.get(update.toolCallId);
+                yield* emitTool(context, {
+                  toolCallId: update.toolCallId,
+                  data: { content: appendAcpToolImage(previous?.data.content, content) },
+                });
+                break;
+              }
               const text =
                 update.content.type === "content"
                   ? acpContentBlockDisplayText(update.content.content)

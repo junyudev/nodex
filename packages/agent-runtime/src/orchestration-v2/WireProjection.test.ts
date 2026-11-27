@@ -169,6 +169,26 @@ describe("orchestration V2 wire projection", () => {
     ).not.toHaveProperty("resultImages");
   });
 
+  it("indexes pictures in a structured tool output with no typed MCP result", () => {
+    const item = {
+      ...base,
+      output: {
+        content: [
+          { type: "text", text: "Screenshot" },
+          { type: "image", mimeType: "image/png", data: "AQID" },
+        ],
+        structuredContent: { width: 1280 },
+      },
+    };
+    expect(projectTurnItemForWire(item)).toMatchObject({
+      outputOmitted: true,
+      resultImages: [{ attachmentId: "tool-result:1", mimeType: "image/png" }],
+    });
+    expect(projectTurnItemForDetail(item)).toMatchObject({
+      resultImages: [{ attachmentId: "tool-result:1", mimeType: "image/png" }],
+    });
+  });
+
   it("keeps Claude's normalized image positions across persistence and detail projection", () => {
     const image = {
       type: "image",

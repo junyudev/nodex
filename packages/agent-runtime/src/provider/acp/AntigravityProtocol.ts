@@ -4,6 +4,7 @@ import type {
   ProviderUserInputAnswers,
   UserInputQuestion,
 } from "@nodex/runtime-contracts";
+import { boundedToolOutputImage, MAX_TOOL_OUTPUT_IMAGES } from "@nodex/runtime-shared/toolOutput";
 import { isWorkspaceImagePreviewPath } from "@nodex/runtime-shared/filePreview";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
@@ -223,6 +224,7 @@ export const isCutAntigravityToolText = (text: string) => text.includes(TOOL_TEX
 interface ToolPayloadBudget {
   nodes: number;
   text: number;
+  images?: number;
 }
 
 function sanitizeToolValue(
@@ -230,6 +232,7 @@ function sanitizeToolValue(
   budget: ToolPayloadBudget,
   depth: number,
   field?: string,
+  imageScope?: "state" | "result",
 ): unknown {
   if (depth > 12 || budget.nodes-- <= 0) {
     return undefined;
@@ -248,7 +251,7 @@ function sanitizeToolValue(
     const result: unknown[] = [];
     for (const entry of value) {
       if (budget.nodes <= 0) break;
-      const sanitized = sanitizeToolValue(entry, budget, depth + 1);
+      const sanitized = sanitizeToolValue(entry, budget, depth + 1, undefined, imageScope);
       if (sanitized !== undefined) result.push(sanitized);
     }
     return result;
@@ -256,9 +259,16 @@ function sanitizeToolValue(
   if (!Predicate.isObject(value)) {
     return value;
   }
+  const image =
+    imageScope === "result" && (budget.images ?? 0) > 0 ? boundedToolOutputImage(value) : null;
   const entries: Array<readonly [string, unknown]> = [];
   for (const [key, entry] of Object.entries(value)) {
     if (budget.nodes <= 0) break;
+    if (key === "data" && image !== null && entry === image.data) {
+      budget.images = (budget.images ?? 0) - 1;
+      entries.push([key, entry]);
+      continue;
+    }
     if (
       (value.type === "image" && (key === "data" || key === "blob")) ||
       (key === "blob" &&
@@ -269,7 +279,12 @@ function sanitizeToolValue(
     ) {
       continue;
     }
-    const sanitized = sanitizeToolValue(entry, budget, depth + 1, key);
+    const childScope =
+      imageScope === "result" ||
+      (imageScope === "state" && (key === "rawOutput" || key === "content"))
+        ? "result"
+        : undefined;
+    const sanitized = sanitizeToolValue(entry, budget, depth + 1, key, childScope);
     if (sanitized !== undefined) entries.push([key, sanitized]);
   }
   return Object.fromEntries(entries);
@@ -366,14 +381,29 @@ export function normalizeAntigravitySessionUpdate(
 ): EffectAcpSchema.SessionNotification {
   notification = normalizeAntigravityNativeFields(notification);
   const update = notification.update;
+  const contentBudget = { nodes: 512, text: 32_000, images: MAX_TOOL_OUTPUT_IMAGES };
+  const sanitizeContent = (entry: unknown) =>
+    Option.getOrUndefined(
+      decodeToolCallContent(sanitizeToolValue(entry, contentBudget, 0, undefined, "result")),
+    );
+  if (update.sessionUpdate === "tool_call_content_chunk") {
+    const content = sanitizeContent(update.content);
+    return {
+      ...notification,
+      update: {
+        ...update,
+        content:
+          content === undefined || content.type === "session"
+            ? { type: "content", content: { type: "text", text: "" } }
+            : content,
+      },
+    };
+  }
   if (update.sessionUpdate !== "tool_call" && update.sessionUpdate !== "tool_call_update") {
     return notification;
   }
-  const contentBudget = { nodes: 512, text: 32_000 };
   const content = update.content?.flatMap((entry) => {
-    const decoded = Option.getOrUndefined(
-      decodeToolCallContent(sanitizeToolValue(entry, contentBudget, 0)),
-    );
+    const decoded = sanitizeContent(entry);
     // A session reference is display-only and names a child Nodex does not track here.
     return decoded === undefined || decoded.type === "session" ? [] : [decoded];
   });
@@ -387,7 +417,15 @@ export function normalizeAntigravitySessionUpdate(
         ? { rawInput: sanitizeAntigravityToolPayload(update.rawInput) }
         : {}),
       ...(update.rawOutput !== undefined
-        ? { rawOutput: sanitizeAntigravityToolPayload(update.rawOutput) }
+        ? {
+            rawOutput: sanitizeToolValue(
+              update.rawOutput,
+              { nodes: 512, text: 64_000, images: MAX_TOOL_OUTPUT_IMAGES },
+              0,
+              undefined,
+              "result",
+            ),
+          }
         : {}),
       ...(update.content !== undefined ? { content: content ?? [] } : {}),
       ...(update._meta !== undefined ? { _meta: isJsonRecord(meta) ? meta : null } : {}),
@@ -494,7 +532,13 @@ export function normalizeAntigravityToolCall(
     nativeOutput === undefined ? undefined : boundCommandOutput(nativeOutput);
   const exitCode = output?.exitCode ?? output?.exit_code;
   const imagePath = localImagePath(output?.imagePath);
-  const sanitizedData = sanitizeAntigravityToolPayload(nativeData);
+  const sanitizedData = sanitizeToolValue(
+    nativeData,
+    { nodes: 512, text: 64_000, images: MAX_TOOL_OUTPUT_IMAGES },
+    0,
+    undefined,
+    "state",
+  );
   const data: Record<string, unknown> = Predicate.isObject(sanitizedData) ? sanitizedData : {};
   const kind = toolCall.kind ?? (command !== undefined ? "execute" : undefined);
   if (kind !== undefined) data.kind = kind;

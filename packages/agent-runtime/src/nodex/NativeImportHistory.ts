@@ -16,11 +16,17 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 import { codexWebSearchFields } from "../orchestration-v2/Adapters/CodexWebSearch.ts";
-import { codexFileChangeDetail } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
+import {
+  codexFileChangeDetail,
+  projectCodexPictureItem,
+} from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { fileChangeItemFields } from "@nodex/runtime-shared/fileChanges";
 import { mcpToolPresentation } from "@nodex/provider-core/server/mcpToolPresentation";
 import { formatReadToolLabel } from "@nodex/runtime-shared/toolActivity";
-import { field } from "../orchestration-v2/unknownField.ts";
+import { toolReadImagePath } from "@nodex/runtime-shared/filePreview";
+import { boundedToolOutputImage } from "@nodex/runtime-shared/toolOutput";
+import { parseBase64DataUrl } from "../imageMime.ts";
+import { nativeReadPath } from "./NativeImportSource.ts";
 
 export const importIdentity = (...parts: readonly string[]): string =>
   createHash("sha256").update(JSON.stringify(parts)).digest("base64url");
@@ -171,40 +177,42 @@ export function importHistoryEvents(input: {
       ...(driver === "antigravity"
         ? mcpToolPresentation({ serverName: item.server, toolName: item.tool })
         : {}),
-      toolName: driver === "antigravity" ? `${item.server}.${item.tool}` : item.tool,
+      toolName:
+        driver === "antigravity"
+          ? `${item.server}.${item.tool}`
+          : driver === "claudeAgent"
+            ? `mcp__${item.server}__${item.tool}`
+            : item.tool,
       input: item.arguments,
       output:
         driver === "antigravity"
           ? (item.error ?? item.result?.structuredContent ?? item.result?.content)
           : (item.result ?? item.error),
-      status: item.status === "failed" ? "failed" : "completed",
+      status: item.status === "inProgress" ? "interrupted" : item.status,
       mcpToolCall: item,
     });
   } else if (item.type === "dynamicToolCall") {
     const readPath =
-      driver === "antigravity" && item.tool === "Read" ? field(item.arguments, "path") : undefined;
+      driver === "antigravity" || driver === "claudeAgent" ? nativeReadPath(item) : undefined;
+    const viewedImagePath = toolReadImagePath(readPath);
     turnItem = {
       ...base,
-      // A copied Antigravity read keeps the heading a live chat gives it.
       ...(typeof readPath === "string" ? { title: formatReadToolLabel(readPath) } : {}),
       type: "dynamic_tool",
       ...(attachments.length > 0 ? { attachments } : {}),
       toolName: item.tool,
       input: item.arguments,
+      ...(viewedImagePath === undefined ? {} : { viewedImagePath }),
       output: item.contentItems,
-      status: item.status === "failed" ? "failed" : "completed",
+      status: item.status === "inProgress" ? "interrupted" : item.status,
     };
-  } else if (item.type === "imageView") {
+  } else if (item.type === "imageView" || item.type === "imageGeneration") {
+    const { projection } = projectCodexPictureItem(item);
     turnItem = {
       ...base,
       type: "dynamic_tool",
-      ...(attachments.length > 0 ? { attachments } : {}),
-      toolName: "imageView",
-      input: item.path.startsWith("data:") ? {} : { path: item.path },
-      output: {
-        type: "imageView",
-        ...(item.path.startsWith("data:") ? {} : { sourcePath: item.path }),
-      },
+      ...projection,
+      status: projection.status === "running" ? "interrupted" : projection.status,
     };
   } else if (item.type === "functionCallOutput") {
     turnItem = {
@@ -213,7 +221,16 @@ export function importHistoryEvents(input: {
       ...(attachments.length > 0 ? { attachments } : {}),
       toolName: item.name,
       input: item.namespace === null ? {} : { namespace: item.namespace },
-      output: item.output,
+      output: Array.isArray(item.output)
+        ? item.output.map((block) => {
+            if (block.type === "input_text") return { type: "inputText", text: block.text };
+            if (block.type !== "input_image" || !("image_url" in block)) return block;
+            const inline = parseBase64DataUrl(block.image_url);
+            if (!inline) return block;
+            const image = { type: "image", mimeType: inline.mimeType, data: inline.base64 };
+            return boundedToolOutputImage(image) ? image : block;
+          })
+        : item.output,
     };
   } else {
     turnItem = {

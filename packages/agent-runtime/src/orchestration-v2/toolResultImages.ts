@@ -4,7 +4,7 @@ import type {
 } from "@nodex/runtime-contracts";
 import {
   MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH,
-  readToolOutputImage,
+  boundedToolOutputImage,
 } from "@nodex/runtime-shared/toolOutput";
 import * as Predicate from "effect/Predicate";
 
@@ -14,8 +14,15 @@ const ATTACHMENT_ID = /^tool-result:(0|[1-9]\d*)$/u;
 const DATA_URL = /^data:(image\/(?:png|jpeg|gif|webp));base64,/iu;
 
 /** The result's blocks, by the position a picture's attachment id names. */
-const resultBlocks = (item: DynamicTool): ReadonlyArray<unknown> =>
-  item.mcpToolCall?.result?.content ?? (Array.isArray(item.output) ? item.output : []);
+function resultBlocks(item: DynamicTool): ReadonlyArray<unknown> {
+  if (item.mcpToolCall?.result) return item.mcpToolCall.result.content;
+  if (item.viewedImagePath && item.attachments?.some((attachment) => attachment.type === "image"))
+    return [];
+  if (Array.isArray(item.output)) return item.output;
+  if (Predicate.isObject(item.output) && Array.isArray(item.output.content))
+    return item.output.content;
+  return [item.output];
+}
 
 /**
  * A picture block whose bytes the item still holds and an attachment read serves: a data URL, or a
@@ -31,10 +38,13 @@ function servedPicture(
       return null;
     return { mimeType: type.toLowerCase(), dataUrl: () => url };
   }
-  const image = readToolOutputImage(block);
-  const data = image?.data;
-  if (!image || !data || data.length > MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH) return null;
-  return { mimeType: image.mimeType, dataUrl: () => `data:${image.mimeType};base64,${data}` };
+  const image = boundedToolOutputImage(block);
+  return (
+    image && {
+      mimeType: image.mimeType,
+      dataUrl: () => `data:${image.mimeType};base64,${image.data}`,
+    }
+  );
 }
 
 /** The picture a tool returned at `tool-result:<index>`, as a data URL to serve. */

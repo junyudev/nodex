@@ -205,6 +205,15 @@ export function isWorkspaceImagePreviewPath(path: string): boolean {
 }
 
 /** File viewers receive literal filesystem paths, not Markdown URLs. */
+export function toolReadImagePath(path: string | undefined): string | undefined {
+  return path !== undefined &&
+    path.length <= 4096 &&
+    !/[\r\n\0]/u.test(path) &&
+    isWorkspaceImagePreviewPath(path)
+    ? path
+    : undefined;
+}
+
 export function isWorkspaceVideoPreviewPath(path: string): boolean {
   return videoMimeType({ name: path, mimeType: "" }) !== null;
 }

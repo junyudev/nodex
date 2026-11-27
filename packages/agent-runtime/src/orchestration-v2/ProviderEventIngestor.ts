@@ -344,7 +344,6 @@ export const layer: Layer.Layer<
       if (
         !desktopTools?.hasCaptures(item.threadId) ||
         item.type !== "dynamic_tool" ||
-        item.mcpToolCall ||
         !item.runId ||
         !item.providerTurnId ||
         !["completed", "failed", "cancelled", "interrupted"].includes(item.status)
@@ -355,6 +354,35 @@ export const layer: Layer.Layer<
         .pipe(Effect.orElseSucceed(() => undefined));
       const turn = state?.providerTurns.find((turn) => turn.id === item.providerTurnId);
       return desktopTools.enrich(item, turn?.runAttemptId ?? null);
+    });
+
+    const retainViewedImage = Effect.fnUntraced(function* (item: OrchestrationV2TurnItem) {
+      if (
+        item.type !== "dynamic_tool" ||
+        item.status !== "completed" ||
+        (item.viewedImagePath === undefined && item.toolName !== "imageGeneration") ||
+        item.attachments?.some((attachment) => attachment.type === "image")
+      )
+        return item;
+      const previous = yield* projections.getTurnItem({ threadId: item.threadId, itemId: item.id });
+      if (
+        previous?.type !== "dynamic_tool" ||
+        previous.status !== "completed" ||
+        previous.toolName !== item.toolName ||
+        previous.viewedImagePath !== item.viewedImagePath
+      )
+        return item;
+      const picture = previous.attachments?.find((attachment) => attachment.type === "image");
+      if (!picture) return item;
+      // ACP can recap a completed step after its source file has disappeared.
+      const unavailableImages = item.unavailableImages?.filter(
+        (image) => image.name !== picture.name,
+      );
+      return {
+        ...item,
+        attachments: [...(item.attachments ?? []), picture],
+        unavailableImages: unavailableImages?.length ? unavailableImages : undefined,
+      };
     });
 
     /** Providers do not say why they compacted; the Run that asked for it does. */
@@ -753,7 +781,9 @@ export const layer: Layer.Layer<
               }),
             ];
           case "turn_item.updated": {
-            const item = yield* enrichDesktopTool(input.event.turnItem);
+            const item = yield* retainViewedImage(input.event.turnItem).pipe(
+              Effect.flatMap(enrichDesktopTool),
+            );
             const results = observedTaskResults(item);
             const receipts =
               item.runId === null || results === undefined

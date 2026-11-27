@@ -78,16 +78,12 @@ independent native conversation with the ordinary portable context handoff. The 
 bounded, and omitted history stays available through Runtime history reads. Native hidden state,
 live tools, queues, approvals and goals are not adopted or replayed.
 
-Imported user images, local images in assistant Markdown, image-view files, generated images
-and tool media use independent Runtime-owned attachments when their bytes are available. Inline
-generated image bytes remain usable after the source's saved image file disappears. Imported audio
-is retained as a file attachment. Opaque provider file identities and remote-only URLs without a
-producer byte export report `resource_unavailable`; the original Native conversation stays intact
-and does not change execution owner. Missing original image files remain explicit
-unavailable-image records rather than readable attachments. They preserve the historical message
-or activity, remain visible in history reads, and tell the continuing Agent that those image bytes
-could not be recovered. A missing image does not block the rest of the import or resolve later
-through the original source path.
+Imported user images, local images in assistant Markdown, and images viewed or generated in a
+tool step keep their own Runtime attachments when bytes are available. Imported MCP screenshots
+stay in the result of the tool that returned them and use that result's indexed image reads.
+Imported audio is retained as a file attachment. Opaque message media and remote-only URLs without
+a producer byte export report `resource_unavailable`. Missing image files preserve the historical
+message or activity with an unavailable-image record, so the rest of the import can complete.
 
 Import source reads and history publication are bounded. A failed or interrupted capture cannot
 silently become a complete import or an empty new conversation. Stable import requests retain
@@ -1034,28 +1030,20 @@ dot show that work is live. A delegated task's Stop cancels it the way its deleg
 would: its conversation stops, the tasks it delegated stop, and its pending result is no
 longer delivered.
 
-Completed image-file reads, including Claude Code `Read`, appear as image-view activity.
-Consecutive reads share one collapsed `Viewed N images` row; expanding it loads thumbnails
-from the recorded file paths through the owning execution host. Each mounted thumbnail
-retains the resolved bytes and gives the same source to the shared image preview, so
-opening a loaded image does not depend on its original file still existing. Successful
-local reads remain fresh in a conversation- and host-scoped binary cache with a five-minute
-unused lifetime; mounted thumbnails do not extend that cache lifetime. After collection,
-reopening reads the recorded path again. Missing or unreadable files show `Failed` without
-a retry button; folding and reopening starts another attempt. Ordinary image-file reads
-do not create permanent Runtime attachments or recover historical files from provider
-logs. Imported images and explicitly submitted attachments retain their separate owned
-attachment behavior. Image-view activity remains available when history omits tool output.
-Running, failed, interrupted and cancelled reads retain their tool status and details rather
-than claiming the image was viewed. Ordinary file reads and tools that return image content
-retain their own tool presentation.
+An image inspection is a `dynamic_tool` step with `viewedImagePath`. When Codex `view_image`,
+Claude Code `Read` or an ACP file read completes, Nodex keeps a copy of the supported image.
+It uses the provider's returned bytes when available and otherwise reads the named file in the
+execution directory. Native imports resolve relative paths in the source conversation's directory.
+The step owns an image attachment named after the inspected file. When the image cannot be
+recovered, the completed step keeps its path and an `unavailableImages` entry. A completed
+`imageGeneration` step records its prompt in `input` and keeps the generated attachment or an
+unavailable-image entry. `viewedImagePath` is reserved for inspection.
 
-Claude Code MCP calls retain their server, tool, arguments and native call identity in
-live and saved history, including stopped and failed calls. Tool results preserve structured
-content and metadata, so Browser and Computer Use activity can identify its source and
-show returned screenshots. Inline image results use the same indexed attachment reads as
-other MCP calls; local CLI image-path notes do not appear in the transcript. Application tools
-keep their `nodex_app` presentation.
+Identified MCP calls retain their server, tool, arguments and result content in `mcpToolCall`
+in live and imported history. History reads list available pictures in `resultImages` even when
+the output body is omitted. Each entry names a bounded image result block that can be fetched
+through the owning step and its `tool-result:<index>` attachment ID. Tool results retain their
+structured content and metadata. Claude's local image-path notes are omitted from MCP results.
 
 Lifecycle hooks, automatic reviews, cited memory and the files a command read are Turn
 metadata: they reach the reply's hook indicator and footer details as in any chat, and a

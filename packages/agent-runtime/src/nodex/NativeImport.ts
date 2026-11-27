@@ -32,6 +32,10 @@ import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionMan
 import { ThreadCommandExecutor } from "../orchestration-v2/ThreadCommandExecutor.ts";
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
 import { importChatAttachments } from "../assets/ImportChatAttachments.ts";
+import { projectCodexPictureItem } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
+import { keepViewedImage } from "../orchestration-v2/viewedImageCopy.ts";
+import { stripUnservedToolOutputImageBytes } from "../orchestration-v2/toolOutputImageBytes.ts";
+import { toolReadImagePath } from "@nodex/runtime-shared/filePreview";
 import { parseBase64DataUrl } from "../imageMime.ts";
 import { RENDERABLE_IMAGE_SIGNATURE_BYTES, renderableImageType } from "../renderableImage.ts";
 import { nativeSessionMediaResources } from "./NativeAttachmentResource.ts";
@@ -40,13 +44,20 @@ import { resolveMarkdownImagePath } from "./MarkdownImagePaths.ts";
 import * as Base64 from "effect/encoding/Base64";
 import * as Mime from "effect/http/Mime";
 import * as Option from "effect/Option";
+import { field } from "../orchestration-v2/unknownField.ts";
 import { importHistoryEvents, importIdentity } from "./NativeImportHistory.ts";
-import type { NativeImportBoundary, frozenNativeImportSource } from "./NativeImportSource.ts";
+import {
+  nativeHistoryPageBytes,
+  nativeReadPath,
+  type NativeImportBoundary,
+  type frozenNativeImportSource,
+} from "./NativeImportSource.ts";
 import { openCodexImportSource } from "./CodexImportSource.ts";
 import { openClaudeImportSource } from "./ClaudeImportSource.ts";
 import {
   AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS,
   NATIVE_THREAD_IMPORT_OPERATION_PREFIX,
+  NATIVE_IMPORT_HISTORY_PAGE_BYTES,
 } from "./NativeImportLimits.ts";
 
 const NativeSessionId = Schema.String.check(Schema.isUUID());
@@ -144,6 +155,11 @@ export const make = Effect.fn("NativeImport.make")(function* (
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const config = yield* ServerConfig;
+  const keepPicture = keepViewedImage({
+    attachmentsDir: config.attachmentsDir,
+    fileSystem: fs,
+    path,
+  });
   const read = (threadId: ThreadId) => sql<Journal>`
     SELECT command_id, request_json, phase, boundary_item_id, boundary_turn_id, history_mode, source_cwd, source_revision,
       history_cursor, item_count FROM orchestration_v2_native_imports WHERE thread_id = ${threadId}`;
@@ -304,7 +320,7 @@ export const make = Effect.fn("NativeImport.make")(function* (
       if (page.nextCursor !== null && (page.nextCursor === cursor || seen.has(page.nextCursor)))
         return yield* fail("Import history repeated a continuation cursor.");
       if (page.nextCursor !== null) seen.add(page.nextCursor);
-      if (Buffer.byteLength(JSON.stringify(page.data), "utf8") > 8 * 1024 * 1024)
+      if (nativeHistoryPageBytes(page.data, false) > NATIVE_IMPORT_HISTORY_PAGE_BYTES)
         return yield* fail("Part of this conversation is too large to import.");
       const events: OrchestrationV2DomainEvent[] = [];
       for (const entry of page.data) {
@@ -313,18 +329,38 @@ export const make = Effect.fn("NativeImport.make")(function* (
           entry,
           journal.source_cwd,
         );
-        events.push(
-          ...importHistoryEvents({
-            threadId: input.threadId,
-            driver: adapter.driver,
-            entry,
-            ordinal: ++ordinal,
-            fallbackAt: replayDate,
-            attachments,
-            unavailableImages,
-            importedImageLinks,
-          }),
-        );
+        const history = importHistoryEvents({
+          threadId: input.threadId,
+          driver: adapter.driver,
+          entry,
+          ordinal: ++ordinal,
+          fallbackAt: replayDate,
+          attachments,
+          unavailableImages,
+          importedImageLinks,
+        });
+        const pictureSource =
+          entry.item.type === "imageView" || entry.item.type === "imageGeneration"
+            ? projectCodexPictureItem(entry.item).source
+            : undefined;
+        for (const event of history) {
+          if (event.type !== "turn-item.updated") {
+            events.push(event);
+            continue;
+          }
+          const item = yield* keepPicture(event.payload, pictureSource, journal.source_cwd);
+          // The provider's inline read image was only needed to make the owned copy.
+          const payload =
+            item.type === "dynamic_tool" && item.viewedImagePath && Array.isArray(item.output)
+              ? {
+                  ...item,
+                  output: item.output.filter(
+                    (block: unknown) => field(block, "type") !== "inputImage",
+                  ),
+                }
+              : item;
+          events.push({ ...event, payload: stripUnservedToolOutputImageBytes(payload) });
+        }
       }
       const completed = page.nextCursor === null;
       if (completed) yield* source.close;
@@ -390,10 +426,15 @@ const persistAdditionalMedia = Effect.fn("NativeImport.persistMedia")(function* 
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const media = nativeSessionMediaResources(entry.item).filter((resource) =>
-    entry.item.type === "userMessage"
+  const { item } = entry;
+  if (item.type === "imageView" || item.type === "imageGeneration") return [];
+  const imageRead =
+    input.backendKind !== "codex" && toolReadImagePath(nativeReadPath(item)) !== undefined;
+  // Tool-result images are served by their result block; image reads copy their own bytes.
+  const media = nativeSessionMediaResources(item).filter((resource) =>
+    item.type === "userMessage" || item.type === "mcpToolCall" || imageRead
       ? resource.media === "audio"
-      : entry.item.type !== "imageView",
+      : true,
   );
   if (!media.length) return [];
   const resources = yield* Effect.forEach(
@@ -469,16 +510,12 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
   const content =
     entry.item.type === "userMessage"
       ? entry.item.content
-      : entry.item.type === "imageView"
-        ? entry.item.path.startsWith("data:image/")
-          ? [{ type: "image" as const, url: entry.item.path }]
-          : [{ type: "localImage" as const, path: entry.item.path }]
-        : entry.item.type === "agentMessage"
-          ? localMarkdownImagePaths(entry.item.text, pathStyle).map((path) => ({
-              type: "localImage" as const,
-              path,
-            }))
-          : [];
+      : entry.item.type === "agentMessage"
+        ? localMarkdownImagePaths(entry.item.text, pathStyle).map((path) => ({
+            type: "localImage" as const,
+            path,
+          }))
+        : [];
   const fs = yield* FileSystem.FileSystem;
   const images: UploadChatImageAttachment[] = [];
   const unavailableImages: OrchestrationV2UnavailableImage[] = [];

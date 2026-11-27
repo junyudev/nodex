@@ -9,6 +9,9 @@ import { ProviderCredentialError } from "@nodex/provider-core/server/errors";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import { keepViewedImage } from "../orchestration-v2/viewedImageCopy.ts";
 
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
@@ -25,6 +28,11 @@ export const layer = Layer.effect(
     const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
     const secrets = yield* ServerSecretStore.ServerSecretStore;
     const crypto = yield* Crypto.Crypto;
+    const keepPicture = keepViewedImage({
+      attachmentsDir: config.attachmentsDir,
+      fileSystem: yield* FileSystem.FileSystem,
+      path: yield* Path.Path,
+    });
     return ProviderHost.ProviderHost.of({
       paths: {
         cwd: config.cwd,
@@ -42,6 +50,7 @@ export const layer = Layer.effect(
       shouldRunBackgroundWork: backgroundPolicy.shouldRunScopeWork,
       resolveAttachmentPath: (attachment) =>
         resolveAttachmentPath({ attachmentsDir: config.attachmentsDir, attachment }),
+      keepViewedImage: (item, cwd) => keepPicture(item, undefined, cwd ?? config.cwd),
       credentials: (namespace, bindingId) =>
         ProviderCredentialStore.make(namespace, bindingId).pipe(
           Effect.map((store) => ({

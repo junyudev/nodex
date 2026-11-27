@@ -22,6 +22,20 @@ import {
   type AcpToolCallState,
 } from "./runtimeModel.ts";
 
+function toolCallFromUpdate(
+  update: EffectAcpSchema.SessionNotification["update"],
+): NonNullable<ReturnType<typeof parsePermissionRequest>["toolCall"]> {
+  const parsed = parseSessionUpdateEvent({ sessionId: "session-1", update });
+  const event = parsed.events.find(
+    (
+      candidate,
+    ): candidate is Extract<(typeof parsed.events)[number], { _tag: "ToolCallUpdated" }> =>
+      candidate._tag === "ToolCallUpdated",
+  );
+  if (event === undefined) throw new Error("expected a tool call event");
+  return event.toolCall;
+}
+
 describe("AcpRuntimeModel", () => {
   it("parses session mode state from typed ACP session setup responses", () => {
     const modeState = parseSessionModeState({
@@ -898,6 +912,48 @@ describe("AcpRuntimeModel", () => {
     expect(JSON.stringify(event).length).toBeLessThan(padded.length);
   });
 
+  it("preserves image-labeled records that carry structured data", () => {
+    const output = { type: "image", data: { assetId: "42" }, status: "indexed" };
+    const completed = toolCallFromUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "index",
+      status: "completed",
+      rawOutput: output,
+    });
+    expect(completed.data.rawOutput).toEqual(output);
+  });
+
+  it.each(["array", "singleton"] as const)(
+    "retains each distinct image once when ACP recaps %s results",
+    (shape) => {
+      const png = { type: "image", mimeType: "image/png", data: "AQID" } as const;
+      const jpeg = { ...png, mimeType: "image/jpeg" } as const;
+      const displayed = (image: typeof png | typeof jpeg) =>
+        ({ type: "content", content: image }) as const;
+      const completed = toolCallFromUpdate({
+        sessionUpdate: "tool_call",
+        toolCallId: "capture",
+        title: "Capture",
+        status: "completed",
+        rawOutput: { result: { content: shape === "array" ? [png] : png } },
+        content: [displayed(png), displayed(jpeg), displayed(jpeg)],
+      });
+      const summary = {
+        type: "content",
+        content: { type: "text", text: "Captured 2 images." },
+      } as const;
+      const recap = toolCallFromUpdate({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "capture",
+        status: "completed",
+        rawOutput: "Capture complete",
+        content: [summary],
+      });
+      const merged = mergeToolCallState(completed, recap);
+      expect(merged.data.content).toEqual([summary, displayed(png), displayed(jpeg)]);
+    },
+  );
+
   describe("decideToolCallUpdateEmission", () => {
     const toolCall = (detail: string | undefined, status?: AcpToolCallState["status"]) =>
       ({
@@ -1393,6 +1449,10 @@ describe("AcpRuntimeModel", () => {
               uri: `data:image/png;base64,${encodedPayload}`,
             },
           },
+          {
+            type: "content",
+            content: { type: "image", mimeType: "image/png", data: "AQID" },
+          },
         ],
       },
     } satisfies EffectAcpSchema.SessionNotification);
@@ -1404,6 +1464,7 @@ describe("AcpRuntimeModel", () => {
         data: {
           content: [
             { type: "content", content: { type: "text", text: "[ACP image (image/png)]" } },
+            { type: "content", content: { type: "image", mimeType: "image/png", data: "AQID" } },
           ],
         },
       },
@@ -1425,20 +1486,6 @@ describe("AcpRuntimeModel", () => {
 });
 
 describe("extractMcpToolCallIdentity", () => {
-  function toolCallFromUpdate(
-    update: EffectAcpSchema.SessionNotification["update"],
-  ): NonNullable<ReturnType<typeof parsePermissionRequest>["toolCall"]> {
-    const parsed = parseSessionUpdateEvent({ sessionId: "session-1", update });
-    const event = parsed.events.find(
-      (
-        candidate,
-      ): candidate is Extract<(typeof parsed.events)[number], { _tag: "ToolCallUpdated" }> =>
-        candidate._tag === "ToolCallUpdated",
-    );
-    if (event === undefined) throw new Error("expected a tool call event");
-    return event.toolCall;
-  }
-
   it("recovers server and tool from codex-acp tagged execute calls", () => {
     // Captured verbatim from codex-acp 2026-08-14: MCP calls arrive as kind
     // "execute" with the identity only in rawInput.

@@ -157,6 +157,44 @@ it("folds observed Antigravity wire shapes into ordered, rich history", () => {
   ]);
 });
 
+it("keeps Antigravity replay screenshots inside the MCP result after a summary update", () => {
+  const screenshot = { type: "image", mimeType: "image/png", data: "AQID" };
+  const updates = [
+    chunk("user_message_chunk", "Capture the browser."),
+    asNotification({
+      sessionUpdate: "tool_call",
+      toolCallId: "capture",
+      title: "Capture browser",
+      kind: "other",
+      status: "in_progress",
+      rawInput: { ServerName: "browser", ToolName: "screenshot", Arguments: { fullPage: true } },
+    }),
+    asNotification({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "capture",
+      status: "completed",
+      rawOutput: { result: { content: [screenshot] } },
+    }),
+    asNotification({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "capture",
+      status: "completed",
+      rawOutput: "Browser captured",
+    }),
+  ];
+  expect(
+    foldAntigravityImportReplay({ cwd, updates: updates.map(normalizeAntigravitySessionUpdate) })[1]
+      ?.item,
+  ).toMatchObject({
+    type: "mcpToolCall",
+    server: "browser",
+    tool: "screenshot",
+    status: "completed",
+    arguments: { fullPage: true },
+    result: { content: [text("Browser captured"), screenshot] },
+  });
+});
+
 it("fails on unknown updates and on replays without any transcript", () => {
   expect(() =>
     foldAntigravityImportReplay({
