@@ -553,6 +553,8 @@ export interface NodexDropdownItemProps extends Omit<ComponentPropsWithoutRef<"d
   allowWrap?: boolean;
   subTextAllowWrap?: boolean;
   alignSlotsToStart?: boolean;
+  /** Danger marks a destructive action; its label and icon turn red together. */
+  tone?: "default" | "danger";
 }
 
 export const NodexDropdownItem = forwardRef<HTMLDivElement, NodexDropdownItemProps>(
@@ -570,6 +572,7 @@ export const NodexDropdownItem = forwardRef<HTMLDivElement, NodexDropdownItemPro
       allowWrap = false,
       subTextAllowWrap = false,
       alignSlotsToStart = false,
+      tone = "default",
       className,
       disabled = false,
       focusableWhenDisabled = false,
@@ -600,6 +603,7 @@ export const NodexDropdownItem = forwardRef<HTMLDivElement, NodexDropdownItemPro
           !disabled && dropdownItemInteractiveClassName,
           "group flex flex-col",
           disabled && "cursor-default opacity-50",
+          tone === "danger" && "text-token-error-foreground",
           className,
         )}
         {...props}
@@ -607,6 +611,7 @@ export const NodexDropdownItem = forwardRef<HTMLDivElement, NodexDropdownItemPro
         <NodexMenuRowContent
           leading={leftSlot}
           highlight={!disabled}
+          tone={tone}
           wrap={allowWrap}
           alignStart={alignSlotsToStart}
           trailing={
