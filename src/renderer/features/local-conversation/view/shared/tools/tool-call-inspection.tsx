@@ -17,6 +17,7 @@ import {
   INLINE_TEXT_PREVIEW_MAX_CHARS,
   type TextPreview,
 } from "@/lib/text-preview";
+import { darkAppearanceScope } from "@/lib/appearance-scope";
 
 export function stringifyToolCallValue(value: unknown): string {
   try {
@@ -63,8 +64,9 @@ export function ToolCallCodePanel({
       : buildTextPreview(preview.text, previewCharacterLimit);
   return (
     <div
-      className="bg-token-text-code-block-background border-token-border-heavy relative overflow-clip rounded-lg border contain-inline-size dark"
-      data-theme="dark"
+      {...darkAppearanceScope(
+        "bg-token-text-code-block-background border-token-border-heavy relative overflow-clip rounded-lg border contain-inline-size",
+      )}
     >
       <div
         className={cn(
