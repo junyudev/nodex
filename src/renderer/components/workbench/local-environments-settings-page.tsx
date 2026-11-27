@@ -12,7 +12,12 @@ import {
   ToolbarBreadcrumb,
   type ToolbarBreadcrumbAncestor,
 } from "@/components/ui/toolbar-breadcrumb";
-import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
+import {
+  NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME,
+  NodexSettingsPageSurface,
+  NodexSettingsSection,
+} from "@/components/ui/settings";
+import { cn } from "@/lib/utils";
 import { NodexButton } from "@/components/ui/button";
 import { localEnvironmentSnapshotQueryOptions } from "@/lib/query-options";
 import {
@@ -145,7 +150,10 @@ function WorkspaceProjectEnvironmentGroup({
             <button
               key={config.configPath}
               type="button"
-              className="flex min-h-12 w-full items-center gap-3 py-2 text-start hover:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-token-focus-border"
+              className={cn(
+                "flex min-h-12 w-full items-center gap-3 py-2 text-start outline-none focus-visible:before:ring-2 focus-visible:before:ring-token-focus-border",
+                NODEX_SETTINGS_INTERACTIVE_ROW_CLASS_NAME,
+              )}
               onClick={() => onSelect(project.id, config.configPath)}
             >
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
