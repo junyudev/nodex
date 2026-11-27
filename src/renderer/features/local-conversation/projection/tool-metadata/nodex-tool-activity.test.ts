@@ -131,6 +131,24 @@ describe("resolveNodexToolActivity", () => {
     expect(label(read)).toBe("Read “Launch plan”");
   });
 
+  test("drops inline markup from a title but keeps a comparison", () => {
+    const read = call(
+      "fetch",
+      { id: PAGE_ID },
+      {
+        data: {
+          resource: {
+            id: PAGE_ID,
+            type: "page",
+            title: { markdown: "Launch <b>plan</b> < 2 weeks" },
+          },
+        },
+      },
+    );
+
+    expect(label(read)).toBe("Read “Launch plan < 2 weeks”");
+  });
+
   test("reads a non-Page resource as what it is", () => {
     const resource = (value: Record<string, unknown>) =>
       call("fetch", { id: PAGE_ID }, { data: { resource: { id: PAGE_ID, ...value } } });

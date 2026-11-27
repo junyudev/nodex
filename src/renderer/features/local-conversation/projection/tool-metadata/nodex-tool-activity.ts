@@ -176,12 +176,13 @@ function quoted(value: string): string {
 }
 
 function inlineMarkdownText(value: string | null): string | null {
-  const text = value
-    ?.replace(/\[([^\]]+)\]\([^)]*\)/gu, "$1")
-    .replace(/[*_~`]/gu, "")
-    .replace(/<[^>]+>/gu, "")
-    .trim();
-  return text || null;
+  let text = value?.replace(/\[([^\]]+)\]\([^)]*\)/gu, "$1").replace(/[*_~`]/gu, "");
+  // Removing one tag can join the halves of another, so repeat until none remain.
+  for (let previous: string | undefined; text !== previous;) {
+    previous = text;
+    text = text?.replace(/<[^>]+>/gu, "");
+  }
+  return text?.trim() || null;
 }
 
 const firstOutputText = (call: CodexDynamicToolCallView): string | null =>
