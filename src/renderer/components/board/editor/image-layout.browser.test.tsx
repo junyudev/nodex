@@ -317,7 +317,14 @@ describe("attachment chip", () => {
           within(menu)
             .getAllByRole("menuitem")
             .map((item) => item.textContent),
-        ).toEqual(["Open", "Open in new tab", "Save…", "Copy reference"]);
+        ).toEqual([
+          "Open",
+          "Open in new tab",
+          "Save…",
+          "Copy reference",
+          // Finder, File Explorer or File Manager, by platform.
+          expect.stringMatching(/^Reveal in /u),
+        ]);
         await act(async () => {
           fireEvent.click(within(menu).getByRole("menuitem", { name: "Open in new tab" }));
           await settleEditor();
