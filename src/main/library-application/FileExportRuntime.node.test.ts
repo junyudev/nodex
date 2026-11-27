@@ -42,6 +42,7 @@ describe("FileExportRuntime", () => {
     const state = {
       authorized: true,
       blobReads: 0,
+      blobBytes: bytes,
       metadataReads: 0,
       failFile: "",
       revokeAfterBlob: false,
@@ -87,7 +88,7 @@ describe("FileExportRuntime", () => {
           assert.strictEqual(read.version, 1);
           state.blobReads++;
           if (state.revokeAfterBlob) state.authorized = false;
-          return { bytes, etag, mimeType: "image/png" };
+          return { bytes: state.blobBytes, etag, mimeType: "image/png" };
         }),
     } satisfies Partial<LibraryModule["Service"]>;
     const context = yield* Layer.build(
@@ -117,14 +118,21 @@ describe("FileExportRuntime", () => {
     }),
   );
 
-  it.effect("corrupt cache objects are rejected without overwriting them", () =>
+  it.effect("rejects an unverified replacement for a corrupt export", () =>
     Effect.gen(function* () {
       const { runtime, state } = yield* fixture();
       const target = yield* runtime.materialize(access, input);
+      fs.chmodSync(target, 0o600);
       fs.writeFileSync(target, "corrupt!");
+      const originalBytes = state.blobBytes;
+      state.blobBytes = new TextEncoder().encode("bad Blob");
       assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.materialize(access, input))));
       assert.strictEqual(fs.readFileSync(target, "utf8"), "corrupt!");
-      assert.strictEqual(state.blobReads, 1);
+      assert.strictEqual(state.blobReads, 2);
+
+      state.blobBytes = originalBytes;
+      assert.strictEqual(yield* runtime.materialize(access, input), target);
+      assert.strictEqual(fs.readFileSync(target, "utf8"), "captured");
     }),
   );
 
@@ -134,10 +142,29 @@ describe("FileExportRuntime", () => {
       const target = yield* runtime.materialize(access, input);
       const victim = path.join(home, "user-file");
       fs.writeFileSync(victim, "captured");
+      fs.chmodSync(target, 0o600);
       fs.unlinkSync(target);
       fs.symlinkSync(victim, target);
       assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.materialize(access, input))));
       assert.strictEqual(fs.readFileSync(victim, "utf8"), "captured");
+    }),
+  );
+
+  it.effect("rejects a symlink in place of the export hash directory", () =>
+    Effect.gen(function* () {
+      const { runtime, home, state } = yield* fixture();
+      const target = yield* runtime.materialize(access, input);
+      const directory = path.dirname(target);
+      const outside = path.join(home, "outside-cache");
+      fs.renameSync(directory, outside);
+      fs.symlinkSync(outside, directory, "junction");
+
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.materialize(access, input))));
+      assert.strictEqual(state.blobReads, 1);
+      assert.strictEqual(
+        fs.readFileSync(path.join(outside, path.basename(target)), "utf8"),
+        "captured",
+      );
     }),
   );
 

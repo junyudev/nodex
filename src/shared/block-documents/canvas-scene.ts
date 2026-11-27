@@ -1,4 +1,5 @@
 import { fileSource, parseFileSource } from "../file-resources";
+import { isPortableFileName } from "../portable-file-name";
 import {
   stableStringifyBlockPropertyJson,
   type BlockPropertyJsonValue,
@@ -362,15 +363,7 @@ export const canonicalizeCanvasSceneFile = (
     1,
   );
   const defaultName = record.defaultName;
-  if (
-    typeof defaultName !== "string" ||
-    !defaultName ||
-    defaultName !== defaultName.normalize("NFC") ||
-    new TextEncoder().encode(defaultName).length > 255 ||
-    /[\/\\<>:"|?*\u0000-\u001f\u007f]/u.test(defaultName) ||
-    /[. ]$/u.test(defaultName) ||
-    /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/iu.test(defaultName)
-  ) {
+  if (typeof defaultName !== "string" || !isPortableFileName(defaultName)) {
     throw new CanvasSceneContractError(
       `Canvas file ${expectedId}.defaultName must be a portable canonical name`,
     );

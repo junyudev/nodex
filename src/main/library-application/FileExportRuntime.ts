@@ -13,11 +13,7 @@ import {
 } from "../../shared/clipboard-file-references";
 import { FILE_MAX_BYTES } from "../../shared/file-resources";
 import { MainConfig } from "../app/MainConfig";
-import {
-  fileExportPath,
-  publishFileExport,
-  verifyFileExport,
-} from "../platform/node/file-export-cache";
+import { findFileExport, publishFileExport } from "../platform/node/file-export-cache";
 import { LibraryModule } from "./LibraryModule";
 
 export class FileExportError extends Schema.TaggedError<FileExportError>()("FileExportError", {
@@ -76,17 +72,13 @@ export const live = Layer.effect(
         presentation: LibraryFilePresentation,
         defaultName?: string,
       ) {
-        const target = fileExportPath(
-          root,
-          presentation.blob_etag,
-          defaultName ?? presentation.default_name,
-        );
-        const exists = yield* Effect.tryPromise({
+        const name = defaultName ?? presentation.default_name;
+        const cached = yield* Effect.tryPromise({
           try: (signal) =>
-            verifyFileExport(target, presentation.blob_etag, presentation.byte_length, signal),
+            findFileExport(root, presentation.blob_etag, name, presentation.byte_length, signal),
           catch: (cause) => new FileExportError({ cause }),
         });
-        if (exists) return target;
+        if (cached) return cached;
         const blob = yield* library.readFileBlob(access, {
           ...input,
           version: presentation.version,
@@ -98,11 +90,10 @@ export const live = Layer.effect(
           return yield* new FileExportError({
             cause: new Error("File export changed during its read"),
           });
-        yield* Effect.tryPromise({
-          try: (signal) => publishFileExport(root, target, blob.bytes, blob.etag, signal),
+        return yield* Effect.tryPromise({
+          try: (signal) => publishFileExport(root, blob.etag, name, blob.bytes, signal),
           catch: (cause) => new FileExportError({ cause }),
         });
-        return target;
       },
       Effect.mapError((cause) => new FileExportError({ cause })),
     );

@@ -102,8 +102,11 @@ unchanged, while Paste retains live File identity. Export preparation is
 metadata-only and bounded to 128 Files.
 
 Desktop and native clients materialize bytes through the authenticated Core
-File boundary. Cache hits revalidate the selected source and version. Cache
-loss is repairable from Core and does not make the cache a persistent owner.
+File boundary. A desktop export is a read-only copy of one exact version under
+the File's name, which local file paths and Reveal in Finder show in place of
+the Library's storage. Cache hits revalidate the selected source and version.
+Cache loss or a changed copy is repaired from Core and does not make the cache
+a persistent owner.
 At most two bounded File exports run concurrently.
 
 File publication and Page entry mutation remain separate commands. Each item

@@ -55,6 +55,7 @@ describe("FilesIpc", () => {
         const selected = path.join(home, "selected.txt");
         fs.writeFileSync(selected, "selected");
         const handlers = new Map<string, Handler>();
+        const etag = createHash("sha256").update("captured").digest("hex");
         const reads: ReadFileBytesInput[] = [];
         const slots: string[] = [];
         const ipc = makeTestElectronIpc({
@@ -89,7 +90,7 @@ describe("FilesIpc", () => {
                       default_name: "old.png",
                       mime_type: "image/png",
                       byte_length: 8,
-                      blob_etag: createHash("sha256").update("captured").digest("hex"),
+                      blob_etag: etag,
                     },
                   },
                 },
@@ -101,7 +102,7 @@ describe("FilesIpc", () => {
               return {
                 bytes: new TextEncoder().encode("captured"),
                 mimeType: "image/png",
-                etag: createHash("sha256").update("captured").digest("hex"),
+                etag,
               };
             }),
           prepareFileBlob: (_access, _operation, slot, bytes) =>
@@ -152,17 +153,35 @@ describe("FilesIpc", () => {
         yield* handlers.get("files:read")!(event, access, input);
         yield* handlers.get("files:save")!(event, access, { ...input, defaultName: "old.png" });
         assert.deepStrictEqual(reads, [input, input]);
-        const materialize = () =>
-          handlers.get("files:materialize")!(event, access, { ...input, defaultName: "old.png" });
-        const exported = String(yield* materialize());
-        assert.isTrue(exported.startsWith(path.join(home, "cache", "file-exports")));
+        const name = "Édition One.PNG";
+        const exportDirectory = path.join(home, "cache", "file-exports", etag);
+        const materialize = (defaultName = name) =>
+          handlers.get("files:materialize")!(event, access, { ...input, defaultName });
+        const exported = path.join(exportDirectory, name);
+        assert.strictEqual(yield* materialize(), exported);
         assert.strictEqual(fs.readFileSync(exported, "utf8"), "captured");
-        assert.strictEqual(String(yield* materialize()), exported);
-        fs.unlinkSync(exported);
-        assert.strictEqual(String(yield* materialize()), exported);
+        if (process.platform !== "win32")
+          assert.strictEqual(fs.statSync(exported).mode & 0o777, 0o444);
+        assert.strictEqual(yield* materialize(), exported);
+        assert.deepStrictEqual(reads, [input, input, input]);
+
+        fs.chmodSync(exported, 0o600);
+        fs.truncateSync(exported, 2);
+        fs.chmodSync(exported, 0o444);
+        const repaired = yield* Effect.all([materialize(), materialize()], { concurrency: 2 });
+        assert.deepStrictEqual(repaired, [exported, exported]);
         assert.strictEqual(fs.readFileSync(exported, "utf8"), "captured");
-        assert.deepStrictEqual(reads, [input, input, input, input]);
+        if (process.platform !== "win32")
+          assert.strictEqual(fs.statSync(exported).mode & 0o777, 0o444);
+
+        const sibling = path.join(exportDirectory, "Another Name.png");
+        const fallback = path.join(exportDirectory, "File.PnG");
+        assert.strictEqual(yield* materialize("Another Name.png"), sibling);
+        assert.strictEqual(yield* materialize("../outside/unsafe.PnG"), fallback);
+        for (const file of [exported, sibling, fallback])
+          assert.strictEqual(fs.readFileSync(file, "utf8"), "captured");
         assert.strictEqual(fs.readFileSync(destination, "utf8"), "captured");
+        const readsBeforeInvalid = reads.length;
         const invalid = yield* Effect.exit(
           handlers.get("files:read")!(event, access, {
             ...input,
@@ -170,7 +189,7 @@ describe("FilesIpc", () => {
           }),
         );
         assert.isTrue(Exit.isFailure(invalid));
-        assert.strictEqual(reads.length, 4);
+        assert.strictEqual(reads.length, readsBeforeInvalid);
         const picked = (yield* handlers.get("files:pick-and-prepare")!(event, access, {
           operationId: "picked-operation",
           selection: "files",
