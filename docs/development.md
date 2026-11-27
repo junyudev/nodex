@@ -412,6 +412,12 @@ during seed initialization. Without it, the launcher prepares
 development-profile native binaries and generated resources, then starts
 electron-vite with HMR.
 
+`nodex visual check` and `nodex visual snapshot` use the development CLI's own
+worktree to find Electron and the built Main entry. Start the app with
+`vp run dev` to prepare both, then use the CLI from `target/debug`,
+`target/release`, or the development launcher's staged binaries. The CLI can
+be invoked from a Project directory with the same development Profile.
+
 Both modes default to port `0`, which lets the operating system assign a
 loopback DevTools port to each instance. After Electron prints
 `DevTools listening on ws://127.0.0.1:…`, read the port from the first line of
@@ -564,6 +570,12 @@ for a compatible home, the launcher deletes it after you quit the app.
 
 `document-recovery-review` opens on three unsaved-edit drafts Core analyses like any
 other: one it can merge, one it refuses, and one that adds nothing readable.
+
+`page-asks-and-comments` seeds the **Ask for change launch review** Page in the
+Launch review Project. It includes an adoption Visual, a Check with a correction
+to review, a question waiting for the local Member, and a Visual Discussion with
+replies from the enrolled fixture Members and Nodex. The seed enrolls those Members
+against a temporary loopback listener while Core initializes the disposable Profile.
 
 `landing/showcase` supplies three Tinyboard Pages with an unfinished brief.
 `landing/shared-pages` supplies the complete brief, an empty Implementation notes

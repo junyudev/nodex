@@ -91,6 +91,21 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     )) as IpcApi[Channel]["result"];
   }
 
+  async readDiscussion(projectId: string, discussionId: string) {
+    const result = requireSuccess(
+      await this.#invoke(
+        "library-module:read",
+        { kind: "project", projectId },
+        {
+          read: { mode: "discussion", discussionId },
+        },
+      ),
+      "Read Discussion",
+    ).value;
+    if (result.kind !== "discussion") throw new Error(`Missing Discussion ${discussionId}`);
+    return result.value;
+  }
+
   async createProject(input: ProjectCreateInput): Promise<Project> {
     return unwrapCoreResult(
       await this.#invoke("projects:create", {
