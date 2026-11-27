@@ -8,11 +8,7 @@
   </a>
 </p>
 
-<h3 align="center">一个收件箱。所有智能体。全在本地。</h3>
-
-<p align="center">
-  跨智能体的工作空间和笔记本。
-</p>
+<h3 align="center">跨智能体的工作空间和笔记本。</h3>
 
 <p align="center">
   <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><picture><source srcset=".github/assets/readme/install/macos-zh-dark.svg" media="(prefers-color-scheme: dark)"><img alt="下载 Nodex macOS" src=".github/assets/readme/install/macos-zh-light.svg" height="44"></picture></a>

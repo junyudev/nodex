@@ -8,11 +8,7 @@
   </a>
 </p>
 
-<h3 align="center">One inbox. Every agent. All local.</h3>
-
-<p align="center">
-  The cross-agent workspace and notebook.
-</p>
+<h3 align="center">The cross-agent workspace and notebook.</h3>
 
 <p align="center">
   <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><picture><source srcset=".github/assets/readme/install/macos-dark.svg" media="(prefers-color-scheme: dark)"><img alt="Download Nodex for macOS" src=".github/assets/readme/install/macos-light.svg" height="44"></picture></a>

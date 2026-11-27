@@ -242,7 +242,7 @@ with its Page in the side tab group, where the agent writes its findings, attach
 marks the Page ready for review, and the reader opens the report beside the Page. Icons beside
 the last two lines show what they cover, and a line's short caption appears only while its
 chapter plays. The sentence beside the headline names what Nodex is, the cross-agent workspace and
-notebook; it is also the README's tagline and the page title's, so change them together.
+notebook; it is also the README's heading and the page title's, so change them together.
 Sections then cover Aerial view, with every chat at work and its whole tree of subagents across
 the four peers, every provider's models and plans in one menu, work landing in Pages on a Board
 until it waits for the reader to accept it, one plain request that has an agent file a whole
