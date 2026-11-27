@@ -59,6 +59,8 @@ import * as MiniCompanionIpc from "../ipc/handlers/MiniCompanionIpc";
 import * as MiniCompanion from "../mini/MiniCompanion";
 import * as MiniIpc from "../ipc/handlers/MiniIpc";
 import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc";
+import * as LinkFaviconsIpc from "../ipc/handlers/LinkFaviconsIpc";
+import * as LinkFavicons from "../link-favicons/LinkFavicons";
 import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
 import * as AgentRuntimeIpc from "../ipc/handlers/AgentRuntimeIpc";
 import * as AgentsMapIpc from "../ipc/handlers/AgentsMapIpc";
@@ -166,6 +168,7 @@ export const live = Layer.mergeAll(
   ExecutionHostIpc.live,
   ApplicationLocalStateIpc.live,
   ApplicationSettingsIpc.live,
+  LinkFaviconsIpc.live.pipe(Layer.provide(LinkFavicons.live)),
   MiniIpc.live,
   MiniCompanionIpc.live,
   SpaceAdministrationIpc.live,

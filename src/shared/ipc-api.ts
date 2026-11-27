@@ -1747,6 +1747,9 @@ export interface IpcApi
     args: [input: UpdateAppUpdateSettingsInput];
     result: AppUpdateSettings;
   };
+  "links:favicon": { args: [host: string]; result: import("./link-site").LinkFaviconResult };
+  "settings:link-favicons:get": { args: []; result: boolean };
+  "settings:link-favicons:update": { args: [enabled: boolean]; result: boolean };
   "settings:link-opening:effective": {
     args: [];
     result: import("./link-opening-settings").EffectiveLinkOpeningSettings;
@@ -3374,6 +3377,7 @@ export interface IpcEvents extends DeepLinkOpenEvents {
   "agent-settings-changed": void;
   "terminal-shell-settings-changed": import("./terminal-shell-settings").TerminalShellSettings;
   "link-opening-settings-changed": import("./link-opening-settings").LinkOpeningSettings;
+  "link-favicon-settings-changed": boolean;
   "link:open-requested": import("./link-opening").LinkOpenRequest;
   "model-policy-changed": import("./model-policy").ModelPolicy;
   "usage-meter-settings-changed": import("./usage-meter-settings").UsageMeterSettings;

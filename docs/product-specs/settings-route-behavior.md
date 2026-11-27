@@ -139,8 +139,7 @@ Agents > Codex owns the speed new Codex chats start with, and Copy setup. Setup 
 shared Codex configuration.
 
 General is grouped by what a setting affects, in this order: App ([display language](localization-behavior.md), window restore, Terminal shell and **Open at login**,
-[`Show tips`](first-run-behavior.md#tips), `Run setup again`), Notifications, Privacy (crash reports, session replays and usage analytics; see
-[Product Analytics Behavior](product-analytics-behavior.md)), About (the running version with its update actions and preferences, and open source licenses),
+[`Show tips`](first-run-behavior.md#tips), `Run setup again`), Notifications, Privacy (crash reports, session replays, [usage analytics](product-analytics-behavior.md), and website icons for links), About (the running version with its update actions and preferences, and open source licenses),
 Add-ons (see [Components](components-behavior.md)) and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
 description adds its current state only when that differs from what the switch shows, such as an
 environment override, a prerequisite or a change that applies after restart. A search result for a
@@ -149,6 +148,12 @@ It offers models from Agents that support structured text generation and uses th
 offered effort. See [Agent Runtime behavior](agent-runtime-behavior.md). Request diagnostics are captured only while the General page is
 open and show bounded recent request timing, scheduling, transport, and failure data for local
 troubleshooting.
+
+**Website icons for links** is on by default and applies to the whole Profile.
+Nodex draws its built-in website icons locally. For other public sites, Nodex's
+desktop host sends the site's domain to Google's icon service and caches the
+result on this device. Turning the switch off stops icon requests and shows a globe for those sites at
+once; turning it back on restores their icons.
 
 On macOS and Windows, General’s **Open at login** switch is off on a fresh install.
 Opening General or returning from system settings refreshes the current OS

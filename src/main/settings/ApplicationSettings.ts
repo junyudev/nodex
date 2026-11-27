@@ -119,6 +119,8 @@ import {
   updateAgentRuntimeSettings,
   getUsageMeterSettings,
   getLinkOpeningSettings,
+  getFetchLinkFavicons,
+  updateFetchLinkFavicons,
   updateLinkOpeningSettings,
   updateUsageMeterSettings,
   getInboxSettings,
@@ -180,6 +182,7 @@ export interface ApplicationSettingsSnapshot {
   readonly usageMeters: UsageMeterSettings;
   readonly modelPolicy: ModelPolicy;
   readonly linkOpening: LinkOpeningSettings;
+  readonly fetchLinkFavicons: boolean;
 }
 
 export type ProviderKeySettingsMutation =
@@ -235,6 +238,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "update-agent-runtime"; readonly input: UpdateAgentRuntimeSettingsInput }
   | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
   | { readonly type: "update-link-opening"; readonly input: LinkOpeningSettings }
+  | { readonly type: "update-link-favicons"; readonly input: boolean }
   | { readonly type: "update-model-policy"; readonly input: ModelPolicy }
   | { readonly type: "update-usage-meters"; readonly input: UsageMeterSettings }
   | { readonly type: "update-inbox"; readonly input: UpdateInboxSettingsInput };
@@ -256,6 +260,8 @@ export class ApplicationSettings extends Context.Service<
     readonly miniVisibilityChanges: Stream.Stream<MiniVisibility>;
     readonly terminalShellSettingsChanges: Stream.Stream<TerminalShellSettings>;
     readonly linkOpeningSettingsChanges: Stream.Stream<LinkOpeningSettings>;
+    readonly fetchLinkFavicons: Effect.Effect<boolean>;
+    readonly linkFaviconSettingsChanges: Stream.Stream<boolean>;
     readonly modelPolicyChanges: Stream.Stream<ModelPolicy>;
     readonly usageMeterSettingsChanges: Stream.Stream<UsageMeterSettings>;
     /** Latest saved preference; slow observers may coalesce intermediate invalidations. */
@@ -385,6 +391,7 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     usageMeters: getUsageMeterSettings(snapshotSource),
     modelPolicy: getModelPolicy(snapshotSource),
     linkOpening: getLinkOpeningSettings(snapshotSource),
+    fetchLinkFavicons: getFetchLinkFavicons(snapshotSource),
   };
 }
 
@@ -479,6 +486,9 @@ function applyCommand(
     case "update-link-opening":
       updateLinkOpeningSettings(command.input, source);
       return;
+    case "update-link-favicons":
+      updateFetchLinkFavicons(command.input, source);
+      return;
     case "update-model-policy":
       updateModelPolicy(command.input, source);
       break;
@@ -540,6 +550,10 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
       try: evaluate,
       catch: (cause) => new ApplicationSettingsError({ operation, cause }),
     });
+  const initialFetchLinkFavicons = yield* attempt("read-link-favicons", () =>
+    getFetchLinkFavicons(source),
+  ).pipe(Effect.orElseSucceed(() => false));
+  const fetchLinkFavicons = yield* SubscriptionRef.make(initialFetchLinkFavicons);
   const readUnlocked = Effect.fn("ApplicationSettings.readUnlocked")(function* () {
     const snapshot = yield* attempt("read", () => makeSnapshot(source));
     const visibility: MiniVisibility = visibilityOf(snapshot.mini);
@@ -554,6 +568,9 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     }
     if (!sameLinkOpeningSettings(yield* SubscriptionRef.get(linkOpening), snapshot.linkOpening)) {
       yield* SubscriptionRef.set(linkOpening, snapshot.linkOpening);
+    }
+    if ((yield* SubscriptionRef.get(fetchLinkFavicons)) !== snapshot.fetchLinkFavicons) {
+      yield* SubscriptionRef.set(fetchLinkFavicons, snapshot.fetchLinkFavicons);
     }
     if (
       (yield* SubscriptionRef.get(terminalShell)).windowsShell !==
@@ -595,6 +612,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     usageMeterSettingsChanges: SubscriptionRef.changes(usageMeters),
     modelPolicyChanges: SubscriptionRef.changes(modelPolicy),
     linkOpeningSettingsChanges: SubscriptionRef.changes(linkOpening),
+    fetchLinkFavicons: SubscriptionRef.get(fetchLinkFavicons),
+    linkFaviconSettingsChanges: SubscriptionRef.changes(fetchLinkFavicons),
     miniVisibilityChanges: SubscriptionRef.changes(miniVisibility),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
     inboxSettingsChanges: Stream.fromPubSub(inboxChanges),

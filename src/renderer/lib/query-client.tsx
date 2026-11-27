@@ -12,6 +12,7 @@ import { useDevelopmentFeature } from "./development-features-context";
 import { subscribeComposerSkillInvalidation } from "./skill-inventory-adapter";
 import { queryKeys } from "./query-keys";
 import { acquirePluginManagementSubscription } from "./plugin-management-cache";
+import { subscribeLinkFaviconSettings } from "./link-favicon-settings";
 
 const ReactQueryDevtools = lazy(async () => {
   const module = await import("@tanstack/react-query-devtools");
@@ -62,6 +63,7 @@ function PageFileQueryCacheBridge({ queryClient }: { queryClient: QueryClient })
 
 export function NodexQueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => createNodexQueryClient());
+  useEffect(() => subscribeLinkFaviconSettings(queryClient), [queryClient]);
   const queryDevtoolsEnabled = useDevelopmentFeature("query-devtools");
 
   return (
