@@ -446,9 +446,13 @@ describe("local conversation thread composer", () => {
       const docked = await view.findByLabelText("Ask for follow-up changes");
       await act(async () => {
         await userEvent.click(docked);
-        await userEvent.keyboard("ab{ArrowLeft}");
+        await userEvent.keyboard("ab");
       });
       await act(async () => {
+        const text = docked.querySelector("p")?.firstChild;
+        if (!text) throw new Error("Expected the composer draft text");
+        // Move the native caret and dock the editor before selectionchange can update its model.
+        document.getSelection()!.collapse(text, 1);
         view.rerender(tree(true));
       });
       const overlay = await view.findByLabelText("Do anything");

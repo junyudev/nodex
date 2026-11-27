@@ -33,6 +33,7 @@ import {
   createComposerDictationEditor,
   type ComposerDictationEditor,
 } from "./composer-dictation-editor";
+import { readComposerEditorSelection } from "./composer-editor-selection";
 import { history, redo, undo } from "@tiptap/pm/history";
 import { keymap } from "@tiptap/pm/keymap";
 import {
@@ -1443,18 +1444,8 @@ export const ComposerPromptEditor = forwardRef<
               onChangeRef.current(next);
               return next;
             }
-            const selection = view.dom.ownerDocument.getSelection();
-            const ownsSelection =
-              selection !== null &&
-              selection.rangeCount > 0 &&
-              selection.anchorNode !== null &&
-              selection.focusNode !== null &&
-              view.dom.contains(selection.anchorNode) &&
-              view.dom.contains(selection.focusNode);
             const { doc } = view.state;
-            const { from, to } = ownsSelection
-              ? view.state.selection
-              : getPromptDocEndSelection(doc);
+            const { from, to } = readComposerEditorSelection(view) ?? getPromptDocEndSelection(doc);
             const before = doc.textBetween(Math.max(0, from - 1), from, "\n");
             const after = doc.textBetween(to, Math.min(doc.content.size, to + 1), "\n");
             const inserted = `${before && !/\s$/u.test(before) ? " " : ""}${text}${after && !/^\s/u.test(after) ? " " : ""}`;
@@ -1595,10 +1586,8 @@ export const ComposerPromptEditor = forwardRef<
           getSelection: () => {
             const view = viewRef.current;
             if (!view) return null;
-            return {
-              from: view.state.selection.from,
-              to: view.state.selection.to,
-            };
+            const { from, to } = readComposerEditorSelection(view) ?? view.state.selection;
+            return { from, to };
           },
           getSuggestionState: () => {
             const view = viewRef.current;

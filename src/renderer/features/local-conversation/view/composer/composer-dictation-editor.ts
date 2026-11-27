@@ -14,6 +14,7 @@ import {
   type ComposerDictationSplit,
   type ComposerDictationTarget,
 } from "@/features/dictation/composer-dictation-target";
+import { readComposerEditorSelection } from "./composer-editor-selection";
 import styles from "./composer-dictation-editor.module.css";
 
 interface DictationRange {
@@ -302,21 +303,8 @@ export function createComposerDictationEditor(view: EditorView): ComposerDictati
   };
   const syncSelection = (): void => {
     if (detachedState) return;
-    const selection = view.dom.ownerDocument.getSelection();
-    if (
-      !selection?.anchorNode ||
-      !selection.focusNode ||
-      !view.dom.contains(selection.anchorNode) ||
-      !view.dom.contains(selection.focusNode)
-    )
-      return;
-    const anchor = view.posAtDOM(selection.anchorNode, selection.anchorOffset);
-    const head = view.posAtDOM(selection.focusNode, selection.focusOffset);
-    const next = TextSelection.between(
-      view.state.doc.resolve(anchor),
-      view.state.doc.resolve(head),
-    );
-    if (!next.eq(view.state.selection)) view.dispatch(view.state.tr.setSelection(next));
+    const next = readComposerEditorSelection(view);
+    if (next && !next.eq(view.state.selection)) view.dispatch(view.state.tr.setSelection(next));
   };
   const retarget = (): void => {
     const current = dictationKey.getState(state());
