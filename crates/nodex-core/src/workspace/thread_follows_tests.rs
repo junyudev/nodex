@@ -393,6 +393,33 @@ fn managed_own_pr_replaces_the_previous_follow_and_routes_milestones_without_a_w
     let w = setup();
     board(&w);
     card(&w, PAGE, "chat", true);
+    w.kernel
+        .writer()
+        .call(|connection| {
+            crate::workspace::page_chat::bind_active_chats(
+                connection,
+                "chat",
+                &[PAGE.into()],
+                Some("inbox-message"),
+                "today",
+            )
+        })
+        .unwrap();
+    let scope = || {
+        let ProjectWorkspaceReadValue::SessionExecutionObserver {
+            observer: Some(observer),
+        } = read(
+            &w.module,
+            ProjectWorkspaceRead::SessionExecutionObserver {
+                session_id: "chat".into(),
+            },
+        )
+        else {
+            panic!("Expected the chat's observation scope")
+        };
+        assert_eq!(observer.scopes.len(), 1);
+        observer.scopes[0].scope.clone()
+    };
 
     let pr = pull_request("codex/work");
     let previous = ExternalThread {
@@ -434,7 +461,14 @@ fn managed_own_pr_replaces_the_previous_follow_and_routes_milestones_without_a_w
         assert_eq!(pr.workspace_id, None);
         pr
     };
+    assert_eq!(
+        scope(),
+        SessionExecutionScope::Delivery {
+            id: "inbox-message".into()
+        }
+    );
     declare("follow-previous", previous);
+    assert_eq!(scope(), SessionExecutionScope::Run { id: "run".into() });
     assert_eq!(snapshot().state, "MERGED");
     assert_eq!(stage(&w), "doing");
     assert!(deliver_list(&w).is_empty());

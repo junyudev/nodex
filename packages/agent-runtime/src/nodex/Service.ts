@@ -652,6 +652,7 @@ const AgentRequest = Schema.Union([
       runLimit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 })),
       beforeOrdinal: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
       runId: Schema.optional(RunId),
+      scoped: Schema.optional(Schema.Boolean),
     }),
   ),
   request(
@@ -1884,6 +1885,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           input.input.runLimit,
           input.input.beforeOrdinal,
           input.input.runId,
+          input.input.scoped,
         ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
       case "thread.timeline":
         return yield* projections

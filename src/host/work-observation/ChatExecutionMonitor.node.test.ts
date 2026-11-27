@@ -77,6 +77,14 @@ function fixture(initial: Observer[]) {
           observers.set(before.session_id, {
             ...before,
             revision: before.revision + 1,
+            scopes: before.scopes?.map((watch) => ({
+              ...watch,
+              observation:
+                capture.scoped_observations?.find(
+                  (fact) =>
+                    fact.scope.kind === watch.scope.kind && fact.scope.id === watch.scope.id,
+                )?.observation ?? watch.observation,
+            })),
             observation: Object.fromEntries(
               Object.entries(capture.observation).reverse(),
             ) as Observer["observation"],
@@ -159,6 +167,54 @@ it.effect("persists the latest reply once and keeps it while the owner is unavai
     yield* (yield* f.owner).sweep;
     assert.equal(f.captures.length, count);
   }),
+);
+
+it.effect(
+  "replays missed delivery and Run observations without republishing them on unrelated Runs",
+  () =>
+    Effect.gen(function* () {
+      const direct = { kind: "run", id: "run:1" } as const;
+      const delivery = { kind: "delivery", id: "page-delivery" } as const;
+      const watch = {
+        ...observer("chat"),
+        scopes: [direct, delivery].map((scope) => ({ scope, observation: null })),
+      };
+      const f = fixture([watch]);
+      const monitor = yield* f.owner;
+      const scoped = [
+        {
+          scope: direct,
+          facts: {
+            ...working,
+            state: "idle",
+            terminalStatus: "completed",
+            lastReplyExcerpt: "The Page's result",
+          },
+        },
+        { scope: delivery, facts: { ...working, runId: "run:2" } },
+      ] as const;
+      f.setFacts({ ...working, runId: "later", scoped });
+      f.setFail(true);
+      yield* monitor.sweep;
+      assert.isEmpty(f.captures);
+      f.setFail(false);
+      yield* monitor.sweep;
+      const captured = f.captures[0]?.scoped_observations ?? [];
+      assert.deepEqual(
+        captured.map((current) => current.scope),
+        [direct, delivery],
+      );
+      assert.deepInclude(captured[0]?.observation, {
+        runId: "run:1",
+        terminalStatus: "completed",
+        lastReplyExcerpt: "The Page's result",
+      });
+      assert.equal(captured[1]?.observation.runId, "run:2");
+      f.setFacts({ ...working, runId: "later-again", scoped });
+      yield* (yield* f.owner).sweep;
+      assert.isEmpty(f.captures[1]?.scoped_observations ?? []);
+      assert.equal(f.captures[1]?.observation.runId, "later-again");
+    }),
 );
 
 it.effect("visits every observation target in bounded identity windows", () =>

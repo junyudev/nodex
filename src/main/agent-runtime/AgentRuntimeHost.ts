@@ -34,6 +34,7 @@ import type {
   AgentThreadAuthority,
   HostTurnPreparation,
 } from "@nodex/agent-runtime/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
@@ -683,10 +684,9 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         Effect.catch((error) =>
           error instanceof AgentRuntimeHostError
             ? Effect.fail(error)
-            : Effect.logWarning("Agent Runtime host request failed", {
-                operation: request.operation,
-                cause: error,
-              }).pipe(Effect.andThen(Effect.fail(failed(request.operation)))),
+            : Effect.logWarning("Agent Runtime host request failed", Cause.fail(error)).pipe(
+                Effect.andThen(Effect.fail(failed(request.operation))),
+              ),
         ),
       ),
   );

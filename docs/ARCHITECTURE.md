@@ -119,6 +119,9 @@ reconciliation, and delivery through Runtime admission. Poll results commit
 facts and their read position through one typed transaction; renderer and CLI
 consume semantic reads. See [Sources](product-specs/sources-behavior.md).
 
+Core derives Page Turns from the execution and reports admitted by each Page’s
+[active chat binding](adr/0091-borrowed-chats-work-on-the-runs-they-are-given.md).
+
 Core owns each phone Device's notification registration and resolves who hears a chat event with
 its answer-entitlement rule. The host phone façade projects the same attention occurrences that
 desktop notifications consume, and every Member's current Page Turn notification intents, holds

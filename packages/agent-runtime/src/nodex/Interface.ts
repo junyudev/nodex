@@ -901,6 +901,7 @@ export interface AgentRuntimeOperations
       readonly runLimit: number;
       readonly beforeOrdinal?: number;
       readonly runId?: string;
+      readonly scoped?: boolean;
     };
     readonly output: import("../orchestration-v2/SessionReadDetails.ts").SessionReadDetails;
   };

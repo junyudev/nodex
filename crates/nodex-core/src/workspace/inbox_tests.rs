@@ -488,6 +488,86 @@ fn project_selection_preserves_the_profile_inbox() {
     );
 }
 
+fn chat_execution(
+    state: &str,
+    run: &str,
+    question: Option<&str>,
+    complete: bool,
+) -> nodex_core_contracts::workspace::SessionExecutionObservation {
+    let mut observation: nodex_core_contracts::workspace::SessionExecutionObservation =
+        serde_json::from_value(serde_json::json!({
+            "state": state, "runId": run, "runStartedAt": 4102444800000_i64,
+            "pendingRequestIds": [], "pendingRequests": [], "queue": null,
+            "terminalStatus": if complete { Some("completed") } else { None },
+            "personStopped": false, "stalled": false, "progressFingerprint": null,
+            "progressSince": 0
+        }))
+        .unwrap();
+    if let Some(question) = question {
+        use nodex_core_contracts::workspace::{
+            SessionExecutionRequest, SessionExecutionRequestKind,
+        };
+        observation
+            .pending_request_ids
+            .push(format!("question:{run}"));
+        observation.pending_requests.push(SessionExecutionRequest {
+            id: format!("question:{run}"),
+            kind: SessionExecutionRequestKind::Question,
+            question: Some(question.into()),
+            options: vec![],
+        });
+    }
+    observation
+}
+
+fn observe_chat(
+    m: &ProjectWorkspaceModule,
+    session: &str,
+    revision: i64,
+    observation: nodex_core_contracts::workspace::SessionExecutionObservation,
+    scoped_observations: Vec<nodex_core_contracts::workspace::SessionScopedObservation>,
+) {
+    apply_host(
+        m,
+        &format!("observe:{session}:{revision}"),
+        ProjectWorkspaceIntent::RecordSessionExecution {
+            session_id: session.into(),
+            expected_revision: revision,
+            observation,
+            scoped_observations,
+        },
+    );
+}
+
+fn assert_whole_chat_keeps_owning_turn(m: &ProjectWorkspaceModule, page: &str, session: &str) {
+    observe_chat(
+        m,
+        session,
+        0,
+        chat_execution("working", "first", None, false),
+        vec![],
+    );
+    observe_chat(
+        m,
+        session,
+        1,
+        chat_execution("waiting", "later", Some("Whole chat question"), false),
+        vec![],
+    );
+    let ProjectWorkspaceReadValue::PageTurn { turn, .. } = read_host(
+        m,
+        ProjectWorkspaceRead::PageTurn {
+            page_id: page.into(),
+        },
+    ) else {
+        panic!("Page Turn")
+    };
+    assert_eq!(
+        turn.reason,
+        Some(nodex_core_contracts::workspace::TurnReason::Question)
+    );
+}
+
 #[test]
 fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
     let workspace = seeded_workspace();
@@ -595,6 +675,7 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
         Some("session:dispatched")
     );
     assert_eq!(summary_in(module, project_scope()).dispatching_count, 0);
+    assert_whole_chat_keeps_owning_turn(module, "page:idea", "session:dispatched");
 }
 
 #[test]
@@ -793,6 +874,7 @@ fn inbox_fork_confirm_creates_the_destination_once_and_freezes_the_handoff() {
                 .any(|row| row.page_id.as_deref() == Some("page:first")
                     && row.description.ends_with("forked chat “Follow-up work”"))
         );
+        assert_whole_chat_keeps_owning_turn(m, "page:first", "session:destination");
     }
 }
 

@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { makeNativeSessionReadDetails } from "../app-tools/NativeSessionReadDetails";
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import { latestConversationTurn } from "../../shared/codex-conversation-state/codex-turn-selectors";
 import {
   NativeManagedChatFacts,
@@ -23,95 +24,148 @@ export const live = Layer.effect(
     const subagents = yield* CodexSubagentDirectory;
     const nativeDetails = yield* makeNativeSessionReadDetails;
     return {
-      read: Effect.fn("NativeManagedChatFacts.read")(function* (session, includeLastReply) {
-        if (!session.thread_id) return unavailableManagedChatFacts;
-        const entry = yield* directory.resolve({
-          threadId: session.thread_id,
-          fidelity: "durable",
-        });
-        if (!entry || entry.durable.backendBinding.driver !== "codex")
-          return unavailableManagedChatFacts;
-        const details = yield* nativeDetails({
-          threadId: session.thread_id,
-          hostId: entry.durable.executionHostId,
-          sessionId: session.id,
-          binding: hash([session.thread_id, entry.durable.executionHostId]),
-          runLimit: 1,
-          base: {},
-        });
-        if (details.metadata.status.type === "notLoaded") return unavailableManagedChatFacts;
-        const run = details.recentRuns[0];
-        const live = latestConversationTurn(entry.canonical);
-        const current = live && live.turnId === run?.runId ? live : null;
-        const pendingRequests: ManagedChatRequest[] = (
-          entry.snapshot?.requests ?? []
-        ).flatMap<ManagedChatRequest>((request) => {
-          if (request.type === "permissionRequest" && request.completed) return [];
-          if (request.type === "userInput")
+      read: Effect.fn("NativeManagedChatFacts.read")(
+        function* (session, includeLastReply, scopeObservers) {
+          if (!session.thread_id) return unavailableManagedChatFacts;
+          const entry = yield* directory.resolve({
+            threadId: session.thread_id,
+            fidelity: "durable",
+          });
+          if (!entry || entry.durable.backendBinding.driver !== "codex")
+            return unavailableManagedChatFacts;
+          const details = yield* nativeDetails({
+            threadId: session.thread_id,
+            hostId: entry.durable.executionHostId,
+            sessionId: session.id,
+            binding: hash([session.thread_id, entry.durable.executionHostId]),
+            runLimit: 1,
+            base: {},
+          });
+          if (details.metadata.status.type === "notLoaded") return unavailableManagedChatFacts;
+          const run = details.recentRuns[0];
+          const live = latestConversationTurn(entry.canonical);
+          const current = live && live.turnId === run?.runId ? live : null;
+          const requestsFor = (turnId?: string): ManagedChatRequest[] =>
+            (entry.snapshot?.requests ?? []).flatMap<ManagedChatRequest>((request) => {
+              if (turnId !== undefined && (!("turnId" in request) || request.turnId !== turnId))
+                return [];
+              if (request.type === "permissionRequest" && request.completed) return [];
+              if (request.type === "userInput")
+                return [
+                  {
+                    id: String(request.requestId),
+                    kind: "question" as const,
+                    question: request.questions.map((q) => q.question).join("\n"),
+                    questions: request.questions,
+                  },
+                ];
+              return [
+                {
+                  id: String(request.requestId),
+                  kind: "approval" as const,
+                  ...("reason" in request && request.reason ? { question: request.reason } : {}),
+                },
+              ];
+            });
+          const pendingRequests = requestsFor();
+          const flags =
+            details.metadata.status.type === "active" ? details.metadata.status.activeFlags : [];
+          const status = current?.status ?? run?.status;
+          const overview = yield* subagents.readKnownOverview({ rootThreadId: session.thread_id });
+          const active = (overview.rows ?? overview.active.rows).filter(
+            (row) => row.status === "active" || row.status === "waiting",
+          );
+          const waiting = pendingRequests.length > 0 || flags.length > 0;
+          const working =
+            active.length > 0 ||
+            (details.metadata.status.type === "active" && !waiting) ||
+            state(status, 0) === "working";
+          if (!working && overview.completeness !== "complete") return unavailableManagedChatFacts;
+          const reply =
+            includeLastReply && !working && status === "completed"
+              ? current?.items.findLast(
+                  (item) =>
+                    item.type === "agentMessage" && item.phase !== "commentary" && item.text.trim(),
+                )
+              : null;
+          const resident = scopeObservers.length ? residentConversationTurns(entry.canonical) : [];
+          const scoped = scopeObservers.flatMap(({ scope, observation }) => {
+            const delivered =
+              scope.kind === "delivery"
+                ? resident.find(
+                    (turn) =>
+                      turn.params?.clientUserMessageId === scope.id ||
+                      turn.items.some(
+                        (item) => item.type === "userMessage" && item.clientId === scope.id,
+                      ),
+                  )
+                : undefined;
+            const knownRunId =
+              scope.kind === "run" ? scope.id : (delivered?.turnId ?? observation?.runId);
+            if (!knownRunId) return [];
+            const exact = delivered ?? resident.find((turn) => turn.turnId === knownRunId);
+            const exactStatus = exact?.status ?? (knownRunId === run?.runId ? run.status : null);
+            if (!exactStatus) return [];
+            const pendingRequests = requestsFor(knownRunId);
+            const reply = exact?.items.findLast(
+              (item) =>
+                item.type === "agentMessage" && item.phase !== "commentary" && item.text.trim(),
+            );
             return [
               {
-                id: String(request.requestId),
-                kind: "question" as const,
-                question: request.questions.map((q) => q.question).join("\n"),
-                questions: request.questions,
+                scope,
+                facts: {
+                  state: state(exactStatus, pendingRequests.length),
+                  runId: knownRunId,
+                  runStartedAt:
+                    exact?.turnStartedAtMs ??
+                    (knownRunId === run?.runId && run.startedAt != null
+                      ? run.startedAt * 1000
+                      : null),
+                  terminalStatus: terminal(exactStatus),
+                  interruptRequested: exactStatus === "interrupted",
+                  pendingRequests,
+                  ...(reply?.type === "agentMessage" ? { lastReplyExcerpt: reply.text } : {}),
+                  progressFingerprint: hash([
+                    session.thread_id,
+                    knownRunId,
+                    exactStatus,
+                    exact?.items,
+                  ]),
+                },
               },
             ];
-          return [
-            {
-              id: String(request.requestId),
-              kind: "approval" as const,
-              ...("reason" in request && request.reason ? { question: request.reason } : {}),
-            },
-          ];
-        });
-        const flags =
-          details.metadata.status.type === "active" ? details.metadata.status.activeFlags : [];
-        const status = current?.status ?? run?.status;
-        const overview = yield* subagents.readKnownOverview({ rootThreadId: session.thread_id });
-        const active = (overview.rows ?? overview.active.rows).filter(
-          (row) => row.status === "active" || row.status === "waiting",
-        );
-        const waiting = pendingRequests.length > 0 || flags.length > 0;
-        const working =
-          active.length > 0 ||
-          (details.metadata.status.type === "active" && !waiting) ||
-          state(status, 0) === "working";
-        if (!working && overview.completeness !== "complete") return unavailableManagedChatFacts;
-        const reply =
-          includeLastReply && !working && status === "completed"
-            ? current?.items.findLast(
-                (item) =>
-                  item.type === "agentMessage" && item.phase !== "commentary" && item.text.trim(),
-              )
-            : null;
-        return {
-          ...(reply?.type === "agentMessage" ? { lastReplyExcerpt: reply.text } : {}),
-          ...(entry.durable.executionProfile?.modelId
-            ? {
-                agent: {
-                  instanceId: "codex",
-                  model: entry.durable.executionProfile.modelId,
-                  effort: entry.durable.executionProfile.reasoningEffort ?? null,
-                },
-              }
-            : {}),
-          state: waiting ? "waiting" : working ? "working" : state(status, 0),
-          interruptRequested: status === "interrupted",
-          runId: run?.runId ?? null,
-          runStartedAt:
-            current?.turnStartedAtMs ?? (run?.startedAt == null ? null : run.startedAt * 1000),
-          terminalStatus: working ? null : terminal(status),
-          pendingRequests,
-          progressFingerprint: hash([
-            session.thread_id,
-            entry.durable.executionHostId,
-            run?.runId,
-            entry.durable.updatedAt,
-            details.metadata.updatedAt,
-            active.map((row) => [row.threadId, row.lastActivityAtMs]),
-          ]),
-        };
-      }),
+          });
+          return {
+            scoped,
+            ...(reply?.type === "agentMessage" ? { lastReplyExcerpt: reply.text } : {}),
+            ...(entry.durable.executionProfile?.modelId
+              ? {
+                  agent: {
+                    instanceId: "codex",
+                    model: entry.durable.executionProfile.modelId,
+                    effort: entry.durable.executionProfile.reasoningEffort ?? null,
+                  },
+                }
+              : {}),
+            state: waiting ? "waiting" : working ? "working" : state(status, 0),
+            interruptRequested: status === "interrupted",
+            runId: run?.runId ?? null,
+            runStartedAt:
+              current?.turnStartedAtMs ?? (run?.startedAt == null ? null : run.startedAt * 1000),
+            terminalStatus: working ? null : terminal(status),
+            pendingRequests,
+            progressFingerprint: hash([
+              session.thread_id,
+              entry.durable.executionHostId,
+              run?.runId,
+              entry.durable.updatedAt,
+              details.metadata.updatedAt,
+              active.map((row) => [row.threadId, row.lastActivityAtMs]),
+            ]),
+          };
+        },
+      ),
     };
   }),
 );

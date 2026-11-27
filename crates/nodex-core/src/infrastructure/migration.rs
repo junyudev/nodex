@@ -543,6 +543,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 225,
         apply: migrate_v224_to_v225,
     },
+    MigrationStep {
+        from_revision: 225,
+        to_revision: 226,
+        apply: migrate_v225_to_v226,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2937,6 +2942,21 @@ fn migrate_v219_to_v220(
     Ok(())
 }
 
+fn migrate_v225_to_v226(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v225_to_v226.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"borrowed_chat_scope":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v224_to_v225(
     connection: &Connection,
     context: &MigrationContext,
@@ -4588,7 +4608,14 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_borrowed_chat_scope_to_v225(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../tests/fixtures/rewind-v226-to-v225.sql"))?;
+    Ok(())
+}
+
+#[cfg(test)]
 fn rewind_inbox_follow_ups_to_v224(connection: &Connection) -> Result<(), StoreError> {
+    rewind_borrowed_chat_scope_to_v225(connection)?;
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v225-to-v224.sql"))?;
     Ok(())
 }
@@ -9632,7 +9659,58 @@ mod tests {
             .unwrap()
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(history, [(223, 224), (224, 225)]);
+        assert_eq!(history, [(223, 224), (224, 225), (225, 226)]);
+    }
+
+    #[test]
+    fn borrowed_chat_migration_keeps_existing_active_bindings_whole_chat() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_current_schema(&mut connection).unwrap();
+        rewind_borrowed_chat_scope_to_v225(&connection).unwrap();
+        connection.pragma_update(None, "user_version", 225).unwrap();
+        validate_schema_identity(&connection, 225).unwrap();
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
+            &connection,
+        )
+        .unwrap();
+        connection.execute_batch(
+            "INSERT INTO profiles VALUES ('profile','today','today');
+             INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library','profile','today','today');
+             INSERT INTO blocks(id,library_id,type,created_at,updated_at) VALUES('page','library','page','today','today');
+             INSERT INTO documents(id,library_id,schema_key,schema_version,created_at,updated_at)
+                VALUES('doc','library','nodex.page',3,'today','today');
+             INSERT INTO block_documents(block_id,document_id,library_id,created_at)
+                VALUES('page','doc','library','today');
+             INSERT INTO pages(block_id,library_id,document_id,parent_kind,parent_id,created_at,updated_at)
+                VALUES('page','library','doc','library','library','today','today');
+             INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at)
+                VALUES('chat','Work','today','today',0);
+             INSERT INTO project_session_pages(session_id,page_id,linked_at) VALUES('chat','page','today');
+             INSERT INTO page_active_chats VALUES('page','chat',7,'today');
+             INSERT INTO session_execution_observations VALUES('chat',1,json_object('runId','later-run'),'today');"
+        ).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v225_to_v226(
+                transaction,
+                &MigrationContext {
+                    source_revision: 225,
+                    target_revision: 226,
+                    backup_name: "v225.db".into(),
+                    source_schema_fingerprint: published_format(225)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(226)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )?;
+            validate_schema_identity(transaction, 226)
+        })
+        .unwrap();
+        let binding = connection.query_row(
+            "SELECT active.borrowed_scope_id,active.revision,json_extract(execution.observed_json,'$.runId')
+             FROM page_active_chats active JOIN page_active_chat_execution execution USING(page_id,session_id)",
+            [],
+            |r| Ok((r.get::<_,Option<String>>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?)),
+        ).unwrap();
+        assert_eq!(binding, (None, 7, "later-run".to_owned()));
     }
 
     #[test]

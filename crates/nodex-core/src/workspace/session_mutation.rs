@@ -1220,6 +1220,22 @@ pub(super) fn validate_id(name: &str, value: &str) -> Result<(), StoreError> {
 /// A person's newly accepted message becomes the Session's activity, ends their snooze and
 /// reopens the chat for them. Receipts keep retries and restarts idempotent. Returns whether the
 /// Session changed.
+/// A frozen Inbox delivery can supply requester evidence before Runtime admits the message.
+pub(super) fn record_requesting_member(
+    connection: &Connection,
+    session_id: &str,
+    message_id: &str,
+    member: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at)
+         VALUES(?1,?2,?3,?4) ON CONFLICT(session_id,message_id) DO NOTHING",
+        params![session_id, message_id, member, now],
+    )?;
+    Ok(())
+}
+
 pub(super) fn accept_person_message(
     connection: &Connection,
     session_id: &str,
@@ -1235,7 +1251,7 @@ pub(super) fn accept_person_message(
     if accepted == 0 {
         return Ok(false);
     }
-    connection.execute("INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4)",params![session_id,message_id,member,now])?;
+    record_requesting_member(connection, session_id, message_id, member, now)?;
     connection.execute("INSERT OR IGNORE INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=?1",[session_id])?;
     let moved = super::session_order::raise_activity(connection, session_id, now)?;
     let cancelled = super::member_attention::cancel_snooze(connection, member, session_id)?;

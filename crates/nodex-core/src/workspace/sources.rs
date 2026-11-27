@@ -5,7 +5,9 @@ use super::{
     session_mutation::{sqlite_now, validate_id},
 };
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
-use nodex_core_contracts::{AdapterKind, BoundModuleContext, sources::*};
+use nodex_core_contracts::{
+    AdapterKind, BoundModuleContext, sources::*, workspace::ProjectWorkspaceAgentRuntimeTurnKind,
+};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -485,15 +487,26 @@ pub(super) fn apply(
                 let source = require_current(connection, library, source_id, *config_revision)?;
                 let partition = format!("repo:{}", thread.repository_id);
                 validate_partition(&source, &partition)?;
-                let page = super::thread_follows::managed_page(
-                    connection,
-                    library,
-                    provenance.ok_or_else(|| invalid("Managed-chat authority required"))?,
-                )?;
+                let provenance =
+                    provenance.ok_or_else(|| invalid("Managed-chat authority required"))?;
+                let page = super::thread_follows::managed_page(connection, library, provenance)?;
                 upsert_thread(connection, library, &source, &partition, thread)?;
                 super::thread_follows::follow_managed_thread(
                     connection, library, &page, thread, *role, &at,
                 )?;
+                if *role == ManagedThreadFollowRole::OwnPr
+                    && let Some(runtime) = provenance.authority.runtime.as_ref().filter(|runtime| {
+                        runtime.turn_kind == ProjectWorkspaceAgentRuntimeTurnKind::Run
+                    })
+                    && super::page_chat::scope_borrowed_chat_to_run(
+                        connection,
+                        &page,
+                        &runtime.session_id,
+                        &provenance.authority.turn_id,
+                    )?
+                {
+                    effects.session_ids.push(runtime.session_id.clone());
+                }
                 effects.page_ids.push(page);
                 super::automation_assessment::flush_followed(
                     connection,

@@ -39,7 +39,8 @@ may accept for its Member without advancing it, like its other Status edits. Its
 keep it from accepting its own work unless the person told it to.
 
 Each Page has at most one active chat, selected by Start, Start again, explicit handoff, or Inbox
-new-chat/send-to-chat dispatch. Ordinary related links do not select it. Archiving or unlinking
+new-chat/send-to-chat dispatch. [ADR 0091](0091-borrowed-chats-work-on-the-runs-they-are-given.md)
+defines which Runs can supply facts through that binding. Ordinary related links do not select it. Archiving or unlinking
 the selected chat clears the binding, without falling back to an older chat. Replies target the
 active chat. Older attempts may report evidence but cannot move a newer attempt's Page.
 

@@ -30,6 +30,7 @@ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as Outbox from "../orchestration-v2/EffectOutbox.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import { readExecution, readExecutionItemIds, waitExecution } from "./ExecutionRead.ts";
+import { readSessionDetails } from "../orchestration-v2/SessionReadDetails.ts";
 import { readSessionMetadata } from "../orchestration-v2/SessionMetadata.ts";
 import { readSessionCatalog } from "../orchestration-v2/SessionCatalog.ts";
 
@@ -313,6 +314,11 @@ it.effect("keeps attention and compact progress scoped to the selected Run", () 
       yield* sql`INSERT INTO orchestration_v2_projection_runtime_requests(runtime_request_id,thread_id,node_id,kind,status,created_at,payload_json)
         VALUES(${`request:${kind}`},${threadId},'node:0',${kind},'pending','2027-01-01','{}')`;
     }
+    const details = yield* readSessionDetails(threadId, 1, undefined, "run:first", true);
+    assert.deepEqual(
+      details.pendingRequests.map((request) => request.id),
+      ["request:0"],
+    );
     const selected = yield* readExecution({ threadId, runId: "run:first" });
     assert.deepEqual(selected.activeFlags, ["waitingOnUserInput"]);
     const ids = yield* readExecutionItemIds(threadId, RunId.make("run:first"));

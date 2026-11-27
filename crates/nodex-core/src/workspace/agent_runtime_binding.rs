@@ -1484,6 +1484,7 @@ mod tests {
             &workspace.module,
             "observe-native",
             ProjectWorkspaceIntent::RecordSessionExecution {
+                scoped_observations: vec![],
                 session_id: "session:native".into(),
                 expected_revision: 0,
                 observation: observation.clone(),

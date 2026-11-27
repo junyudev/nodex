@@ -74,20 +74,29 @@ pub(super) fn item(
     let mut body = markdown;
     let turn = if kind == "turn" {
         let turn = require_turn(connection, library, page, None)?;
-        let session: Option<String> = connection
+        let binding: Option<(String, bool, Option<String>)> = connection
             .query_row(
-                "SELECT session_id FROM page_active_chats WHERE page_id=?1",
+                "SELECT session_id,borrowed_scope_id IS NOT NULL,
+                    CASE WHEN borrowed_scope_kind='run' THEN borrowed_scope_id END
+                 FROM page_active_chats WHERE page_id=?1",
                 [page],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()?;
+        let session = binding.as_ref().map(|(session, _, _)| session.as_str());
         let chat = session
-            .as_deref()
             .map(|id| super::inbox_read::read_chat(connection, library, id))
             .transpose()?
             .flatten()
             .filter(|chat| !chat.archived);
-        let observation:Option<String>=connection.query_row("SELECT observation.observed_json FROM page_active_chats active JOIN session_execution_observations observation ON observation.session_id=active.session_id WHERE active.page_id=?1",[page],|r|r.get(0)).optional()?;
+        let observation: Option<String> = connection
+            .query_row(
+                "SELECT observed_json FROM page_active_chat_execution WHERE page_id=?1",
+                [page],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
         let observation: Option<SessionExecutionObservation> = observation
             .map(|json| {
                 serde_json::from_str(&json)
@@ -115,7 +124,7 @@ pub(super) fn item(
             Some(nodex_core_contracts::workspace::TurnReason::Failed) => Some("failed"),
             _ => None,
         };
-        let report:Option<String>=connection.query_row("SELECT report_summary FROM project_session_pages WHERE page_id=?1 AND session_id=?2 AND report_outcome=?3",params![page,session,report_outcome],|r|r.get(0)).optional()?.flatten();
+        let report:Option<String>=connection.query_row("SELECT report.report_summary FROM project_session_pages report JOIN page_active_chats active USING(page_id,session_id) WHERE report.page_id=?1 AND report.session_id=?2 AND report.report_outcome=?3 AND (active.borrowed_scope_id IS NULL OR report.report_run_id=COALESCE(?4,CASE WHEN active.borrowed_scope_kind='run' THEN active.borrowed_scope_id END))",params![page,session,report_outcome,observation.as_ref().and_then(|o|o.run_id.as_deref())],|r|r.get(0)).optional()?.flatten();
         let prerequisites = if turn.reason
             == Some(nodex_core_contracts::workspace::TurnReason::ReadyToStart)
         {
@@ -164,12 +173,15 @@ pub(super) fn item(
                 |r| r.get::<_, String>(0),
             )
             .optional()?;
-        let delivery_error=connection.query_row("SELECT proposal.failure_message FROM page_turn_replies reply JOIN inbox_proposals proposal ON proposal.proposal_id=reply.proposal_id WHERE reply.page_id=?1 AND reply.episode=?2 AND proposal.state='failed' ORDER BY proposal.updated_at DESC LIMIT 1",params![page,turn.episode],|r|r.get::<_,String>(0)).optional()?;
+        let delivery_error=connection.query_row("SELECT proposal.failure_message FROM page_turn_replies reply JOIN inbox_proposals proposal ON proposal.proposal_id=reply.proposal_id JOIN page_active_chats active ON active.page_id=reply.page_id AND active.session_id=proposal.dispatch_session_id WHERE reply.page_id=?1 AND (reply.episode=?2 OR (active.borrowed_scope_kind=reply.previous_scope_kind AND active.borrowed_scope_id=reply.previous_scope_id)) AND proposal.state='failed' ORDER BY proposal.updated_at DESC LIMIT 1",params![page,turn.episode],|r|r.get::<_,String>(0)).optional()?;
         let delivery_error = delivery_error.or_else(|| {
             (requests.len() > 1)
                 .then(|| "Several requests are pending; open the chat to reply.".into())
         });
         Some(InboxTurn {
+            scoped_run_id: binding.filter(|(_, borrowed, _)| *borrowed).and_then(
+                |(_, _, selected_run)| observation.and_then(|o| o.run_id).or(selected_run),
+            ),
             turn,
             active_chat: chat,
             options,

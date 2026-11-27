@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 90;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 91;
 
 /// Retry-key admission shared by the application tools and native CLI.
 pub const RETRY_KEY_MAX_SCALARS: usize = 128;
@@ -2210,6 +2210,8 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         expected_revision: i64,
         observation: SessionExecutionObservation,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        scoped_observations: Vec<SessionScopedObservation>,
     },
     ClaimPageWorkspace {
         workspace_id: String,
@@ -3481,12 +3483,44 @@ pub struct SessionExecutionObservation {
     pub progress_since: i64,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SessionExecutionScope {
+    Delivery { id: String },
+    Run { id: String },
+}
+
+impl SessionExecutionScope {
+    pub fn key(&self) -> (&'static str, &str) {
+        match self {
+            Self::Delivery { id } => ("delivery", id),
+            Self::Run { id } => ("run", id),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct SessionScopedObservation {
+    pub scope: SessionExecutionScope,
+    pub observation: SessionExecutionObservation,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct SessionScopedObserver {
+    pub scope: SessionExecutionScope,
+    pub observation: Option<SessionExecutionObservation>,
+    pub question_request_id: Option<String>,
+    pub question_run_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct SessionExecutionObserver {
     pub session_id: String,
     pub since: String,
     pub revision: i64,
     pub observation: Option<SessionExecutionObservation>,
     pub managed: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<SessionScopedObserver>,
 }
 
 #[cfg(test)]
