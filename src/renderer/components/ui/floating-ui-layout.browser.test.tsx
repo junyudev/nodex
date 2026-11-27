@@ -2,6 +2,7 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, test, afterEach } from "vite-plus/test";
 import { Circle } from "../shared/icons/generic-icons";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
+import { contrastRatio, getPaintedBackground, parseComputedColor } from "@/test/color-contrast";
 import "../../globals.css";
 import {
   NodexContextMenuContent,
@@ -516,6 +517,32 @@ describe("shared floating ui", () => {
       const tooltip = view.getByRole("tooltip");
       const tooltipZIndex = Number(getComputedStyle(tooltip).zIndex);
       expect(tooltipZIndex).toBeGreaterThan(NFM_EDITOR_FLOATING_UI_Z_INDEX);
+    });
+
+    test("reads tooltip content in the dark appearance on the light window's dark fill", async () => {
+      const view = render(
+        <NodexTooltipProvider>
+          <NodexTooltip
+            defaultOpen
+            tooltipContent={
+              <span className="flex flex-col">
+                <span className="text-token-text-primary">Summary</span>
+                <span className="text-token-description-foreground">Rationale</span>
+              </span>
+            }
+          >
+            <button type="button">Suggestion</button>
+          </NodexTooltip>
+        </NodexTooltipProvider>,
+      );
+
+      await act(settleFloatingSurface);
+      const tooltip = view.getByRole("tooltip");
+      const fill = getPaintedBackground(tooltip);
+      for (const text of ["Summary", "Rationale"]) {
+        const ink = parseComputedColor(getComputedStyle(view.getByText(text)).color);
+        expect(contrastRatio(ink, fill), text).toBeGreaterThanOrEqual(4.5);
+      }
     });
 
     test("keeps dropdown trigger tooltips padded around compact shortcut chips", async () => {

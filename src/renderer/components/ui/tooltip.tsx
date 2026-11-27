@@ -17,6 +17,7 @@ import {
   APP_SHELL_TOOLTIP_LAYER_CLASS,
   APP_SHELL_TOOLTIP_LAYER_INDEX,
 } from "@/lib/app-shell-layers";
+import { darkAppearanceScope } from "@/lib/appearance-scope";
 import { cn } from "@/lib/utils";
 import {
   dismissNodexFloatingSurfaces,
@@ -222,7 +223,8 @@ export function NodexTooltip({
                   {tooltipContent}
                 </NodexFloatingSurfaceBody>
               ) : (
-                <div className="flex items-center gap-2">
+                // The tooltip fill is dark in both appearances, so its content reads in the dark one.
+                <div {...darkAppearanceScope("flex items-center gap-2")}>
                   <div className={cn("min-w-0", tooltipBodyClassName)}>{tooltipContent}</div>
                   {shortcut ? <span>{shortcut}</span> : null}
                 </div>
