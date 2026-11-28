@@ -3136,9 +3136,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       if (sourceSession.archived) return yield* forkRefusal("The source chat is archived");
       if (sourceSession.decisionRun || !sourceSession.executionRef)
         return yield* forkRefusal(
-          sourceSession.thread?.backendBinding.driver === "codex" &&
-            sourceSession.thread.executionHostId !== CODEX_APP_LOCAL_HOST_ID
-            ? "Remote Codex chats cannot be forked"
+          // A chat on another execution host keeps its own owner; this Runtime cannot fork it.
+          sourceSession.thread && sourceSession.thread.executionHostId !== CODEX_APP_LOCAL_HOST_ID
+            ? "Chats on another host cannot be forked"
             : "The source chat does not run on Agent Runtime",
         );
       if (sourceSession.executionRef.runtimeId !== connection.identity.runtimeId)
