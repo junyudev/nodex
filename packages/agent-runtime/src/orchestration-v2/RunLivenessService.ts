@@ -81,15 +81,13 @@ export const layer = Layer.effect(
         const threadIds = new Set(candidates.orphanedTurnThreadIds);
         for (const run of candidates.runs) {
           const observer = observers.get(run.runId);
-          const turnId =
-            (observer?.attemptId === run.activeAttemptId ? observer.providerTurnId : null) ??
-            run.providerTurnId;
+          if (observer?.attemptId === run.activeAttemptId) continue;
+          const turnId = run.providerTurnId;
           const expiredUnbound =
             turnId === null &&
             run.attemptStartedAt !== null &&
             DateTime.toEpochMillis(now) - DateTime.toEpochMillis(run.attemptStartedAt) >= 120_000;
-          if (expiredUnbound || (turnId !== null && observer?.attemptId !== run.activeAttemptId))
-            threadIds.add(run.threadId);
+          if (expiredUnbound || turnId !== null) threadIds.add(run.threadId);
         }
         for (const threadId of threadIds) {
           const state = yield* retryObservation(projections.getRuntimeRecoveryProjection(threadId));
@@ -174,11 +172,8 @@ export const layer = Layer.effect(
             const attempt = state.attempts.find((attempt) => attempt.id === run.activeAttemptId);
             if (attempt === undefined) continue;
             const boundTurn = latestProviderTurnForAttempt(state.providerTurns, attempt.id);
-            const observer = observers.get(run.id);
-            const observedTurnId =
-              observer?.attemptId === attempt.id ? observer.providerTurnId : null;
+            if (observers.get(run.id)?.attemptId === attempt.id) continue;
             const turnId =
-              observedTurnId ??
               boundTurn?.id ??
               attempt.providerTurnId ??
               candidates.runs.find((candidate) => candidate.activeAttemptId === attempt.id)
@@ -188,7 +183,6 @@ export const layer = Layer.effect(
               turnId === null &&
               attempt.startedAt !== null &&
               DateTime.toEpochMillis(now) - DateTime.toEpochMillis(attempt.startedAt) >= 120_000;
-            if (!expiredUnbound && observer?.attemptId === attempt.id) continue;
             if (turnId === null && !expiredUnbound) continue;
             const root = state.nodes.find((node) => node.id === attempt.rootNodeId);
             const providerThread = state.providerThreads.find(
@@ -211,8 +205,6 @@ export const layer = Layer.effect(
                   reconcileTurn: () => Effect.succeed({ status: "process_gone", events: [] }),
                   interruptTurn: () => Effect.void,
                 } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime);
-            if (expiredUnbound && observer?.attemptId === attempt.id)
-              yield* execution.stopObserving(run.id, attempt.id);
             yield* execution.startRootRun({
               observeOnly: true,
               recoveryControls: {

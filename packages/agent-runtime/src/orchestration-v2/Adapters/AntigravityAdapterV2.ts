@@ -323,7 +323,7 @@ export function makeAntigravityAcpAdapterFlavor(
     compactViaAdvertisedCommand: true,
     requiresSignIn: isAntigravitySignInRequiredError,
     checksVersionAtHandshake: true,
-    // Antigravity can leave a prompt open without updates; long tools and approvals pause this.
+    // Antigravity can leave a prompt open without updates; open work and pending decisions pause this.
     promptInactivityTimeout: "15 minutes",
     reportsPerTurnPromptUsage: true,
     geminiPromptUsage: true,

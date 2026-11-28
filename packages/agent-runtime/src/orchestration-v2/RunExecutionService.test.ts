@@ -3122,6 +3122,7 @@ it.effect("retries one interrupted-reader event twice without losing any event",
   Effect.gen(function* () {
     const persisted: ProviderAdapter.ProviderAdapterV2Event[] = [];
     let attempts = 0;
+    const firstWrite = yield* Deferred.make<void>();
     const test = yield* captureRootRunTermination({
       key: "transient-ingestion",
       shouldFinalizeRun: () => Effect.succeed(true),
@@ -3133,22 +3134,25 @@ it.effect("retries one interrupted-reader event twice without losing any event",
       ingestNormalized: ({ event }) =>
         Effect.suspend(() => {
           if (event.type === "turn_item.updated" && attempts++ < 2)
-            return Effect.fail(
-              new ProviderEventIngestor.ProviderEventPublishError({
-                providerSessionId: ProviderSessionId.make("session:transient-ingestion"),
-                eventCount: 1,
-                cause: new SqlError({
-                  reason: new UnknownError({
-                    cause: new Error("Database reader query was interrupted"),
-                    message: "Database reader query was interrupted",
+            return Deferred.succeed(firstWrite, undefined).pipe(
+              Effect.andThen(
+                new ProviderEventIngestor.ProviderEventPublishError({
+                  providerSessionId: ProviderSessionId.make("session:transient-ingestion"),
+                  eventCount: 1,
+                  cause: new SqlError({
+                    reason: new UnknownError({
+                      cause: new Error("Database reader query was interrupted"),
+                      message: "Database reader query was interrupted",
+                    }),
                   }),
                 }),
-              }),
+              ),
             );
           persisted.push(event);
           return Effect.succeed([]);
         }),
     }).pipe(Effect.forkChild);
+    yield* Deferred.await(firstWrite);
     yield* TestClock.adjust("1 second");
     const result = yield* Fiber.join(test);
     assert.equal(attempts, 3);
@@ -3267,6 +3271,49 @@ it.effect("reconciles native acceptance when a later startup receipt fails", () 
   }),
 );
 
+it.effect("settles a slow-starting reply whose ACP opening and terminal events never arrive", () =>
+  Effect.gen(function* () {
+    const result = yield* captureRootRunTermination({
+      key: "silent-acp-observer",
+      providerTurnBound: false,
+      shouldFinalizeRun: () => Effect.succeed(true),
+      events: () => Stream.never,
+      startTurn: () => TestClock.adjust("140 seconds"),
+      afterStart: TestClock.adjust("2 minutes"),
+      reconcileTurnByAttempt:
+        (ids) =>
+        ({ providerThread, attemptId }) => {
+          assert.equal(providerThread.id, ids.providerThreadId);
+          assert.equal(attemptId, ids.attemptId);
+          return Effect.succeed({
+            status: "completed",
+            events: [
+              {
+                type: "provider_turn.updated",
+                driver,
+                threadId: ids.threadId,
+                providerTurn: {
+                  id: ids.rootProviderTurnId,
+                  providerThreadId: ids.providerThreadId,
+                  nodeId: ids.rootNodeId,
+                  runAttemptId: ids.attemptId,
+                  nativeTurnRef: { driver, nativeId: "native:finished", strength: "weak" },
+                  ordinal: 1,
+                  status: "completed",
+                  startedAt: DateTime.makeUnsafe(140_000),
+                  completedAt: DateTime.makeUnsafe(150_000),
+                },
+              },
+              rootTerminalEvent(ids, "completed"),
+            ],
+          });
+        },
+    });
+    assert.deepEqual(result.observed, ["run:waiting", "pull-requests-refreshed"]);
+    assert.lengthOf(result.committedEffects, 1);
+  }),
+);
+
 function captureRootRunTermination(input: {
   readonly key: string;
   readonly providerTurnBound?: boolean;
@@ -3282,6 +3329,10 @@ function captureRootRunTermination(input: {
   >;
   readonly startTurn?: ProviderAdapter.ProviderAdapterV2SessionRuntime["startTurn"];
   readonly refreshAfterTurn?: Effect.Effect<void>;
+  readonly afterStart?: Effect.Effect<void>;
+  readonly reconcileTurnByAttempt?: (
+    ids: BackgroundScenarioIds,
+  ) => NonNullable<ProviderAdapter.ProviderAdapterV2SessionRuntime["reconcileTurnByAttempt"]>;
   readonly reconcileTurn?: (
     ids: BackgroundScenarioIds,
   ) => NonNullable<ProviderAdapter.ProviderAdapterV2SessionRuntime["reconcileTurn"]>;
@@ -3404,6 +3455,7 @@ function captureRootRunTermination(input: {
           }),
           startTurn: input.startTurn ?? (() => Effect.void),
           reconcileTurn: input.reconcileTurn?.(ids),
+          reconcileTurnByAttempt: input.reconcileTurnByAttempt?.(ids),
           interruptTurn: () => Effect.void,
         } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime,
         run: {
@@ -3449,6 +3501,7 @@ function captureRootRunTermination(input: {
           cwd: process.cwd(),
         },
       });
+      yield* input.afterStart ?? Effect.void;
       for (let index = 0; index < 10_000; index++) {
         if ((yield* runExecution.observers).length === 0) return;
         yield* Effect.yieldNow;

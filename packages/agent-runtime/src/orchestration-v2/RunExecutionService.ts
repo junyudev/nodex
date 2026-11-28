@@ -39,7 +39,11 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as PubSub from "effect/PubSub";
-import { retryObservation, reconcileProviderTurn } from "./ProviderObservation.ts";
+import {
+  retryObservation,
+  reconcileProviderTurn,
+  reconcileProviderTurnByAttempt,
+} from "./ProviderObservation.ts";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -746,6 +750,7 @@ export interface RunExecutionServiceV2StartRootRunInput {
     unknown
   >;
   readonly resolveRelatedNativeThread?: ResolveRelatedNativeThread;
+  readonly publishRunning?: Effect.Effect<boolean, EventSink.EventSinkV2Error>;
   readonly shouldStartProviderTurn?: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   readonly shouldFinalizeRun?: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean>;
@@ -758,8 +763,11 @@ export interface RunExecutionServiceV2StartRootRunInput {
 export interface RunObserver {
   readonly runId: OrchestrationV2Run["id"];
   readonly attemptId: RunAttemptId;
-  readonly providerTurnId: ProviderTurnId | null;
-  readonly attemptStartedAt: DateTime.Utc | null;
+}
+
+interface OwnedRunObserver extends RunObserver {
+  starting: boolean;
+  stream: { fiber?: Fiber.Fiber<void, unknown> } | undefined;
 }
 
 export interface RunExecutionServiceV2Shape {
@@ -803,11 +811,15 @@ export const layer: Layer.Layer<
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
     const modelPolicy = yield* RuntimeModelPolicy;
 
-    const observers = yield* Ref.make(new Map<OrchestrationV2Run["id"], RunObserver>());
-    const observerFibers = new Map<
-      OrchestrationV2Run["id"],
-      { attemptId: RunAttemptId; fiber: Fiber.Fiber<void, unknown> }
-    >();
+    const observers = yield* Ref.make(new Map<OrchestrationV2Run["id"], OwnedRunObserver>());
+    const releaseObserverIfIdle = (owner: OwnedRunObserver) =>
+      Ref.update(observers, (current) => {
+        if (owner.starting || owner.stream !== undefined || current.get(owner.runId) !== owner)
+          return current;
+        const next = new Map(current);
+        next.delete(owner.runId);
+        return next;
+      });
     const livenessSignals = yield* PubSub.unbounded<void>();
 
     // Root provider outcomes, including synthetic start/observation failures, converge here.
@@ -1057,17 +1069,50 @@ export const layer: Layer.Layer<
 
     return RunExecutionServiceV2.of({
       stopObserving: (runId, attemptId) =>
-        Effect.suspend(() => {
-          const observer = observerFibers.get(runId);
-          return observer?.attemptId === attemptId
-            ? Fiber.interrupt(observer.fiber).pipe(Effect.asVoid)
-            : Effect.void;
-        }),
+        Ref.get(observers).pipe(
+          Effect.flatMap((current) => {
+            const observer = current.get(runId);
+            const fiber = observer?.stream?.fiber;
+            return observer?.attemptId === attemptId && fiber !== undefined
+              ? Fiber.interrupt(fiber).pipe(Effect.asVoid)
+              : Effect.void;
+          }),
+        ),
       observers: Ref.get(observers).pipe(Effect.map((entries) => [...entries.values()])),
       livenessSignals: Stream.fromPubSub(livenessSignals),
       startRootRun: (input) =>
         Effect.gen(function* () {
-          if ((yield* Ref.get(observers)).get(input.run.id)?.attemptId === input.attempt.id) return;
+          const owner: OwnedRunObserver = {
+            runId: input.run.id,
+            attemptId: input.attempt.id,
+            starting: true,
+            stream: undefined,
+          };
+          const claimed = yield* Effect.acquireRelease(
+            Ref.modify(observers, (current) =>
+              current.get(owner.runId)?.attemptId === owner.attemptId
+                ? ([false, current] as const)
+                : ([true, new Map(current).set(owner.runId, owner)] as const),
+            ),
+            (claimed) =>
+              Effect.suspend(() => {
+                if (!claimed) return Effect.void;
+                owner.starting = false;
+                return releaseObserverIfIdle(owner);
+              }),
+          );
+          if (!claimed) return;
+          const published = yield* (input.publishRunning ?? Effect.succeed(true)).pipe(
+            Effect.mapError(
+              (cause) =>
+                new RunExecutionStartError({
+                  commandId: input.commandId,
+                  runId: input.run.id,
+                  cause,
+                }),
+            ),
+          );
+          if (!published) return;
           let boundProviderTurnId = input.attempt.providerTurnId;
           // Startup failure and stream shutdown can report the same attempt.
           const refreshAfterTurn = yield* Effect.cached(
@@ -1692,6 +1737,7 @@ export const layer: Layer.Layer<
           const streamingTime = Clock.monotonicTimeNanos.pipe(
             Effect.map((nanos) => Number(nanos / 1_000_000n)),
           );
+          let lastObservedAt = yield* streamingTime;
           let heldDelivery = false;
           const deliverHeldParagraphs = ingestion.withPermits(1)(
             Effect.gen(function* () {
@@ -1739,23 +1785,14 @@ export const layer: Layer.Layer<
                 ),
               );
               yield* Ref.set(eventRouting, next);
-              if (boundProviderTurnId !== next.rootProviderTurnId) {
-                boundProviderTurnId = next.rootProviderTurnId;
-                yield* Ref.update(observers, (current) =>
-                  new Map(current).set(input.run.id, {
-                    runId: input.run.id,
-                    attemptId: input.attempt.id,
-                    providerTurnId: boundProviderTurnId,
-                    attemptStartedAt: input.attempt.startedAt,
-                  }),
-                );
-              }
+              boundProviderTurnId = next.rootProviderTurnId;
               if (!accepted) return;
               const event = nodexProviderEvent(input.run.providerInstanceId, rawEvent);
               yield* ingestion.withPermits(1)(
                 Effect.gen(function* () {
                   let storedEventCount = 0;
                   const acceptedAt = yield* streamingTime;
+                  if (event.type !== "provider_thread.updated") lastObservedAt = acceptedAt;
                   const deliveredEvent = assistantStreaming.accept(event, acceptedAt);
                   // A paragraph held inside a streaming window lands when the window ends.
                   const dueAt = assistantStreaming.nextDueAt();
@@ -1847,14 +1884,11 @@ export const layer: Layer.Layer<
               );
             });
           const startSettled = yield* Deferred.make<void>();
-          yield* Ref.update(observers, (current) =>
-            new Map(current).set(input.run.id, {
-              runId: input.run.id,
-              attemptId: input.attempt.id,
-              providerTurnId: boundProviderTurnId,
-              attemptStartedAt: input.attempt.startedAt,
-            }),
-          );
+          const finalizeReconciled = (terminal: ProviderTerminalEvent) =>
+            Ref.set(terminalEvent, terminal).pipe(
+              Effect.andThen(Ref.set(rootTerminalSeen, true)),
+              Effect.andThen(finalizeRootRun(terminal, false, true)),
+            );
           const recoverObservation = (cause: unknown) =>
             Effect.gen(function* () {
               yield* PubSub.publish(livenessSignals, undefined);
@@ -1863,27 +1897,33 @@ export const layer: Layer.Layer<
                 yield* finalizeRootRun(knownTerminal, knownTerminal.status === "failed", true);
                 return;
               }
-              const turnId = boundProviderTurnId;
-              const reconciled =
-                turnId === null
-                  ? null
-                  : yield* reconcileProviderTurn(input.session, {
-                      providerThread: yield* Ref.get(latestProviderThread),
-                      providerTurnId: turnId,
-                    }).pipe(
-                      Effect.catchCause((error) =>
-                        Cause.hasInterruptsOnly(error)
-                          ? Effect.failCause(error)
-                          : Effect.succeed(null),
-                      ),
-                    );
+              const providerThread = yield* Ref.get(latestProviderThread);
+              const reconciled = yield* Effect.gen(function* () {
+                if (input.session.reconcileTurnByAttempt !== undefined) {
+                  return yield* reconcileProviderTurnByAttempt(input.session, {
+                    providerThread,
+                    attemptId: input.attempt.id,
+                  });
+                }
+                if (boundProviderTurnId === null) return null;
+                return yield* reconcileProviderTurn(input.session, {
+                  providerThread,
+                  providerTurnId: boundProviderTurnId,
+                });
+              }).pipe(
+                Effect.catchCause((error) =>
+                  Cause.hasInterruptsOnly(error) ? Effect.failCause(error) : Effect.succeed(null),
+                ),
+              );
+              for (const event of reconciled?.events ?? []) yield* processEvent(event);
+              if (yield* Ref.get(rootRunFinalized)) return;
               if (
                 reconciled !== null &&
                 reconciled.status !== "unknown" &&
-                reconciled.status !== "process_gone"
+                reconciled.status !== "process_gone" &&
+                boundProviderTurnId !== null
               ) {
-                for (const event of reconciled.events) yield* processEvent(event);
-                if (reconciled.status === "active" || (yield* Ref.get(rootRunFinalized))) return;
+                if (reconciled.status === "active") return;
                 const terminal: ProviderTerminalEvent =
                   reconciled.status === "failed"
                     ? makeFailedTerminalEvent(
@@ -1898,15 +1938,16 @@ export const layer: Layer.Layer<
                         type: "turn.terminal",
                         driver: input.providerThread.driver,
                         providerThreadId: input.providerThread.id,
-                        providerTurnId: turnId!,
+                        providerTurnId: boundProviderTurnId,
                         runOrdinal: input.run.ordinal,
                         status: reconciled.status,
                         failure: null,
                         threadDisposition: "reusable",
                       };
-                yield* finalizeRootRun(terminal, false, true);
+                yield* finalizeReconciled(terminal);
                 return;
               }
+              const turnId = boundProviderTurnId;
               if (turnId !== null && reconciled?.status !== "process_gone") {
                 yield* input.session
                   .interruptTurn({
@@ -1930,24 +1971,46 @@ export const layer: Layer.Layer<
                 code:
                   reconciled?.status === "process_gone"
                     ? "provider_process_exited"
-                    : turnId === null && input.observeOnly
+                    : turnId === null
                       ? "turn_start_unconfirmed"
                       : "observation_lost",
                 message:
                   reconciled?.status === "process_gone"
                     ? "The Agent stopped before finishing this reply."
-                    : turnId === null && input.observeOnly
+                    : turnId === null
                       ? "The Agent never confirmed that this reply started."
                       : "Nodex lost contact with this reply and couldn't confirm how it ended.",
                 class: "provider_error",
                 retryable: true,
               });
-              yield* finalizeRootRun(
+              yield* finalizeReconciled(
                 makeFailedTerminalEvent(failure, (yield* Ref.get(latestTurnItemOrdinal)) + 1),
-                false,
-                true,
               );
             });
+          const checkQuietObservation = Effect.gen(function* () {
+            if (yield* Ref.get(rootRunFinalized)) return;
+            if (boundProviderTurnId !== null && input.session.reconcileTurnByAttempt === undefined)
+              return;
+            if ((yield* streamingTime) - lastObservedAt < 120_000) return;
+            lastObservedAt = yield* streamingTime;
+            yield* recoverObservation("The reply stopped delivering provider events.");
+          });
+          // Quiet checks race the event stream instead of joining it: stream combinators pull
+          // provider events ahead of processing, and an event pulled after this observer stops
+          // ingesting never reaches the one that takes over. Checks and events take turns.
+          const observation = yield* Semaphore.make(1);
+          const watchQuietObservation = Effect.gen(function* () {
+            yield* Deferred.await(startSettled);
+            while (true) {
+              yield* Effect.sleep("30 seconds");
+              yield* observation.withPermit(checkQuietObservation);
+              if (!(yield* Ref.get(rootRunFinalized)) || !(yield* shouldStopProviderEventIngestion))
+                continue;
+              // Ending the race stops the stream between events, never inside one.
+              yield* observation.take(1);
+              return;
+            }
+          });
           const observeProviderEvents = (reconcileFirst = false) =>
             Effect.gen(function* () {
               let reconcile = reconcileFirst || input.observeOnly === true;
@@ -1962,9 +2025,10 @@ export const layer: Layer.Layer<
                   if (yield* Ref.get(rootRunFinalized)) return;
                 }
                 const result = yield* eventSubscription.events.pipe(
-                  Stream.tap(processEvent),
+                  Stream.tap((event) => observation.withPermit(processEvent(event))),
                   Stream.takeUntilEffect(() => shouldStopProviderEventIngestion),
                   Stream.runDrain,
+                  Effect.raceFirst(watchQuietObservation),
                   Effect.exit,
                 );
                 if (Exit.isFailure(result) && Cause.hasInterruptsOnly(result.cause))
@@ -1984,31 +2048,20 @@ export const layer: Layer.Layer<
                     : yield* input.session.subscribeEvents;
                 reconcile = true;
               }
-            }).pipe(
-              Effect.ensuring(Effect.suspend(() => eventSubscription.close)),
+            }).pipe(Effect.ensuring(Effect.suspend(() => eventSubscription.close)));
+          const startObserving = Effect.fnUntraced(function* (reconcileFirst = false) {
+            const stream: NonNullable<OwnedRunObserver["stream"]> = {};
+            owner.stream = stream;
+            const fiber = yield* observeProviderEvents(reconcileFirst).pipe(
               Effect.ensuring(
-                Ref.update(observers, (current) => {
-                  if (current.get(input.run.id)?.attemptId !== input.attempt.id) return current;
-                  const next = new Map(current);
-                  next.delete(input.run.id);
-                  if (observerFibers.get(input.run.id)?.attemptId === input.attempt.id)
-                    observerFibers.delete(input.run.id);
-                  return next;
+                Effect.suspend(() => {
+                  if (owner.stream === stream) owner.stream = undefined;
+                  return releaseObserverIfIdle(owner);
                 }),
               ),
+              Effect.forkDetach,
             );
-          const startObserving = Effect.fnUntraced(function* (reconcileFirst = false) {
-            yield* Ref.update(observers, (current) =>
-              new Map(current).set(input.run.id, {
-                runId: input.run.id,
-                attemptId: input.attempt.id,
-                providerTurnId: boundProviderTurnId,
-                attemptStartedAt: input.attempt.startedAt,
-              }),
-            );
-            const fiber = yield* observeProviderEvents(reconcileFirst).pipe(Effect.forkDetach);
-            if ((yield* Ref.get(observers)).get(input.run.id)?.attemptId === input.attempt.id)
-              observerFibers.set(input.run.id, { attemptId: input.attempt.id, fiber });
+            stream.fiber = fiber;
             return fiber;
           });
           const providerEventFiber = yield* startObserving();
@@ -2097,7 +2150,7 @@ export const layer: Layer.Layer<
                 }),
               ))
             : input.session.startTurn(turnInput);
-          yield* Effect.andThen(shouldStart, startTurn).pipe(
+          yield* Effect.andThen(shouldStart, startTurn.pipe(Effect.timeout("5 minutes"))).pipe(
             Effect.tap(() => Deferred.succeed(startSettled, undefined)),
             Effect.tap(() =>
               input.message.delivery !== "pending" && input.message.delivery !== "unknown"
@@ -2181,7 +2234,7 @@ export const layer: Layer.Layer<
               ),
             ),
           );
-        }),
+        }).pipe(Effect.scoped),
     } satisfies RunExecutionServiceV2Shape);
   }),
 );
