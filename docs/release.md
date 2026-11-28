@@ -181,6 +181,22 @@ Beta App Review covers the first build of each version, usually within a day.
 Change the mobile protocol revision only when the phone app can be approved
 before the desktop release that requires it reaches people.
 
+## nodex-insights on npm
+
+[`nodex-insights`](product-specs/nodex-insights-cli.md) ships on npm on its own schedule, not with
+the desktop release: it draws the same cards, but nothing in the app depends on it. Its version
+lives in `packages/nodex-insights/package.json`, which is private so the workspace manifest is never
+published by mistake. The build writes the package as published into `dist/`, with a manifest
+that keeps only the runtime dependency on the pinned ccusage:
+
+```bash
+vp run --filter nodex-insights build
+npm publish packages/nodex-insights/dist --access public
+```
+
+Publish from `main` after its CI passes, bump the version for every publish, and smoke-test the
+published package with `npx nodex-insights@<version> --no-open`.
+
 ## Build Identity and Release Identity
 
 The channel-free **Build Identity** records the source commit and tree, source

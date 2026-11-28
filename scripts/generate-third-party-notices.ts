@@ -62,7 +62,7 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-async function readLegalDocuments(directory: string): Promise<string | null> {
+export async function readLegalDocuments(directory: string): Promise<string | null> {
   const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
   const filenames = entries
     .filter((entry) => entry.isFile() && LEGAL_FILENAME_PATTERN.test(entry.name))
@@ -181,7 +181,7 @@ async function collectCargoEntries(repositoryRoot: string): Promise<ThirdPartyLe
   );
 }
 
-async function readCombinedLegalFiles(paths: string[]): Promise<string | null> {
+export async function readCombinedLegalFiles(paths: string[]): Promise<string | null> {
   const documents: string[] = [];
 
   for (const filePath of paths) {

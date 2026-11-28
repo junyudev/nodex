@@ -1,0 +1,46 @@
+{
+  "daily": [
+    {
+      "agent": "all",
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 2000,
+      "inputTokens": 1000,
+      "metadata": {
+        "agents": [
+          "kimi"
+        ]
+      },
+      "modelBreakdowns": [
+        {
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 2000,
+          "inputTokens": 1000,
+          "modelName": "kimi-for-coding",
+          "outputTokens": 500
+        }
+      ],
+      "modelsUsed": [
+        "kimi-for-coding"
+      ],
+      "outputTokens": 500,
+      "period": "2026-04-21",
+      "totalTokens": 3500,
+      "agents": [
+        {
+          "agent": "kimi",
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 2000,
+          "inputTokens": 1000,
+          "outputTokens": 500,
+          "totalTokens": 3500
+        }
+      ]
+    }
+  ],
+  "session": [
+    {
+      "agent": "kimi",
+      "period": "session-new-1"
+    }
+  ]
+}

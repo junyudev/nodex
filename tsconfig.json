@@ -24,6 +24,9 @@
       "path": "./packages/insights-cards/tsconfig.json"
     },
     {
+      "path": "./packages/nodex-insights/tsconfig.json"
+    },
+    {
       "path": "./packages/push-relay/tsconfig.json"
     },
     {
