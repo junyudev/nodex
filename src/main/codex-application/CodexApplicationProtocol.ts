@@ -691,7 +691,6 @@ export const make: Effect.Effect<
                           method: notification.method,
                           threadId: threadId ?? "unknown",
                           error,
-                          errorCause: Cause.pretty(error.cause),
                           errorDetail: readActionableErrorMessage(Cause.squash(error.cause), {
                             fallback: "Codex notification consequence failed",
                             maximumLength: 1_000,

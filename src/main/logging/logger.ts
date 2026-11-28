@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import * as Cause from "effect/Cause";
 import { writeTerminalLog } from "./terminal-sink";
 import {
   isLogLevelEnabled,
@@ -177,7 +178,7 @@ function serializeError(
   depth: number,
 ): Record<string, unknown> {
   return {
-    name: error.name,
+    name: truncateString(error.name, context.config.maxStringLength),
     message: truncateString(error.message, context.config.maxStringLength),
     stack: error.stack
       ? truncateString(error.stack, context.config.maxStringLength * 2)
@@ -189,6 +190,21 @@ function serializeError(
       "cause",
     ),
   };
+}
+
+function serializeCauseReason(
+  reason: Cause.Reason<unknown>,
+  context: SerializationContext,
+  depth: number,
+): Record<string, unknown> {
+  switch (reason._tag) {
+    case "Fail":
+      return { _tag: reason._tag, error: serializeValue(reason.error, context, depth) };
+    case "Die":
+      return { _tag: reason._tag, defect: serializeValue(reason.defect, context, depth) };
+    case "Interrupt":
+      return { _tag: reason._tag, fiberId: reason.fiberId };
+  }
 }
 
 interface SerializationContext {
@@ -213,7 +229,6 @@ function serializeValue(
   if (typeof value === "symbol") return String(value);
   if (typeof value === "function") return `[Function ${value.name || "anonymous"}]`;
   if (value instanceof Date) return value.toISOString();
-  if (value instanceof Error) return serializeError(value, context, depth);
 
   if (depth >= context.config.maxDepth) {
     if (Array.isArray(value)) {
@@ -236,24 +251,30 @@ function serializeValue(
     return serializeValue(Array.from(value.values()), context, depth + 1, keyHint);
   }
 
-  if (typeof value === "object") {
-    if (context.seen.has(value)) return "[Circular]";
-    context.seen.add(value);
+  if (typeof value !== "object") return String(value);
+  if (context.seen.has(value)) return "[Circular]";
+  context.seen.add(value);
 
-    if (!isPlainObject(value)) {
-      const tag = value.constructor?.name ?? "Object";
-      return `[${tag}]`;
+  if (value instanceof Error) return serializeError(value, context, depth);
+  if (!isPlainObject(value)) {
+    if (Cause.isCause(value)) {
+      return {
+        reasons: value.reasons
+          .slice(0, context.config.maxArrayLength)
+          .map((reason) => serializeCauseReason(reason, context, depth + 1)),
+      };
     }
 
-    const serialized: Record<string, unknown> = {};
-    const entries = Object.entries(value).slice(0, context.config.maxObjectEntries);
-    for (const [entryKey, entryValue] of entries) {
-      serialized[entryKey] = serializeValue(entryValue, context, depth + 1, entryKey);
-    }
-    return serialized;
+    const tag = value.constructor?.name ?? "Object";
+    return `[${tag}]`;
   }
 
-  return String(value);
+  const serialized: Record<string, unknown> = {};
+  const entries = Object.entries(value).slice(0, context.config.maxObjectEntries);
+  for (const [entryKey, entryValue] of entries) {
+    serialized[entryKey] = serializeValue(entryValue, context, depth + 1, entryKey);
+  }
+  return serialized;
 }
 
 function readBackendLogFiles(logDir: string): BackendLogFile[] {

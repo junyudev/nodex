@@ -267,8 +267,12 @@ Rules:
 - plain objects are capped to `NODEX_LOG_MAX_OBJECT_ENTRIES`
 - nested traversal stops at `NODEX_LOG_MAX_DEPTH`
 - circular references become `[Circular]`
-- non-plain objects become tags like `[Map]`, `[Set]`, or `[ClassName]`
 - `Error` values are expanded into `name`, `message`, `stack`, and `cause`
+- Effect causes are recorded as a bounded list of failure, defect, and interruption reasons. Failure
+  and defect values use the same recursive serialization and field redaction as other log values.
+  Main sends Effect log causes and annotations through this serializer before writing to any sink.
+- maps are serialized as objects, sets as arrays, and other class instances as tags like
+  `[ClassName]`
 
 This is intentional. Logs are for diagnosis, not full-fidelity archival.
 

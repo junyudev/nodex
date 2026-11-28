@@ -1,4 +1,3 @@
-import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -303,7 +302,7 @@ export const live = (
           Effect.catch((cause) =>
             Effect.logWarning(
               "Managed worktree retention skipped because metadata is incomplete",
-            ).pipe(Effect.annotateLogs({ cause: String(cause.cause) }), Effect.as(null)),
+            ).pipe(Effect.annotateLogs({ cause: cause.cause }), Effect.as(null)),
           ),
         );
         if (!plan) return skippedPlan(settings, false, nowMs);
@@ -357,7 +356,7 @@ export const live = (
             Effect.annotateLogs({
               worktreeId: resolveManagedWorktreeId(result.item.worktreeGitRoot),
               hostId: result.item.hostId,
-              error: Cause.pretty(result.result.cause),
+              error: result.result.cause,
             }),
           );
         }
@@ -417,7 +416,7 @@ export const live = (
           }
           if (!hasReply && Exit.isFailure(result)) {
             yield* Effect.logWarning("Managed worktree retention sweep failed").pipe(
-              Effect.annotateLogs({ cause: Cause.pretty(result.cause) }),
+              Effect.annotateLogs({ cause: result.cause }),
             );
           }
           immediate = yield* drainAvailable;

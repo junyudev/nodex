@@ -1500,7 +1500,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           ),
           Effect.catchCause((recordCause) =>
             Effect.logWarning("Worktree preparation failure could not be recorded").pipe(
-              Effect.annotateLogs({ threadId, runId, cause: Cause.pretty(recordCause) }),
+              Effect.annotateLogs({ threadId, runId, cause: recordCause }),
             ),
           ),
         );
@@ -2196,7 +2196,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
       Effect.catchCause((cause) =>
         Effect.logWarning("Automatic chat title generation failed").pipe(
-          Effect.annotateLogs({ sessionId: input.sessionId, cause: Cause.pretty(cause) }),
+          Effect.annotateLogs({ sessionId: input.sessionId, cause }),
         ),
       ),
       // This producer continues an already-admitted Session, beyond the person request lifetime.
@@ -3374,7 +3374,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           Effect.logWarning("Could not persist the accepted side-chat title").pipe(
             Effect.annotateLogs({
               sessionId: loaded.binding.session_id,
-              cause: Cause.pretty(cause),
+              cause,
             }),
           ),
         ),
@@ -3383,7 +3383,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     },
     Effect.catchCause((cause) =>
       Effect.logWarning("Could not name the accepted side-chat request").pipe(
-        Effect.annotateLogs({ cause: Cause.pretty(cause) }),
+        Effect.annotateLogs({ cause }),
       ),
     ),
   );

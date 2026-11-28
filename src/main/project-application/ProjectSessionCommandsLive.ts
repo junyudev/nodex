@@ -2,7 +2,6 @@ import {
   AgentRuntimeApplication,
   AgentRuntimeApplicationError,
 } from "../agent-runtime/AgentRuntimeApplication";
-import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as RcMap from "effect/RcMap";
@@ -63,7 +62,7 @@ export const live: Layer.Layer<
           Effect.logWarning("Session browser cleanup failed").pipe(
             Effect.annotateLogs({
               sessionId: command.payload.sessionId,
-              failure: Cause.pretty(cause),
+              failure: cause,
             }),
           ),
         ),

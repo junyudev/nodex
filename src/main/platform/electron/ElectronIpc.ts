@@ -265,7 +265,7 @@ const asyncLive: Layer.Layer<
                   Effect.provideService(CoreRequestClass, "interactive"),
                   Effect.catchCause((cause) =>
                     Effect.logError("Electron IPC handler failed").pipe(
-                      Effect.annotateLogs({ channel, cause: Cause.pretty(cause) }),
+                      Effect.annotateLogs({ channel, cause }),
                       Effect.andThen(Effect.fail(toElectronIpcRendererError(Cause.squash(cause)))),
                     ),
                   ),

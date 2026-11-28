@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import { z } from "zod";
@@ -1429,9 +1428,7 @@ export const makeBrowserUseIabApi = (
     (api) =>
       Effect.promise(() => api.release()).pipe(
         Effect.catchCause((cause) =>
-          Effect.logWarning("Browser Use IAB release failed").pipe(
-            Effect.annotateLogs({ cause: Cause.pretty(cause) }),
-          ),
+          Effect.logWarning("Browser Use IAB release failed").pipe(Effect.annotateLogs({ cause })),
         ),
       ),
   );

@@ -2,8 +2,10 @@ import type { AppStartupFailureEvidence } from "../../shared/app-startup";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { toJson } from "effect/Inspectable";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
+import { CurrentLogAnnotations, CurrentLogSpans } from "effect/References";
 import { randomUUID } from "node:crypto";
 import { getLogger, shutdownBackendLogger, type BackendLogger } from "../logging/logger";
 import { captureMainException, shutdownMainSentry } from "../observability/sentry-main";
@@ -29,26 +31,30 @@ export class MainObservability extends Context.Service<
 >()("nodex/main/app/MainObservability") {}
 
 const toMessage = (message: unknown): string => {
-  if (Array.isArray(message)) return message.map(String).join(" ");
-  return String(message);
+  const inspected = toJson(message);
+  if (!Array.isArray(inspected)) return String(inspected);
+  const parts = inspected.length === 1 && Array.isArray(inspected[0]) ? inspected[0] : inspected;
+  return parts.map(String).join(" ");
 };
 
 const backendEffectLogger = (backend: BackendLogger) =>
-  Logger.make<unknown, void>((options) => {
-    const formatted = Logger.formatStructured.log(options);
+  Logger.make<unknown, void>(({ cause, date, fiber, logLevel, message }) => {
+    const now = date.getTime();
     const fields = {
-      annotations: formatted.annotations,
-      cause: formatted.cause,
-      fiberId: formatted.fiberId,
-      spans: formatted.spans,
+      // Keep Effect's values structured until the backend applies its log limits and redaction.
+      annotations: fiber.getRef(CurrentLogAnnotations),
+      cause: cause.reasons.length > 0 ? cause : undefined,
+      fiberId: `#${fiber.id}`,
+      spans: Object.fromEntries(
+        fiber.getRef(CurrentLogSpans).map(([label, start]) => [label, now - start]),
+      ),
     };
-    const message = toMessage(formatted.message);
-    const level = String(options.logLevel).toLowerCase();
-    if (level.includes("trace")) return backend.trace(message, fields);
-    if (level.includes("debug")) return backend.debug(message, fields);
-    if (level.includes("warn")) return backend.warn(message, fields);
-    if (level.includes("error") || level.includes("fatal")) return backend.error(message, fields);
-    return backend.info(message, fields);
+    const text = toMessage(message);
+    if (logLevel === "Trace") return backend.trace(text, fields);
+    if (logLevel === "Debug") return backend.debug(text, fields);
+    if (logLevel === "Warn") return backend.warn(text, fields);
+    if (logLevel === "Error" || logLevel === "Fatal") return backend.error(text, fields);
+    return backend.info(text, fields);
   });
 
 export const layer: Layer.Layer<

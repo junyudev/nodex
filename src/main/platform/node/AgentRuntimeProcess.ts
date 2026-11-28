@@ -31,7 +31,6 @@ import {
   type AgentRuntimeLiveness,
 } from "./agent-runtime-liveness";
 import * as Deferred from "effect/Deferred";
-import * as Cause from "effect/Cause";
 import type { Done } from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -1021,9 +1020,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       }),
     ),
     // Health is advisory: a broken report channel leaves the process to its other signals.
-    Effect.catchCause((cause) =>
-      Effect.logWarning("Agent Runtime health reports ended", Cause.pretty(cause)),
-    ),
+    Effect.catchCause((cause) => Effect.logWarning("Agent Runtime health reports ended", cause)),
     Effect.forkIn(scope),
   );
 
