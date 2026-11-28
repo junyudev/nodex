@@ -1,3 +1,4 @@
+import type { AppComponentId } from "../../../shared/app-components";
 import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import type { ComponentType } from "react";
@@ -275,12 +276,13 @@ export function settingsCommandId(sectionId: SettingsSectionId): string {
 export function resolveSettingsCommandTarget(
   commandId: string,
   query: string,
+  offeredComponents?: readonly AppComponentId[],
 ): { readonly sectionId: SettingsSectionId; readonly anchor?: string } | null {
   const section = resolveVisibleSettingsSections().find(
     (candidate) => settingsCommandId(candidate.id) === commandId,
   );
   if (!section || section.disabled) return null;
-  const anchor = settingsSearchAnchor(section.id, query);
+  const anchor = settingsSearchAnchor(section.id, query, undefined, offeredComponents);
   return anchor ? { sectionId: section.id, anchor } : { sectionId: section.id };
 }
 
@@ -305,7 +307,7 @@ export function searchWorkbenchSettings(
   const targets = sections.flatMap((section) => {
     if (section.disabled || section.externalUrl != null) return [];
     const panelLabel = intl.formatMessage(section.labelMessage);
-    const index = settingsSearchIndex(section.id, intl);
+    const index = settingsSearchIndex(section.id, intl, context.offeredComponents);
     for (const message of section.searchMessages) {
       if (!index.has(message)) index.set(message, message);
     }

@@ -15,6 +15,7 @@ export type BrowserRuntimeTargetArch = "arm64" | "x64";
 type BrowserRuntimeReleaseAssetCommon = {
   archiveSha256: string;
   archiveSize: number;
+  unpackedSize: number;
   assetName: string;
   manifestSha256: string;
   url: string | null;
@@ -126,6 +127,9 @@ function parseAsset(
   if (!Number.isSafeInteger(value.archiveSize) || (value.archiveSize as number) <= 0) {
     throw new Error(`Invalid Browser runtime release lock ${label}.archiveSize`);
   }
+  if (!Number.isSafeInteger(value.unpackedSize) || (value.unpackedSize as number) <= 0) {
+    throw new Error(`Invalid Browser runtime release lock ${label}.unpackedSize`);
+  }
   const url = value.url === null ? null : requireString(value.url, `${label}.url`);
   if (url !== null && !url.startsWith("https://")) {
     throw new Error(`Invalid Browser runtime release lock ${label}.url`);
@@ -133,6 +137,7 @@ function parseAsset(
   const common = {
     archiveSha256: requireSha256(value.archiveSha256, `${label}.archiveSha256`),
     archiveSize: value.archiveSize as number,
+    unpackedSize: value.unpackedSize as number,
     assetName: requireAssetName(value.assetName, `${label}.assetName`),
     manifestSha256: requireSha256(value.manifestSha256, `${label}.manifestSha256`),
     url,

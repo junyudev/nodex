@@ -1,6 +1,6 @@
 /* @effect-diagnostics asyncFunction:off -- Node filesystem adapter. */
 import { constants } from "node:fs";
-import { access, chmod, lstat, readdir } from "node:fs/promises";
+import { access, chmod, lstat } from "node:fs/promises";
 import path from "node:path";
 import type { AppComponentPayload } from "../../app-components/AppComponentCatalog";
 import { inventoryRegularFiles, sha256File } from "./pinned-tar-archive";
@@ -38,18 +38,12 @@ export async function stageClaudeCode(
     "package/README.md",
     "package/package.json",
   ];
-  const files = await inventoryRegularFiles(root, signal);
-  // Include directory entries so an unexpected empty directory also fails staging.
-  if (
-    (await readdir(root)).join() !== "package" ||
-    (await readdir(path.join(root, "package"))).length !== expected.length ||
-    files.size !== expected.length ||
-    expected.some((file) => !files.has(file))
-  ) {
+  const files = await inventoryRegularFiles(root, signal, expected);
+  if (files.size !== expected.length || expected.some((file) => !files.has(file))) {
     throw new Error("Claude Code archive contains unexpected files.");
   }
   const executable = await verifyClaudeCodeExecutable(root, payload, signal);
-  await chmod(executable, 0o755);
+  if (!payload.executable.path.endsWith(".exe")) await chmod(executable, 0o755);
   return Array.from(files.values()).reduce((total, file) => total + file.size, 0);
 }
 
@@ -58,5 +52,6 @@ export async function admitClaudeCode(
   payload: ClaudeCodePayload,
   signal: AbortSignal,
 ) {
-  await access(await verifyClaudeCodeExecutable(root, payload, signal), constants.X_OK);
+  const executable = await verifyClaudeCodeExecutable(root, payload, signal);
+  if (!payload.executable.path.endsWith(".exe")) await access(executable, constants.X_OK);
 }

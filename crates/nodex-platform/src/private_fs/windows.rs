@@ -130,7 +130,12 @@ pub fn is_socket(_metadata: &Metadata) -> bool {
     false
 }
 
-fn security(file: &File, private: bool, read_only: Option<bool>) -> io::Result<()> {
+fn security(
+    file: &File,
+    private: bool,
+    read_only: Option<bool>,
+    directory_boundary: bool,
+) -> io::Result<()> {
     if is_reparse_point(&file.metadata()?) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -211,13 +216,22 @@ fn security(file: &File, private: bool, read_only: Option<bool>) -> io::Result<(
             ));
         }
         let ace = unsafe { &*(ace.cast::<ACCESS_ALLOWED_ACE>()) };
-        if sid_string((&ace.SidStart as *const u32).cast_mut().cast())? != user {
+        let sid = sid_string((&ace.SidStart as *const u32).cast_mut().cast())?;
+        // Directory boundaries propagate the current user's access to both files and directories.
+        if directory_boundary && ace.Header.AceFlags != 0x03 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "private store entry requires inheritable access",
+            ));
+        }
+        if sid == user {
+            allowed |= ace.Mask;
+        } else if !directory_boundary || !["S-1-5-18", "S-1-5-32-544"].contains(&sid.as_str()) {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "private entry grants access outside the current user",
             ));
         }
-        allowed |= ace.Mask;
     }
     let writable =
         allowed & (FILE_WRITE_DATA | FILE_APPEND_DATA | GENERIC_WRITE | GENERIC_ALL) != 0;
@@ -230,13 +244,13 @@ fn security(file: &File, private: bool, read_only: Option<bool>) -> io::Result<(
     Ok(())
 }
 pub fn require_owned(path: &Path, _metadata: &Metadata) -> io::Result<()> {
-    security(&open_metadata(path)?, false, None)
+    security(&open_metadata(path)?, false, None, false)
 }
 pub fn is_private(path: &Path, _metadata: &Metadata) -> io::Result<bool> {
-    Ok(security(&open_metadata(path)?, true, None).is_ok())
+    Ok(security(&open_metadata(path)?, true, None, false).is_ok())
 }
 pub fn has_mode(path: &Path, _metadata: &Metadata, mode: u32) -> io::Result<bool> {
-    Ok(security(&open_metadata(path)?, true, Some(mode & 0o200 == 0)).is_ok())
+    Ok(security(&open_metadata(path)?, true, Some(mode & 0o200 == 0), false).is_ok())
 }
 pub fn set_mode(path: impl AsRef<Path>, mode: u32) -> io::Result<()> {
     let path = path.as_ref();
@@ -301,9 +315,98 @@ pub fn set_mode(path: impl AsRef<Path>, mode: u32) -> io::Result<()> {
     }
     Ok(())
 }
+/// Establish a protected, inheritable store below a Profile on a local Windows volume.
+pub fn ensure_directory_boundary(profile: &Path, directory: &Path) -> io::Result<()> {
+    use super::{EntryKind, entry_metadata};
+    use std::path::Component;
+
+    let relative = directory.strip_prefix(profile).map_err(io::Error::other)?;
+    let mut parts = relative.components().peekable();
+    if parts.peek().is_none()
+        || parts
+            .clone()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "expected a directory below the Profile",
+        ));
+    }
+    let mut path = profile.to_owned();
+    trusted_directory(&path)?;
+    while let Some(part) = parts.next() {
+        path.push(part);
+        if parts.peek().is_none() {
+            let security = PrivateSecurity::from_sddl(&format!(
+                "O:{0}D:P(A;OICI;FA;;;{0})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)",
+                process_sid(None)?
+            ))?;
+            if let Err(error) = create_directory(&path, &security) {
+                if error.kind() != io::ErrorKind::AlreadyExists {
+                    return Err(error);
+                }
+            }
+            trusted_directory(&path)?;
+            entry_metadata(&path, EntryKind::Directory)?;
+            return validate_directory_boundary(&open_metadata(&path)?);
+        }
+        if let Err(error) = create_dir(&path) {
+            if error.kind() != io::ErrorKind::AlreadyExists {
+                return Err(error);
+            }
+        }
+        trusted_directory(&path)?;
+    }
+    unreachable!("a boundary has at least one component")
+}
+
+fn trusted_directory(path: &Path) -> io::Result<()> {
+    let security = crate::desktop_tools::inspect_path(path)?;
+    if security.reparse_point
+        || security.grants_foreign_write
+        || ![
+            security.current_user_sid.as_str(),
+            "S-1-5-18",
+            "S-1-5-32-544",
+        ]
+        .contains(&security.owner_sid.as_str())
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "unsafe store ancestor",
+        ));
+    }
+    super::entry_metadata(path, super::EntryKind::Directory).map(|_| ())
+}
+
+pub fn verify_boundary_directories(boundary: &Path, directory: &Path) -> io::Result<()> {
+    let relative = directory.strip_prefix(boundary).map_err(io::Error::other)?;
+    let mut path = boundary.to_owned();
+    trusted_directory(&path)?;
+    validate_directory_boundary(&open_metadata(&path)?)?;
+    for part in relative.components() {
+        let std::path::Component::Normal(name) = part else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "unsafe store path",
+            ));
+        };
+        path.push(name);
+        trusted_directory(&path)?;
+    }
+    Ok(())
+}
+
+fn validate_directory_boundary(file: &File) -> io::Result<()> {
+    security(file, true, Some(false), true)
+}
+
 pub fn create_dir(path: impl AsRef<Path>) -> io::Result<()> {
     let path = path.as_ref();
-    let security = PrivateSecurity::new(false)?;
+    create_directory(path, &PrivateSecurity::new(false)?)
+}
+
+fn create_directory(path: &Path, security: &PrivateSecurity) -> io::Result<()> {
     let attributes = security.attributes();
     if unsafe { CreateDirectoryW(wide(path)?.as_ptr(), &attributes) } == 0 {
         return Err(io::Error::last_os_error());
@@ -394,7 +497,7 @@ fn replace_sealed_file(source: &[u16], target: &[u16], phase: &mut &'static str)
     })?;
     let file: File = file.into();
     *phase = "checking replacement privacy";
-    security(&file, true, None)?;
+    security(&file, true, None, false)?;
     if !file.metadata()?.is_file() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -431,7 +534,7 @@ fn replace_sealed_file(source: &[u16], target: &[u16], phase: &mut &'static str)
 }
 
 pub fn validate_private_handle(file: &File, mode: u32) -> io::Result<Metadata> {
-    security(file, true, Some(mode & 0o200 == 0))?;
+    security(file, true, Some(mode & 0o200 == 0), false)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {
         return Err(io::Error::new(
@@ -702,7 +805,7 @@ pub(super) fn initialize_private_entry(
 
 /// A private readable handle may be sealed; cleanup owners restore write access later.
 pub fn validate_private_read_handle(file: &File) -> io::Result<Metadata> {
-    security(file, true, None)?;
+    security(file, true, None, false)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {
         return Err(io::Error::new(

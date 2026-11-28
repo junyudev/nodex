@@ -96,6 +96,12 @@ export async function createAgentRuntimeRelockCandidate(
         targetArch,
         targetPlatform,
       });
+      const requiredArtifacts = new Set(
+        key === "darwin-arm64" ? lock.requiredArtifacts : candidate.builds[key].requiredArtifacts,
+      );
+      const archiveArtifacts = staged.metadata.artifacts.filter(({ path }) =>
+        requiredArtifacts.has(path),
+      );
       candidate = parseCodexAppServerReleaseLock({
         ...candidate,
         builds: {
@@ -105,15 +111,11 @@ export async function createAgentRuntimeRelockCandidate(
             ...(key === "darwin-arm64"
               ? {
                   artifactSizes: Object.fromEntries(
-                    staged.metadata.artifacts
-                      .filter(({ path }) => lock.requiredArtifacts.includes(path))
-                      .map(({ path, size }) => [path, size]),
+                    archiveArtifacts.map(({ path, size }) => [path, size]),
                   ),
-                  unpackedSize: staged.metadata.artifacts
-                    .filter(({ path }) => lock.requiredArtifacts.includes(path))
-                    .reduce((bytes, artifact) => bytes + artifact.size, 0),
                 }
               : {}),
+            unpackedSize: archiveArtifacts.reduce((bytes, artifact) => bytes + artifact.size, 0),
             entrypointSha256: staged.metadata.releaseAsset.entrypointSha256,
             runtimeMetadataSha256: staged.metadataSha256,
           },

@@ -29,6 +29,7 @@ export interface AgentRuntimeBuild extends CodexReleaseArchive {
 }
 
 export interface WindowsAgentRuntimeBuild extends AgentRuntimeBuild {
+  readonly unpackedSize: number;
   readonly requiredArtifacts: readonly string[];
 }
 

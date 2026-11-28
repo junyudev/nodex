@@ -124,7 +124,8 @@
         "codex-resources/voice/sources.json",
         "codex-resources/voice/windows-crt.json"
       ],
-      "targetTriple": "aarch64-pc-windows-msvc"
+      "targetTriple": "aarch64-pc-windows-msvc",
+      "unpackedSize": 537224413
     },
     "win32-x64": {
       "archiveSha256": "669941eff23dd8470fbf85d919a03d80c4e3d35b441e3fcd361c0f8630945be8",
@@ -181,7 +182,8 @@
         "codex-resources/voice/sources.json",
         "codex-resources/voice/windows-crt.json"
       ],
-      "targetTriple": "x86_64-pc-windows-msvc"
+      "targetTriple": "x86_64-pc-windows-msvc",
+      "unpackedSize": 625178849
     }
   },
   "notices": {

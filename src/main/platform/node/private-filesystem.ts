@@ -8,11 +8,7 @@ interface PrivatePath {
 }
 
 /** Core's one-shot platform command runs without a daemon, Store or shell. */
-const nativePrivatePaths = (
-  entries: readonly PrivatePath[],
-  coreExecutable: string,
-  verify: boolean,
-): Promise<void> =>
+const nativePrivatePaths = (coreExecutable: string, request: object): Promise<void> =>
   new Promise((resolve, reject) => {
     const child = execFile(
       coreExecutable,
@@ -20,7 +16,7 @@ const nativePrivatePaths = (
       { windowsHide: true, timeout: 2_000, maxBuffer: 4096 },
       (error) => (error ? reject(error) : resolve()),
     );
-    child.stdin!.end(JSON.stringify({ verify, entries }));
+    child.stdin!.end(JSON.stringify(request));
   });
 
 /** Secure private files and inheritable directories with the native permission model. */
@@ -28,7 +24,8 @@ export const makePrivatePaths = async (
   entries: readonly PrivatePath[],
   coreExecutable: string,
 ): Promise<void> => {
-  if (process.platform === "win32") return nativePrivatePaths(entries, coreExecutable, false);
+  if (process.platform === "win32")
+    return nativePrivatePaths(coreExecutable, { verify: false, entries });
   await Promise.all(entries.map((entry) => chmod(entry.path, entry.directory ? 0o700 : 0o600)));
 };
 
@@ -36,4 +33,17 @@ export const makePrivatePaths = async (
 export const verifyPrivatePaths = (
   entries: readonly PrivatePath[],
   coreExecutable: string,
-): Promise<void> => nativePrivatePaths(entries, coreExecutable, true);
+): Promise<void> => nativePrivatePaths(coreExecutable, { verify: true, entries });
+
+/** Create or validate a private store from a trusted Profile directory on Windows. */
+export const ensurePrivateDirectoryBoundary = (
+  coreExecutable: string,
+  profile: string,
+  directory: string,
+) => nativePrivatePaths(coreExecutable, { boundary: profile, directory, verifyDescendant: false });
+
+export const verifyPrivateDirectoryDescendant = (
+  coreExecutable: string,
+  boundary: string,
+  directory: string,
+) => nativePrivatePaths(coreExecutable, { boundary, directory, verifyDescendant: true });

@@ -1,8 +1,8 @@
 # Codex app-server runtime
 
-On Apple silicon, Nodex installs the unmodified official Codex CLI package
-on first use as a Component. The Windows app carries the package in Resources.
-The canonical inputs and expected digests live in [`codex-app-server.lock.json`](codex-app-server.lock.json).
+On Apple silicon and Windows x64 and arm64, Nodex installs the official Codex CLI
+package on first use as a Component. The canonical inputs and expected digests
+live in [`codex-app-server.lock.json`](codex-app-server.lock.json).
 
 ## Runtime authority
 
@@ -38,7 +38,9 @@ Every package includes these runtime entrypoints and resources:
 
 The release lock also enumerates the complete voice runtime, shared libraries,
 plugins, manifests, and license files supplied by that release. Staging requires
-the exact locked inventory, including these resources.
+the exact locked inventory, including these resources. On Windows, the Component
+checks the pinned metadata, then places any required app-local Microsoft runtime
+libraries beside their consumers. The libraries come from the Nodex installation.
 
 OpenAI signs the official macOS package before publication. The Component
 installer verifies the archive and locked closure, preserves OpenAI's bytes
@@ -180,12 +182,12 @@ not an upgrade mechanism.
 
 ## Claude Code
 
-On Apple silicon, Nodex installs its Claude Code executable on demand as a
-Component for API key and Nodex credit connections. The app carries the Agent SDK
-and fetches the SDK's matching native package from npm when those connections
-need it. The Profile keeps the verified executable and its upstream license.
-The Windows app carries the native package beside the SDK. A regular Claude
-connection runs the person's configured Claude Code.
+On Apple silicon and Windows x64 and arm64, Nodex installs its Claude Code
+executable on demand as a Component for API key and Nodex credit connections.
+The app carries the Agent SDK and fetches the SDK's matching native package from
+npm when those connections need it. The Profile keeps the verified executable
+and its upstream license. A regular Claude connection runs the person's
+configured Claude Code.
 
 [The Claude Code lock](claude-code.lock.json) pins the SDK version, registry
 archive, and executable. After updating the Agent SDK, run

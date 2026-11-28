@@ -22,7 +22,8 @@
         "cuaRuntime": "local",
         "node": "24.22.3",
         "peerAuthorization": "sha256:d39cd171165f88dbfa7b938c70e8ca40c362df92f635236fdd99fa9c07ef5876"
-      }
+      },
+      "unpackedSize": 741127190
     },
     "win32-arm64": {
       "archiveSha256": "b56c35821a966733164be3beb8f2b0f094fd4a0a89e262ea69c7566f839f2ac4",
@@ -47,7 +48,8 @@
         "sourceCommit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e",
         "targetArch": "arm64",
         "targetPlatform": "win32"
-      }
+      },
+      "unpackedSize": 1120567372
     },
     "win32-x64": {
       "archiveSha256": "2ffa955469770351a9aea0c5976044906ee52f1973f4c71e0277433fdd1e3b5a",
@@ -72,7 +74,8 @@
         "sourceCommit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e",
         "targetArch": "x64",
         "targetPlatform": "win32"
-      }
+      },
+      "unpackedSize": 909363746
     }
   }
 }

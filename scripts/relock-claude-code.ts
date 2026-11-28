@@ -14,9 +14,7 @@ import {
   sha256File,
 } from "../src/main/platform/node/pinned-tar-archive";
 
-const target = "darwin-arm64";
-const platformPackage = `@anthropic-ai/claude-agent-sdk-${target}`;
-const executablePath = "package/claude";
+const targets = ["darwin-arm64", "win32-arm64", "win32-x64"] as const;
 
 export function installedClaudeAgentSdkVersion(): string {
   const require = createRequire(import.meta.url);
@@ -24,8 +22,10 @@ export function installedClaudeAgentSdkVersion(): string {
   return JSON.parse(readFileSync(join(sdkRoot, "package.json"), "utf8")).version as string;
 }
 
-async function relockClaudeCode(): Promise<void> {
-  const version = installedClaudeAgentSdkVersion();
+async function relockTarget(version: string, target: (typeof targets)[number]) {
+  const windows = target.startsWith("win32-");
+  const platformPackage = `@anthropic-ai/claude-agent-sdk-${target}`;
+  const executablePath = windows ? "package/claude.exe" : "package/claude";
   const registry = "https://registry.npmjs.org";
   const url = `${registry}/${platformPackage}/-/claude-agent-sdk-${target}-${version}.tgz`;
   const signal = AbortSignal.timeout(600_000);
@@ -61,7 +61,7 @@ async function relockClaudeCode(): Promise<void> {
       throw new Error("Claude Code archive differs from the registry integrity hash.");
     }
     await mkdir(root);
-    await extractPinnedTarArchive(archive, root, signal);
+    await extractPinnedTarArchive(archive, root, signal, { windows });
     const files = await inventoryRegularFiles(root, signal);
     const unpackedSize = Array.from(files.values()).reduce((sum, entry) => sum + entry.size, 0);
     const executable = files.get(executablePath);
@@ -78,25 +78,30 @@ async function relockClaudeCode(): Promise<void> {
     } as const;
     const { stageClaudeCode } = await import("../src/main/platform/node/stage-claude-code");
     await stageClaudeCode(root, payload, signal);
-    const lock = {
-      version,
-      assets: {
-        [target]: {
-          url,
-          archiveSize: (await lstat(archive)).size,
-          archiveSha256: await sha256File(archive, signal),
-          unpackedSize,
-          executable: payload.executable,
-        },
+    return [
+      target,
+      {
+        url,
+        archiveSize: (await lstat(archive)).size,
+        archiveSha256: await sha256File(archive, signal),
+        unpackedSize,
+        executable: payload.executable,
       },
-    };
-    await writeFile(
-      new URL("../resources/agent-runtime/claude-code.lock.json", import.meta.url),
-      `${JSON.stringify(lock, null, 2)}\n`,
-    );
+    ] as const;
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+}
+
+async function relockClaudeCode(): Promise<void> {
+  const version = installedClaudeAgentSdkVersion();
+  const assets = Object.fromEntries(
+    await Promise.all(targets.map((target) => relockTarget(version, target))),
+  );
+  await writeFile(
+    new URL("../resources/agent-runtime/claude-code.lock.json", import.meta.url),
+    `${JSON.stringify({ version, assets }, null, 2)}\n`,
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

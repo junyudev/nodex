@@ -16,7 +16,7 @@ export async function materializeMacCodexComponent(input: {
   readonly projectRootPath?: string;
   readonly archivePath?: string;
 }): Promise<void> {
-  const definition = codexDefinition();
+  const definition = codexDefinition("darwin-arm64");
   const { archive } = definition;
   const archivePath =
     input.archivePath ??
@@ -40,6 +40,7 @@ export async function materializeMacCodexComponent(input: {
 
   await installAppComponent({
     home: input.home,
+    target: { platform: "darwin", arch: "arm64", isPackaged: true },
     definition,
     codexNoticesDirectory: join(input.resourcesPath, "third-party", "codex"),
     fetch: async () =>

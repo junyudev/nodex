@@ -1,8 +1,11 @@
 import workspaceRuntimeLock from "../../../../resources/workspace-runtime/workspace-runtime.lock.json";
-import type { AppComponentDefinition } from "../AppComponentCatalog";
+import type { AppComponentDefinition, AppComponentTargetKey } from "../AppComponentCatalog";
 
-export function documentToolsDefinition(): AppComponentDefinition | null {
-  const asset = workspaceRuntimeLock.release.assets["darwin-arm64"];
+export function documentToolsDefinition(
+  target: AppComponentTargetKey,
+): AppComponentDefinition | null {
+  if (target !== "darwin-arm64") return null;
+  const asset = workspaceRuntimeLock.release.assets[target];
   if (!asset?.url) return null;
   return {
     id: "document-tools",

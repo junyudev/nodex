@@ -1,5 +1,5 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off -- Node filesystem and tar adapter. */
-import { execFile } from "./child-stdio-errors";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
@@ -8,31 +8,77 @@ import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import { isSafeWindowsBrowserRuntimePath } from "../../../shared/browser-runtime-metadata";
 
-function runTar(args: string[], signal?: AbortSignal): Promise<string> {
+export function pinnedTarExecutable(): string {
+  if (process.platform === "darwin") return "/usr/bin/tar";
+  if (process.platform !== "win32") return "tar";
+  const systemRoot = process.env.SystemRoot;
+  if (!systemRoot || !path.win32.isAbsolute(systemRoot)) {
+    throw new Error("The Windows system directory could not be resolved.");
+  }
+  return path.win32.join(systemRoot, "System32", "tar.exe");
+}
+
+const TAR_OUTPUT_LIMIT = 32 * 1024 * 1024;
+
+/**
+ * Paths never reach tar's command line. Windows tar decodes its arguments with the ANSI code
+ * page, which cannot spell every Profile path, so the archive arrives on stdin and extraction is
+ * relative to the child's working directory; both cross the operating system's Unicode APIs.
+ */
+function runTar(
+  args: readonly string[],
+  archive: string,
+  options: { readonly cwd?: string; readonly signal?: AbortSignal } = {},
+): Promise<string> {
+  const { cwd, signal } = options;
   signal?.throwIfAborted();
   // Wait for the child to close even on abort so the caller can safely remove its staging tree.
   return new Promise((resolve, reject) => {
     const { TAR_OPTIONS: _tarOptions, ...environment } = process.env;
-    const child = execFile(
-      process.platform === "darwin" ? "/usr/bin/tar" : "tar",
-      args,
-      {
-        encoding: "utf8",
-        env: { ...environment, LANG: "C", LC_ALL: "C" },
-        maxBuffer: 32 * 1024 * 1024,
-        windowsHide: true,
-      },
-      (error, stdout) => {
-        signal?.removeEventListener("abort", abort);
-        if (signal?.aborted) reject(signal.reason);
-        else if (error) reject(error);
-        else resolve(stdout);
-      },
-    );
-    const abort = () => {
+    const child = spawn(pinnedTarExecutable(), [...args, "-f", "-"], {
+      cwd,
+      env: { ...environment, LANG: "C", LC_ALL: "C" },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let failure: unknown;
+    const fail = (error: unknown) => {
+      failure ??= error;
       child.kill();
     };
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > TAR_OUTPUT_LIMIT) fail(new Error("tar output exceeded its limit."));
+      else stdout.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderrBytes < 64 * 1024) stderr.push(chunk);
+      stderrBytes += chunk.length;
+    });
+    child.stdout.on("error", fail);
+    child.stderr.on("error", fail);
+    // tar can stop reading after a failure; its exit status explains why, not the broken pipe.
+    child.stdin.on("error", () => {});
+    const input = createReadStream(archive);
+    input.on("error", fail);
+    input.pipe(child.stdin);
+    const abort = () => fail(signal?.reason);
     signal?.addEventListener("abort", abort, { once: true });
+    child.on("error", fail);
+    child.on("close", (code, killSignal) => {
+      signal?.removeEventListener("abort", abort);
+      input.destroy();
+      if (signal?.aborted) reject(signal.reason);
+      else if (failure !== undefined) reject(failure);
+      else if (code !== 0) {
+        const detail = Buffer.concat(stderr).toString("utf8").trim();
+        reject(new Error(`tar exited with ${code ?? killSignal}${detail ? `: ${detail}` : ""}`));
+      } else resolve(Buffer.concat(stdout).toString("utf8"));
+    });
   });
 }
 
@@ -42,7 +88,7 @@ export async function assertArchivePathsAreSafe(
   signal?: AbortSignal,
 ): Promise<void> {
   // List without stripping absolute path prefixes. Inspect names and entry types separately.
-  const entries = (await runTar(["-Ptzf", archivePath], signal)).split("\n").filter(Boolean);
+  const entries = (await runTar(["-Ptz"], archivePath, { signal })).split(/\r?\n/u).filter(Boolean);
   if (entries.length === 0) throw new Error("Component archive is empty.");
   const names = new Set<string>();
   const spellings = new Map<string, string>();
@@ -74,7 +120,9 @@ export async function assertArchivePathsAreSafe(
     }
   }
 
-  const details = (await runTar(["-Ptvzf", archivePath], signal)).split("\n").filter(Boolean);
+  const details = (await runTar(["-Ptvz"], archivePath, { signal }))
+    .split(/\r?\n/u)
+    .filter(Boolean);
   if (details.length !== entries.length || details.some((line) => !/^[-d]/u.test(line))) {
     throw new Error("Component archives may contain only regular files and directories.");
   }
@@ -104,11 +152,18 @@ export async function extractPinnedTarArchive(
   archivePath: string,
   destination: string,
   signal: AbortSignal,
+  options = { windows: process.platform === "win32" },
 ): Promise<void> {
-  await assertArchivePathsAreSafe(archivePath, false, signal);
+  await assertArchivePathsAreSafe(archivePath, options.windows, signal);
   await runTar(
-    ["--no-same-owner", "--no-same-permissions", "-xzf", archivePath, "-C", destination],
-    signal,
+    [
+      "--no-same-owner",
+      "--no-same-permissions",
+      ...(process.platform === "win32" ? ["--no-acls", "--no-xattrs", "--no-fflags"] : []),
+      "-xz",
+    ],
+    archivePath,
+    { cwd: destination, signal },
   );
 }
 

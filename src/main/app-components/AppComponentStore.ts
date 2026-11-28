@@ -13,6 +13,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { APP_COMPONENT_IDS, type AppComponentId } from "../../shared/app-components";
 import {
@@ -24,6 +25,7 @@ import { getLogger } from "../logging/logger";
 import {
   appComponentCatalog,
   appComponentDefinition,
+  appComponentTargetKey,
   type AppComponentDefinition,
   type AppComponentTarget,
 } from "./AppComponentCatalog";
@@ -35,9 +37,15 @@ import {
   copyCodexSeed,
   type CodexSeedSearch,
 } from "../platform/node/seed-codex-package";
-import { stageCodexPackage } from "../platform/node/stage-codex-package";
+import { codexCrtDirectories, stageCodexPackage } from "../platform/node/stage-codex-package";
 import { stageClaudeCode } from "../platform/node/stage-claude-code";
 import { stageMacBrowserRuntime } from "../platform/node/stage-mac-browser-runtime";
+import { stageWindowsBrowserRuntime } from "../platform/node/stage-windows-browser-runtime";
+import { resolveCoreExecutable } from "../core-client/core-launcher";
+import {
+  ensurePrivateDirectoryBoundary,
+  verifyPrivateDirectoryDescendant,
+} from "../platform/node/private-filesystem";
 import {
   AppComponentInstallError,
   componentPartialSize,
@@ -57,8 +65,59 @@ export const appComponentRoot = (home: string, definition: AppComponentDefinitio
 
 export interface AppComponentStoreInput {
   readonly home: string;
-  readonly target: AppComponentTarget;
+  readonly target: AppComponentTarget & {
+    readonly resourcesPath?: string;
+    readonly projectRootPath?: string;
+    readonly coreExecutable?: string;
+  };
   readonly signal?: AbortSignal;
+}
+
+function windowsStoreCore({ target }: AppComponentStoreInput): string | null {
+  if (process.platform !== "win32" || target.platform !== "win32") return null;
+  return (
+    target.coreExecutable ??
+    resolveCoreExecutable({
+      isPackaged: target.isPackaged,
+      appResourcesPath: target.resourcesPath,
+      repositoryRoot: target.projectRootPath,
+      environment: target.environment,
+    })
+  );
+}
+
+/** The store boundary exists before any Component directory or executable is written. */
+export async function ensureAppComponentStoreBoundary(
+  input: AppComponentStoreInput,
+): Promise<void> {
+  input.signal?.throwIfAborted();
+  const core = windowsStoreCore(input);
+  if (!core) return;
+  const profile = input.target.headless ? path.resolve(input.home, "../..") : input.home;
+  await ensurePrivateDirectoryBoundary(core, profile, appComponentStoreRoot(input.home));
+  input.signal?.throwIfAborted();
+}
+
+/** Check an existing directory before traversing or admitting it on Windows. */
+export async function verifyAppComponentDirectory(
+  input: AppComponentStoreInput,
+  directory: string,
+): Promise<void> {
+  const core = windowsStoreCore(input);
+  if (core)
+    await verifyPrivateDirectoryDescendant(core, appComponentStoreRoot(input.home), directory);
+}
+
+/** New children inherit the protected store DACL. Existing paths also need native admission. */
+async function ensureStoreChild(input: AppComponentStoreInput, directory: string): Promise<void> {
+  if (windowsStoreCore(input)) {
+    await mkdir(directory, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "EEXIST") throw error;
+    });
+    await verifyAppComponentDirectory(input, directory);
+    return;
+  }
+  await mkdir(directory, { recursive: true, mode: 0o700 });
 }
 
 export const appComponentRemovalMarker = (home: string, id: AppComponentId): string =>
@@ -94,25 +153,68 @@ const missing = (error: NodeJS.ErrnoException): null => {
 const directoryEntries = async (directory: string): Promise<Dirent[]> =>
   (await readdir(directory, { withFileTypes: true }).catch(missing)) ?? [];
 
-const remove = (file: string): Promise<void> => rm(file, { force: true, recursive: true });
+const windowsRetries = process.platform === "win32" ? 4 : 0;
+const remove = (file: string): Promise<void> =>
+  rm(file, { force: true, recursive: true, maxRetries: windowsRetries, retryDelay: 100 });
 
-async function setMarker(marker: string, present: boolean): Promise<void> {
-  if (!present) return rm(marker, { force: true });
-  await mkdir(path.dirname(marker), { recursive: true, mode: 0o700 });
+async function replaceWithRetry(
+  source: string,
+  target: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
+    try {
+      await rename(source, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= windowsRetries || !["EPERM", "EACCES", "EBUSY"].includes(code ?? ""))
+        throw error;
+      await delay(100 * (attempt + 1), undefined, { signal });
+    }
+  }
+}
+
+async function cleanup(file: string): Promise<void> {
+  await remove(file).catch((cause: unknown) => {
+    getLogger().warn("Could not reclaim Component files", { file, cause: String(cause) });
+  });
+}
+
+async function setMarker(
+  input: AppComponentStoreInput,
+  marker: string,
+  present: boolean,
+): Promise<void> {
+  await ensureAppComponentStoreBoundary(input);
+  const parent = path.dirname(marker);
+  if (present) await ensureStoreChild(input, parent);
+  else {
+    if (!(await lstat(parent).catch(missing))) return;
+    await verifyAppComponentDirectory(input, parent);
+    return remove(marker);
+  }
   await writeFile(marker, "", { flag: "wx", mode: 0o600 }).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== "EEXIST") throw error;
   });
 }
 
-export const setAppComponentTombstone = (home: string, id: AppComponentId, pending: boolean) =>
-  setMarker(appComponentRemovalMarker(home, id), pending);
+export const setAppComponentTombstone = (
+  input: AppComponentStoreInput,
+  id: AppComponentId,
+  pending: boolean,
+) => setMarker(input, appComponentRemovalMarker(input.home, id), pending);
 
 export async function hasAppComponentTombstone(home: string, id: AppComponentId): Promise<boolean> {
   return (await lstat(appComponentRemovalMarker(home, id)).catch(missing)) !== null;
 }
 
-export const setAppComponentWanted = (home: string, id: AppComponentId, requested: boolean) =>
-  setMarker(wanted(home, id), requested);
+export const setAppComponentWanted = (
+  input: AppComponentStoreInput,
+  id: AppComponentId,
+  requested: boolean,
+) => setMarker(input, wanted(input.home, id), requested);
 
 export async function hasAppComponentWanted(home: string, id: AppComponentId): Promise<boolean> {
   return (await lstat(wanted(home, id)).catch(missing))?.isFile() ?? false;
@@ -123,11 +225,13 @@ async function readNextComponents(home: string): Promise<NextComponents | null> 
   if (!(await lstat(file).catch(missing))?.isFile()) return null;
   const handle = await open(
     file,
-    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    constants.O_RDONLY |
+      (process.platform === "win32" ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK),
   ).catch(missing);
   if (!handle) return null;
   try {
-    if (!(await handle.stat()).isFile()) return null;
+    const stats = await handle.stat();
+    if (!stats.isFile() || stats.nlink !== 1) return null;
     const buffer = Buffer.alloc(nextRecordMaxBytes + 1);
     const { bytesRead } = await handle.read(buffer);
     if (bytesRead > nextRecordMaxBytes) return null;
@@ -152,17 +256,19 @@ async function writeNextComponents(home: string, next: NextComponents | null): P
   try {
     const staging = path.join(temporary, "next.json");
     await writeFile(staging, JSON.stringify(record), { mode: 0o600 });
-    await rename(staging, file);
+    await replaceWithRetry(staging, file);
   } finally {
-    await remove(temporary);
+    await cleanup(temporary);
   }
 }
 
 /** Replace the single next-build record and reclaim pins only the previous record referenced. */
 export async function updateNextAppComponents(
-  { home, target }: AppComponentStoreInput,
+  input: AppComponentStoreInput,
   update: (previous: NextComponents | null) => NextComponents | null,
 ): Promise<void> {
+  const { home, target } = input;
+  await ensureAppComponentStoreBoundary(input);
   const previous = await readNextComponents(home);
   const next = update(previous);
   if (next === previous) return;
@@ -173,24 +279,32 @@ export async function updateNextAppComponents(
   ];
   for (const { id, sha256 } of previous?.components ?? []) {
     if (!retained.some((pin) => pin.id === id && pin.sha256 === sha256))
-      await remove(path.join(appComponentStoreRoot(home), id, sha256));
+      await reclaimStoreEntry(input, path.join(appComponentStoreRoot(home), id, sha256));
     if (!retained.some((pin) => pin.sha256 === sha256))
-      await remove(path.join(downloads(home), `${sha256}.part`));
+      await reclaimStoreEntry(input, path.join(downloads(home), `${sha256}.part`));
   }
 }
 
-/**
- * Complete deferred removals and collect superseded files before startup resolution. The
- * Component's removal and use preferences belong to the Component, across all archive pins.
- */
-export async function prepareAppComponentStore(
+async function reclaimStoreEntry(input: AppComponentStoreInput, file: string): Promise<boolean> {
+  try {
+    if (!(await lstat(file).catch(missing))) return true;
+    await verifyAppComponentDirectory(input, path.dirname(file));
+    await remove(file);
+    return true;
+  } catch (cause) {
+    getLogger().warn("Could not reclaim Component files", { file, cause: String(cause) });
+    return false;
+  }
+}
+
+/** Plan the sweep before startup activation. Its deletion retries can run in the background. */
+export async function prepareAppComponentStoreSweep(
   input: AppComponentStoreInput & { readonly appBuildVersion?: string | null },
-): Promise<void> {
+): Promise<() => Promise<void>> {
   const { home, target, signal } = input;
   const catalog = appComponentCatalog(target);
-  // A build that ships everything inside the app leaves another build's store alone.
-  if (catalog.length === 0) return;
-  signal?.throwIfAborted();
+  if (catalog.length === 0) return async () => {};
+  await ensureAppComponentStoreBoundary(input);
   const enabled = new Set<AppComponentId>();
   for (const { id } of catalog) {
     if (!(await hasAppComponentTombstone(home, id))) enabled.add(id);
@@ -202,11 +316,15 @@ export async function prepareAppComponentStore(
     runningBuild !== null && nextBuild !== null && nextBuild > runningBuild
       ? (next?.components.filter(({ id }) => enabled.has(id)) ?? [])
       : [];
-  if (!next || retainedNext.length !== next.components.length) {
+  if (next && retainedNext.length !== next.components.length) {
     await writeNextComponents(
       home,
-      next && retainedNext.length ? { ...next, components: retainedNext } : null,
-    );
+      retainedNext.length ? { ...next, components: retainedNext } : null,
+    ).catch((cause: unknown) => {
+      getLogger().warn("Could not update the Component store's next build", {
+        cause: String(cause),
+      });
+    });
   }
   const pins = [
     ...catalog
@@ -215,36 +333,46 @@ export async function prepareAppComponentStore(
     ...retainedNext,
   ];
   const partials = new Set(pins.map(({ sha256 }) => `${sha256}.part`));
+  const groups: string[][] = [];
   for (const entry of await directoryEntries(appComponentStoreRoot(home))) {
     signal?.throwIfAborted();
     const directory = path.join(entry.parentPath, entry.name);
-    if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".next-")) {
-      await remove(directory);
+      groups.push([directory]);
       continue;
     }
-    if (entry.name === "downloads") {
-      for (const file of await directoryEntries(directory)) {
-        signal?.throwIfAborted();
-        if (!partials.has(file.name) || !file.isFile())
-          await remove(path.join(directory, file.name));
-      }
-      continue;
-    }
-    const children = await directoryEntries(directory);
-    const tombstoned = children.some((child) => child.name === ".remove");
-    for (const child of children) {
-      signal?.throwIfAborted();
-      if (child.name === ".remove") continue;
-      if (child.name === ".wanted" && !tombstoned && child.isFile()) continue;
-      if (
-        !child.isDirectory() ||
-        !pins.some(({ id, sha256 }) => id === entry.name && sha256 === child.name)
-      ) {
-        await remove(path.join(directory, child.name));
-      }
+    if (!entry.isDirectory()) continue;
+    try {
+      await verifyAppComponentDirectory(input, directory);
+      const children = await directoryEntries(directory);
+      const tombstoned = children.some((child) => child.name === ".remove");
+      const stale = children.filter((child) => {
+        if (entry.name === "downloads") return !partials.has(child.name) || !child.isFile();
+        if (child.name === ".remove") return false;
+        if (child.name === ".wanted" && !tombstoned && child.isFile()) return false;
+        return (
+          !child.isDirectory() ||
+          !pins.some(({ id, sha256 }) => id === entry.name && sha256 === child.name)
+        );
+      });
+      groups.push(stale.map((child) => path.join(directory, child.name)));
+    } catch (cause) {
+      getLogger().warn("Could not inspect Component files for cleanup", {
+        directory,
+        cause: String(cause),
+      });
     }
   }
+  return async () => {
+    await Promise.all(
+      groups.map(async (files) => {
+        for (const file of files) {
+          if (signal?.aborted) return;
+          await reclaimStoreEntry(input, file);
+        }
+      }),
+    );
+  };
 }
 
 /** The pinned root if published and eligible for startup activation. */
@@ -256,7 +384,9 @@ export async function installedAppComponentRoot(
   if (!definition || (await hasAppComponentTombstone(input.home, input.id))) return null;
   const root = appComponentRoot(input.home, definition);
   const stats = await lstat(root).catch(missing);
-  return stats?.isDirectory() ? root : null;
+  if (!stats?.isDirectory()) return null;
+  await verifyAppComponentDirectory(input, root);
+  return root;
 }
 
 /** Finish a private component root before publishing it. Count the receipt in the on-disk size. */
@@ -273,12 +403,18 @@ export async function writeAppComponentReceipt(
 
 /** Read the receipt even when this process is still using a tombstoned installation. */
 export async function installedAppComponentBytes(
-  home: string,
+  input: AppComponentStoreInput,
   definition: AppComponentDefinition,
 ): Promise<number | null> {
-  const receipt = await readFile(path.join(appComponentRoot(home, definition), receiptName)).catch(
-    missing,
-  );
+  const root = appComponentRoot(input.home, definition);
+  const file = path.join(root, receiptName);
+  const stats = await lstat(file).catch(missing);
+  if (!stats) return null;
+  if (!stats.isFile() || stats.nlink !== 1 || stats.size !== 8) {
+    throw new Error("Component installation receipt is invalid.");
+  }
+  await verifyAppComponentDirectory(input, root);
+  const receipt = await readFile(file).catch(missing);
   if (!receipt) return null;
   if (receipt.byteLength !== 8) throw new Error("Component installation receipt is invalid.");
   const size = Number(receipt.readBigUInt64LE());
@@ -288,54 +424,70 @@ export async function installedAppComponentBytes(
   return size;
 }
 
-export const removeAppComponentRoot = (home: string, definition: AppComponentDefinition) =>
-  remove(appComponentRoot(home, definition));
-
-export async function removeAppComponentFiles(
-  home: string,
+export async function removeAppComponentRoot(
+  input: AppComponentStoreInput,
   definition: AppComponentDefinition,
-  active: boolean,
 ): Promise<void> {
-  if (!active) await removeAppComponentRoot(home, definition);
-  await remove(partial(home, definition));
+  const root = appComponentRoot(input.home, definition);
+  if (!(await lstat(root).catch(missing))) return;
+  await verifyAppComponentDirectory(input, path.dirname(root));
+  await remove(root);
 }
 
-export async function installAppComponent(input: {
-  readonly home: string;
-  readonly definition: AppComponentDefinition;
-  readonly fetch: ComponentFetch;
-  readonly signal: AbortSignal;
-  readonly onProgress: (received: number) => void;
-  readonly onInstalling: () => void;
-  /** This archive pin was advertised by a future release, so enforce its unpacking budget. */
-  readonly prefetch?: true;
-  readonly codexNoticesDirectory?: string;
-  readonly codexSeedSearch?: CodexSeedSearch & {
-    readonly artifactSizes: Readonly<Record<string, number>>;
-  };
-}): Promise<number> {
-  const { home, definition, signal } = input;
+export async function removeAppComponentFiles(
+  input: AppComponentStoreInput,
+  definition: AppComponentDefinition,
+  active: boolean,
+): Promise<boolean> {
+  const { home } = input;
+  const [removed] = await Promise.all([
+    active ? false : reclaimStoreEntry(input, appComponentRoot(home, definition)),
+    reclaimStoreEntry(input, partial(home, definition)),
+  ]);
+  return removed;
+}
+
+export async function installAppComponent(
+  input: AppComponentStoreInput & {
+    readonly definition: AppComponentDefinition;
+    readonly fetch: ComponentFetch;
+    readonly signal: AbortSignal;
+    readonly onProgress: (received: number) => void;
+    readonly onInstalling: () => void;
+    /** This archive pin was advertised by a future release, so enforce its unpacking budget. */
+    readonly prefetch?: true;
+    readonly codexNoticesDirectory?: string;
+    readonly codexSeedSearch?: CodexSeedSearch & {
+      readonly artifactSizes: Readonly<Record<string, number>>;
+    };
+  },
+): Promise<number> {
+  const { home, definition, signal, target } = input;
+  const targetKey = appComponentTargetKey(target);
+  if (!targetKey) throw new Error("This host does not support App Components.");
+  const windows = target.platform === "win32";
   const root = appComponentRoot(home, definition);
   const file = partial(home, definition);
   let staging: string | undefined;
   const createStage = async () => {
-    await mkdir(path.dirname(root), { recursive: true, mode: 0o700 });
+    await ensureStoreChild(input, path.dirname(root));
     return mkdtemp(path.join(path.dirname(root), ".stage-"));
   };
   const publish = async (stage: string, size: number) => {
     const installedBytes = await writeAppComponentReceipt(stage, size);
     signal.throwIfAborted();
-    await rename(stage, root);
+    await replaceWithRetry(stage, root, signal);
     staging = undefined;
-    await rm(file, { force: true });
+    await cleanup(file);
     return installedBytes;
   };
   const logger = getLogger({ component: definition.id });
   try {
-    signal.throwIfAborted();
+    await ensureAppComponentStoreBoundary(input);
     const { codexSeedSearch, codexNoticesDirectory } = input;
     const payloadPin = definition.payload;
     if (
+      target.platform === "darwin" &&
       !input.prefetch &&
       payloadPin.kind === "codex" &&
       codexSeedSearch &&
@@ -365,7 +517,7 @@ export async function installAppComponent(input: {
         staging = undefined;
       }
     }
-    await mkdir(downloads(home), { recursive: true, mode: 0o700 });
+    await ensureStoreChild(input, downloads(home));
     const [space, downloaded] = await Promise.all([
       statfs(downloads(home), { bigint: true }),
       componentPartialSize(file),
@@ -410,9 +562,10 @@ export async function installAppComponent(input: {
           signal,
         );
       }
-      await extractPinnedTarArchive(file, payload, signal);
+      await extractPinnedTarArchive(file, payload, signal, { windows });
       if (definition.payload.kind === "desktop-tools") {
-        size = await stageMacBrowserRuntime(payload, definition.payload.manifestSha256, signal);
+        const stageBrowserRuntime = windows ? stageWindowsBrowserRuntime : stageMacBrowserRuntime;
+        size = await stageBrowserRuntime(payload, definition.payload.manifestSha256, signal);
       } else if (definition.payload.kind === "claude-code") {
         size = await stageClaudeCode(payload, definition.payload, signal);
       } else if (definition.payload.kind === "codex") {
@@ -422,6 +575,8 @@ export async function installAppComponent(input: {
           input.codexNoticesDirectory,
           definition.payload,
           signal,
+          targetKey,
+          codexCrtDirectories(target),
         );
       } else {
         size = await stageDocumentTools(payload, definition.payload, signal);
@@ -446,9 +601,9 @@ export async function installAppComponent(input: {
       );
     }
     if (error instanceof AppComponentInstallError && error.reason === "integrity")
-      await remove(file);
+      await cleanup(file);
     throw error;
   } finally {
-    if (staging) await remove(staging);
+    if (staging) await cleanup(staging);
   }
 }

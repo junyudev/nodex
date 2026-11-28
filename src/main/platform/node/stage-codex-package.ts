@@ -12,6 +12,43 @@ import {
   type CodexAppServerPackageManifest,
 } from "../../../shared/codex-runtime-metadata";
 import { inventoryRegularFiles, sha256File } from "./pinned-tar-archive";
+import {
+  CODEX_CRT_RESOURCES_DIRECTORY,
+  planWindowsVcRuntime,
+} from "./windows-vc-runtime-files.mjs";
+import type { AppComponentTargetKey } from "../../app-components/AppComponentCatalog";
+
+export function codexCrtDirectories(input: {
+  readonly isPackaged: boolean;
+  readonly resourcesPath?: string;
+  readonly projectRootPath?: string;
+}): readonly string[] {
+  if (input.isPackaged && input.resourcesPath) {
+    return [join(input.resourcesPath, CODEX_CRT_RESOURCES_DIRECTORY)];
+  }
+  if (input.projectRootPath) {
+    const staged = join(input.projectRootPath, ".generated", "codex-runtime", "agent-runtime");
+    return [join(staged, "bin"), join(staged, "codex-path")];
+  }
+  return [];
+}
+
+export function windowsCodexCrtFiles(
+  root: string,
+  metadata: BundledAgentRuntimeMetadata,
+  crtDirectories: readonly string[],
+) {
+  if (metadata.targetPlatform !== "win32") return [];
+  if (metadata.targetArch !== "x64" && metadata.targetArch !== "arm64") {
+    throw new Error("Unsupported Windows Codex target.");
+  }
+  return planWindowsVcRuntime(
+    root,
+    metadata.targetArch,
+    metadata.artifacts.map(({ path }) => path).filter((path) => /\.(?:exe|dll|node)$/iu.test(path)),
+    () => crtDirectories,
+  );
+}
 
 export const codexPackageFileMode = (executable: boolean) => (executable ? 0o755 : 0o644);
 
@@ -127,18 +164,27 @@ export async function stageCodexPackage(
   noticesDirectory: string,
   pin: CodexPackagePin,
   signal: AbortSignal,
+  target: AppComponentTargetKey = "darwin-arm64",
+  crtDirectories: readonly string[] = [],
 ): Promise<number> {
-  const files = await inventoryRegularFiles(root, signal, release.requiredArtifacts);
+  const build = release.builds[target];
+  const windows = target !== "darwin-arm64";
+  const requiredArtifacts =
+    "requiredArtifacts" in build ? build.requiredArtifacts : release.requiredArtifacts;
+  const files = await inventoryRegularFiles(root, signal, requiredArtifacts);
   if (
-    files.size !== release.requiredArtifacts.length ||
-    release.requiredArtifacts.some((file) => !files.has(file))
+    files.size !== requiredArtifacts.length ||
+    requiredArtifacts.some((file) => !files.has(file))
   ) {
     throw new Error("Codex app-server package file closure differs from the release lock.");
   }
-  const build = release.builds["darwin-arm64"];
   const packageManifest = validateCodexPackageManifest(
     JSON.parse(await readFile(join(root, "codex-package.json"), "utf8")),
-    { ...release.packageManifest, variant: "codex" },
+    {
+      ...release.packageManifest,
+      variant: "codex",
+      ...(windows ? { entrypoint: "bin/codex.exe", execServer: "bin/codex-exec-server.exe" } : {}),
+    },
     build.targetTriple,
   );
   const notices = join(root, "third-party", "codex");
@@ -153,8 +199,9 @@ export async function stageCodexPackage(
   for (const [path, { mode, size }] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
     const file = join(root, path);
     const executable =
-      !path.startsWith("third-party/") && codexPackageArtifactIsExecutable(path, mode);
-    await chmod(file, codexPackageFileMode(executable));
+      !path.startsWith("third-party/") &&
+      codexPackageArtifactIsExecutable(path, windows ? 0 : mode);
+    if (!windows) await chmod(file, codexPackageFileMode(executable));
     artifacts.push({ path, sha256: await sha256File(file, signal), size, executable });
   }
   const metadata = makeCodexPackageMetadata({
@@ -166,10 +213,23 @@ export async function stageCodexPackage(
       runtimeFamily: "codex",
       upstream: { ...release.upstream, repository: "openai/codex" },
     },
-    target: { targetArch: "arm64", targetPlatform: "darwin", targetTriple: build.targetTriple },
+    target: {
+      targetArch: target === "win32-x64" ? "x64" : "arm64",
+      targetPlatform: windows ? "win32" : "darwin",
+      targetTriple: build.targetTriple,
+    },
   });
   verifyCodexPackageMetadataPin(metadata, pin);
+  let supplementalBytes = 0;
+  for (const { source, destination } of windowsCodexCrtFiles(root, metadata, crtDirectories)) {
+    signal.throwIfAborted();
+    await copyFile(source, join(root, destination));
+    supplementalBytes += (await lstat(source)).size;
+  }
   const data = serializeCodexPackageMetadata(metadata);
   await writeFile(join(root, AGENT_RUNTIME_METADATA_FILENAME), data, { flag: "wx", mode: 0o644 });
-  return artifacts.reduce((total, file) => total + file.size, Buffer.byteLength(data));
+  return artifacts.reduce(
+    (total, file) => total + file.size,
+    Buffer.byteLength(data) + supplementalBytes,
+  );
 }

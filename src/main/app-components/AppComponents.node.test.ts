@@ -1,3 +1,5 @@
+import { pinnedTarExecutable } from "../platform/node/pinned-tar-archive";
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 // @effect-diagnostics strictEffectProvide:off
 import { it } from "@effect/vitest";
 import { execFileSync } from "node:child_process";
@@ -51,6 +53,7 @@ const fixture = Effect.fnUntraced(function* (options: {
   readonly onDemand?: boolean;
   readonly isolatedCodexShell?: HostShellEnvironment["Service"];
   readonly contents?: string;
+  readonly windows?: boolean;
 }) {
   const home =
     options.home ??
@@ -58,10 +61,24 @@ const fixture = Effect.fnUntraced(function* (options: {
       Effect.sync(() => mkdtempSync(path.join(tmpdir(), "nodex-components-"))),
       (root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
     ));
+  const environment: Record<string, string> =
+    options.windows && process.platform === "win32"
+      ? { NODEX_CORE_EXECUTABLE: requiredNativeExecutable("core-server") }
+      : {};
+  const target = {
+    platform: options.windows ? "win32" : "darwin",
+    arch: options.windows && process.arch === "x64" ? "x64" : "arm64",
+    isPackaged: options.packaged !== false,
+    environment,
+  };
   const source = path.join(home, "archive-source");
-  const payload = writeClaudeCodeFixture(source, options.contents ?? "component fixture");
+  const payload = writeClaudeCodeFixture(
+    source,
+    options.contents ?? "component fixture",
+    options.windows,
+  );
   const archivePath = path.join(home, "fixture.tar.gz");
-  execFileSync("tar", ["-czf", archivePath, "-C", source, "."]);
+  execFileSync(pinnedTarExecutable(), ["-czf", archivePath, "-C", source, "."]);
   const bytes = readFileSync(archivePath);
   const definition = {
     id: options.isolatedCodexShell ? "codex" : options.onDemand ? "claude-code" : id,
@@ -97,6 +114,7 @@ const fixture = Effect.fnUntraced(function* (options: {
     yield* Effect.promise(() =>
       installAppComponent({
         home,
+        target,
         definition,
         fetch: () => Promise.resolve(new Response(new Uint8Array(bytes))),
         signal: new AbortController().signal,
@@ -109,9 +127,9 @@ const fixture = Effect.fnUntraced(function* (options: {
     Effect.provide(
       Layer.mergeAll(
         mainConfigLayer({
+          ...target,
           nodexHome: home,
           homeDirectory: home,
-          isPackaged: options.packaged !== false,
           isolatedRunId: options.isolatedCodexShell ? "isolated-run" : null,
         }),
         Layer.succeed(ApplicationSettings, settings),
@@ -382,31 +400,41 @@ it.effect("does no component work for development installations", () =>
 const claude = "claude-code";
 const respond = (bytes: Buffer) => () => Promise.resolve(new Response(new Uint8Array(bytes)));
 
-it.effect("first use starts one install and resolves every waiter after activation", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* fixture({ onDemand: true, fetch: respond });
-      yield* harness.watch("on-demand");
-      expect(harness.fetch).not.toHaveBeenCalled();
-      expect(yield* Effect.promise(() => hasAppComponentWanted(harness.home, claude))).toBe(false);
-      const installed = yield* Effect.all(
-        [harness.owner.ensure(claude), harness.owner.ensure(claude)],
-        { concurrency: 2 },
-      );
-      expect(installed).toEqual([
-        { status: "installed", root: harness.root },
-        { status: "installed", root: harness.root },
-      ]);
-      expect(harness.fetch).toHaveBeenCalledOnce();
-      expect(harness.activate).toHaveBeenCalledExactlyOnceWith(claude);
-      yield* harness.owner.setEnabled({ id: claude, enabled: false });
-      expect(yield* harness.owner.ensure(claude)).toMatchObject({
-        status: "unavailable",
-        reason: "turned-off",
-      });
-      expect(yield* Effect.promise(() => hasAppComponentWanted(harness.home, claude))).toBe(false);
-    }),
-  ),
+it.effect.each(["darwin", "win32"])(
+  "first use on %s starts one install and resolves every waiter after activation",
+  (platform) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* fixture({
+          onDemand: true,
+          windows: platform === "win32",
+          fetch: respond,
+        });
+        yield* harness.watch("on-demand");
+        expect(harness.fetch).not.toHaveBeenCalled();
+        expect(yield* Effect.promise(() => hasAppComponentWanted(harness.home, claude))).toBe(
+          false,
+        );
+        const installed = yield* Effect.all(
+          [harness.owner.ensure(claude), harness.owner.ensure(claude)],
+          { concurrency: 2 },
+        );
+        expect(installed).toEqual([
+          { status: "installed", root: harness.root },
+          { status: "installed", root: harness.root },
+        ]);
+        expect(harness.fetch).toHaveBeenCalledOnce();
+        expect(harness.activate).toHaveBeenCalledExactlyOnceWith(claude);
+        yield* harness.owner.setEnabled({ id: claude, enabled: false });
+        expect(yield* harness.owner.ensure(claude)).toMatchObject({
+          status: "unavailable",
+          reason: "turned-off",
+        });
+        expect(yield* Effect.promise(() => hasAppComponentWanted(harness.home, claude))).toBe(
+          false,
+        );
+      }),
+    ),
 );
 
 it.effect("a wanted component installs its next pin in the background", () =>

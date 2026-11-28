@@ -47,6 +47,7 @@ function makeLock(): Record<string, unknown> {
         ...archive,
         entrypointSha256: HASH,
         runtimeMetadataSha256: HASH,
+        unpackedSize: 456,
         requiredArtifacts: [
           "codex-package.json",
           "bin/codex.exe",

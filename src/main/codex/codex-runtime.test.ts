@@ -191,7 +191,7 @@ test("chooses the Component only on supported targets and keeps the pinned Deskt
     nodexHome: "/test-profile",
     resourcesPath: "/test-resources",
   };
-  const definition = codexDefinition();
+  const definition = codexDefinition("darwin-arm64");
   const component = codexPackageLocation(options);
   expect(component).toMatchObject({
     source: "component",
@@ -210,7 +210,18 @@ test("chooses the Component only on supported targets and keeps the pinned Deskt
       "arm64",
     ),
   ).toBe(false);
-  expect(codexPackageLocation({ ...options, platform: "win32" }).source).toBe("bundled");
+  for (const architecture of ["arm64", "x64"] as const) {
+    const target = { ...options, platform: "win32", architecture };
+    const windows = codexDefinition(architecture === "x64" ? "win32-x64" : "win32-arm64");
+    expect(codexPackageLocation(target)).toMatchObject({
+      source: "component",
+      rootPath: appComponentRoot(options.nodexHome, windows),
+      pin: windows.payload,
+    });
+    expect(
+      codexPackageLocation({ ...target, isPackaged: false, projectRootPath: "/project" }).source,
+    ).toBe("staged");
+  }
   expect(
     codexPackageLocation({ ...options, isPackaged: false, projectRootPath: "/project" }).source,
   ).toBe("staged");
@@ -479,7 +490,13 @@ describe("codex-runtime", () => {
         });
         expect(verifyPlatformArtifact).toHaveBeenCalledTimes(checks * 2);
 
-        yield* Effect.promise(() => setAppComponentTombstone(nodexHome, "desktop-tools", true));
+        yield* Effect.promise(() =>
+          setAppComponentTombstone(
+            { home: nodexHome, target: { platform: "darwin", arch: "arm64", isPackaged: true } },
+            "desktop-tools",
+            true,
+          ),
+        );
         expect(yield* activation.activate).toBe(first);
         expect(fs.existsSync(publishedBundle)).toBe(true);
         const removed = yield* resolveCodexRuntimeEffect(options);
@@ -487,7 +504,7 @@ describe("codex-runtime", () => {
           status: "unavailable",
           reason: "not-installed",
         });
-        expect(fs.existsSync(publishedBundle)).toBe(false);
+        expect(fs.existsSync(publishedBundle)).toBe(true);
       } finally {
         componentPin.mockRestore();
         fixture.cleanup();
@@ -643,18 +660,18 @@ test("validates Windows artifact integrity without POSIX executable bits", async
     fs.writeFileSync(metadataPath, JSON.stringify(metadata));
     for (const artifact of metadata.artifacts)
       fs.chmodSync(path.join(fixture.resourcesPath, artifact.path), 0o644);
-    const runtime = await resolveCodexRuntime({
-      isPackaged: true,
-      resourcesPath: fixture.resourcesPath,
+    const location = {
+      rootPath: fixture.resourcesPath,
+      source: "staged",
+      missingBinaryMessage: "Missing staged Codex",
+    } as const;
+    const runtime = await verifyCodexPackage(location, {
       platform: "win32",
       architecture: "x64",
     });
     expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "bin/codex"));
     await expect(
-      verifyCodexPackage(
-        localCodexPackageLocation({ isPackaged: true, resourcesPath: fixture.resourcesPath }),
-        { platform: "darwin", architecture: "arm64" },
-      ),
+      verifyCodexPackage(location, { platform: "darwin", architecture: "arm64" }),
     ).rejects.toThrow("target does not match");
   } finally {
     fixture.cleanup();

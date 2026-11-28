@@ -180,7 +180,7 @@
   "src/main/app-components/AppComponents.ts": {
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {
-      "codex": 5
+      "codex": 4
     }
   },
   "src/main/app-components/CodexComponent.ts": {

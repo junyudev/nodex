@@ -1,4 +1,5 @@
 import { useIntl } from "@/lib/i18n";
+import { useOfferedAppComponentIds } from "@/features/app-components/use-app-components";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import { lazy, startTransition, useEffect, useMemo, useRef, type ReactNode } from "react";
@@ -223,14 +224,16 @@ export function SettingsRouteShell({
     visibleSections,
   } = resolveSettingsShellState(path);
   const activeSection = visibleSections.find((section) => section.id === activeSectionId) ?? null;
+  const offeredComponents = useOfferedAppComponentIds();
   const settingsSearchContext = useMemo(() => {
     const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
 
     return {
       activeProjectName: activeProject?.name ?? null,
       projectNames: projects.map((project) => project.name),
+      offeredComponents,
     };
-  }, [activeProjectId, projects]);
+  }, [activeProjectId, offeredComponents, projects]);
 
   useEffect(() => {
     shellRef.current?.focus();
@@ -273,7 +276,12 @@ export function SettingsRouteShell({
           initialSearchQuery={initialSettingsSearchQuery}
           initialHighlightedSearchIndex={initialSettingsSearchHighlightIndex}
           onSelectSection={(sectionId, searchQuery) => {
-            const anchor = settingsSearchAnchor(sectionId, searchQuery, intl);
+            const anchor = settingsSearchAnchor(
+              sectionId,
+              searchQuery,
+              intl,
+              settingsSearchContext.offeredComponents,
+            );
             startTransition(() => {
               onPathChange(
                 anchor ? buildSettingsAnchorPath(sectionId, anchor) : buildSettingsPath(sectionId),

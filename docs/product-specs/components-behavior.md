@@ -29,10 +29,9 @@ update channel of its own. A Component is the same on every computer that runs t
 | Claude Code    | Claude models with Nodex credits; API key connections that run on Claude Code    | On first use      |
 | Document Tools | Managed Python and libraries for Word, PowerPoint, spreadsheets, PDFs and images | On first use      |
 
-Components install after the app on macOS with Apple silicon.
-
-On Windows, supported runtimes ship with the app. Development builds ordinarily use staged
-runtimes. Settings lists only the Components available as downloads on this build.
+Components install after the app on macOS with Apple silicon and on Windows x64 and arm64.
+Document Tools is available on macOS with Apple silicon. Development builds ordinarily use
+staged runtimes. Settings lists the Components available as downloads on this build.
 
 ## Installing
 
@@ -130,11 +129,14 @@ The choice belongs to the Profile and is stored in its configuration; see
 
 Installed Components live in the Profile, under `components/`, one directory per Component and
 version. A directory there is always complete: an install unpacks beside it and appears in one
-step. Backups and Space data do not include them.
+step. Backups and Space data do not include them. On Windows, the store uses a private directory
+in the Profile on a local volume. If the location cannot protect the store, Components stay
+unavailable and the rest of Nodex remains usable.
 
-On Apple silicon, a Space host started with `nodex serve` also installs Claude Code and Document
-Tools on first use. It keeps its own component store under `runtime/host/components/` in the
-execution home. Desktop Tools are available in the desktop app.
+A Space host started with `nodex serve` installs Codex and Claude Code on first use on the
+same platforms as the app, plus Document Tools on Apple silicon. It keeps its own Component
+store under `runtime/host/components/` in the execution home. Desktop Tools are available in
+the desktop app.
 
 ## Privacy
 

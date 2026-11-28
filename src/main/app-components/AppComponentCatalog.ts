@@ -50,28 +50,27 @@ export interface AppComponentTarget {
   readonly environment?: Readonly<Record<string, string | undefined>>;
 }
 
-/** Unpackaged builds can exercise the Profile component store with their staged Agent runtime. */
-function installsAppComponents(target: AppComponentTarget): boolean {
-  if (target.platform !== "darwin" || target.arch !== "arm64") return false;
-  if (target.isPackaged) return true;
-  const key =
+export type AppComponentTargetKey = "darwin-arm64" | "win32-arm64" | "win32-x64";
+
+export function appComponentTargetKey(target: AppComponentTarget): AppComponentTargetKey | null {
+  const key = `${target.platform}-${target.arch}`;
+  return key === "darwin-arm64" || key === "win32-arm64" || key === "win32-x64" ? key : null;
+}
+
+/** Components this build offers for installation after the app. */
+export function appComponentCatalog(target: AppComponentTarget): readonly AppComponentDefinition[] {
+  const key = appComponentTargetKey(target);
+  if (!key) return [];
+  const optIn =
     target.environment?.NODE_ENV === "test"
       ? "NODEX_TEST_APP_COMPONENTS"
       : "NODEX_DEV_APP_COMPONENTS";
-  return target.environment?.[key] === "1";
-}
-
-/**
- * Components this build installs after the app. A target missing here ships the same files
- * inside the app: Windows verifies Desktop Tools against its installation directory.
- */
-export function appComponentCatalog(target: AppComponentTarget): readonly AppComponentDefinition[] {
-  if (!installsAppComponents(target)) return [];
-  const documentTools = documentToolsDefinition();
+  if (!target.isPackaged && target.environment?.[optIn] !== "1") return [];
+  const documentTools = documentToolsDefinition(key);
   return [
-    ...(target.headless ? [] : [desktopToolsDefinition()]),
-    codexDefinition(),
-    claudeCodeDefinition(),
+    ...(target.headless ? [] : [desktopToolsDefinition(key)]),
+    codexDefinition(key),
+    claudeCodeDefinition(key),
     ...(documentTools ? [documentTools] : []),
   ];
 }

@@ -1,8 +1,10 @@
+import type { AppComponentId } from "../../shared/app-components";
 import { scoreSettingsQueryMatch } from "./settings-search-score";
 
 export interface SettingsSearchContext {
   projectNames: readonly string[];
   activeProjectName: string | null;
+  offeredComponents?: readonly AppComponentId[];
 }
 
 export interface SettingsSearchSection<TSectionId extends string = string> {

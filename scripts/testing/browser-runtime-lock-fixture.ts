@@ -10,6 +10,7 @@ export function windowsBrowserRuntimeLockFixture(desktopBuild: string) {
     },
     archiveSha256: "a".repeat(64),
     archiveSize: 123,
+    unpackedSize: 456,
     assetName: `nodex-browser-runtime-${desktopBuild}-win32-${arch}.tar.gz`,
     manifestSha256: "b".repeat(64),
     runtimeVersions: { codexCli: "0.146.0", cuaRuntime: "0.0.6/build", node: "24.14.0" },

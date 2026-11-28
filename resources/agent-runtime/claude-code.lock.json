@@ -11,6 +11,28 @@
         "size": 363855808,
         "sha256": "f7c5093b9dd6560d08af28bc27b123fb55091deae3180ac39df199522da86815"
       }
+    },
+    "win32-arm64": {
+      "url": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-win32-arm64/-/claude-agent-sdk-win32-arm64-0.3.330.tgz",
+      "archiveSize": 172251794,
+      "archiveSha256": "19266d63ea0294189bb9080b7f2f791ba2da0d4510dcdfaedc12a6a78399c38f",
+      "unpackedSize": 369761000,
+      "executable": {
+        "path": "package/claude.exe",
+        "size": 369760416,
+        "sha256": "782519c6241a2bedfd4c0d225d59d5095b895037ae7cd2a14a12f5bc5dcba1c3"
+      }
+    },
+    "win32-x64": {
+      "url": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-win32-x64/-/claude-agent-sdk-win32-x64-0.3.330.tgz",
+      "archiveSize": 178243062,
+      "archiveSha256": "dc35f4a7826cfa5297b99836cba971058b0590c670c03a3d04e9f78b0df33243",
+      "unpackedSize": 387755232,
+      "executable": {
+        "path": "package/claude.exe",
+        "size": 387754656,
+        "sha256": "fa797c1bc7d4a3511da42622bae53a2b7f1276ae328c668f2bfef44635301caa"
+      }
     }
   }
 }
