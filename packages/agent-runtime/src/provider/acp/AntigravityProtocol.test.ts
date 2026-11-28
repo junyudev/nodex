@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import * as Schema from "effect/Schema";
 import type * as EffectAcpSchema from "effect-acp/compat";
-import * as AcpWireSchema from "effect-acp/schema-v1";
 
 import {
   extractAntigravityUserInputQuestion,
@@ -20,9 +18,7 @@ import {
   extractMcpToolCallIdentity,
   parseSessionUpdateEvent,
 } from "@nodex/provider-acp/server/runtimeModel";
-import { acpToolCallDiffPatch } from "@nodex/provider-acp/server/adapter";
-
-const isSessionNotification = Schema.is(AcpWireSchema.SessionNotification);
+import { acpToolCallDiffPatch, acpToolCallFileChanges } from "@nodex/provider-acp/server/adapter";
 
 describe("native Antigravity subagent tools", () => {
   it("recognizes only native invocation titles and excludes MCP tools", () => {
@@ -293,132 +289,125 @@ describe("Antigravity tool results", () => {
     expect(commandCompleted.update.rawOutput.formatted_output).toBe("after\n");
   });
 
-  it("keeps the captured edit location through approval and completion", () => {
-    const path = "/workspace/app.ts";
-    const replace = {
-      TargetContent: "const target = 10;",
-      ReplacementContent: "const target = 100;",
-      TargetFile: path,
-    };
-    const frame = (rawInput: Record<string, unknown>, line?: number) =>
+  it("keeps the whole diff of an edit to a file longer than the tool text budget", () => {
+    const path = "/workspace/runner.py";
+    const lines = Array.from({ length: 400 }, (_, i) => `value_${i + 1} = ${"x".repeat(40)}`);
+    const before = `${lines.join("\n")}\n`;
+    const after = before.replace("value_101 = ", "value_101 = 1 + ");
+    const frame = (
+      update: Partial<Extract<EffectAcpSchema.SessionUpdate, { sessionUpdate: "tool_call" }>>,
+      sessionUpdate: "tool_call" | "tool_call_update" = "tool_call_update",
+    ) =>
       ({
         sessionId: "session-1",
         update: {
-          sessionUpdate: "tool_call",
+          sessionUpdate,
           toolCallId: "edit-1",
-          title: "Run edit_file?",
           kind: "edit",
-          status: "pending",
-          content: [
-            {
-              type: "diff",
-              path,
-              oldText: replace.TargetContent,
-              newText: replace.ReplacementContent,
-            },
-          ],
-          locations: [line === undefined ? { path } : { path, line }],
-          rawInput,
-        },
-      }) satisfies EffectAcpSchema.SessionNotification;
-    const running = parseToolUpdate({
-      sessionId: "session-1",
-      update: {
-        sessionUpdate: "tool_call_update",
-        toolCallId: "edit-1",
-        kind: "edit",
-        status: "in_progress",
-        title: "Running edit_file",
-        locations: [{ path }],
-        rawInput: { file_path: path },
-      },
-    }).toolCall;
-    const completed = parseToolUpdate({
-      sessionId: "session-1",
-      update: {
-        sessionUpdate: "tool_call_update",
-        toolCallId: "edit-1",
-        status: "completed",
-        rawOutput: "Tool execution",
-      },
-    }).toolCall;
-    const preEdit = Array.from({ length: 12 }, (_, i) =>
-      i === 9 ? replace.TargetContent : `line ${i + 1}`,
-    ).join("\n");
-    const postEdit = preEdit.replace(replace.TargetContent, replace.ReplacementContent);
-    for (const [pending, readFile] of [
-      [frame({ ...replace, StartLine: 5, EndLine: 12 }, 5), () => preEdit],
-      [frame(replace), () => preEdit],
-    ] as const) {
-      let toolCall = normalizeAntigravityToolCall(parseToolUpdate(pending).toolCall, readFile);
-      for (const next of [running, completed]) {
-        toolCall = normalizeAntigravityToolCall(mergeToolCallState(toolCall, next), () => postEdit);
-      }
-      expect(toolCall.status).toBe("completed");
-      expect(acpToolCallDiffPatch(toolCall.data.content)).toBe(
-        `--- ${path}\n+++ ${path}\n@@ -10,1 +10,1 @@\n-const target = 10;\n+const target = 100;\n`,
-      );
-    }
-    // Full-access edits arrive path-only; no hunk is offered instead of the tool's status text.
-    let pathOnly = normalizeAntigravityToolCall(
-      parseToolUpdate({
-        sessionId: "session-1",
-        update: {
-          sessionUpdate: "tool_call",
-          toolCallId: "edit-2",
-          kind: "edit",
-          status: "in_progress",
-          title: "Running edit_file",
+          title: "File runner.py",
           locations: [{ path }],
-          rawInput: { file_path: path },
+          rawInput: { Path: path, Target: "value_101 = ", Replacement: "value_101 = 1 + " },
+          ...update,
         },
-      }).toolCall,
+      }) as EffectAcpSchema.SessionNotification;
+    // The edit reports only its path until it completes; its completion carries both files.
+    let toolCall = normalizeAntigravityToolCall(
+      parseToolUpdate(frame({ status: "in_progress" }, "tool_call")).toolCall,
     );
-    pathOnly = normalizeAntigravityToolCall(mergeToolCallState(pathOnly, completed));
-    expect(pathOnly.data.content).toEqual([{ type: "diff", patch: { format: "omitted" } }]);
-    expect(acpToolCallDiffPatch(pathOnly.data.content)).toBeUndefined();
-    // A captured patch that a later update's shared text budget cut or dropped is omitted.
-    for (const patch of [{ text: "[Earlier output truncated]\n\n@@ -80,1 +80,1 @@" }, {}]) {
-      const kept = normalizeAntigravityToolCall({
-        toolCallId: "edit-cut",
-        kind: "edit",
+    expect(acpToolCallFileChanges(toolCall.data.content)).toEqual([]);
+    for (const next of [
+      frame({
         status: "completed",
-        data: { content: [{ type: "diff", path, patch }] },
-      });
-      expect(kept.data.content).toEqual([{ type: "diff", path, patch: { format: "omitted" } }]);
-    }
-    // A whole-file write whose old text was cut to its tail must not show the cut as deletions.
-    const overwrite = normalizeAntigravityToolCall({
-      toolCallId: "edit-overwrite",
-      kind: "edit",
-      status: "completed",
-      data: {
-        rawInput: { TargetFile: path, CodeContent: "one line\n" },
-        content: [
-          {
-            type: "diff",
-            path,
-            oldText: "[Earlier output truncated]\n\nrow 999\n",
-            newText: "one line\n",
-          },
-        ],
-      },
-    });
-    expect(acpToolCallDiffPatch(overwrite.data.content)).toBeUndefined();
-    // A patch too long to keep, or input cut to its tail, must not fall back to line-1 snippets.
-    for (const width of [60, 120]) {
-      const block = (value: string) =>
-        Array.from({ length: 120 }, (_, i) => `${value} ${i} `.padEnd(width, "x")).join("\n");
-      const long = {
-        TargetContent: block("old"),
-        ReplacementContent: block("new"),
-        TargetFile: path,
-      };
-      const toolCall = normalizeAntigravityToolCall(
-        parseToolUpdate(frame({ ...long, StartLine: 80, EndLine: 199 }, 80)).toolCall,
+        rawOutput: {},
+        content: [{ type: "diff", path, oldText: before, newText: after }],
+      }),
+      // A later update's text budget leaves the kept patch whole.
+      frame({ title: "File runner.py" }),
+    ]) {
+      toolCall = normalizeAntigravityToolCall(
+        mergeToolCallState(toolCall, parseToolUpdate(next).toolCall),
       );
-      expect(toolCall.data.content).toMatchObject([{ patch: { format: "omitted" } }]);
-      expect(acpToolCallDiffPatch(toolCall.data.content)).toBeUndefined();
+    }
+    expect(before.length).toBeGreaterThan(8_000);
+    expect(acpToolCallFileChanges(toolCall.data.content)).toEqual([
+      {
+        operation: "modify",
+        path,
+        diff: [
+          "@@ -98,7 +98,7 @@",
+          ...lines.slice(97, 100).map((line) => ` ${line}`),
+          `-${lines[100]}`,
+          `+${lines[100]!.replace("value_101 = ", "value_101 = 1 + ")}`,
+          ...lines.slice(101, 104).map((line) => ` ${line}`),
+          "",
+        ].join("\n"),
+        additions: 1,
+        deletions: 1,
+      },
+    ]);
+    expect(acpToolCallDiffPatch(toolCall.data.content)).toMatch(
+      new RegExp(`^--- ${path}\n\\+\\+\\+ ${path}\n@@ -98,7 \\+98,7 @@\n`),
+    );
+    // Beside a Git-framed section, the kept patch takes its own Git header.
+    const framed = {
+      type: "diff",
+      changes: [{ operation: "modify", path: "/workspace/other.py" }],
+      patch: { format: "git_patch", text: "@@ -1,1 +1,1 @@\n-a\n+b\n" },
+    };
+    expect(
+      acpToolCallDiffPatch([framed, ...(toolCall.data.content as unknown[])])?.match(
+        /^diff --git /gm,
+      ),
+    ).toHaveLength(2);
+    // A result that only looks like a diff is not an edit and stays as reported.
+    const result = { type: "diff", path, oldText: "a", newText: "b", status: "draft" };
+    const tool = normalizeAntigravityToolCall(
+      parseToolUpdate(frame({ status: "completed", rawOutput: { structuredContent: result } }))
+        .toolCall,
+    );
+    expect(tool.data.rawOutput).toEqual({ structuredContent: result });
+  });
+
+  it("keeps created and overwritten files whole and leaves a sweeping rewrite unpreviewed", () => {
+    const path = "/workspace/notes.md";
+    const longFile = `${Array.from({ length: 300 }, (_, i) => `line ${i + 1} ${"y".repeat(30)}`).join("\n")}\n`;
+    const changes = (diff: Record<string, unknown>) =>
+      acpToolCallFileChanges(
+        normalizeAntigravityToolCall(
+          parseToolUpdate({
+            sessionId: "session-1",
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: "write-1",
+              kind: "edit",
+              status: "completed",
+              title: "File notes.md",
+              locations: [{ path }],
+              rawOutput: {},
+              content: [{ type: "diff", path, ...diff } as EffectAcpSchema.ToolCallContent],
+            },
+          }).toolCall,
+        ).data.content,
+      );
+    expect(changes({ newText: longFile })).toEqual([
+      { operation: "add", path, diff: longFile, additions: 300, deletions: 0 },
+    ]);
+    expect(changes({ oldText: longFile, newText: "short\n" })).toMatchObject([
+      { operation: "modify", path, additions: 1, deletions: 300 },
+    ]);
+    expect(changes({ newText: "" })).toEqual([
+      { operation: "add", path, diff: "", additions: 0, deletions: 0 },
+    ]);
+    // Past the limits, or too far-reaching to search, a change is never cut into a partial diff.
+    const rewrite = (word: string) =>
+      Array.from({ length: 1_200 }, (_, i) => `${word} ${i}`).join("\n");
+    const huge = "z".repeat(300 * 1024);
+    for (const [diff, operation] of [
+      [{ oldText: rewrite("old"), newText: rewrite("new") }, "modify"],
+      [{ oldText: huge.repeat(4), newText: "short\n" }, "modify"],
+      [{ newText: huge }, "add"],
+    ] as const) {
+      expect(changes(diff)).toEqual([{ operation, path }]);
     }
   });
 
@@ -529,17 +518,18 @@ describe("Antigravity tool results", () => {
       },
     } satisfies EffectAcpSchema.SessionNotification;
     const normalized = normalizeAntigravitySessionUpdate(notification);
-    expect(isSessionNotification(normalized)).toBe(true);
     expect(JSON.stringify(normalized)).not.toContain("inline-image-bytes");
     expect(normalized.update).toMatchObject({
       content: [
         { type: "content", content: { type: "text", text: "Saved the image." } },
-        { type: "diff", path: "/workspace/note.txt", oldText: "old", newText: "new" },
+        { type: "diff", changes: [{ operation: "modify", path: "/workspace/note.txt" }] },
       ],
     });
-    expect(normalizeAntigravityToolCall(parseToolUpdate(normalized).toolCall).data.imagePath).toBe(
-      "/workspace/brain/result image.png",
-    );
+    const toolCall = normalizeAntigravityToolCall(parseToolUpdate(normalized).toolCall);
+    expect(acpToolCallFileChanges(toolCall.data.content)).toMatchObject([
+      { operation: "modify", path: "/workspace/note.txt", additions: 1, deletions: 1 },
+    ]);
+    expect(toolCall.data.imagePath).toBe("/workspace/brain/result image.png");
   });
 
   it.each([
