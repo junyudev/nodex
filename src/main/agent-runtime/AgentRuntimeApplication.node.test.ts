@@ -79,6 +79,11 @@ import {
   type AgentRuntimeApplicationConnection,
 } from "./AgentRuntimeApplication";
 import { make as makeProviderCatalog } from "./AgentRuntimeProviderCatalog";
+import {
+  DEFAULT_MODEL_POLICY,
+  projectModelPolicyCatalog,
+  setModelOn,
+} from "../../shared/model-policy";
 
 type Binding = components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
 type TaskOperation = (
@@ -2210,6 +2215,45 @@ it.effect(
       assert.equal(imported.cwd, codexImport.cwd);
       assert.deepEqual(imported.modelSelection, { instanceId: "codex", model: "model-a" });
       assert.deepEqual([...fixture.commands.values()], []);
+    }),
+);
+
+it.effect.each([true, false])(
+  "respects the model switches when importing a Codex chat (default model on: %s)",
+  (defaultOn) =>
+    Effect.gen(function* () {
+      const codex = { instanceId: "codex", driver: "codex" };
+      const sourceOff = setModelOn(DEFAULT_MODEL_POLICY, codex, "model-b", false);
+      const policy = setModelOn(sourceOff, codex, "model-a", defaultOn);
+      const fixture = setup({
+        providerCatalog: {
+          lastKnown: Effect.succeed(null),
+          saved: Effect.succeed(null),
+          record: () => Effect.void,
+          project: (providers) => Effect.succeed(projectModelPolicyCatalog(providers, policy)),
+        },
+      });
+      const owner = yield* fixture.owner;
+      const outcome = yield* submitFixtureNativeImport(
+        owner,
+        codexImport,
+        Effect.succeed({ title: codexImport.title, model: codexImport.model }),
+      );
+      if (defaultOn) {
+        assert.equal(outcome.kind, "imported");
+        assert.deepEqual([...fixture.imports.values()][0]?.modelSelection, {
+          instanceId: "codex",
+          model: "model-a",
+        });
+        assert.deepEqual([...fixture.commands.values()], []);
+        return;
+      }
+      assert.deepEqual(outcome, {
+        kind: "not_admitted",
+        message: "Turn on a model for this Agent in Settings > Agents, then try again.",
+      });
+      assert.equal(fixture.bindings.size, 0);
+      assert.equal(fixture.imports.size, 0);
     }),
 );
 

@@ -2636,8 +2636,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* importRefusal(
         "This conversation comes from a different history folder than Nodex now uses. Refresh and try again.",
       );
-    const providers = yield* projectCatalog(yield* connection.request("providers.read", {}));
     const providerId = nativeImportProviderId(input);
+    const providers = yield* projectCatalog(
+      yield* connection.request("providers.read", { instanceIds: [providerId] }),
+    );
     // The copy continues in the source's own profile, so it must read this kind of history.
     const provider = providers.find(
       (entry) =>
@@ -2662,10 +2664,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* importRefusal(
         "This Antigravity conversation is no longer available to copy. Refresh and try again.",
       );
+    // Adoption keeps the existing chat's choice so Run admission can enforce its policy.
+    const sourceModel = provider?.models.find(
+      (entry) => entry.slug === input.model && (input.adoption || modelIsOn(entry)),
+    );
+    const eligibleModels = provider?.models.filter(modelIsOn);
     const model =
-      provider?.models.find((entry) => entry.slug === input.model)?.slug ??
-      provider?.models.find((entry) => modelIsOn(entry) && entry.isDefault)?.slug ??
-      provider?.models.find(modelIsOn)?.slug;
+      sourceModel?.slug ??
+      eligibleModels?.find((entry) => entry.isDefault)?.slug ??
+      eligibleModels?.[0]?.slug;
     // A profile not yet signed in offers no models; say what unblocks the copy.
     if (provider && !model && provider.auth.status !== "authenticated")
       return yield* importRefusal(
@@ -2673,7 +2680,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       );
     if (!provider || !model)
       return yield* importRefusal(
-        "This Agent has no available model. Check Agent settings, then try again.",
+        provider?.models.length
+          ? "Turn on a model for this Agent in Settings > Agents, then try again."
+          : "This Agent has no available model. Check Agent settings, then try again.",
       );
     const scope = yield* lifecycle.runExclusive(
       input.projectId,
