@@ -674,10 +674,6 @@
     "nodex(no-explicit-test-timeout)": 2,
     "nodex(no-real-time-wait-in-tests)": 1
   },
-  "tests/e2e/nodex-account-menu.spec.ts": {
-    "nodex(no-explicit-test-timeout)": 1,
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
   "tests/e2e/nodex-account.spec.ts": {
     "nodex(no-explicit-test-timeout)": 5
   },
