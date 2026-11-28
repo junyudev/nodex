@@ -258,6 +258,17 @@ pub(crate) fn workspace(
         return verified_turn(c, context, provenance);
     }
     let context = bind(c, context)?;
+    if let W::MutateSession {
+        session_id,
+        intent:
+            nodex_core_contracts::workspace::ProjectSessionIntent::AdmitRuntimeMessage {
+                message_id,
+                requester,
+            },
+    } = intent
+    {
+        return runtime_message(c, context, session_id, message_id, requester);
+    }
     if let W::CreateAgentRuntimeSession {
         decision_run: Some(_),
         session_id,
@@ -392,6 +403,74 @@ pub(crate) fn workspace(
         )
     });
     Ok(kind.map_or_else(|| context.clone(), |kind| service(&context, kind, None)))
+}
+
+/// Bind admission audit and the requester stored by Workspace to the same Core authority.
+fn runtime_message(
+    c: &Connection,
+    context: BoundModuleContext,
+    session: &str,
+    message: &str,
+    requester: &nodex_core_contracts::workspace::RuntimeMessageRequester,
+) -> Result<BoundModuleContext, StoreError> {
+    use nodex_core_contracts::workspace::RuntimeMessageRequester;
+
+    if context.agent_attribution.is_some() {
+        return Err(denied());
+    }
+    match context.adapter {
+        AdapterKind::ElectronHost | AdapterKind::Test => {}
+        AdapterKind::RemoteMember if matches!(requester, RuntimeMessageRequester::Member) => {}
+        _ => return Err(denied()),
+    }
+    let library = &context.library_id.0;
+    let run_member = |session: &str, run: &str| -> Result<String, StoreError> {
+        c.query_row(
+            "SELECT member_id FROM session_run_members WHERE session_id=?1 AND run_id=?2",
+            params![session, run],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(denied)
+    };
+    let (member, kind) = match requester {
+        RuntimeMessageRequester::Member => return Ok(context),
+        RuntimeMessageRequester::Agent { session_id, run_id } => {
+            let runtime_source = c.query_row(
+                "SELECT EXISTS(SELECT 1 FROM project_session_execution_bindings WHERE session_id=?1)",
+                [session_id],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let actor = match run_id {
+                Some(run) if runtime_source => Actor::Agent {
+                    session_id: session_id.clone(),
+                    run_id: Some(run.clone()),
+                    on_behalf_of: run_member(session_id, run)?,
+                },
+                _ => for_session(c, library, session_id, run_id.clone())?,
+            };
+            if !crate::library::members::is_active(
+                c,
+                library,
+                actor.member_id().ok_or_else(denied)?,
+            )? {
+                return Err(denied());
+            }
+            return Ok(BoundModuleContext { actor, ..context });
+        }
+        RuntimeMessageRequester::Continuation { run_id } => {
+            (run_member(session, run_id)?, ServiceKind::AgentRuntime)
+        }
+        RuntimeMessageRequester::Automation => (
+            crate::automation::firing::message_requester(c, session, message)?
+                .ok_or_else(denied)?,
+            ServiceKind::Automations,
+        ),
+    };
+    if !crate::library::members::is_active(c, library, &member)? {
+        return Err(denied());
+    }
+    Ok(service(&context, kind, Some(member)))
 }
 
 pub(crate) fn automation(

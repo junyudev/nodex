@@ -785,6 +785,48 @@ fn borrowed_chat_follows_deliveries_and_explicit_work_reports() {
     );
     confirm_proposal(m, "proposal:send", None);
     let first = outbox(m).remove(0);
+    let admitted_member = |message: &str| {
+        w.kernel
+            .readers()
+            .read_default(|c| {
+                Ok(c.query_row(
+                    "SELECT member_id FROM session_requesting_members requester
+                     JOIN project_session_user_message_receipts receipt USING(session_id, message_id)
+                     WHERE requester.session_id=?1 AND requester.message_id=?2",
+                    rusqlite::params![chat, message],
+                    |row| row.get::<_, String>(0),
+                )?)
+            })
+            .unwrap()
+    };
+    assert_eq!(admitted_member(&first.message_id), local_member(&w));
+    // A v226 handoff could have its scope and requester committed without an admission receipt.
+    let older_message = first.message_id.clone();
+    w.kernel
+        .writer()
+        .call(move |c| {
+            c.execute(
+                "DELETE FROM project_session_user_message_receipts WHERE session_id=?1 AND message_id=?2",
+                rusqlite::params![chat, older_message],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    for operation in ["admit_older_delivery", "replay_older_delivery"] {
+        apply_host(
+            m,
+            operation,
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: chat.into(),
+                intent:
+                    nodex_core_contracts::workspace::ProjectSessionIntent::AdmitRuntimeMessage {
+                        message_id: first.message_id.clone(),
+                        requester: nodex_core_contracts::workspace::RuntimeMessageRequester::Member,
+                    },
+            },
+        );
+        assert_eq!(admitted_member(&first.message_id), local_member(&w));
+    }
     let turn = || {
         let ProjectWorkspaceReadValue::PageTurn { turn, .. } = read_workspace(
             m,
@@ -887,6 +929,7 @@ fn borrowed_chat_follows_deliveries_and_explicit_work_reports() {
     apply_host(m, "continue", reply(turn().episode));
     let second = outbox(m).remove(0);
     assert_ne!(second.message_id, first.message_id);
+    assert_eq!(admitted_member(&second.message_id), local_member(&w));
     complete("complete-second", &second);
     assert_eq!(turn().reason, Some(TurnReason::Queued));
     capture(4, unrelated(), delivery(&first.message_id), unrelated());

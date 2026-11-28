@@ -1803,11 +1803,15 @@ fn authorize_member_delivery(
     intent: &nodex_core_contracts::workspace::ProjectWorkspaceIntent,
 ) -> Result<(), CoreError> {
     use nodex_core_contracts::workspace::{ProjectSessionIntent, ProjectWorkspaceIntent};
-    let (session, message, run, question) = match intent {
+    let (session, message, run, question, runtime_admission) = match intent {
         ProjectWorkspaceIntent::MutateSession {
             session_id,
             intent: ProjectSessionIntent::RecordUserMessage { message_id },
-        } => (session_id, message_id, None, None),
+        } => (session_id, message_id, None, None, false),
+        ProjectWorkspaceIntent::MutateSession {
+            session_id,
+            intent: ProjectSessionIntent::AdmitRuntimeMessage { message_id, .. },
+        } => (session_id, message_id, None, None, true),
         ProjectWorkspaceIntent::RecordChatDelivery {
             session_id,
             delivery_id,
@@ -1819,6 +1823,7 @@ fn authorize_member_delivery(
             delivery_id,
             question_answer_run_id.as_deref(),
             question_answer_request_id.as_deref(),
+            false,
         ),
         _ => return Ok(()),
     };
@@ -1850,13 +1855,15 @@ fn authorize_member_delivery(
             Err(missing_response())
         };
     }
+    // An answer can admit its opening Runtime input. Any chat delivery for that
+    // response still has to match the original Run and question above.
     if proof.is_some_and(|token| {
         state
             .host_bridge
-            .authorizes_message(&token, session, message)
+            .authorizes_message(&token, session, message, runtime_admission)
             || state
                 .phone_bridge
-                .authorizes_message(&token, session, message)
+                .authorizes_message(&token, session, message, runtime_admission)
     }) {
         return Ok(());
     }
@@ -3925,13 +3932,18 @@ async fn issue_agent_attribution(
 }
 
 fn agent_run_error(error: StoreError) -> ApiError {
-    api_core_error(
-        if error.code == StoreErrorCode::Unauthorized || error.code == StoreErrorCode::NotFound {
-            agent_session_unavailable()
-        } else {
-            apply_response_store_error(error)
-        },
-    )
+    api_core_error(if error.code == StoreErrorCode::MissingDependencies {
+        CoreError {
+            code: CoreErrorCode::Conflict,
+            message: error.message,
+            retryable: error.retryable,
+            recovery: CoreErrorRecovery::None,
+        }
+    } else if error.code == StoreErrorCode::Unauthorized || error.code == StoreErrorCode::NotFound {
+        agent_session_unavailable()
+    } else {
+        apply_response_store_error(error)
+    })
 }
 
 async fn record_agent_run(
@@ -3947,8 +3959,8 @@ async fn record_agent_run(
         ));
     }
     module_context(&state, &headers, &bound).map_err(api_core_error)?;
-    // Runtime commits a user message before requesting turn preparation. Allow
-    // the Host's acceptance write to arrive without falling back to another Member.
+    // Keep a bounded wait for older queued inputs or a recovering delivery. Preparation
+    // always needs the exact Member evidence and never falls back to another message.
     let until = tokio::time::Instant::now() + Duration::from_secs(2);
     loop {
         let request_state = Arc::clone(&state);
@@ -3966,6 +3978,7 @@ async fn record_agent_run(
                             &request.session_id,
                             Some(&request.run_id),
                             request.message_id.as_deref(),
+                            request.require_message_admission.unwrap_or(true),
                             &request.driver,
                             &request.label,
                         ))

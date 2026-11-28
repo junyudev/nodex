@@ -56,6 +56,11 @@ export function recoveryStatusMessage(recovery: ConversationRecovery) {
           id: "conversation.conversationRecoveryPresentation.modelCouldNotBeApplied",
           defaultMessage: "Model could not be applied",
         });
+      case "message_admission":
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.messageAdmission",
+          defaultMessage: "Couldn’t confirm who sent this message. Send it again.",
+        });
       case "authentication":
         return defineMessage({
           id: "conversation.conversationRecoveryPresentation.signInRequired",
@@ -199,6 +204,7 @@ export function recoveryAction(
   if (recovery.reason === "unrecoverable") return null;
   // The composer offers the fix; once the chat has a working directory the same message runs.
   if (recovery.reason === "workspace_missing") return null;
+  if (recovery.reason === "message_admission") return null;
   if (recovery.reason === "context_budget") return "compact-and-retry";
   if (recovery.reason === "authentication" || recovery.reason === "usage_limit")
     return "manage-provider";

@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 91;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 92;
 
 /// Retry-key admission shared by the application tools and native CLI.
 pub const RETRY_KEY_MAX_SCALARS: usize = 128;
@@ -2919,6 +2919,20 @@ pub enum ProjectWorkspaceIntent {
     },
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RuntimeMessageRequester {
+    Member,
+    Agent {
+        session_id: String,
+        run_id: Option<String>,
+    },
+    Continuation {
+        run_id: String,
+    },
+    Automation,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectSessionIntent {
@@ -2963,6 +2977,11 @@ pub enum ProjectSessionIntent {
     /// Accepted user sends are deduplicated by their exact message identity.
     RecordUserMessage {
         message_id: String,
+    },
+    /// Admit the exact opening or queued input of a bound Runtime chat.
+    AdmitRuntimeMessage {
+        message_id: String,
+        requester: RuntimeMessageRequester,
     },
     /// An accepted Agent send can adopt a run chat without changing a Member's attention.
     RecordAgentMessage {

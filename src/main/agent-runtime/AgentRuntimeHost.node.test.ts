@@ -21,6 +21,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { ScopedAgentCore, type ScopedAgentAdmission } from "../../host/ScopedAgentCore";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { CoreHttpError } from "../core-client/local-http";
 import { MainConfig } from "../app/MainConfig";
 import {
   pluginCatalogSnapshot,
@@ -135,6 +136,7 @@ const makeFixture = Effect.fnUntraced(function* ({
   bind(turn());
   let attributionUnavailable = false;
   let held = false;
+  let missingMessageAdmission = false;
   let authorizeGrant: Effect.Effect<ScopedAgentAdmission> | undefined;
   let caller: AppToolCaller | undefined;
   let bound = true;
@@ -316,8 +318,18 @@ const makeFixture = Effect.fnUntraced(function* ({
       workspace: {
         read,
         recordAgentRun: (request: RecordAgentRunRequest) =>
-          Effect.sync(() => {
+          Effect.suspend(() => {
+            if (missingMessageAdmission)
+              return Effect.fail(
+                new CoreHttpError(409, "HTTP 409", undefined, {
+                  code: "conflict",
+                  message: "The Runtime input message is awaiting Member acceptance evidence",
+                  retryable: true,
+                  recovery: { kind: "none" },
+                }),
+              );
             recordedRuns.push(request);
+            return Effect.void;
           }),
         apply: (input: ProjectWorkspaceApplyInput) =>
           Effect.sync(() => {
@@ -356,6 +368,9 @@ const makeFixture = Effect.fnUntraced(function* ({
     coreReads,
     coreWrites,
     recordedRuns,
+    awaitMessageAdmission: () => {
+      missingMessageAdmission = true;
+    },
     authorizeGrant: () => authorizeGrant!,
     hold: () => {
       held = true;
@@ -476,6 +491,20 @@ it.effect("a Host answer reaches the Runtime in its own words", () =>
       message: notice,
       code: NODEX_FAILURE_CODES.claudeCodeUnavailable,
     });
+  }).pipe(Effect.scoped),
+);
+
+it.effect("a Turn without Member acceptance reports a recoverable message failure", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    f.awaitMessageAdmission();
+    const error = yield* f.execute(prepareTurn()).pipe(Effect.flip);
+    assert.include(error, {
+      operation: "turn.prepare",
+      code: NODEX_FAILURE_CODES.messageAdmissionMissing,
+      message: "Couldn’t confirm who sent this message. Send it again.",
+    });
+    assert.deepEqual(f.attributions, []);
   }).pipe(Effect.scoped),
 );
 

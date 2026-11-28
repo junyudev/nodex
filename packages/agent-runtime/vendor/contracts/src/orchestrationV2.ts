@@ -1458,6 +1458,15 @@ const SkillInvocations = Schema.optional(Schema.Array(Schema.Struct({
   cwd: TrimmedNonEmptyString,
 })).check(Schema.isMaxLength(3)));
 
+export const requiresRuntimeMessageAdmission = (message: {
+  readonly createdBy?: string | undefined;
+  readonly creationSource?: string | undefined;
+  readonly scheduledTaskId?: string | undefined;
+}) =>
+  message.createdBy === "user" ||
+  (message.createdBy === "agent" && message.creationSource === "mcp") ||
+  message.scheduledTaskId !== undefined;
+
 export const OrchestrationV2ConversationMessage = Schema.Struct({
   skillInvocations: SkillInvocations,
   unavailableSkillNames: Schema.optional(Schema.Array(Schema.String)),

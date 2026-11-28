@@ -213,7 +213,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     }).unwrap();
     space
         .membership
-        .record_agent_run("chat", Some("run"), Some("message"), "codex", "Codex")
+        .record_agent_run("chat", Some("run"), Some("message"), true, "codex", "Codex")
         .unwrap();
     let alice_id = alice.member_id;
     space.store.writer().call(move |c| {
@@ -222,7 +222,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     }).unwrap();
     space
         .membership
-        .record_agent_run("chat", Some("run"), Some("message"), "codex", "Codex")
+        .record_agent_run("chat", Some("run"), Some("message"), true, "codex", "Codex")
         .unwrap();
     assert_eq!(
         space
@@ -247,7 +247,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     // message still belongs to Bob, including after a provisional observation.
     space
         .membership
-        .record_agent_run("chat", Some("queued-run"), None, "codex", "Codex")
+        .record_agent_run("chat", Some("queued-run"), None, true, "codex", "Codex")
         .unwrap();
     space
         .membership
@@ -255,6 +255,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
             "chat",
             Some("queued-run"),
             Some("message"),
+            true,
             "codex",
             "Codex",
         )
@@ -265,12 +266,12 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     })).unwrap(), Actor::Agent {on_behalf_of,..} if on_behalf_of==bob.member_id)
     );
     assert!(
-        matches!(space.membership.record_agent_run("chat", Some("unknown-run"), Some("unknown-message"), "codex", "Codex"), Err(e) if e.code==StoreErrorCode::MissingDependencies)
+        matches!(space.membership.record_agent_run("chat", Some("unknown-run"), Some("unknown-message"), true, "codex", "Codex"), Err(e) if e.code==StoreErrorCode::MissingDependencies)
     );
     assert!(
         space
             .membership
-            .record_agent_run("missing", Some("run"), None, "codex", "Codex")
+            .record_agent_run("missing", Some("run"), None, true, "codex", "Codex")
             .is_err()
     );
 }
@@ -328,7 +329,14 @@ fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat()
     ] {
         space
             .membership
-            .record_agent_run("chat", Some(run), Some(message), "acpRegistry", "Agent")
+            .record_agent_run(
+                "chat",
+                Some(run),
+                Some(message),
+                true,
+                "acpRegistry",
+                "Agent",
+            )
             .unwrap();
         assert_eq!(on_behalf_of(run), alice.member_id);
     }
@@ -349,6 +357,7 @@ fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat()
             "chat",
             Some("engine:later"),
             Some("automation:message:bound"),
+            true,
             "acpRegistry", "Agent",
         ),
         Err(error) if error.code == StoreErrorCode::Unauthorized

@@ -122,13 +122,7 @@ pub(super) fn turn_reply(
     }
     // The accepted handoff is the continuation's input, even after its original
     // native Turn and the Member's Host invocation have ended.
-    let changed = super::super::session_mutation::accept_person_message(
-        connection,
-        &session,
-        &message,
-        &crate::infrastructure::actors::requesting_member(connection, context)?,
-        now,
-    )?;
+    let changed = reliable::accept_handoff_message(connection, context, &session, &message, now)?;
     let mut effects = simple_effects("inbox_turn_reply", now);
     effects.page_ids.push(page.into());
     if changed {

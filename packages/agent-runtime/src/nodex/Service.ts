@@ -31,6 +31,7 @@ import * as OrchestratorMcp from "../mcp/OrchestratorMcpService.ts";
 import { EnvironmentId } from "@nodex/runtime-contracts";
 import {
   CommandId,
+  ScheduledTaskId,
   ChatAttachmentId,
   OrchestrationMessageContext,
   ProviderInteractionMode,
@@ -98,6 +99,7 @@ import { readExecution, waitExecution, readExecutionItemIds } from "./ExecutionR
 import { EffectOutboxV2 } from "../orchestration-v2/EffectOutbox.ts";
 import { readDesktopToolSkills } from "../desktopTools/Skills.ts";
 import { HostBridge } from "./HostBridge.ts";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as Authority from "./Authority.ts";
 import * as NativeInteraction from "./NativeInteraction.ts";
 import * as ExecutionLocation from "./ExecutionLocation.ts";
@@ -441,6 +443,8 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       commandId: CommandId,
       messageId: MessageId,
+      messageInvocation: Schema.optional(ExecutionHost.RuntimeMessageInvocation),
+      scheduledTaskId: Schema.optional(ScheduledTaskId),
       text: Schema.String,
       attachments: Schema.Array(ChatAttachment),
       skillInvocations: OrchestrationV2ConversationMessage.fields.skillInvocations,
@@ -451,6 +455,7 @@ const AgentRequest = Schema.Union([
       createdBy: Schema.Literals(["user", "agent", "system"]),
       senderThreadId: Schema.optional(ThreadId),
       senderRunId: Schema.optional(Schema.NullOr(RunId)),
+      continuationOfRunId: Schema.optional(RunId),
       modeLimit: Schema.optional(DispatchModeLimitSchema),
     }),
   ),
@@ -554,6 +559,7 @@ const AgentRequest = Schema.Union([
     "command.dispatch",
     Schema.Struct({
       command: OrchestrationV2Command,
+      messageInvocation: Schema.optional(ExecutionHost.RuntimeMessageInvocation),
       modeLimit: Schema.optional(DispatchModeLimitSchema),
     }),
   ),
@@ -564,6 +570,7 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       requestId: CommandId,
       failedRunId: Schema.optional(RunId),
+      messageInvocation: Schema.optional(ExecutionHost.RuntimeMessageInvocation),
     }),
   ),
   request(
@@ -1559,6 +1566,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               ? {}
               : { senderThreadId: request.senderThreadId }),
             ...(request.senderRunId === undefined ? {} : { senderRunId: request.senderRunId }),
+            ...(request.continuationOfRunId === undefined
+              ? {}
+              : { continuationOfRunId: request.continuationOfRunId }),
+            ...(request.scheduledTaskId === undefined
+              ? {}
+              : { scheduledTaskId: request.scheduledTaskId }),
             createdBy: request.createdBy,
             creationSource:
               request.createdBy === "system"
@@ -1567,7 +1580,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                   ? "mcp"
                   : "web",
           })
-          .pipe(Effect.provideService(DispatchModeLimit, request.modeLimit));
+          .pipe(
+            Effect.provideService(DispatchModeLimit, request.modeLimit),
+            Effect.provideService(ExecutionHost.MessageInvocation, request.messageInvocation ?? {}),
+          );
         return {
           sequence: result.dispatch.sequence,
           messageId: result.message.id,
@@ -1788,7 +1804,13 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "command.dispatch": {
         const result = yield* threads
           .dispatch(input.input.command)
-          .pipe(Effect.provideService(DispatchModeLimit, input.input.modeLimit));
+          .pipe(
+            Effect.provideService(DispatchModeLimit, input.input.modeLimit),
+            Effect.provideService(
+              ExecutionHost.MessageInvocation,
+              input.input.messageInvocation ?? {},
+            ),
+          );
         if (input.input.command.type === "thread.delete")
           yield* providerSessions.discardSideChatNative(input.input.command.threadId);
         return { sequence: result.sequence };
@@ -1812,6 +1834,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         );
         return yield* compactThread(input.input).pipe(
           Effect.provideService(ThreadManagementService, threads),
+          Effect.provideService(
+            ExecutionHost.MessageInvocation,
+            input.input.messageInvocation ?? {},
+          ),
         );
       case "thread.rollback":
         return yield* rollbackThread(input.input).pipe(

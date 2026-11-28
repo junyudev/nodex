@@ -23,6 +23,23 @@ pub(in crate::workspace) fn handoff_identity(
 ) -> String {
     stable_uuid_v7(proposal_id, &format!("inbox-{role}"), store_epoch)
 }
+/// Freeze the requesting Member with the exact message the Host will deliver.
+pub(super) fn accept_handoff_message(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    session: &str,
+    message: &str,
+    now: &str,
+) -> Result<bool, StoreError> {
+    let member = match &context.authorizing_member_id {
+        Some(member) => member.clone(),
+        None => crate::infrastructure::actors::requesting_member(connection, context)?,
+    };
+    super::super::session_mutation::accept_person_message(
+        connection, session, message, &member, now,
+    )
+}
+
 pub(in crate::workspace) fn stored_handoff_identity(
     connection: &Connection,
     proposal_id: &str,
@@ -1152,7 +1169,15 @@ fn decide(
             } else {
                 launch
             };
-            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,images_json,skill_invocations_json,unavailable_skills_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![proposal_id,scope.store_epoch(),text,launch,handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?,encode(&skill_invocations)?,encode(&unavailable)?])?;
+            let message = handoff_identity(proposal_id, "message", scope.store_epoch());
+            let session = match action {
+                ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } => session_id,
+                _ => {
+                    session_id.ok_or_else(|| invalid("Starting a new chat requires its Session"))?
+                }
+            };
+            accept_handoff_message(connection, context, session, &message, now)?;
+            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,images_json,skill_invocations_json,unavailable_skills_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![proposal_id,scope.store_epoch(),text,launch,message,selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?,encode(&skill_invocations)?,encode(&unavailable)?])?;
         }
         _ => {}
     }

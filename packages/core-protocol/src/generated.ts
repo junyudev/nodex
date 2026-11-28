@@ -11344,6 +11344,11 @@ export interface components {
             readonly message_id: string;
         } | {
             /** @enum {string} */
+            readonly kind: "admit_runtime_message";
+            readonly message_id: string;
+            readonly requester: components["schemas"]["RuntimeMessageRequester"];
+        } | {
+            /** @enum {string} */
             readonly kind: "record_agent_message";
             readonly message_id: string;
         } | {
@@ -13519,6 +13524,8 @@ export interface components {
             readonly label: string;
             /** @description Core derives the requesting Member from the acceptance evidence. */
             readonly message_id?: string | null;
+            /** @description System inputs use exact evidence when a Member already admitted them. */
+            readonly require_message_admission?: boolean | null;
             readonly run_id: string;
             readonly session_id: string;
         };
@@ -15348,6 +15355,22 @@ export interface components {
             readonly readiness_generation: number;
             readonly start_nonce: string;
             readonly store_epoch: string;
+        };
+        readonly RuntimeMessageRequester: {
+            /** @enum {string} */
+            readonly kind: "member";
+        } | {
+            /** @enum {string} */
+            readonly kind: "agent";
+            readonly run_id?: string | null;
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "continuation";
+            readonly run_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "automation";
         };
         /** @enum {string} */
         readonly SchemaOwner: "type_script" | "rust";

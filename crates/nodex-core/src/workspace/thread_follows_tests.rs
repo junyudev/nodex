@@ -1443,9 +1443,37 @@ fn large_discovery_updates_keep_ingestion_live_without_growing_an_unbounded_inta
         })
         .collect();
     batch(&w, "large-intake", thread(), events);
-    let (entries,triggers,length)=w.kernel.readers().read_default(|c|Ok(c.query_row("SELECT (SELECT count(*) FROM inbox_entries),(SELECT count(*) FROM github_intake_triggers),(SELECT length(m.markdown) FROM github_intakes i JOIN pages p ON p.block_id=i.page_id JOIN document_materializations m ON m.document_id=p.document_id)",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,i64>(2)?)))?)).unwrap();
+    let (entries, triggers, body, append_edits) = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            Ok(c.query_row(
+                "SELECT (SELECT count(*) FROM inbox_entries),
+                        (SELECT count(*) FROM github_intake_triggers),
+                        materialization.markdown,
+                        (SELECT count(*) FROM document_updates update_row
+                         WHERE update_row.document_id=page.document_id
+                           AND update_row.client_session_id='inbox-domain')
+                 FROM github_intakes intake JOIN pages page ON page.block_id=intake.page_id
+                 JOIN document_materializations materialization
+                   ON materialization.document_id=page.document_id",
+                [],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, i64>(3)?,
+                    ))
+                },
+            )?)
+        })
+        .unwrap();
     assert_eq!((entries, triggers), (1, 12));
-    assert!(length <= 65536);
+    assert!(body.len() <= 65536);
+    assert_eq!(body.matches(&"x".repeat(8000)).count(), 8);
+    assert_eq!(body.matches("GitHub update · ").count(), 4);
+    assert_eq!(append_edits, 1);
     assert_eq!(cursor(&w).revision, 1);
 }
 

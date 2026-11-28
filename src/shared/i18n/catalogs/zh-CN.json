@@ -2586,6 +2586,7 @@
   "conversation.conversationRecoveryPresentation.couldNotReopen": "无法重新打开此对话",
   "conversation.conversationRecoveryPresentation.declined": "请求已拒绝",
   "conversation.conversationRecoveryPresentation.failed": "请求失败",
+  "conversation.conversationRecoveryPresentation.messageAdmission": "无法确认消息发送者，请重新发送。",
   "conversation.conversationRecoveryPresentation.modelCouldNotBeApplied": "无法应用模型",
   "conversation.conversationRecoveryPresentation.needsCompaction": "对话需要压缩",
   "conversation.conversationRecoveryPresentation.rateLimited": "请求频率受限",

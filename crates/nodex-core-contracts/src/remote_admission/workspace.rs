@@ -157,6 +157,9 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
                 | ProjectSessionIntent::SetSnooze { .. }
                 | ProjectSessionIntent::RecordAttention { .. }
                 | ProjectSessionIntent::RecordUserMessage { .. }
+                | ProjectSessionIntent::AdmitRuntimeMessage {
+                    requester: crate::workspace::RuntimeMessageRequester::Member, ..
+                }
                 | ProjectSessionIntent::SetArchived { .. }
                 | ProjectSessionIntent::Rename { .. } => true,
                 ProjectSessionIntent::RecordOpened { .. }
@@ -164,6 +167,7 @@ impl RemoteAdmission for ProjectWorkspaceIntent {
                 | ProjectSessionIntent::CompleteSnoozeDelivery { .. }
                 | ProjectSessionIntent::DeferSnoozeDelivery { .. }
                 | ProjectSessionIntent::RecordAgentMessage { .. }
+                | ProjectSessionIntent::AdmitRuntimeMessage { .. }
                 | ProjectSessionIntent::SetFallbackTitle { .. }
                 | ProjectSessionIntent::LinkThread { .. }
                 | ProjectSessionIntent::UnlinkThread { .. }

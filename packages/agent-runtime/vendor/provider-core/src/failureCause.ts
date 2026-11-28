@@ -19,6 +19,7 @@ export type ProviderFailureCause =
   | "authentication"
   | "context_budget"
   | "model_not_applied"
+  | "message_admission"
   /** The working directory must exist before the original message can be sent. */
   | "workspace_missing"
   /** The provider rejected this request; sending it again cannot help. */
@@ -55,6 +56,8 @@ export const NODEX_FAILURE_CODES = {
   modelNotApplied: "claude_model_not_applied",
   /** A Nodex-managed Claude Code install is not available to launch a Turn. */
   claudeCodeUnavailable: "claude_code_unavailable",
+  /** Core has not confirmed the Member who sent the opening message. */
+  messageAdmissionMissing: "runtime_message_admission_missing",
 } as const;
 
 const CONNECTION_CODES = new Set<string>([
@@ -130,6 +133,7 @@ export function providerFailureCause(failure: ProviderFailureEvidence): Provider
   const code = failure.code;
   if (code === NODEX_FAILURE_CODES.workspaceMissing) return "workspace_missing";
   if (code === NODEX_FAILURE_CODES.modelNotApplied) return "model_not_applied";
+  if (code === NODEX_FAILURE_CODES.messageAdmissionMissing) return "message_admission";
   if (failure.contextBudget !== undefined || (code !== null && CONTEXT_BUDGET_CODES.has(code)))
     return "context_budget";
   if (failure.class === "usage_limit" || (code !== null && USAGE_LIMIT_CODES.has(code)))

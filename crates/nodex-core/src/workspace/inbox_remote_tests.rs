@@ -514,7 +514,7 @@ fn remote_members_read_and_reply_to_turns_with_member_bound_receipts() {
         let session = delivery.session_id.clone();
         let message = delivery.message_id.clone();
         let captured: String = w.kernel.readers().read_default(move |c| {
-            Ok(c.query_row("SELECT member_id FROM session_requesting_members WHERE session_id=?1 AND message_id=?2", rusqlite::params![session, message], |r| r.get(0))?)
+            Ok(c.query_row("SELECT member_id FROM session_requesting_members JOIN project_session_user_message_receipts USING(session_id, message_id) WHERE session_id=?1 AND message_id=?2", rusqlite::params![session, message], |r| r.get(0))?)
         }).expect("an accepted reply retains its authenticated requesting Member");
         assert_eq!(captured, "person");
 
@@ -826,8 +826,12 @@ fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
         .read_default(|c| {
             Ok(c.query_row(
                 "SELECT requester.member_id, json_extract(proposal.confirmed_actor_json,'$.member_id') \
-                 FROM session_requesting_members requester, inbox_proposals proposal \
-                 WHERE requester.session_id='session:bob' AND proposal.proposal_id='proposal:bob'",
+                 FROM inbox_proposals proposal JOIN inbox_handoffs handoff USING(proposal_id) \
+                 JOIN session_requesting_members requester \
+                   ON requester.session_id=proposal.dispatch_session_id AND requester.message_id=handoff.message_id \
+                 JOIN project_session_user_message_receipts receipt \
+                   ON receipt.session_id=requester.session_id AND receipt.message_id=requester.message_id \
+                 WHERE proposal.dispatch_session_id='session:bob' AND proposal.proposal_id='proposal:bob'",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )?)
