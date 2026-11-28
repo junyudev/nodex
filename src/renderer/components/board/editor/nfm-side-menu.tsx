@@ -50,7 +50,7 @@ import {
   NfmSideMenuTableHeaderIcon,
   NfmSideMenuTurnIntoIcon,
   NfmTableBlockIcon,
-  PlusIcon,
+  NfmSideMenuAddIcon,
   EnableWordWrapIcon,
 } from "@/components/shared/icons";
 import { MessageCirclePlusIcon, WandSparkles } from "@/components/shared/icons/generic-icons";
@@ -301,6 +301,11 @@ interface NfmSideMenuSurfaceProps {
   }) => ReactNode;
 }
 
+// The gutter's add and drag controls stay quiet in tertiary ink and gain one soft tint on hover,
+// or while the block menu they opened is showing. Every state is restated here because the
+// ghost button underneath brings its own hover, dark-hover, expanded, and press styles.
+const SIDE_MENU_GUTTER_BUTTON_CLASS =
+  "bn-button h-6 rounded-xs p-0 text-token-text-tertiary transition-none hover:bg-token-foreground/5 hover:text-token-description-foreground dark:hover:bg-token-foreground/5 aria-expanded:bg-token-foreground/5 aria-expanded:text-token-description-foreground active:not-aria-[haspopup]:translate-y-0";
 const SIDE_MENU_CLICK_TOLERANCE = 4;
 const SIDE_MENU_SHORTCUT_KEY = "/";
 const SIDE_MENU_SUBMENU_SELECTOR = "[data-nfm-side-menu-submenu='true']";
@@ -738,13 +743,13 @@ function NfmAddBlockButton() {
 
   return (
     <SideMenuButton
-      className="bn-button nfm-side-menu-add-button size-6 cursor-pointer p-0 text-token-description-foreground transition-none"
+      className={cn(SIDE_MENU_GUTTER_BUTTON_CLASS, "nfm-side-menu-add-button w-6 cursor-pointer")}
       label={dict.side_menu.add_block_label}
       onClick={handleClick}
       onPointerUp={handlePointerUp}
       icon={
         <span className="pointer-events-none" data-test="dragHandleAdd">
-          <PlusIcon className="icon-sm" />
+          <NfmSideMenuAddIcon />
         </span>
       }
     />
@@ -2678,8 +2683,16 @@ export function NfmSideMenu() {
             sideMenu.blockDragEnd();
             releaseDragFreeze();
           }}
-          className="bn-button nfm-side-menu-drag-handle mr-2.5 h-6 w-[18px] cursor-grab p-0 text-token-description-foreground transition-none"
-          icon={<DragHandleDotsIcon className="icon-base pointer-events-none" />}
+          aria-haspopup="menu"
+          aria-expanded={
+            sideMenuOpenController.openBlockId !== null &&
+            sideMenuOpenController.openBlockId === getCurrentBlockId(block)
+          }
+          className={cn(
+            SIDE_MENU_GUTTER_BUTTON_CLASS,
+            "nfm-side-menu-drag-handle mr-1 w-[18px] cursor-grab",
+          )}
+          icon={<DragHandleDotsIcon className="pointer-events-none" />}
         />
       </span>
     </Components.SideMenu.Root>

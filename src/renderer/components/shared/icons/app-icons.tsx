@@ -127,6 +127,7 @@ import {
 } from "../../../../shared/icon-geometry";
 import { FilterIcon, LoadingIcon, TerminalIcon } from "./canonical-icons";
 import { ImageEraseIcon } from "./image-editor-icons";
+import { IconGlyph } from "./icon-glyph";
 import { IconSilhouette } from "./icon-silhouette";
 
 type IconProps = {
@@ -2849,8 +2850,31 @@ export function MinimizeIcon({ className }: IconProps) {
   return <MinusLg20Glyph width={24} height={24} className={cn("shrink-0", className)} />;
 }
 
+/**
+ * Every drag grip in Nodex: a compact two-by-three cluster whose dots are as wide as the gaps
+ * between them, so it reads as one handle rather than six loose points at any size.
+ */
 export function DragHandleDotsIcon({ className }: IconProps) {
-  return <Drag16Glyph width={20} height={20} className={cn("shrink-0", className)} />;
+  return (
+    <IconGlyph size={16} viewBox="0 0 16 16" className={className}>
+      <path
+        d="M5.75 2.35a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3m4.5 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3m-4.5 4.5a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3m4.5 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3m-4.5 4.5a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3m4.5 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3"
+        fill="currentColor"
+      />
+    </IconGlyph>
+  );
+}
+
+/** The block gutter's add control: a 16px plus weighted to match the drag grip beside it. */
+export function NfmSideMenuAddIcon({ className }: IconProps) {
+  return (
+    <IconGlyph size={16} viewBox="0 0 16 16" className={className}>
+      <path
+        d="M8 2.5a.65.65 0 0 1 .65.65v4.2h4.2a.65.65 0 1 1 0 1.3h-4.2v4.2a.65.65 0 1 1-1.3 0v-4.2h-4.2a.65.65 0 1 1 0-1.3h4.2v-4.2A.65.65 0 0 1 8 2.5"
+        fill="currentColor"
+      />
+    </IconGlyph>
+  );
 }
 
 export function NfmSideMenuTurnIntoIcon({ className }: IconProps) {
