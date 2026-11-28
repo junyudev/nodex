@@ -38,17 +38,21 @@ import { resolveComposerImageAttachmentSize } from "../composer/image-attachment
 import { NO_UNAVAILABLE_IMAGES, UnavailableImageChip } from "./unavailable-image";
 import { useContentImageMenu } from "./content-image-viewer";
 
-export function ImageLoadingTile({ label }: { label: string }) {
+export function ImageLoadingTile({ label, inline }: { label: string; inline?: boolean }) {
+  const Tile = inline ? "span" : "div";
   return (
-    <div
-      className="size-16 rounded-lg border border-token-border bg-token-bg-tertiary text-token-description-foreground"
+    <Tile
+      className={cn(
+        "size-16 rounded-lg border border-token-border bg-token-bg-tertiary text-token-description-foreground",
+        inline && "inline-block",
+      )}
       aria-label={label}
       role="status"
     >
-      <div className="flex size-full items-center justify-center">
+      <Tile className="flex size-full items-center justify-center">
         <ActivitySpinnerIcon className="size-4" />
-      </div>
-    </div>
+      </Tile>
+    </Tile>
   );
 }
 

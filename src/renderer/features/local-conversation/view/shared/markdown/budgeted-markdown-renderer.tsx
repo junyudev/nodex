@@ -10,12 +10,14 @@ interface BudgetedMarkdownRendererProps extends MarkdownRendererProps {
   readonly sourceAriaLabel: string;
   readonly sourceIdentity?: string;
   readonly fallbackMessage?: string;
+  readonly prepareContent?: (content: string) => string;
 }
 
 export function BudgetedMarkdownRenderer({
   sourceAriaLabel,
   sourceIdentity,
   fallbackMessage,
+  prepareContent,
   ...rendererProps
 }: BudgetedMarkdownRendererProps) {
   const intl = useIntl();
@@ -26,7 +28,12 @@ export function BudgetedMarkdownRenderer({
   });
 
   if (budget.kind === "withinBudget") {
-    return <MarkdownRenderer {...rendererProps} />;
+    return (
+      <MarkdownRenderer
+        {...rendererProps}
+        content={prepareContent?.(rendererProps.content) ?? rendererProps.content}
+      />
+    );
   }
 
   return (

@@ -7,6 +7,7 @@ import type { Protocol, Session } from "electron";
 import {
   buildAppFilesystemUrl,
   buildAppHostAssetUrl,
+  buildAppGitHubMediaUrl,
   APP_PROTOCOL_SCHEME,
 } from "../shared/app-protocol";
 import {
@@ -434,6 +435,47 @@ describe("app-protocol", () => {
     const nonImage = await handler(new Request(buildAppHostAssetUrl("authorized-text")));
     expect(nonImage.status).toBe(404);
     expect(calls).toEqual(["authorized-image", "forged", "authorized-text"]);
+  });
+
+  test("GitHub media requires a capability and trusted origin and serves video byte ranges", async () => {
+    const readRanges: unknown[] = [];
+    const handler = createAppProtocolHandler({
+      rendererRoot: "/renderer",
+      getGitHubMedia: (id) => {
+        if (id !== "video-capability" && id !== "invalid-type") return undefined;
+        return {
+          mimeType: id === "invalid-type" ? "text/html" : "video/mp4",
+          size: 10,
+          read: async (range) => {
+            readRanges.push(range);
+            const bytes = "0123456789";
+            return new Response(range ? bytes.slice(range.start, range.end + 1) : bytes).body;
+          },
+        };
+      },
+    });
+    const video = buildAppGitHubMediaUrl("video-capability");
+    const refused = await handler(
+      new Request(video, { headers: { Origin: "https://example.org" } }),
+    );
+    expect(refused.status).toBe(404);
+    expect((await handler(new Request(buildAppGitHubMediaUrl("unknown")))).status).toBe(404);
+    expect((await handler(new Request(buildAppGitHubMediaUrl("invalid-type")))).status).toBe(404);
+    expect(readRanges).toEqual([]);
+
+    const range = await handler(
+      new Request(video, { headers: { Origin: "app://-", Range: "bytes=4-6" } }),
+    );
+    expect(range.status).toBe(206);
+    expect(range.headers.get("Content-Type")).toBe("video/mp4");
+    expect(range.headers.get("Content-Range")).toBe("bytes 4-6/10");
+    expect(range.headers.get("Cache-Control")).toBe("no-store");
+    expect(range.headers.get("Access-Control-Allow-Origin")).toBe("app://-");
+    expect(await range.text()).toBe("456");
+    const invalid = await handler(new Request(video, { headers: { Range: "bytes=99-" } }));
+    expect(invalid.status).toBe(416);
+    expect(invalid.headers.get("Content-Range")).toBe("bytes */10");
+    expect(readRanges).toEqual([{ start: 4, end: 6 }]);
   });
 
   test("follows static symlinks and serves the addressed MIME type", async () => {

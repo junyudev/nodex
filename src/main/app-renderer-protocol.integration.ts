@@ -9,6 +9,7 @@ import { APP_RENDERER_URL, buildTopLevelRendererCsp } from "../shared/app-render
 import {
   buildAppFilesystemPath,
   buildAppFilesystemUrl,
+  buildAppGitHubMediaUrl,
   buildEnvironmentAwareFilesystemUrl,
 } from "../shared/app-protocol";
 import { launchTestElectron } from "../../scripts/testing/launch-electron";
@@ -200,6 +201,58 @@ describe("production app renderer origin", () => {
       if (application) await application.close();
     }
   }, 30_000);
+
+  test("plays GitHub media through an app filesystem capability", async () => {
+    const { outputDirectory, rendererDirectory } = await buildProtocolFixture(
+      "nodex-github-media-integration-",
+    );
+    const url = buildAppGitHubMediaUrl("fixture-video");
+    writeFileSync(
+      path.join(rendererDirectory, "index.html"),
+      `<!doctype html><meta http-equiv="Content-Security-Policy" content="${buildTopLevelRendererCsp({ mode: "production" })}"><video src="${url}" muted controls></video>`,
+    );
+    const application = await launchTestElectron({
+      args: [path.join(outputDirectory, "main.js")],
+      env: electronEnvironment({
+        NODEX_TEST_GITHUB_MEDIA_VIDEO: path.resolve(
+          "tests/fixtures/workspace-media/vp8-vorbis.webm",
+        ),
+      }),
+    });
+    try {
+      const page = await application.firstWindow();
+      const video = page.locator("video");
+      await expect
+        .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState))
+        .toBeGreaterThanOrEqual(1);
+      await video.evaluate(async (el: HTMLVideoElement) => {
+        await el.play();
+        el.pause();
+        const sought = new Promise<void>((resolve) => {
+          el.addEventListener("seeked", () => resolve(), { once: true });
+        });
+        el.currentTime = el.duration / 2;
+        await sought;
+      });
+      expect(await video.evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThan(0);
+      const partial = await page.evaluate(async (src) => {
+        const response = await fetch(src, { headers: { Range: "bytes=10-19" } });
+        return { status: response.status, length: (await response.arrayBuffer()).byteLength };
+      }, url);
+      expect(partial).toEqual({ status: 206, length: 10 });
+      await page.goto("data:text/html,<title>Untrusted origin</title>");
+      const untrusted = await page.evaluate(async (src) => {
+        try {
+          return (await fetch(src)).ok;
+        } catch {
+          return false;
+        }
+      }, url);
+      expect(untrusted).toBe(false);
+    } finally {
+      await application.close();
+    }
+  });
 
   test("compiles the renderer's scripts from V8's code cache once they have run", async () => {
     const { outputDirectory, rendererDirectory } = await buildProtocolFixture(

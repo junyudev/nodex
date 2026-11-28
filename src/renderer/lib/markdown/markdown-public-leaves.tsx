@@ -215,24 +215,25 @@ export function MarkdownMermaid({
   );
 }
 
-function MarkdownNativeImage({
+export function MarkdownNativeImage({
   node: _node,
+  resolvedName,
   src,
   srcSet,
   alt,
   title,
   className,
   ...props
-}: ComponentProps<"img"> & { node?: Element }) {
+}: ComponentProps<"img"> & { node?: Element; resolvedName?: string }) {
   const parent = useFileMarkdownImagePresentation();
   const ref = useRef<HTMLImageElement | null>(null);
   useLayoutEffect(() => {
     const names = new Map<string, string>();
-    if (typeof src === "string" && /^(?:https?:|data:image\/)/iu.test(src)) {
-      names.set(src, markdownImageFilename(src));
+    if (typeof src === "string" && (resolvedName || /^(?:https?:|data:image\/)/iu.test(src))) {
+      names.set(src, resolvedName ?? markdownImageFilename(src));
     }
     return parent?.registerResources(names, true);
-  }, [src, parent]);
+  }, [src, parent, resolvedName]);
   const image = (
     <img
       {...props}

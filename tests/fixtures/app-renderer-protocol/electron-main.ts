@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createReadStream, mkdtempSync } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import { format } from "node:util";
@@ -91,10 +91,21 @@ void app.whenReady().then(async () => {
     Reflect.set(globalThis, "nodexProtocolImages", control);
     app.once("before-quit", control.release);
   }
+  const videoPath = process.env.NODEX_TEST_GITHUB_MEDIA_VIDEO;
+  const video = videoPath ? await readFile(videoPath) : null;
   const disposeProtocol = registerAppProtocol(session.defaultSession, {
     rendererRoot: path.join(__dirname, "renderer"),
     getDevelopmentRendererUrl: () => developmentRendererUrl,
     protocol,
+    getGitHubMedia: (id) =>
+      id === "fixture-video" && video
+        ? {
+            mimeType: "video/webm",
+            size: video.byteLength,
+            read: async (range) =>
+              new Response(range ? video.subarray(range.start, range.end + 1) : video).body,
+          }
+        : undefined,
     ...(holdImages ? {
       stat: async (filePath) => {
         fileReads.push(filePath);

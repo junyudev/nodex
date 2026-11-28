@@ -8,6 +8,7 @@ import {
   APP_FILESYSTEM_HOST,
   APP_FILESYSTEM_ORIGIN,
   APP_FILESYSTEM_PREFIX,
+  APP_GITHUB_MEDIA_PREFIX,
   APP_PROTOCOL_SCHEME,
   APP_RENDERER_ENTRY,
   APP_RENDERER_HOST,
@@ -15,6 +16,17 @@ import {
   isAbsoluteAppFilesystemPath,
   restoreNativeAppFilesystemPath,
 } from "../shared/app-protocol";
+
+import { gitHubMediaKind } from "../shared/github-media";
+
+export interface AppGitHubMedia {
+  readonly mimeType: string;
+  readonly size: number;
+  readonly read: (
+    range: AppByteRange | null,
+    signal: AbortSignal,
+  ) => Promise<ReadableStream<Uint8Array> | null>;
+}
 
 interface FileMetadata {
   readonly size: number;
@@ -42,6 +54,7 @@ export interface AppProtocolHandlerOptions
     assetId: string;
     signal: AbortSignal;
   }) => Promise<{ readonly bytes: Uint8Array; readonly mimeType: string } | null>;
+  readonly getGitHubMedia?: (assetId: string) => AppGitHubMedia | undefined;
   readonly getDevelopmentRendererUrl?: () => string | null;
 }
 
@@ -277,6 +290,28 @@ export async function createRangeFileResponse(
   });
 }
 
+async function createGitHubMediaResponse(request: Request, asset: AppGitHubMedia) {
+  if (!gitHubMediaKind(asset.mimeType)) return notFoundResponse();
+  const headers = new Headers({
+    "Accept-Ranges": "bytes",
+    "Content-Type": asset.mimeType,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  const rangeHeader = request.headers.get("range");
+  const range = rangeHeader ? parseSingleByteRange(rangeHeader, asset.size) : null;
+  if (rangeHeader && !range) {
+    headers.set("Content-Range", `bytes */${asset.size}`);
+    return new Response(null, { status: 416, headers });
+  }
+
+  const body = await asset.read(range, request.signal);
+  if (!body) return notFoundResponse();
+  headers.set("Content-Length", String(range ? range.end - range.start + 1 : asset.size));
+  if (range) headers.set("Content-Range", `bytes ${range.start}-${range.end}/${asset.size}`);
+  return new Response(body, { status: range ? 206 : 200, headers });
+}
+
 export function createAppProtocolHandler(
   options: AppProtocolHandlerOptions,
 ): (request: Request) => Promise<Response> {
@@ -289,6 +324,20 @@ export function createAppProtocolHandler(
 
   const serve = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    if (url.host === APP_FILESYSTEM_HOST && url.pathname.startsWith(APP_GITHUB_MEDIA_PREFIX)) {
+      const origin = request.headers.get("origin");
+      if (
+        request.method !== "GET" ||
+        (origin !== null &&
+          !isAllowedAppFilesystemFrame(
+            { url: origin },
+            options.getDevelopmentRendererUrl?.() ?? null,
+          ))
+      )
+        return notFoundResponse();
+      const asset = options.getGitHubMedia?.(url.pathname.slice(APP_GITHUB_MEDIA_PREFIX.length));
+      return asset ? await createGitHubMediaResponse(request, asset) : notFoundResponse();
+    }
     if (url.host === APP_FILESYSTEM_HOST && url.pathname.startsWith("/host/")) {
       const encodedAssetId = url.pathname.slice("/host/".length);
       let assetId: string;

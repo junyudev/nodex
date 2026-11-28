@@ -14,6 +14,8 @@ import type {
   GitHubThreadSummary,
 } from "../../../shared/github-thread";
 import { gitHubThreadLabel } from "../../../shared/github-thread";
+import { prepareGitHubAttachmentMarkdown } from "../../../shared/github-media-markdown";
+import { GitHubAttachmentImage, GitHubAttachmentThread } from "./github-thread-media";
 import { linkGitHubReferences } from "./github-thread-model";
 import { GitHubThreadStateIcon, gitHubThreadSummaryState } from "./github-thread-state";
 
@@ -233,15 +235,19 @@ export function GitHubMarkdown({
 }) {
   const intl = useIntl();
   return (
-    <BudgetedMarkdownRenderer
-      dialect="document"
-      content={linkGitHubReferences(markdown, thread)}
-      className={cn("text-size-chat font-content", className)}
-      sourceAriaLabel={intl.formatMessage({
-        id: "githubThread.markdown.source",
-        defaultMessage: "GitHub Markdown",
-      })}
-    />
+    <GitHubAttachmentThread.Provider value={thread}>
+      <BudgetedMarkdownRenderer
+        dialect="document"
+        content={linkGitHubReferences(markdown, thread)}
+        prepareContent={prepareGitHubAttachmentMarkdown}
+        documentImage={GitHubAttachmentImage}
+        className={cn("text-size-chat font-content", className)}
+        sourceAriaLabel={intl.formatMessage({
+          id: "githubThread.markdown.source",
+          defaultMessage: "GitHub Markdown",
+        })}
+      />
+    </GitHubAttachmentThread.Provider>
   );
 }
 

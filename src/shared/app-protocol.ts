@@ -67,3 +67,10 @@ export function restoreNativeAppFilesystemPath(filePath: string): string {
 export function buildAppHostAssetUrl(assetId: string): string {
   return `${APP_FILESYSTEM_ORIGIN}/host/${encodeURIComponent(assetId)}`;
 }
+
+export const APP_GITHUB_MEDIA_PREFIX = "/github-media/";
+
+/** Main-issued opaque capability for a GitHub attachment. */
+export function buildAppGitHubMediaUrl(assetId: string): string {
+  return `${APP_FILESYSTEM_ORIGIN}${APP_GITHUB_MEDIA_PREFIX}${encodeURIComponent(assetId)}`;
+}
