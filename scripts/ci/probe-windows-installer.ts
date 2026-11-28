@@ -1,16 +1,19 @@
 import { ripgrepRelease } from "../../src/shared/ripgrep-runtime-metadata.mjs";
 import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import type { Page } from "playwright";
 import { once } from "node:events";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -21,13 +24,17 @@ import {
   WINDOWS_LOGIN_ITEM_NAME,
   windowsLoginItemEnabled,
 } from "../../src/main/windows-desktop-policy";
+import { windowsComponentPins } from "../release/components";
 import {
-  readBrowserRuntimeReleaseLock,
-  resolveBrowserRuntimeReleaseLockPath,
-} from "../browser-runtime-release-lock";
+  appComponentRoot,
+  appComponentStoreRoot,
+} from "../../src/main/app-components/AppComponentStore";
+import { makePrivatePaths } from "../../src/main/platform/node/private-filesystem";
+import { admitClaudeCode } from "../../src/main/platform/node/stage-claude-code";
+import type { AppComponentsState } from "../../src/shared/app-components";
+import { sha256File } from "../release/model";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
-import { restorePackagedBrowserRuntimeClosure } from "../restore-packaged-runtime-closure.mjs";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
 import { installedPayloadInventory } from "../installed-payload.mjs";
 import { runPackagedPtyProbe, type PackagedPtyReceipt } from "../packaged-pty-probe.mjs";
@@ -136,6 +143,109 @@ const queryProtocol = (): string | null => {
   }
 };
 
+async function probeInstalledComponents(input: {
+  readonly page: Page;
+  readonly profile: string;
+  readonly resourcesPath: string;
+  readonly core: string;
+  readonly arch: "x64" | "arm64";
+}) {
+  const { page, profile, resourcesPath, core, arch } = input;
+  const definitions = windowsComponentPins(arch);
+  const codex = definitions.find(({ payload }) => payload.kind === "codex");
+  const claude = definitions.find(({ payload }) => payload.kind === "claude-code");
+  const desktop = definitions.find(({ payload }) => payload.kind === "desktop-tools");
+  if (
+    codex?.payload.kind !== "codex" ||
+    claude?.payload.kind !== "claude-code" ||
+    desktop?.payload.kind !== "desktop-tools"
+  )
+    throw new Error("Packaged Windows catalog has invalid Component payloads");
+
+  const readComponents = (): Promise<AppComponentsState> =>
+    page.evaluate(() => {
+      if (!window.api) throw new Error("Installed renderer bridge is unavailable");
+      return window.api.invoke("app-components:read") as Promise<AppComponentsState>;
+    });
+  // Allow for three cold downloads, verification and native activation in one queue.
+  const deadline = Date.now() + 15 * 60_000;
+  const activated = await (async () => {
+    for (;;) {
+      const { components } = await readComponents();
+      if (
+        definitions.every(({ id, archive }) =>
+          components.some(
+            (component) =>
+              component.id === id &&
+              component.downloadBytes === archive.size &&
+              component.installation.status === "installed",
+          ),
+        )
+      )
+        return components;
+      if (
+        components.some(
+          ({ installation }) => installation.status === "failed" && installation.retryAt === null,
+        ) ||
+        Date.now() >= deadline
+      )
+        throw new Error(`Installed Components did not activate: ${JSON.stringify(components)}`);
+      await delay(500);
+    }
+  })();
+  const receipts = definitions.map((pin) => {
+    const root = appComponentRoot(profile, pin);
+    const receipt = readFileSync(join(root, ".installed-size"));
+    const state = activated.find(({ id }) => id === pin.id)?.installation;
+    if (
+      state?.status !== "installed" ||
+      receipt.byteLength !== 8 ||
+      receipt.readBigUInt64LE() !== BigInt(state.installedBytes)
+    )
+      throw new Error(`Installed Component receipt does not match activated ${pin.id} at ${root}`);
+    return { pin, root, installedBytes: state.installedBytes, activated: true as const };
+  });
+
+  const version = (file: string): string => {
+    const result = execFileSync(file, ["--version"], {
+      encoding: "utf8",
+      timeout: 30_000,
+      windowsHide: true,
+    }).trim();
+    if (!result) throw new Error(`Component executable did not report a version: ${file}`);
+    return result;
+  };
+  const codexRoot = appComponentRoot(profile, codex);
+  const codexExecutable = join(codexRoot, "bin", "codex.exe");
+  if (sha256File(codexExecutable) !== codex.payload.entrypointSha256)
+    throw new Error("The active Codex entrypoint differs from its published pin");
+  const codexImages = verifyWindowsArchitectureClosure(codexRoot, arch);
+  const codexVersion = version(codexExecutable);
+
+  const claudeRoot = appComponentRoot(profile, claude);
+  await admitClaudeCode(claudeRoot, claude.payload, AbortSignal.timeout(60_000));
+  const claudeExecutable = join(claudeRoot, claude.payload.executable.path);
+  const claudeVersion = version(claudeExecutable);
+
+  const location = {
+    isPackaged: true as const,
+    resourcesPath,
+    componentRoot: appComponentRoot(profile, desktop),
+    manifestSha256: desktop.payload.manifestSha256,
+  };
+  const desktopTools = await probeWindowsDesktopTools({
+    location,
+    boundary: appComponentStoreRoot(profile),
+    launcher: core,
+  });
+  return {
+    receipts,
+    codex: { executable: codexExecutable, version: codexVersion, images: codexImages.length },
+    claudeCode: { executable: claudeExecutable, version: claudeVersion },
+    desktopTools,
+  };
+}
+
 async function main(): Promise<void> {
   const options = new Map<string, string>();
   const args = process.argv.slice(2);
@@ -201,7 +311,10 @@ async function main(): Promise<void> {
     throw new Error(
       "Installer probe refuses to replace an existing Nodex installation or protocol registration",
     );
-  const profile = join(root, "Profile 用户");
+  // Real Profiles live under the user's profile directory, whose ancestors other accounts cannot
+  // replace; the Component store requires that chain. The name keeps a space and non-ASCII text.
+  const profileParent = mkdtempSync(join(tmpdir(), "nodex-installer-probe-"));
+  const profile = join(profileParent, "Profile 用户");
   mkdirSync(profile);
   const profileMarker = join(profile, "installer-probe.txt");
   const profileContent = randomUUID();
@@ -221,10 +334,7 @@ async function main(): Promise<void> {
   const desktopCloses: Promise<void>[] = [];
   let normalQuitEvidence: unknown;
   let installationEvidence: unknown;
-  let desktopTools:
-    | Awaited<ReturnType<typeof probeWindowsDesktopTools>>
-    | { status: "skipped: no published runtime" }
-    | undefined;
+  let components: Awaited<ReturnType<typeof probeInstalledComponents>> | undefined;
   let upgradeEvidence: unknown;
   let updateHandoffEvidence: unknown;
   let detachedCoreBeforeUninstall: number | undefined;
@@ -365,8 +475,13 @@ async function main(): Promise<void> {
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ installation: installationEvidence, evidence, desktopTools, packagedPty, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
+      `${JSON.stringify({ installation: installationEvidence, evidence, components, packagedPty, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
     );
+    try {
+      rmSync(profileParent, { force: true, recursive: true, maxRetries: 5, retryDelay: 200 });
+    } catch {
+      // Logs and receipts are already in the artifacts; a leftover temporary Profile is harmless.
+    }
   };
   try {
     recordPhase("install");
@@ -396,8 +511,9 @@ async function main(): Promise<void> {
       `${JSON.stringify(payload, null, 2)}\n`,
     );
     console.log(`Installed ${target.key}: ${payload.bytes} bytes in ${payload.fileCount} files.`);
-    const claudeExecutable = assertDesktopRuntimePayload({
-      resourcesPath: join(installRoot, "resources"),
+    const resourcesPath = join(installRoot, "resources");
+    assertDesktopRuntimePayload({
+      resourcesPath,
       platform: "win32",
       arch: target.arch,
     });
@@ -412,42 +528,25 @@ async function main(): Promise<void> {
     );
     if (!rgVersion.startsWith(`ripgrep ${ripgrepRelease.version} (`))
       throw new Error("Installed ripgrep reports a different version");
-    const claudeVersion = execFileSync(claudeExecutable, ["--version"], {
-      encoding: "utf8",
-      timeout: 30_000,
-    }).trim();
-    const desktopToolsRoot = join(installRoot, "resources/browser-runtime");
-    const asset = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(process.cwd()))
-      .assets[target.key];
-    if (Boolean(asset?.url) !== existsSync(desktopToolsRoot))
-      throw new Error("Installed Desktop Tool presence does not match the release lock");
-    if (asset?.url) {
-      restorePackagedBrowserRuntimeClosure({
-        sourceBrowserRoot: desktopToolsRoot,
-        packagedBrowserRoot: desktopToolsRoot,
-        windowsArch: target.arch,
-        expectedManifestSha256: asset.manifestSha256,
-        restore: false,
-      });
-    }
     const images = verifyWindowsArchitectureClosure(installRoot, target.arch, {
       installed: true,
-      desktopToolsRoot,
-      nodeHost: join(installRoot, "Nodex.exe"),
+      nodeHost: executable,
     });
+    console.log("Installed app omits Codex, Claude Code and Desktop Tools payloads.");
     const registration = queryProtocol();
     if (!registration?.includes(`"${executable}" "%1"`) || !registration.includes("URL Protocol"))
       throw new Error("NSIS did not register nodex:// for the current user");
     if (queryStartupValue(startupRunKey) || queryStartupValue(startupApprovedKey))
       throw new Error("NSIS registered background startup without consent");
     const core = join(installRoot, "resources/bin/nodex-core.exe");
-    desktopTools = existsSync(desktopToolsRoot)
-      ? await probeWindowsDesktopTools({
-          location: { isPackaged: true, resourcesPath: join(installRoot, "resources") },
-          boundary: installRoot,
-          launcher: core,
-        })
-      : { status: "skipped: no published runtime" };
+    const store = appComponentStoreRoot(profile);
+    mkdirSync(store);
+    await makePrivatePaths([{ path: store, directory: true }], core);
+    for (const id of ["codex", "claude-code"] as const) {
+      const directory = join(store, id);
+      mkdirSync(directory);
+      writeFileSync(join(directory, ".wanted"), "", { flag: "wx" });
+    }
     const expectedCoreSha256 = readCoreArtifactDigest(
       core,
       join(installRoot, "resources/bin/rust-core-runtime.json"),
@@ -459,6 +558,7 @@ async function main(): Promise<void> {
       target: target.key,
       installer: installers[0],
       images: images.length,
+      componentPayloadsAbsent: true,
       protocolRegistered: true,
       coreSha256: expectedCoreSha256,
     };
@@ -578,12 +678,13 @@ async function main(): Promise<void> {
             target: target.key,
             installer: installers[0],
             images: images.length,
+            componentPayloadsAbsent: true,
             hostPid,
             corePid: descriptor.pid,
             coreSha256: expectedCoreSha256,
             authenticated: Boolean(client.handshake),
             agent,
-            claude: { version: claudeVersion, sharedSdkLoaded: sdkLoaded },
+            sharedClaudeSdkLoaded: sdkLoaded,
             listenerAddresses: installationListenerAddresses(installRoot),
           };
           break;
@@ -648,6 +749,19 @@ async function main(): Promise<void> {
     await launchInstalled();
     if (!application) throw new Error("Desktop is missing");
     const settingsPage = await application.firstWindow();
+    recordPhase("components");
+    try {
+      components = await probeInstalledComponents({
+        page: settingsPage,
+        profile,
+        resourcesPath,
+        core,
+        arch: target.arch,
+      });
+    } catch (error) {
+      // Keep the native maintenance checks independent from Component availability.
+      failures.push(error);
+    }
     const login = await settingsPage.evaluate(async () => {
       if (!window.api) throw new Error("Installed renderer bridge is unavailable");
       return (await window.api.invoke("settings:open-at-login:set", true)) as OpenAtLoginResult;

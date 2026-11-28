@@ -57,7 +57,7 @@ function fixture(platform: string, arch: string) {
   const sourceRoot = join(root, "source");
   const dependency = "agent-runtime/node_modules";
   const binary = `${dependency}/@anthropic-ai/claude-agent-sdk-${platform}-${arch}/${platform === "win32" ? "claude.exe" : "claude"}`;
-  if (platform !== "darwin") write(join(sourceRoot, "out", binary));
+
   write(join(sourceRoot, "out", dependency, "@anthropic-ai/claude-agent-sdk/sdk.mjs"));
   mkdirSync(resourcesPath);
   cpSync(join(sourceRoot, "out/agent-runtime"), join(resourcesPath, "agent-runtime"), {
@@ -75,6 +75,11 @@ function fixture(platform: string, arch: string) {
     write(join(resourcesPath, "app.asar.unpacked/node_modules/node-pty/build/Release", file));
   archive(join(resourcesPath, "app.asar"), ["out/main/bootstrap.js", "package.json"]);
   writePackagedStockNodeFixture(resourcesPath);
+  if (platform === "win32") {
+    write(join(resourcesPath, "codex-crt/vcruntime140.dll"));
+    write(join(resourcesPath, "third-party/codex/LICENSE"));
+    write(join(resourcesPath, "third-party/codex/NOTICE"));
+  }
   writeRipgrepFixture(
     resourcesPath,
     platform === "darwin" ? "darwin-arm64" : arch === "arm64" ? "win32-arm64" : "win32-x64",
@@ -84,15 +89,9 @@ function fixture(platform: string, arch: string) {
 test.each([
   ["win32", "x64"],
   ["win32", "arm64"],
-])("%s %s ships one verified Claude closure", (platform, arch) => {
+])("%s %s keeps the shared SDK and rejects the native Claude package", (platform, arch) => {
   const input = fixture(platform, arch);
-  expect(assertDesktopRuntimePayload(input)).toBe(join(input.resourcesPath, input.binary));
-  write(join(input.resourcesPath, input.binary), "damaged");
-  expect(() => assertDesktopRuntimePayload(input)).toThrow("differs");
-});
-test("macOS keeps the SDK and rejects an embedded Claude Code executable", () => {
-  const input = fixture("darwin", "arm64");
-  expect(assertDesktopRuntimePayload(input)).toBeNull();
+  expect(() => assertDesktopRuntimePayload(input)).not.toThrow();
   write(join(input.resourcesPath, input.binary));
   expect(() => assertDesktopRuntimePayload(input)).toThrow(
     "must install Claude Code as a Component",
@@ -100,25 +99,35 @@ test("macOS keeps the SDK and rejects an embedded Claude Code executable", () =>
 });
 
 test.each([
-  "node_modules/@anthropic-ai/claude-agent-sdk-win32-arm64/claude.exe",
-  "extra/claude.exe",
-])("rejects a second unpacked Claude at %s", (duplicate) => {
-  const input = fixture("win32", "arm64");
-  write(join(input.resourcesPath, duplicate));
-  expect(() => assertDesktopRuntimePayload(input)).toThrow("exactly one Claude");
+  ["app.asar.unpacked/bin/codex.exe", "Codex"],
+  ["codex-resources/voice/bin/codex-voice-host.exe", "Codex"],
+  ["codex-path/rg.exe", "Codex"],
+  ["browser-runtime/bin/node.exe", "Desktop Tools"],
+  ["extra/claude.exe", "Claude Code"],
+  [
+    "app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-win32-arm64/package.json",
+    "Claude Code",
+  ],
+])("rejects a Windows Component at %s", (file, component) => {
+  const input = fixture("win32", "x64");
+  write(join(input.resourcesPath, file));
+  expect(() => assertDesktopRuntimePayload(input)).toThrow(
+    `must install ${component} as a Component`,
+  );
 });
-test("rejects a second Claude hidden inside ASAR", () => {
+
+test("also rejects Windows Component payload from the ASAR file table", () => {
   const input = fixture("win32", "x64");
   archive(join(input.resourcesPath, "app.asar"), [
     "out/main/bootstrap.js",
     "package.json",
     "node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe",
   ]);
-  expect(() => assertDesktopRuntimePayload(input)).toThrow("exactly one Claude");
+  expect(() => assertDesktopRuntimePayload(input)).toThrow("app.asar/node_modules");
 });
+
 test.each([
   "node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
-  "node_modules/@anthropic-ai/claude-agent-sdk-darwin-x64/package.json",
   "node_modules/node-pty/prebuilds/win32-x64/pty.node",
   "agent-runtime/node_modules/node-pty/third_party/conpty/win10-x64/OpenConsole.exe",
   "node_modules/node-pty/build/Release/conpty.pdb",

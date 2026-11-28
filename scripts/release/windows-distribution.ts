@@ -1,12 +1,10 @@
-import { BROWSER_RUNTIME_MANIFEST_FILENAME } from "../../src/shared/browser-runtime-metadata";
+import { appComponentManifestName } from "../../src/shared/app-component-manifest";
 import {
-  readBrowserRuntimeReleaseLock,
-  resolveBrowserRuntimeReleaseLockPath,
-} from "../browser-runtime-release-lock";
-import {
-  assertBrowserRuntimeSourceClosure,
-  readBrowserRuntimeSourceManifest,
-} from "../stage-browser-runtime";
+  verifyWindowsComponentDownloads,
+  windowsComponentManifest,
+  windowsComponentPins,
+} from "./components";
+import { assertWindowsInstalledProbe } from "./windows-installed-probe";
 import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
@@ -22,7 +20,6 @@ import { createRequire } from "node:module";
 import type { WindowsArchitecture } from "../desktop-build-target";
 import type { PreparedElectronBuildManifest } from "../prepared-electron-build";
 import { inspectOfficialAgentSkillsArtifact } from "../official-agent-skills-artifact.mjs";
-import { assertPackagedPtyReceipt } from "../packaged-pty-probe.mjs";
 import { installedPayloadInventory } from "../installed-payload.mjs";
 import { runVitePlus } from "../vite-plus-command";
 import { assertSourceIdentity } from "./distribution";
@@ -45,58 +42,6 @@ export function verifyWindowsPreparedIdentity(
   }
 }
 
-/** Installed runtime execution is mandatory before any installer enters a bundle. */
-export function assertWindowsInstalledProbe(
-  value: unknown,
-  architecture: WindowsArchitecture,
-  expectsDesktopTools: boolean,
-): void {
-  const probe = value as {
-    failures?: unknown[];
-    desktopTools?: { status?: unknown; signedImages?: number; processesClosed?: number };
-    evidence?: unknown;
-    upgrade?: unknown;
-    uninstall?: unknown;
-    normalQuit?: unknown;
-    packagedPty?: unknown;
-  } | null;
-  if (
-    !probe ||
-    !Array.isArray(probe.failures) ||
-    probe.failures.length ||
-    !probe.evidence ||
-    !probe.upgrade ||
-    !probe.uninstall ||
-    !probe.normalQuit
-  )
-    throw new Error("Windows installed-app probe did not complete all maintenance checks.");
-  const desktop = probe.desktopTools;
-  if (
-    expectsDesktopTools
-      ? desktop?.status !== "passed" ||
-        !Number.isSafeInteger(desktop.signedImages) ||
-        !(desktop.signedImages! > 0) ||
-        !Number.isSafeInteger(desktop.processesClosed) ||
-        !(desktop.processesClosed! >= 2)
-      : desktop?.status !== "skipped: no published runtime"
-  )
-    throw new Error("Windows installed-app probe did not certify the selected Desktop Tool state.");
-  const pty = assertPackagedPtyReceipt(probe.packagedPty);
-  const addon = pty.addonPath.replaceAll("\\", "/");
-  const node = pty.nodeExecutable.replaceAll("\\", "/");
-  if (
-    addon.slice(0, -"/agent-runtime/node_modules/node-pty".length).toLowerCase() !==
-      node.slice(0, -"/node-runtime/node.exe".length).toLowerCase() ||
-    pty.platform !== "win32" ||
-    pty.architecture !== architecture ||
-    !pty.addonPath
-      .replaceAll("\\", "/")
-      .endsWith("/resources/agent-runtime/node_modules/node-pty") ||
-    !pty.nodeExecutable.replaceAll("\\", "/").endsWith("/resources/node-runtime/node.exe")
-  )
-    throw new Error("Windows PTY probe did not execute the installed runtime closure.");
-}
-
 const toolVersion = (command: string, args: string[]): string => {
   try {
     return execFileSync(command, args, { encoding: "utf8" }).trim().split("\n")[0];
@@ -106,13 +51,13 @@ const toolVersion = (command: string, args: string[]): string => {
 };
 
 /** One native build/package/probe path serves validation, stable releases and Nightly. */
-export function buildWindowsDistribution(options: {
+export async function buildWindowsDistribution(options: {
   readonly architecture: WindowsArchitecture;
   readonly cwd: string;
   readonly identityPath: string;
   readonly outputDirectory: string;
   readonly release: boolean;
-}): ArchitectureBuildManifest | undefined {
+}): Promise<ArchitectureBuildManifest | undefined> {
   if (options.release && options.architecture !== "x64")
     throw new Error("Official Windows distribution requires x64.");
   if (process.platform !== "win32" || process.arch !== options.architecture)
@@ -124,6 +69,8 @@ export function buildWindowsDistribution(options: {
   const output = resolve(options.outputDirectory);
   if (existsSync(output) && readdirSync(output).length > 0)
     throw new Error("Windows distribution output must be empty.");
+  if (options.release)
+    await verifyWindowsComponentDownloads(windowsComponentPins(options.architecture));
   const updates = options.release ? "enabled" : "disabled";
   const env = {
     ...releaseBuildEnvironment(identity, identityPath),
@@ -133,7 +80,7 @@ export function buildWindowsDistribution(options: {
   const task = (...args: string[]): void => runVitePlus(args, { cwd, env });
   task("run", "build");
   task("run", `stage:native-runtime:win:${options.architecture}`);
-  task("run", "verify:runtime:win", ".generated/codex-runtime", options.architecture);
+  task("run", "verify:runtime:win", ".generated/codex-runtime/bin", options.architecture);
   task(
     "run",
     "verify:runtime:win",
@@ -148,7 +95,16 @@ export function buildWindowsDistribution(options: {
     "dist",
     options.architecture === "x64" ? "win-unpacked" : "win-arm64-unpacked",
   );
+  task("run", "verify:runtime:win", appRoot, options.architecture, "--packaged");
   const resources = join(appRoot, "resources");
+  const sourceInstaller = join(
+    cwd,
+    "dist",
+    `Nodex-${identity.version}-win-${options.architecture}-setup.exe`,
+  );
+  process.stdout.write(
+    `Windows ${options.architecture} installer: ${statSync(sourceInstaller).size} bytes; Component payloads absent.\n`,
+  );
   const preparedPath = join(cwd, ".generated/prepared-electron-build.json");
   const prepared = JSON.parse(readFileSync(preparedPath, "utf8")) as PreparedElectronBuildManifest;
   verifyWindowsPreparedIdentity(prepared, identity);
@@ -172,31 +128,6 @@ export function buildWindowsDistribution(options: {
   )
     throw new Error("Windows packaged Skills do not match the prepared build.");
 
-  const browserLockPath = resolveBrowserRuntimeReleaseLockPath(cwd);
-  const browserTarget = `win32-${options.architecture}` as const;
-  const browserAsset = readBrowserRuntimeReleaseLock(browserLockPath).assets[browserTarget];
-  const browserRoot = join(resources, "browser-runtime");
-  if (Boolean(browserAsset?.url) !== existsSync(browserRoot)) {
-    throw new Error(
-      "Windows Desktop Tool payload presence does not match the published release lock.",
-    );
-  }
-  const desktopTools = browserAsset?.url
-    ? (() => {
-        const manifestSha256 = sha256File(join(browserRoot, BROWSER_RUNTIME_MANIFEST_FILENAME));
-        const manifest = readBrowserRuntimeSourceManifest(browserRoot);
-        if (
-          manifest.targetPlatform !== "win32" ||
-          manifest.targetArch !== options.architecture ||
-          manifestSha256 !== browserAsset.manifestSha256
-        ) {
-          throw new Error("Windows Desktop Tool closure does not match the release lock.");
-        }
-        assertBrowserRuntimeSourceClosure(browserRoot, manifest);
-        return { target: browserTarget, manifestSha256, archiveSha256: browserAsset.archiveSha256 };
-      })()
-    : null;
-
   // A failed installed-app probe never produces a distributable architecture bundle.
   task(
     "exec",
@@ -208,22 +139,26 @@ export function buildWindowsDistribution(options: {
     ".generated/windows-probe",
   );
   const probePath = join(cwd, ".generated/windows-probe/artifacts/result.json");
+  const pins = windowsComponentPins(options.architecture);
   assertWindowsInstalledProbe(
     JSON.parse(readFileSync(probePath, "utf8")),
     options.architecture,
-    desktopTools !== null,
+    pins,
   );
   mkdirSync(output, { recursive: true });
   const name = windowsInstallerName(identity.version, options.architecture);
   const installerPath = join(output, name);
-  copyFileSync(
-    join(cwd, "dist", `Nodex-${identity.version}-win-${options.architecture}-setup.exe`),
-    installerPath,
-  );
+  copyFileSync(sourceInstaller, installerPath);
   copyFileSync(probePath, join(output, "installed-app-probe.json"));
   // Standalone verification artifacts do not enter the application release bundle.
   if (options.architecture === "arm64") return;
   const architecture = "windows-x64";
+  const componentName = appComponentManifestName(identity.version, "win32-x64");
+  const componentPath = join(output, componentName);
+  writeFileSync(
+    componentPath,
+    `${JSON.stringify(windowsComponentManifest(identity, pins), null, 2)}\n`,
+  );
   const artifacts = [
     {
       architecture,
@@ -232,10 +167,17 @@ export function buildWindowsDistribution(options: {
       sha256: sha256File(installerPath),
       role: "windows-installer" as const,
     },
+    {
+      architecture,
+      name: componentName,
+      bytes: statSync(componentPath).size,
+      sha256: sha256File(componentPath),
+      role: "components-manifest" as const,
+    },
   ];
   const runtimeLocks = {
     agentSha256: sha256File(join(cwd, "resources/agent-runtime/codex-app-server.lock.json")),
-    browserSha256: sha256File(browserLockPath),
+    browserSha256: sha256File(join(cwd, "resources/browser-runtime/browser-runtime.lock.json")),
     sparkleSha256: sha256File(join(cwd, "resources/sparkle/sparkle.lock.json")),
     ripgrepSha256: sha256File(join(cwd, "resources/ripgrep/ripgrep.lock.json")),
     nodeSha256: sha256File(join(cwd, "resources/agent-runtime/node-runtime.lock.json")),
@@ -250,7 +192,6 @@ export function buildWindowsDistribution(options: {
         buildIdentity: identity,
         updates,
         runtimeLocks,
-        desktopTools,
         artifacts,
         preparedManifestSha256: sha256File(preparedPath),
         installedProbeSha256: sha256File(probePath),

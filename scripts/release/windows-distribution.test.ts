@@ -1,62 +1,47 @@
-import { randomUUID } from "node:crypto";
 import { expect, test } from "vite-plus/test";
-import { assertWindowsInstalledProbe } from "./windows-distribution";
+import { assertWindowsInstalledProbe } from "./windows-installed-probe";
+import { windowsComponentPins, windowsProbeFixture } from "./windows-components.fixture";
 
-const fixture = () => {
-  const marker = `NODEX_PTY_${randomUUID()}`;
-  return {
-    failures: [],
-    desktopTools: { status: "skipped: no published runtime" },
-    evidence: {},
-    normalQuit: {},
-    upgrade: {},
-    uninstall: {},
-    packagedPty: {
-      schemaVersion: 1,
-      nodeExecutable: "/installed/resources/node-runtime/node.exe",
-      addonPath: "/installed/resources/agent-runtime/node_modules/node-pty",
-      platform: "win32",
-      architecture: "x64",
-      marker,
-      output: marker,
-      exitCode: 73,
-      ptyPid: 123,
-    },
-  };
-};
+const assertProbe = (value: unknown) =>
+  assertWindowsInstalledProbe(value, "x64", windowsComponentPins);
+
 test("requires installed stock-Node PTY evidence before emitting a Windows bundle", () => {
-  expect(() => assertWindowsInstalledProbe(fixture(), "x64", false)).not.toThrow();
-  expect(() =>
-    assertWindowsInstalledProbe({ ...fixture(), packagedPty: undefined }, "x64", false),
-  ).toThrow("receipt");
-  const probe = fixture();
+  expect(() => assertProbe(windowsProbeFixture())).not.toThrow();
+  expect(() => assertProbe({ ...windowsProbeFixture(), packagedPty: undefined })).toThrow(
+    "receipt",
+  );
+  const probe = windowsProbeFixture();
   probe.packagedPty.exitCode = 0;
-  expect(() => assertWindowsInstalledProbe(probe, "x64", false)).toThrow("receipt");
+  expect(() => assertProbe(probe)).toThrow("receipt");
 });
+
 test("rejects evidence from a foreign CPU or the Electron archive companion", () => {
-  const foreign = fixture();
+  const foreign = windowsProbeFixture();
   foreign.packagedPty.architecture = "ia32";
-  expect(() => assertWindowsInstalledProbe(foreign, "x64", false)).toThrow("receipt");
-  const probe = fixture();
+  expect(() => assertProbe(foreign)).toThrow("receipt");
+  const probe = windowsProbeFixture();
   probe.packagedPty.addonPath =
-    "/installed/resources/app.asar.unpacked/out/agent-runtime/node_modules/node-pty";
-  expect(() => assertWindowsInstalledProbe(probe, "x64", false)).toThrow("installed runtime");
+    "C:/installed/resources/app.asar.unpacked/out/agent-runtime/node_modules/node-pty";
+  expect(() => assertProbe(probe)).toThrow("installed runtime");
 });
 
 test("requires the Node host and addon to belong to the same installation", () => {
-  const probe = fixture();
-  probe.packagedPty.nodeExecutable = "/another/resources/node-runtime/node.exe";
-  expect(() => assertWindowsInstalledProbe(probe, "x64", false)).toThrow("installed runtime");
+  const probe = windowsProbeFixture();
+  probe.packagedPty.nodeExecutable = "C:/another/resources/node-runtime/node.exe";
+  expect(() => assertProbe(probe)).toThrow("installed runtime");
 });
 
-test("requires installed vendor evidence when the lock selects a published closure", () => {
-  const probe = fixture();
-  expect(() => assertWindowsInstalledProbe(probe, "x64", true)).toThrow("Desktop Tool state");
-  const passed = { status: "passed", signedImages: 22, processesClosed: 2 };
-  expect(() =>
-    assertWindowsInstalledProbe({ ...probe, desktopTools: passed }, "x64", true),
-  ).not.toThrow();
-  expect(() =>
-    assertWindowsInstalledProbe({ ...probe, desktopTools: passed }, "x64", false),
-  ).toThrow("Desktop Tool state");
+test("requires the exact Component pins and conformance from their Profile roots", () => {
+  const probe = windowsProbeFixture();
+  probe.components.receipts[0]!.root = "C:/installed/resources/browser-runtime";
+  expect(() => assertProbe(probe)).toThrow("different Component receipt");
+  const foreign = windowsProbeFixture();
+  foreign.components.receipts[0]!.pin = {
+    ...windowsComponentPins[0]!,
+    archive: { ...windowsComponentPins[0]!.archive, sha256: "f".repeat(64) },
+  };
+  expect(() => assertProbe(foreign)).toThrow("different Component receipt");
+  const unverified = windowsProbeFixture();
+  unverified.components.desktopTools.processesClosed = 1;
+  expect(() => assertProbe(unverified)).toThrow("Component conformance");
 });

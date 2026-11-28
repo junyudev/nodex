@@ -193,15 +193,9 @@ win:
   target: nsis
   artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
   extraResources:
-    - from: .generated/codex-runtime/agent-runtime
-      to: .
-      filter:
-        - "**/*"
-        - "!browser-runtime{,/**/*}"
-    - from: .generated/codex-runtime/agent-runtime/browser-runtime
-      to: browser-runtime
-      filter:
-        - "**/*"
+    - from: resources/third-party/codex
+      to: third-party/codex
+      filter: [LICENSE, NOTICE]
     - from: resources/windows
       to: windows
       filter:

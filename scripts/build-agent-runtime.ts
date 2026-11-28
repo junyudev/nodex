@@ -68,7 +68,9 @@ function buildLockedAgentRuntime(
     optionalDependencies?: Record<string, string>;
   };
   const installClaudeCodeComponent =
-    packaged && native.node.platform === "darwin" && native.node.architecture === "arm64";
+    packaged &&
+    (native.node.platform === "win32" ||
+      (native.node.platform === "darwin" && native.node.architecture === "arm64"));
   if (installClaudeCodeComponent && sdkPackage.version !== claudeCodeLock.version) {
     throw new Error(
       "Claude Code Component must match the installed SDK. Run vp run claude-code:relock.",

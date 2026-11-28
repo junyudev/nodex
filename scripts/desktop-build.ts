@@ -4,7 +4,7 @@ import {
   resolveBrowserRuntimeReleaseLockPath,
 } from "./browser-runtime-release-lock";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseBuildIdentity } from "./release/model";
@@ -85,7 +85,12 @@ function buildMacBridges(target: DesktopBuildTarget): void {
 
 async function stageNative(target: DesktopBuildTarget): Promise<void> {
   buildMacBridges(target);
-  await stageCodex(target, false);
+  if (target.runtime === "macos") {
+    await stageCodex(target, false);
+  } else {
+    await stageStandaloneRipgrepRuntime(root, target);
+    await stageStandaloneNodeRuntime(root, target);
+  }
   stageRust(target);
   /* Core and CLI are staged before the platform-specific runtime set. */
   if (target.runtime !== "macos") return;
@@ -146,13 +151,6 @@ async function main(): Promise<void> {
       task("build");
       await stageNative(target);
     }
-    if (
-      target.platform === "win32" &&
-      existsSync(stagedDesktopTools) !== Boolean(browserLock().assets[target.key]?.url)
-    )
-      throw new Error(
-        "Staged Desktop Tool presence does not match the release lock. Restage the native runtime.",
-      );
     tsx("prepared-electron-build", "verify");
     const identityPath = process.env.NODEX_BUILD_IDENTITY_PATH;
     const identity = identityPath
