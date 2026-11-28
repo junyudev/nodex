@@ -38,6 +38,7 @@ import type {
 } from "@/lib/types";
 import type { IpcApi } from "../../../shared/ipc-api";
 import { WorkbenchRailUpdateButton } from "./workbench-rail-update-button";
+import { readableIpcError } from "@/lib/ipc-error-message";
 
 type CodexLoginStartResult = IpcApi["codex:account:login:start"]["result"];
 
@@ -194,12 +195,13 @@ function UsageSignOutButton({
       {
         onError: (error) => {
           onErrorMessage?.(
-            error instanceof Error
-              ? error.message
-              : getIntl().formatMessage({
-                  id: "workbench.workbenchRailAccountControls.logoutFailed",
-                  defaultMessage: "Logout failed",
-                }),
+            readableIpcError(
+              error,
+              getIntl().formatMessage({
+                id: "workbench.workbenchRailAccountControls.logoutFailed",
+                defaultMessage: "Logout failed",
+              }),
+            ),
           );
         },
         cleanup: () => {
@@ -380,12 +382,13 @@ export function WorkbenchRailAccountControls({
       {
         onError: (error) => {
           onErrorMessage?.(
-            error instanceof Error
-              ? error.message
-              : getIntl().formatMessage({
-                  id: "workbench.workbenchRailAccountControls.loginFailed",
-                  defaultMessage: "Login failed",
-                }),
+            readableIpcError(
+              error,
+              getIntl().formatMessage({
+                id: "workbench.workbenchRailAccountControls.loginFailed",
+                defaultMessage: "Login failed",
+              }),
+            ),
           );
         },
         cleanup: () => {
@@ -408,12 +411,13 @@ export function WorkbenchRailAccountControls({
       {
         onError: (error) => {
           onErrorMessage?.(
-            error instanceof Error
-              ? error.message
-              : getIntl().formatMessage({
-                  id: "workbench.workbenchRailAccountControls.loginFailed",
-                  defaultMessage: "Login failed",
-                }),
+            readableIpcError(
+              error,
+              getIntl().formatMessage({
+                id: "workbench.workbenchRailAccountControls.loginFailed",
+                defaultMessage: "Login failed",
+              }),
+            ),
           );
         },
         cleanup: () => {
@@ -432,12 +436,13 @@ export function WorkbenchRailAccountControls({
       await onCancelLogin(loginId);
     } catch (error) {
       onErrorMessage?.(
-        error instanceof Error
-          ? error.message
-          : getIntl().formatMessage({
-              id: "workbench.workbenchRailAccountControls.cancelLoginFailed",
-              defaultMessage: "Failed to cancel login",
-            }),
+        readableIpcError(
+          error,
+          getIntl().formatMessage({
+            id: "workbench.workbenchRailAccountControls.cancelLoginFailed",
+            defaultMessage: "Failed to cancel login",
+          }),
+        ),
       );
     }
   };
