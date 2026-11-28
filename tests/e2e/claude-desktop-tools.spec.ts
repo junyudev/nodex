@@ -25,7 +25,7 @@ import {
 } from "./support/agent-smoke-harness";
 import { chooseComposerModel, refreshComposerModels } from "./support/composer-model-picker";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
-import { monitorRuntimeLease } from "./support/desktop-tools-smoke";
+import { desktopResetNotice, monitorRuntimeLease } from "./support/desktop-tools-smoke";
 
 const evidenceRoot = process.env.NODEX_CDT_EVIDENCE_DIR;
 const saveEvidence = (name: string, value: unknown) => {
@@ -458,7 +458,8 @@ for (const mode of ["full-access", "approval-required"] as const) {
             "nodeRepl.write({bindingType:typeof kept});",
             "Read binding after cancelled kernel",
           );
-        expect(text(result("reset"))).toContain("undefined");
+        expect(text(result("reset"))).toContain(desktopResetNotice.stopped);
+        expect(text(results.reset)).toContain("undefined");
         return { type: "text", text: "CLAUDE_RESET_DONE" };
       } catch (error) {
         phase = previousPhase;

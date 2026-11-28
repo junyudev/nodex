@@ -74,7 +74,9 @@ const make = (home: string, attachmentsDir?: string) =>
             switch (event.type) {
               case "thread.archived":
               case "thread.deleted":
-                void service.closeThread(event.threadId);
+                void service
+                  .closeThread(event.threadId, event.type === "thread.deleted")
+                  .catch(() => {});
                 break;
               case "run.updated":
                 if (

@@ -1,3 +1,4 @@
+import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -35,12 +36,22 @@ const js = (title: string, code: string, timeout_ms = 30_000): DesktopCall => ({
   timeout_ms,
 });
 
+export const desktopResetNotice = {
+  permissionMode:
+    "This JavaScript call started a fresh session because the chat's permission mode changed.",
+  stopped:
+    "This JavaScript call started a fresh session because the previous JavaScript call was stopped.",
+  restarted:
+    "This JavaScript call started a fresh session because the JavaScript runtime restarted.",
+} as const;
+
 export function desktopSmokeScript(url: string, unapprovedUrl: string) {
+  const browserSetup = `const { setupBrowserRuntime } = await import(${JSON.stringify(browserClient)}); const agent = await setupBrowserRuntime(); const iab = await agent.browsers.get("iab");`;
   return {
     browser: [
       js(
         "Connect to the in-app Browser",
-        `const { setupBrowserRuntime } = await import(${JSON.stringify(browserClient)}); const agent = await setupBrowserRuntime(); const iab = await agent.browsers.get("iab"); nodeRepl.write(await iab.documentation()); const kept = "DESKTOP_MEMORY_RETAINED";`,
+        `${browserSetup} nodeRepl.write(await iab.documentation()); const kept = "DESKTOP_MEMORY_RETAINED";`,
       ),
       js(
         "Open the Browser fixture",
@@ -58,7 +69,7 @@ export function desktopSmokeScript(url: string, unapprovedUrl: string) {
     origin: [
       js(
         "Open an origin without a saved rule",
-        `const consentTab = await iab.tabs.new(); await consentTab.goto(${JSON.stringify(unapprovedUrl)}); nodeRepl.write(await consentTab.title());`,
+        `{ ${browserSetup} const consentTab = await iab.tabs.new(); await consentTab.goto(${JSON.stringify(unapprovedUrl)}); nodeRepl.write(await consentTab.title()); }`,
       ),
     ],
     stop: [
@@ -384,6 +395,23 @@ export async function runDesktopSmoke(
         await page.getByRole("button", { name: /^Approve(?: once)?$/, exact: true }).click();
       }
       await finish("origin");
+      const originItem = (await state()).snapshot.projection.visibleTurnItems.find(
+        ({ item }) =>
+          item.type === "dynamic_tool" &&
+          JSON.stringify(item.mcpToolCall?.arguments)?.includes(script.origin[0]!.title),
+      );
+      if (!originItem) throw new Error("Missing origin tool result");
+      const detail = (await invokeIpc(page, "agent-runtime:session:item", {
+        ...target,
+        sourceThreadId: originItem.sourceThreadId,
+        itemId: originItem.sourceItemId,
+      })) as AgentTurnItem | null;
+      expect(
+        detail?.type === "dynamic_tool" && detail.mcpToolCall?.result?.content[0],
+      ).toMatchObject({
+        type: "text",
+        text: expect.stringContaining(desktopResetNotice.permissionMode),
+      });
       expect(unapproved.requests).toContain("/browser-smoke");
       desktopEvidence(provider, "site-access.json", { elicited: originRequests.length > 0 });
       succeeded = true;
