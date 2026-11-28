@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createIntl } from "@formatjs/intl";
-import { renderSkylineCity, skylineGrid } from "./cards";
+import { renderSkylineCity, skylineGrid, sourceLines } from "./cards";
 import zhCN from "./catalogs/zh-CN.json";
 import {
   agentArchetype,
@@ -205,6 +205,61 @@ describe("share cards", () => {
       "100B tokens with my agents. 19 agents at once. 3,416 messages sent. What's yours? nodex.jyu.app",
     );
     expect(shareFileName(view(), "receipt")).toBe("nodex-receipt-2026-11-07.png");
+  });
+
+  it("puts the cost in a post only when the card shows it", () => {
+    expect(shareMessage(view(), intl, { showCost: true })).toBe(
+      "100B tokens with my agents, ≈ $77,180 at API list price. 19 agents at once. 3,416 messages sent. What's yours? nodex.jyu.app",
+    );
+    expect(shareMessage({ ...view(), costUsd: 0 }, intl, { showCost: true })).toBe(
+      shareMessage(view(), intl),
+    );
+  });
+
+  it.each(["skyline", "receipt"] as const)("%s draws dark unless asked for light", (kind) => {
+    expect(renderShareCard(view(), options({ kind }), intl)).toBe(
+      renderShareCard(view(), options({ kind, theme: "dark" }), intl),
+    );
+    expect(renderShareCard(view(), options({ kind, theme: "light" }), intl)).not.toBe(
+      renderShareCard(view(), options({ kind }), intl),
+    );
+  });
+
+  it.each(["skyline", "receipt"] as const)("%s names the agents it counted", (kind) => {
+    const counted = { ...view(), sources: ["Claude Code", "Codex", "Gemini CLI"] };
+    const svg = renderShareCard(counted, options({ kind }), intl);
+    const names =
+      kind === "skyline" ? "Claude Code · Codex · Gemini CLI" : "CLAUDE CODE · CODEX · GEMINI CLI";
+    expect(svg).toContain(names);
+    expect(renderShareCard(view(), options({ kind }), intl)).not.toContain("Codex");
+  });
+
+  it("makes a Receipt's total at API list price its headline", () => {
+    const headline = 'font-size="72" font-weight="700" fill="#17171a" text-anchor="end">$77,180<';
+    const receipt = options({ kind: "receipt" });
+    expect(renderShareCard(view(), receipt, intl)).toContain(headline);
+    expect(renderShareCard(view(), { ...receipt, showCost: false }, intl)).not.toContain("$");
+  });
+});
+
+describe("sourceLines", () => {
+  const names = ["Claude Code", "Codex", "Gemini CLI", "OpenCode", "Antigravity"];
+
+  it("keeps every name that fits", () => {
+    expect(sourceLines(names, 80, 1)).toEqual([
+      "Claude Code · Codex · Gemini CLI · OpenCode · Antigravity",
+    ]);
+  });
+
+  it("wraps by name and counts what is left once its lines are full", () => {
+    expect(sourceLines(names, 26, 2)).toEqual(["Claude Code · Codex", "Gemini CLI · OpenCode +1"]);
+    expect(sourceLines(names, 26, 1)).toEqual(["Claude Code · Codex +3"]);
+  });
+
+  it("always names at least one agent", () => {
+    expect(sourceLines(names, 4, 1)).toEqual(["Claude Code +4"]);
+    expect(sourceLines(["Claude Code"], 4, 1)).toEqual(["Claude Code"]);
+    expect(sourceLines([], 40, 1)).toEqual([]);
   });
 });
 
