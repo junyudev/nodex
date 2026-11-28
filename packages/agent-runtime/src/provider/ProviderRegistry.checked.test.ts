@@ -53,7 +53,7 @@ const checked: ServerProvider = {
 const instanceOf = (
   provider: ServerProvider,
   current: Ref.Ref<ServerProvider>,
-  initialCheck: Effect.Effect<void>,
+  awaitChecked: Effect.Effect<void>,
 ) =>
   ({
     instanceId: provider.instanceId,
@@ -73,7 +73,7 @@ const instanceOf = (
           }),
         ),
       getSnapshot: Ref.get(current),
-      initialCheck,
+      awaitChecked,
       refresh: Ref.get(current),
       // The result must be read even when no change notification arrives.
       streamChanges: Stream.empty,

@@ -86,14 +86,14 @@ export class ProviderRegistry extends Context.Service<
     readonly getProviders: Effect.Effect<ReadonlyArray<ServerProvider>>;
 
     /**
-     * Read the providers once every current instance has finished the status check it started
-     * with, so a reader never sees "not checked yet" placeholders. Starts no probe of its own.
+     * Wait for the current Agents to check readiness and discover model choices, up to the
+     * checked-read deadline. Starts no probe of its own.
      */
     readonly getCheckedProviders: Effect.Effect<ReadonlyArray<ServerProvider>>;
 
     /**
-     * The named instances once each has finished its first status check. Other instances are
-     * neither awaited nor returned, so one slow provider never delays a reader of another.
+     * A checked read of only the named instances. Other instances are neither awaited nor
+     * returned.
      */
     readonly getCheckedProvidersFor: (
       instanceIds: ReadonlyArray<string>,
@@ -1177,7 +1177,7 @@ export const layer = Layer.effect(
             instances,
             (instance) =>
               Effect.gen(function* () {
-                yield* instance.snapshot.initialCheck;
+                yield* instance.snapshot.awaitChecked;
                 // The change subscription may not have delivered the result yet.
                 yield* observeSource(buildSnapshotSource(instance));
               }).pipe(Effect.ignoreCause({ log: true })),

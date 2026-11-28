@@ -14,11 +14,10 @@ export interface ManagedServerProvider {
   }) => Effect.Effect<ProviderMaintenanceCapabilities>;
   readonly getSnapshot: Effect.Effect<ServerProvider>;
   /**
-   * Completes once the status check started with this provider has finished, whatever its
-   * outcome. Until then the snapshot is a placeholder that has checked nothing. A check that
-   * publishes readiness before any model choice is known finishes when its model reads answer.
+   * Waits for the first readiness check and any current model discovery when the
+   * provider has no known model choices. Starts no probe of its own.
    */
-  readonly initialCheck: Effect.Effect<void>;
+  readonly awaitChecked: Effect.Effect<void>;
   readonly refresh: Effect.Effect<ServerProvider>;
   readonly streamChanges: Stream.Stream<ServerProvider>;
   /**
