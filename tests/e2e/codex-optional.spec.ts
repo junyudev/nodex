@@ -77,7 +77,7 @@ test("opens the Workbench and runs Claude before activating Codex", async ({}, t
     });
     await page.getByRole("button", { name: "New chat", exact: true }).first().click();
     await openComposerModelPicker(page);
-    await expect(page.getByText("Not installed", { exact: true })).toBeVisible();
+    await expect(page.getByRole("option", { name: /^GPT-6 Luna Not installed$/u })).toBeVisible();
     await page.getByRole("option", { name: "Claude Opus 5", exact: true }).click();
     const composer = page
       .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
@@ -140,6 +140,8 @@ test("installs the official Codex Component on first use and reuses it after res
     isolateHostDirectories: true,
     environment: {
       NODEX_TEST_APP_COMPONENTS: "1",
+      // A matching Codex on the host PATH would seed the Component and skip the download.
+      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: undefined,
       NODEX_LOG_FILE: "1",
       NODEX_LOG_FILE_LEVEL: "info",
@@ -219,9 +221,9 @@ test("installs the official Codex Component on first use and reuses it after res
     await expect(popup.getByText(/^Installing Codex… [1-9]\d*%$/u)).toBeVisible({
       timeout: 120_000,
     });
-    await expect(
-      popup.getByRole("option").filter({ hasText: /GPT-6 Luna.*Installing/u }),
-    ).toBeVisible();
+    const downloadingLuna = picker.getByRole("option", { name: /^GPT-6 Luna [1-9]\d*%$/u });
+    await expect(downloadingLuna).toBeVisible();
+    await expect(downloadingLuna).toBeDisabled();
     const progressMs = Math.round(performance.now() - started);
     await capture(page, popup, "10-codex-installing-picker");
     await installingSearch.press("Escape");

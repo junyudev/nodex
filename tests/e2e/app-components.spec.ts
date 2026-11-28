@@ -15,6 +15,7 @@ import {
 } from "../../scripts/scenarios/runtime/scripted-model-server";
 import { setAgentExecutionProfile, waitForFinalMarker } from "./support/agent-smoke-harness";
 import { composerModelLabel, openComposerModelPicker } from "./support/composer-model-picker";
+import { invokeIpc } from "./support/editor-scenario";
 import { nativeAppToolCall } from "./support/native-app-tools";
 import { closeWorkbenchSettings, openWorkbenchSettings } from "./support/workbench-settings";
 
@@ -398,17 +399,19 @@ test("Claude Code gates API-key models until installed and links to Components w
           const address = modelServer.address();
           if (!address || typeof address === "string")
             throw new Error("Missing fake provider port");
-          const result = (await page.evaluate(
-            (input) => window.api!.invoke("provider-keys:connect", input),
-            {
-              target: { preset: "custom" as const, baseUrl: `http://127.0.0.1:${address.port}` },
-              apiKey: "local-fixture-key",
-              displayName: providerName,
+          const result = await invokeIpc(page, "provider-keys:connect", {
+            target: {
+              preset: "custom",
+              agent: "claudeAgent",
+              baseUrl: `http://127.0.0.1:${address.port}`,
             },
-          )) as IpcApi["provider-keys:connect"]["result"];
+            apiKey: "local-fixture-key",
+            displayName: providerName,
+          });
           expect(result, "The fixture API key connection should save").toMatchObject({ ok: true });
           const search = await openComposerModelPicker(page);
-          await search.fill("Fixture Sonnet");
+          // The search has to match both the Component action and the model.
+          await search.fill("Claude");
           await expect(installing).toBeVisible();
           await expect(claudeOption).toBeDisabled();
           const picker = page.locator("[data-starting-style], [data-ending-style]").filter({
@@ -446,7 +449,7 @@ test("Claude Code gates API-key models until installed and links to Components w
             page.getByRole("button", { name: "Send prompt", exact: true }),
           ).toBeDisabled();
           await composer.fill("");
-          await (await openComposerModelPicker(page)).fill("Fixture Sonnet");
+          await (await openComposerModelPicker(page)).fill("Claude");
           const turnedOff = page.getByRole("button", {
             name: /Claude Code is turned off.*Settings/u,
           });
