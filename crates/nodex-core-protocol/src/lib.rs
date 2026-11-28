@@ -590,6 +590,9 @@ pub struct RecordAgentRunRequest {
     /// Core derives the requesting Member from the acceptance evidence.
     #[serde(default)]
     pub message_id: Option<String>,
+    /// System inputs use exact evidence when a Member already admitted them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub require_message_admission: Option<bool>,
     pub driver: String,
     pub label: String,
 }

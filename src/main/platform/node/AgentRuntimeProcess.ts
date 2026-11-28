@@ -143,6 +143,27 @@ const hostRequestSchema = z.discriminatedUnion("operation", [
   z.object({
     type: z.literal("host.request"),
     id: z.string().min(1),
+    operation: z.literal("message.admit"),
+    identity: hostIdentitySchema,
+    message: z.object({
+      rootThreadId: z.string().min(1),
+      messageId: z.string().min(1),
+      requester: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("member"), proof: z.string().min(1).optional() }),
+        z.object({
+          kind: z.literal("agent"),
+          threadId: z.string().min(1),
+          rootThreadId: z.string().min(1).optional(),
+          runId: z.string().nullable(),
+        }),
+        z.object({ kind: z.literal("continuation"), runId: z.string().min(1) }),
+        z.object({ kind: z.literal("automation") }),
+      ]),
+    }),
+  }),
+  z.object({
+    type: z.literal("host.request"),
+    id: z.string().min(1),
     operation: z.literal("plugins.open"),
     identity: hostIdentitySchema,
     attachmentId: z.uuid(),
@@ -751,7 +772,9 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
               success: false,
               error: {
                 message: error.message,
-                ...("code" in error && error.code === NODEX_FAILURE_CODES.claudeCodeUnavailable
+                ...("code" in error &&
+                (error.code === NODEX_FAILURE_CODES.claudeCodeUnavailable ||
+                  error.code === NODEX_FAILURE_CODES.messageAdmissionMissing)
                   ? { code: error.code }
                   : {}),
               },

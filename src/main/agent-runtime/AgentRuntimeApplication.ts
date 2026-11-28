@@ -29,7 +29,6 @@ import {
   modelIsOn,
   readModelPolicyFailure,
 } from "../../shared/model-policy";
-import { recordAcceptedUserMessage } from "../project-application/SessionMessageSnooze";
 import { make as makeSessionOrdering } from "./AgentRuntimeSessionOrdering";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { readPromptTurns } from "./AgentRuntimePromptTurns";
@@ -643,6 +642,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }
         if (
           Schema.is(AgentRuntimeProcessError)(cause) &&
+          cause.engineReason === "member_admission_unavailable"
+        )
+          return failure(operation, cause.message, cause);
+        if (
+          Schema.is(AgentRuntimeProcessError)(cause) &&
           cause.engineTag === "RuntimeMessageIdentityConflictError"
         )
           return new AgentRuntimeApplicationError({
@@ -1245,11 +1249,35 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const { binding, threadId } = yield* targetInfo(connection, target);
     return { binding, threadId };
   });
+  const messageInvocation = Effect.gen(function* () {
+    const memberProof = yield* HostInvocation;
+    const source = (yield* CoreApplicationAgent)?.authority;
+    return {
+      ...(memberProof ? { memberProof } : {}),
+      ...(source
+        ? {
+            senderThreadId: source.root_thread_id,
+            senderRunId: source.runtime?.turn_kind === "native_connection" ? null : source.turn_id,
+          }
+        : {}),
+    };
+  });
   const dispatch = (
     connection: AgentRuntimeApplicationConnection,
     command: AgentCommand,
     modeLimit?: AgentDispatchModeLimit,
-  ) => connection.request("command.dispatch", { command, ...(modeLimit ? { modeLimit } : {}) });
+  ) =>
+    Effect.gen(function* () {
+      const invocation =
+        command.type === "message.dispatch" || command.type === "runtime-request.respond"
+          ? yield* messageInvocation
+          : {};
+      return yield* connection.request("command.dispatch", {
+        command,
+        ...(modeLimit ? { modeLimit } : {}),
+        ...(Object.keys(invocation).length ? { messageInvocation: invocation } : {}),
+      });
+    });
   const prepareMessageInput = Effect.fn("AgentRuntimeApplication.prepareMessageInput")(function* (
     connection: AgentRuntimeApplicationConnection,
     message: AgentRuntimeMessage,
@@ -2113,14 +2141,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         : command,
       input.modeLimit,
     );
-    if (
-      !provenance &&
-      !input.sender &&
-      !input.automationExecution &&
-      input.messageOrigin !== "automation" &&
-      input.messageOrigin !== "host"
-    )
-      yield* recordAcceptedUserMessage(core, input.sessionId, message.messageId);
     if (deferred) {
       const outcome = yield* connection.request("run.outcome", {
         threadId,
@@ -3506,6 +3526,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       input: AgentRuntimeSessionTarget & {
         readonly message: AgentRuntimeMessage;
         readonly intent?: DispatchMessage["deliveryIntent"];
+        readonly senderThreadId?: string;
+        readonly senderRunId?: string | null;
         readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
         readonly modeLimit?: AgentDispatchModeLimit;
         readonly messageFingerprint?: string;
@@ -3609,6 +3631,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             input.intent,
             agent,
             queueAfterActive || prepared.hasConfig,
+            input.senderThreadId === undefined
+              ? undefined
+              : { threadId: input.senderThreadId, runId: input.senderRunId ?? null },
           ),
           ...(input.automationExecution === undefined
             ? {}
@@ -3618,12 +3643,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         },
         input.modeLimit,
       );
-      // Reminder acceptance keeps the queued message's authorship. Core checks the exact
-      // Automation message identity separately when deciding whether the chat was adopted.
-      if (!agent)
-        yield* recordAcceptedUserMessage(core, input.sessionId, prepared.message.messageId);
-      else if (!input.automationExecution)
-        yield* recordAcceptedAgentMessage(input.sessionId, prepared.message.messageId);
       const sideChatTitle = yield* titleSideChatRequest(
         connection,
         loaded,
@@ -3687,10 +3706,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     });
     if (!result) return null;
     const agent = (yield* CoreApplicationAgent) !== null;
-    if (input.origin !== "host")
-      yield* agent
-        ? recordAcceptedAgentMessage(input.sessionId, input.messageId)
-        : recordAcceptedUserMessage(core, input.sessionId, input.messageId);
     const sideChatTitle = yield* titleSideChatRequest(
       connection,
       { binding, threadId },
@@ -3817,7 +3832,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         fingerprint: input.messageFingerprint,
         mode: input.mode,
       });
+    yield* requireAutomationExecution(input.automationExecution);
+    const invocation = yield* messageInvocation;
     const result = yield* connection.request("thread.send", {
+      ...(Object.keys(invocation).length ? { messageInvocation: invocation } : {}),
+      ...(input.automationExecution
+        ? { scheduledTaskId: input.automationExecution.automationId }
+        : {}),
       threadId: loaded.threadId,
       commandId: commandId("message", { threadId: loaded.threadId, messageId: prepared.messageId }),
       messageId: prepared.messageId,
@@ -3827,7 +3848,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         ? {}
         : { skillInvocations: prepared.skillInvocations }),
       mode: preparation.hasConfig ? "queue" : input.mode,
-      createdBy: input.origin === "host" ? "system" : agent ? "agent" : "user",
+      createdBy:
+        input.origin === "host" || input.automationExecution ? "system" : agent ? "agent" : "user",
       ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
       ...(prepared.context === undefined ? {} : { context: prepared.context }),
       ...(prepared.interactionMode === undefined
@@ -3837,10 +3859,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
       ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
     });
-    if (input.origin !== "host" && !input.automationExecution)
-      yield* agent || input.senderThreadId
-        ? recordAcceptedAgentMessage(input.sessionId, prepared.messageId)
-        : recordAcceptedUserMessage(core, input.sessionId, prepared.messageId);
     const sideChatTitle = yield* titleSideChatRequest(
       connection,
       loaded,
@@ -5875,7 +5893,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             return yield* failure("compact", "Request identity is invalid");
           const connection = yield* options.connect;
           const loaded = yield* targetInfo(connection, input, true);
+          const invocation = yield* messageInvocation;
           return yield* connection.request("thread.compact", {
+            ...(Object.keys(invocation).length ? { messageInvocation: invocation } : {}),
             threadId: loaded.threadId,
             requestId: input.requestId,
             ...(input.failedRunId === undefined ? {} : { failedRunId: input.failedRunId }),

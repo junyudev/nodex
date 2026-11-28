@@ -133,7 +133,10 @@ export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()
   {
     operation: Schema.String,
     message: Schema.String,
-    code: Schema.optionalKey(Schema.Literal(NODEX_FAILURE_CODES.claudeCodeUnavailable)),
+    code: Schema.optionalKey(Schema.Literals([
+      NODEX_FAILURE_CODES.claudeCodeUnavailable,
+      NODEX_FAILURE_CODES.messageAdmissionMissing,
+    ])),
   },
 ) {}
 
@@ -152,12 +155,43 @@ export interface OpenSessionPluginsRequest extends SessionPluginsRequest {
   readonly sourceThreadId?: string;
 }
 
+export const RuntimeMessageInvocation = Schema.Struct({
+  memberProof: Schema.optionalKey(Schema.String),
+  senderThreadId: Schema.optionalKey(Schema.String),
+  senderRunId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+});
+export const MessageInvocation = Context.Reference<typeof RuntimeMessageInvocation.Type>(
+  "@nodex/provider-core/ExecutionHost/MessageInvocation",
+  { defaultValue: () => ({}) },
+);
+
+export type RuntimeMessageAdmission = {
+  readonly rootThreadId: string;
+  readonly messageId: string;
+  readonly requester:
+    | { readonly kind: "member"; readonly proof?: string }
+    | {
+        readonly kind: "agent";
+        readonly threadId: string;
+        readonly rootThreadId?: string;
+        readonly runId: string | null;
+      }
+    | { readonly kind: "continuation"; readonly runId: string }
+    | { readonly kind: "automation" };
+};
+
+type MessageAdmissionHost =
+  | {
+      /** A product Host binds Sessions in Core and must admit their Member input. */
+      readonly threadCreationOwner: "host";
+      readonly admitMessage: (input: RuntimeMessageAdmission) => Effect.Effect<void, ExecutionHostError>;
+    }
+  | { readonly threadCreationOwner?: "execution"; readonly admitMessage?: undefined };
+
 /** A host may admit a Turn and supply trusted CLI/skill context before native execution. */
 export class ExecutionHost extends Context.Reference<{
   /** Physical host generation fences persisted observations across process restarts. */
   readonly runtimeGeneration?: string;
-  /** A product host adopts ordinary Sessions before their first Run is admitted. */
-  readonly threadCreationOwner?: "host" | "execution";
   readonly registerNativeSession?: (identity: {
     readonly credentialId: string;
     readonly providerSessionId: ProviderSessionId;
@@ -198,7 +232,7 @@ export class ExecutionHost extends Context.Reference<{
   ) => Effect.Effect<SessionPluginAttachment, ExecutionHostError, Scope.Scope>;
   /** Desktop activity is addressed by its captured execution and opaque Desktop Turn. */
   readonly observeNativeTurn?: (input: HostTurnIdentityReport) => Effect.Effect<void>;
-}>("@nodex/provider-core/server/ExecutionHost", {
+} & MessageAdmissionHost>("@nodex/provider-core/server/ExecutionHost", {
   defaultValue: () => ({ prepareTurn: () => Effect.succeed({}) }),
 }) {}
 

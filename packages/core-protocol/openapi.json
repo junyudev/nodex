@@ -47116,6 +47116,29 @@
           },
           {
             "type": "object",
+            "description": "Admit the exact opening or queued input of a bound Runtime chat.",
+            "required": [
+              "message_id",
+              "requester",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "admit_runtime_message"
+                ]
+              },
+              "message_id": {
+                "type": "string"
+              },
+              "requester": {
+                "$ref": "#/components/schemas/RuntimeMessageRequester"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "An accepted Agent send can adopt a run chat without changing a Member's attention.",
             "required": [
               "message_id",
@@ -56817,6 +56840,13 @@
             ],
             "description": "Core derives the requesting Member from the acceptance evidence."
           },
+          "require_message_admission": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "System inputs use exact evidence when a Member already admitted them."
+          },
           "run_id": {
             "type": "string"
           },
@@ -65358,6 +65388,80 @@
           }
         },
         "additionalProperties": false
+      },
+      "RuntimeMessageRequester": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "member"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "agent"
+                ]
+              },
+              "run_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "run_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "continuation"
+                ]
+              },
+              "run_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "automation"
+                ]
+              }
+            }
+          }
+        ]
       },
       "SchemaOwner": {
         "type": "string",

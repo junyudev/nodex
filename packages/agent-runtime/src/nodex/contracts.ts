@@ -9,6 +9,7 @@ export {
   DEFAULT_RUNTIME_MODE,
   RUNTIME_MODE_RANK,
   isForegroundRunStatus,
+  requiresRuntimeMessageAdmission,
 } from "@nodex/runtime-contracts";
 export type {
   OrchestrationV2AppThread,

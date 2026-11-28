@@ -1653,13 +1653,6 @@ fn apply_confirmation(
             super::page_chat::link_pages(connection, target, page_ids, now)?;
             let message = reliable::handoff_identity(proposal_id, "message", commit.store_epoch());
             super::page_chat::bind_active_chats(connection, target, page_ids, Some(&message), now)?;
-            super::session_mutation::record_requesting_member(
-                connection,
-                target,
-                &message,
-                &crate::infrastructure::actors::requesting_member(connection, context)?,
-                now,
-            )?;
             super::thread_follows::origin_on_dispatch(connection, library_id, page_ids, now)?;
             start_dispatch(
                 connection,
@@ -1718,7 +1711,6 @@ fn start_new_dispatch(
     {
         // The person whose message asked for the work owns the chat it starts.
         super::chat_stewardship::record_owner(connection, session_id, &member, now)?;
-        connection.execute("INSERT OR IGNORE INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4)",params![session_id,proposal_id,member,now])?;
     }
     super::page_chat::set_active_chats(connection, session_id, page_ids, now)?;
     super::thread_follows::origin_on_dispatch(connection, library_id, page_ids, now)?;

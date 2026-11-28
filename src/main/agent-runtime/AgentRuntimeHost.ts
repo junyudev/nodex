@@ -2,7 +2,11 @@ import { NODEX_FAILURE_CODES } from "@nodex/agent-runtime/failure-cause";
 import { makePluginSessions } from "../../host/agent-plugins/PluginSessions";
 import { PluginSessionPreparationError } from "../../host/agent-plugins/PluginSessionPreparationError";
 import { createHash } from "node:crypto";
-import { parseDesktopIdentifier, parseDesktopToolActivity } from "@nodex/agent-runtime/contracts";
+import {
+  parseDesktopIdentifier,
+  parseDesktopToolActivity,
+  requiresRuntimeMessageAdmission,
+} from "@nodex/agent-runtime/contracts";
 import { renderPersonalInstructions } from "@nodex/agent-runtime/instructions";
 import {
   DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
@@ -16,6 +20,8 @@ import { DISABLED_DESKTOP_TOOL_REPL_CONFIG } from "../codex/codex-thread-config"
 import { HostWorkspace } from "../../host/HostWorkspace";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreModuleResponseError } from "../core-client/core-client";
+import { CoreResponseError } from "../core-client/core-response-error";
+import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { effectiveHolds } from "../../host/work-application/execution-holds";
 import {
@@ -58,7 +64,12 @@ export class AgentRuntimeHostError extends Schema.TaggedError<AgentRuntimeHostEr
   {
     operation: Schema.String,
     message: Schema.String,
-    code: Schema.optionalKey(Schema.Literal(NODEX_FAILURE_CODES.claudeCodeUnavailable)),
+    code: Schema.optionalKey(
+      Schema.Literals([
+        NODEX_FAILURE_CODES.claudeCodeUnavailable,
+        NODEX_FAILURE_CODES.messageAdmissionMissing,
+      ]),
+    ),
   },
 ) {}
 const unavailable = (operation: string) =>
@@ -66,6 +77,11 @@ const unavailable = (operation: string) =>
     operation,
     message: "Nodex application authority is unavailable for this request",
   });
+const coreFailure = (failure: unknown) => {
+  const cause = failure instanceof CoreRuntimeError ? failure.cause : failure;
+  return cause instanceof CoreResponseError ? cause.coreError : undefined;
+};
+
 const failed = (operation: string) =>
   new AgentRuntimeHostError({ operation, message: "Nodex could not complete this request" });
 
@@ -295,6 +311,70 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       );
   });
 
+  const runtimeBinding = (rootThreadId: string) =>
+    core.workspace
+      .read(
+        {
+          kind: "agent_runtime_session_binding_by_execution",
+          runtime_id: runtimeId,
+          runtime_thread_id: rootThreadId,
+        },
+        undefined,
+        null,
+      )
+      .pipe(
+        Effect.map((result) =>
+          result.value.kind === "agent_runtime_session_binding" ? result.value.binding : null,
+        ),
+      );
+
+  const admitMessage = Effect.fn("AgentRuntimeHost.admitMessage")(function* (
+    request: Extract<AgentHostRequest, { operation: "message.admit" }>,
+  ) {
+    if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
+    const { rootThreadId, messageId, requester } = request.message;
+    const binding = yield* runtimeBinding(rootThreadId);
+    if (!binding) return yield* unavailable(request.operation);
+    let source: import("@nodex/core-protocol").components["schemas"]["RuntimeMessageRequester"];
+    switch (requester.kind) {
+      case "member":
+      case "automation":
+        source = { kind: requester.kind };
+        break;
+      case "continuation":
+        source = { kind: "continuation", run_id: requester.runId };
+        break;
+      case "agent": {
+        const sender = requester.rootThreadId
+          ? (yield* runtimeBinding(requester.rootThreadId))?.session_id
+          : yield* core.workspace
+              .read({ kind: "thread", thread_id: requester.threadId }, undefined, null)
+              .pipe(
+                Effect.map((result) =>
+                  result.value.kind === "thread" ? result.value.thread.session_id : null,
+                ),
+              );
+        if (!sender) return yield* unavailable(request.operation);
+        source = { kind: "agent", session_id: sender, run_id: requester.runId };
+        break;
+      }
+    }
+    yield* core.workspace.apply(
+      {
+        operationId: createOperationId("session.runtime-message"),
+        intent: {
+          kind: "mutate_session",
+          session_id: binding.session_id,
+          intent: { kind: "admit_runtime_message", message_id: messageId, requester: source },
+        },
+      },
+      requester.kind === "member" && requester.proof !== undefined
+        ? { hostInvocation: requester.proof }
+        : undefined,
+    );
+    return {};
+  });
+
   const prepare = Effect.fn("AgentRuntimeHost.prepare")(function* (
     identity: AgentHostTurnIdentity,
   ) {
@@ -333,7 +413,6 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         : [];
     const decision =
       context.actorProjectId === null ? yield* readDecisionRun(core, sessionId) : null;
-    if (!decision && presentation) yield* presentation.observe(proof);
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
     // Record the verified opening input before the provider can act or request approval.
     const driver = driverOf(proof.providerInstanceId);
@@ -342,15 +421,34 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       threadId: proof.threadId,
       runId: proof.runId,
     });
-    yield* core.workspace.recordAgentRun({
-      session_id: sessionId,
-      run_id: proof.runId,
-      ...(inputMessage?.id === proof.userMessageId && inputMessage.createdBy === "user"
-        ? { message_id: proof.userMessageId }
-        : {}),
-      driver,
-      label: agentAttributionLabel(driver),
-    });
+    yield* core.workspace
+      .recordAgentRun({
+        session_id: sessionId,
+        run_id: proof.runId,
+        ...(inputMessage?.id === proof.userMessageId
+          ? {
+              message_id: proof.userMessageId,
+              ...(requiresRuntimeMessageAdmission(inputMessage)
+                ? {}
+                : { require_message_admission: false }),
+            }
+          : {}),
+        driver,
+        label: agentAttributionLabel(driver),
+      })
+      .pipe(
+        Effect.mapError((error) => {
+          const evidence = coreFailure(error);
+          if (evidence?.code === "conflict" && evidence.retryable)
+            return new AgentRuntimeHostError({
+              operation: "turn.prepare",
+              code: NODEX_FAILURE_CODES.messageAdmissionMissing,
+              message: "Couldn’t confirm who sent this message. Send it again.",
+            });
+          return error;
+        }),
+      );
+    if (!decision && presentation) yield* presentation.observe(proof);
     if (decision) return { instructions: decisionRunInstructions[decision.kind], sourceRoots: [] };
     const nativeId =
       identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
@@ -512,6 +610,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             ),
         };
       }
+      if (request.operation === "message.admit") return yield* admitMessage(request);
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
       if (request.operation === "desktop.skill-roots") {
         if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
@@ -676,18 +775,32 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       });
       return yield* options.execute(caller, request.tool, request.input as Record<string, unknown>);
     },
-    // A Host answer says what went wrong in its own words. Anything else stays in this log,
-    // and the Runtime is only told the request could not be served.
     (effect, request) =>
       effect.pipe(
         Effect.annotateLogs({ hostOperation: request.operation }),
-        Effect.catch((error) =>
-          error instanceof AgentRuntimeHostError
-            ? Effect.fail(error)
-            : Effect.logWarning("Agent Runtime host request failed", Cause.fail(error)).pipe(
-                Effect.andThen(Effect.fail(failed(request.operation))),
-              ),
-        ),
+        Effect.catch((error) => {
+          if (error instanceof AgentRuntimeHostError) return Effect.fail(error);
+          const evidence = coreFailure(error);
+          const presentation =
+            request.operation === "message.admit"
+              ? new AgentRuntimeHostError({
+                  operation: request.operation,
+                  message: "Nodex could not record who sent this message. Retry the send.",
+                })
+              : failed(request.operation);
+          return Effect.logWarning("Agent Runtime host request failed", Cause.fail(error)).pipe(
+            Effect.annotateLogs({
+              ...(evidence === undefined
+                ? {}
+                : {
+                    coreCode: evidence.code,
+                    coreMessage: evidence.message,
+                    coreRetryable: evidence.retryable,
+                  }),
+            }),
+            Effect.andThen(Effect.fail(presentation)),
+          );
+        }),
       ),
   );
   return execute;

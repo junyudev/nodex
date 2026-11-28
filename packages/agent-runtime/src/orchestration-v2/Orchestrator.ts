@@ -8,7 +8,11 @@ import {
   withoutRunRecovery,
   runRecoverySummary,
 } from "./RunRecovery.ts";
-import { isForegroundRunStatus, ProviderRequestKind } from "@nodex/runtime-contracts";
+import {
+  isForegroundRunStatus,
+  ProviderRequestKind,
+  requiresRuntimeMessageAdmission,
+} from "@nodex/runtime-contracts";
 import {
   conversationRewindContext,
   isExactConversationRewindTarget,
@@ -184,7 +188,13 @@ export class OrchestratorDispatchError extends Schema.TaggedError<OrchestratorDi
   "OrchestratorDispatchError",
   {
     reason: Schema.optional(
-      Schema.Literals(["not_found", "not_pending", "unsupported", "operation_conflict"]),
+      Schema.Literals([
+        "not_found",
+        "not_pending",
+        "unsupported",
+        "operation_conflict",
+        "member_admission_unavailable",
+      ]),
     ),
     commandId: CommandId,
     commandType: Schema.String,
@@ -881,6 +891,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const providerAdapters = yield* ProviderAdapterRegistryV2;
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
   const providerSessions = yield* ProviderSessionManagerV2;
+  const executionHost = yield* ExecutionHost.ExecutionHost;
   const providerSwitchService = yield* ProviderSwitchServiceV2;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const runtimePolicy = yield* RuntimePolicyV2;
@@ -5586,7 +5597,98 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ]);
     });
 
-  const dispatchMessage = (
+  // Every new message goes through this gate. Edits and queue promotion reuse the admitted ID.
+  // The plan is still private until the command's event and effect transaction commits.
+  const dispatchMessage = Effect.fn("orchestrationV2.admitMessage")(function* (
+    command: Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+    continuationRunId?: RunId,
+  ) {
+    yield* planMessageDispatch(command, events, effects);
+    const { admitMessage } = executionHost;
+    if (!admitMessage || !requiresRuntimeMessageAdmission(command)) return;
+    const pending = yield* Ref.get(events);
+    const projectsInput = pending.some(
+      (event) =>
+        event.type === "message.updated" &&
+        event.payload.role === "user" &&
+        event.threadId === command.threadId &&
+        event.payload.id === command.messageId,
+    );
+    if (!projectsInput) return;
+    if (command.continuationOfRunId !== undefined) {
+      // A refused steer can move an already-admitted message to a new Run. Its
+      // original requester still owns that message, even after the source call ends.
+      const { messages } = yield* projectionStore
+        .getThreadRecords(command.threadId, ["messages"], { messageIds: [command.messageId] })
+        .pipe(mapDispatchError(command));
+      if (
+        messages.some(
+          (message) =>
+            message.id === command.messageId &&
+            message.role === "user" &&
+            message.runId === command.continuationOfRunId,
+        )
+      )
+        return;
+    }
+    const unavailable = (cause: string) =>
+      new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        reason: "member_admission_unavailable",
+        cause,
+      });
+    const invocation = yield* ExecutionHost.MessageInvocation;
+    const senderThreadId = invocation.senderThreadId ?? command.senderThreadId;
+    // The dispatch plan has already proved that this Run belongs to the target Thread.
+    const inheritedRunId =
+      continuationRunId ??
+      (command.createdBy === "agent" && senderThreadId === undefined
+        ? command.continuationOfRunId
+        : undefined);
+    let requester: ExecutionHost.RuntimeMessageAdmission["requester"];
+    if (command.scheduledTaskId !== undefined) {
+      requester = { kind: "automation" };
+    } else if (inheritedRunId !== undefined) {
+      requester = { kind: "continuation", runId: inheritedRunId };
+    } else if (senderThreadId !== undefined || command.createdBy === "agent") {
+      if (senderThreadId === undefined)
+        return yield* unavailable("Nodex could not identify which Agent sent this message.");
+      const sender = yield* projectionStore
+        .getThreadShell(ThreadId.make(senderThreadId))
+        .pipe(mapDispatchError(command));
+      requester = {
+        kind: "agent",
+        threadId: senderThreadId,
+        ...(sender ? { rootThreadId: sender.lineage.rootThreadId } : {}),
+        runId:
+          invocation.senderRunId === undefined
+            ? (command.senderRunId ?? null)
+            : invocation.senderRunId,
+      };
+    } else {
+      requester = {
+        kind: "member",
+        ...(invocation.memberProof === undefined ? {} : { proof: invocation.memberProof }),
+      };
+    }
+    const created = pending.find(
+      (event) => event.type === "thread.created" && event.threadId === command.threadId,
+    );
+    const thread =
+      created?.type === "thread.created"
+        ? created.payload
+        : yield* projectionStore.getThread(command.threadId).pipe(mapDispatchError(command));
+    yield* admitMessage({
+      rootThreadId: thread.lineage.rootThreadId,
+      messageId: command.messageId,
+      requester,
+    }).pipe(Effect.mapError((error) => unavailable(error.message)));
+  });
+
+  const planMessageDispatch = (
     command: Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
@@ -13314,6 +13416,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       },
       events,
       effects,
+      command.compactRunId,
     );
     yield* Ref.update(events, (pending) =>
       pending.map((event) =>
@@ -14330,6 +14433,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ),
       Effect.catch((cause) =>
         Effect.gen(function* () {
+          // Core may be temporarily unavailable. The same submission can retry its admission.
+          if (
+            cause._tag === "OrchestratorDispatchError" &&
+            cause.reason === "member_admission_unavailable"
+          )
+            return yield* cause;
           const rejectedAt = yield* DateTime.now;
           const receipt = yield* eventSink
             .commitRejectedCommand({

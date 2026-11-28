@@ -126,11 +126,23 @@ impl HostBridge {
                 && constant_time_equal(pending.credential.as_bytes(), token.as_bytes())
         })
     }
-    pub(crate) fn authorizes_message(&self, token: &str, session: &str, message: &str) -> bool {
+    pub(crate) fn authorizes_message(
+        &self,
+        token: &str,
+        session: &str,
+        message: &str,
+        runtime_admission: bool,
+    ) -> bool {
         let Ok(inner) = self.inner.lock() else {
             return false;
         };
         Self::live_call(&inner, token).is_some_and(|pending| {
+            if runtime_admission && matches!(pending.call.operation, HostOperation::SessionRespond)
+            {
+                return answers_question(&pending.call.input)
+                    && text(&pending.call.input, &["sessionId"]) == Some(session)
+                    && text(&pending.call.input, &["submissionId"]) == Some(message);
+            }
             matches!(
                 pending.call.operation,
                 HostOperation::SessionMessage

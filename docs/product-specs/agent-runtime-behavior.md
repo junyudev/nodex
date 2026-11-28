@@ -377,6 +377,18 @@ and its original Run, or null when the source is a native Session. A stale card 
 answer a newer request. Session-origin Dismiss answers that request without stopping
 an unrelated foreground Run. Runtime questions use this Session interface. Optional replies carry a stable submission identity for each answer batch; retries replay that batch receipt, while later answers and revisions use another identity. Controls address the exact original request and Run without hydrating transcript bodies, including after the request is completed. Native nonblocking synchronous questions share the host-owned inactivity and snooze controls; blocking and optional message-capable questions do not auto-resolve.
 
+Every Member input to a Runtime chat is admitted in Core under its message identity before the
+Runtime commits the message or schedules a Run. This includes queued and steered input, question
+answers sent as messages, and messages sent by an Agent acting for a Member. Core records the
+requesting Member in the same transaction as admission. An Inbox handoff uses its frozen message
+identity for admission and for tracking which Run works on a Page in a borrowed chat. An
+Automation uses its Owner's standing grant. A new Host continuation names its source Run and
+inherits that Run's requester. A queued edit, reorder, or retry of an accepted submission keeps
+its existing identity and requester. A Run takes its requesting Member from its exact opening
+input, independently of who most recently spoke in the chat. Live responses that resume the existing Run keep that Run's
+requester. If skipping a question submits other answers or clears an existing answer, the
+resulting answer batch follows the same admission rule.
+
 Launch returns execution identity without transcript bodies. Controls acquire only
 execution metadata and observe control events. Activating a transcript reader opens
 one bounded history page and publishes canonical items into the keyed

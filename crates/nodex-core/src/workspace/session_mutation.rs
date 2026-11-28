@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use nodex_core_contracts::BoundModuleContext;
-use nodex_core_contracts::workspace::ProjectSessionIntent;
+use nodex_core_contracts::workspace::{ProjectSessionIntent, RuntimeMessageRequester};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
@@ -49,6 +49,7 @@ pub(super) fn mutate_session(
             | ProjectSessionIntent::SetPinned { .. }
             | ProjectSessionIntent::SetFallbackTitle { .. }
             | ProjectSessionIntent::RecordUserMessage { .. }
+            | ProjectSessionIntent::AdmitRuntimeMessage { .. }
             | ProjectSessionIntent::RecordAgentMessage { .. }
             | ProjectSessionIntent::LinkThread { .. }
             | ProjectSessionIntent::UnlinkThread { .. }
@@ -206,15 +207,25 @@ pub(super) fn mutate_session(
                 sqlite_now(connection)?,
             )
         }
-        ProjectSessionIntent::RecordUserMessage { message_id } => {
+        ProjectSessionIntent::RecordUserMessage { message_id }
+        | ProjectSessionIntent::AdmitRuntimeMessage { message_id, .. } => {
             let now = sqlite_now(connection)?;
-            let changed = accept_person_message(
-                connection,
-                session_id,
-                message_id,
-                &crate::infrastructure::actors::requesting_member(connection, context)?,
-                &now,
-            )?;
+            let changed = if let ProjectSessionIntent::AdmitRuntimeMessage { requester, .. } =
+                intent
+            {
+                if authority.archived {
+                    return Err(not_found("The Runtime chat is unavailable"));
+                }
+                admit_runtime_message(connection, context, session_id, message_id, requester, &now)?
+            } else {
+                accept_person_message(
+                    connection,
+                    session_id,
+                    message_id,
+                    &crate::infrastructure::actors::requesting_member(connection, context)?,
+                    &now,
+                )?
+            };
             finish_session_mutation(
                 connection,
                 library_id,
@@ -1217,25 +1228,83 @@ pub(super) fn validate_id(name: &str, value: &str) -> Result<(), StoreError> {
     )))
 }
 
+fn admit_runtime_message(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    session: &str,
+    message: &str,
+    requester: &RuntimeMessageRequester,
+    now: &str,
+) -> Result<bool, StoreError> {
+    let bound: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM project_session_execution_bindings WHERE session_id=?1)",
+        [session],
+        |row| row.get(0),
+    )?;
+    if !bound {
+        return Err(not_found("The Runtime chat is unavailable"));
+    }
+    let member = context
+        .actor
+        .member_id()
+        .or(context.authorizing_member_id.as_deref())
+        .ok_or_else(|| {
+            StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "The Runtime message requires its requesting Member",
+                false,
+            )
+        })?;
+    let evidence: Option<(String, bool)> = connection
+        .query_row(
+            "SELECT member_id, EXISTS (
+                 SELECT 1 FROM project_session_user_message_receipts receipt
+                 WHERE receipt.session_id=requester.session_id AND receipt.message_id=requester.message_id
+             )
+             FROM session_requesting_members requester WHERE session_id=?1 AND message_id=?2",
+            params![session, message],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let member = if let Some((accepted_by, has_receipt)) = &evidence {
+        if accepted_by != member
+            && !(matches!(requester, RuntimeMessageRequester::Member)
+                && context.principal.is_none()
+                && connection.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM inbox_handoffs handoff JOIN inbox_proposals proposal USING(proposal_id)
+                     WHERE proposal.dispatch_session_id=?1 AND handoff.message_id=?2)",
+                    params![session, message],
+                    |row| row.get::<_, bool>(0),
+                )?)
+        {
+            return Err(StoreError::new(
+                StoreErrorCode::Conflict,
+                "This message identity was accepted for another Member",
+                false,
+            ));
+        }
+        if *has_receipt {
+            return Ok(false);
+        }
+        // Earlier Inbox confirmations could leave requester evidence without the receipt.
+        // Complete acceptance for that Member even when the local Host drains the handoff.
+        accepted_by
+    } else {
+        member
+    };
+    if matches!(
+        requester,
+        RuntimeMessageRequester::Member | RuntimeMessageRequester::Automation
+    ) {
+        return accept_person_message(connection, session, message, member, now);
+    }
+    accept_message(connection, session, message, member, now, false)?;
+    adopt_run_session(connection, session, message)
+}
+
 /// A person's newly accepted message becomes the Session's activity, ends their snooze and
 /// reopens the chat for them. Receipts keep retries and restarts idempotent. Returns whether the
 /// Session changed.
-/// A frozen Inbox delivery can supply requester evidence before Runtime admits the message.
-pub(super) fn record_requesting_member(
-    connection: &Connection,
-    session_id: &str,
-    message_id: &str,
-    member: &str,
-    now: &str,
-) -> Result<(), StoreError> {
-    connection.execute(
-        "INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at)
-         VALUES(?1,?2,?3,?4) ON CONFLICT(session_id,message_id) DO NOTHING",
-        params![session_id, message_id, member, now],
-    )?;
-    Ok(())
-}
-
 pub(super) fn accept_person_message(
     connection: &Connection,
     session_id: &str,
@@ -1243,16 +1312,33 @@ pub(super) fn accept_person_message(
     member: &str,
     now: &str,
 ) -> Result<bool, StoreError> {
+    accept_message(connection, session_id, message_id, member, now, true)
+}
+
+fn accept_message(
+    connection: &Connection,
+    session_id: &str,
+    message_id: &str,
+    member: &str,
+    now: &str,
+    person_action: bool,
+) -> Result<bool, StoreError> {
     validate_id("message_id", message_id)?;
     let accepted = connection.execute(
         "INSERT INTO project_session_user_message_receipts(session_id, message_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
         params![session_id, message_id],
     )?;
+    connection.execute(
+        "INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4) ON CONFLICT(session_id,message_id) DO NOTHING",
+        params![session_id, message_id, member, now],
+    )?;
     if accepted == 0 {
         return Ok(false);
     }
-    record_requesting_member(connection, session_id, message_id, member, now)?;
     connection.execute("INSERT OR IGNORE INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=?1",[session_id])?;
+    if !person_action {
+        return Ok(false);
+    }
     let moved = super::session_order::raise_activity(connection, session_id, now)?;
     let cancelled = super::member_attention::cancel_snooze(connection, member, session_id)?;
     let reopened = super::member_attention::reopen(connection, member, session_id)?;

@@ -117,6 +117,14 @@ function knownCause(cause: unknown): KnownCause {
         return { message: stringField(cause, "message"), code: NODEX_FAILURE_CODES.claudeCodeUnavailable, retryable: false };
       }
       switch (tag) {
+        case "ExecutionHostError":
+          if (stringField(cause, "code") === NODEX_FAILURE_CODES.messageAdmissionMissing)
+            return {
+              message: stringField(cause, "message"),
+              code: NODEX_FAILURE_CODES.messageAdmissionMissing,
+              retryable: true,
+            };
+          break;
         case "ModelPolicyError":
           return { message: stringField(cause, "message"), code: stringField(cause, "code"), retryable: false };
         case "ProviderSetupError":

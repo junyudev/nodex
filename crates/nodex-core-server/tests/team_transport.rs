@@ -1817,7 +1817,8 @@ fn phone_stream_authentication_invocation_proofs_budgets_and_revocation() {
             json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
             "store_epoch":host.store_epoch,"operation_id":team_operation_id(),
             "intent":{"kind":"mutate_session","session_id":"phone-delivery-session",
-                "intent":{"kind":"record_user_message","message_id":"phone-message"}}}),
+                "intent":{"kind":"admit_runtime_message","message_id":"phone-message",
+                    "requester":{"kind":"member"}}}}),
             Some(proof),
         )
         .1;
@@ -1865,7 +1866,26 @@ fn phone_stream_authentication_invocation_proofs_budgets_and_revocation() {
     assert_eq!(forged["payload"]["code"], "unauthorized", "{forged}");
     let accepted = answer("phone-answer");
     assert_eq!(accepted["status"], "ok", "{accepted}");
+    let admit_answer = |id: &str| {
+        core.local_request_proof("/core/v1/modules/workspace/apply", binding,
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                "store_epoch":host.store_epoch,"operation_id":team_operation_id(),
+                "intent":{"kind":"mutate_session","session_id":"phone-delivery-session",
+                    "intent":{"kind":"admit_runtime_message","message_id":id,"requester":{"kind":"member"}}}}),
+            Some(proof)).1
+    };
+    let forged = admit_answer("forged-answer");
+    assert_eq!(forged["payload"]["code"], "unauthorized", "{forged}");
+    let accepted = admit_answer("phone-answer");
+    assert_eq!(accepted["status"], "ok", "{accepted}");
     assert_eq!(publish(json!({"t":"res","id":3,"ok":true,"r":{}})).1, true);
+    let (status, attributed) = core.local_request(
+        "/core/v1/agent-runs/record",
+        binding,
+        json!({"session_id":"phone-delivery-session","run_id":"answer-run","message_id":"phone-answer",
+            "driver":"codex","label":"Codex"}),
+    );
+    assert_eq!(status, 200, "{attributed}");
     assert!(phone.read().unwrap().into_text().unwrap().contains("res"));
 
     // The network cannot use either a local lease or an invocation proof to impersonate a Host.
@@ -3568,11 +3588,19 @@ impl HostedChats {
 fn a_member_records_only_their_live_hosted_question_answer() {
     let chats = HostedChats::start();
     let alice = &chats.alice;
-    chats.send(alice, "prompt");
-    chats.run("run", "prompt");
+    let session = "question-chat";
+    let created = chats.host_apply(
+        None,
+        json!({"kind":"create_agent_runtime_session","session_id":session,"project_id":null,
+            "title":"Question chat","initial_page_ids":[],"runtime_id":"runtime",
+            "runtime_thread_id":"thread:question-chat","launch_request_id":"question-chat:launch"}),
+    );
+    assert_eq!(created["status"], "ok", "{created}");
+    chats.send_in(alice, session, "prompt");
+    chats.run_in(session, "run", "prompt");
     let observed = chats.host_apply(
         None,
-        json!({"kind":"record_session_execution","session_id":"chat","expected_revision":0,
+        json!({"kind":"record_session_execution","session_id":session,"expected_revision":0,
             "observation":{"state":"waiting","runId":"run","runStartedAt":0,
                 "pendingRequestIds":["question","other-question"],
                 "pendingRequests":[{"id":"question","kind":"question","question":"Continue?","options":[]},
@@ -3581,9 +3609,9 @@ fn a_member_records_only_their_live_hosted_question_answer() {
                 "progressFingerprint":"question","progressSince":0}}),
     );
     assert_eq!(observed["status"], "ok", "{observed}");
-    let response = json!({"sessionId":"chat","runId":"run","requestId":"question",
+    let response = json!({"sessionId":session,"runId":"run","requestId":"question",
         "submissionId":"answer-submission","answers":{"choice":"Yes"}});
-    let delivery = json!({"kind":"record_chat_delivery","session_id":"chat",
+    let delivery = json!({"kind":"record_chat_delivery","session_id":session,
         "delivery_id":"answer-submission","body_hash":"0".repeat(64),"author":{"kind":"user"},
         "attachment_count":0,"question_answer_run_id":"run","question_answer_request_id":"question"});
 
@@ -3607,8 +3635,27 @@ fn a_member_records_only_their_live_hosted_question_answer() {
                 "{refused}"
             );
         }
-        let ordinary = chats.accept(proof, "answer-submission");
+        let ordinary = chats.accept_in(proof, session, "answer-submission");
         assert_eq!(ordinary["payload"]["code"], "unauthorized", "{ordinary}");
+        let mut ordinary_delivery = delivery.clone();
+        ordinary_delivery["question_answer_run_id"] = Value::Null;
+        ordinary_delivery["question_answer_request_id"] = Value::Null;
+        let refused = chats.host_apply(Some(proof), ordinary_delivery);
+        assert_eq!(refused["payload"]["code"], "unauthorized", "{refused}");
+
+        let admit = |message: &str| {
+            chats.host_apply(
+                Some(proof),
+                json!({"kind":"mutate_session","session_id":session,
+                    "intent":{"kind":"admit_runtime_message","message_id":message,
+                        "requester":{"kind":"member"}}}),
+            )
+        };
+        let refused = admit("another-submission");
+        assert_eq!(refused["payload"]["code"], "unauthorized", "{refused}");
+        let accepted = admit("answer-submission");
+        assert_eq!(accepted["status"], "ok", "{accepted}");
+
         let accepted = chats.host_apply(Some(proof), delivery);
         assert_eq!(accepted["status"], "ok", "{accepted}");
     });

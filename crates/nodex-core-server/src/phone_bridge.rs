@@ -210,8 +210,20 @@ impl PhoneBridge {
                 && answer.matches(&request.params)
         })
     }
-    pub(crate) fn authorizes_message(&self, token: &str, session: &str, message: &str) -> bool {
+    pub(crate) fn authorizes_message(
+        &self,
+        token: &str,
+        session: &str,
+        message: &str,
+        runtime_admission: bool,
+    ) -> bool {
         self.any_live_request(token, |request| {
+            if runtime_admission && request.method == "chat.respond" {
+                return answers_question(&request.params)
+                    && request.params.get("sessionId").and_then(|v| v.as_str()) == Some(session)
+                    && request.params.get("submissionId").and_then(|v| v.as_str())
+                        == Some(message);
+            }
             matches!(request.method.as_str(), "chat.send" | "chats.start")
                 && request.params.get("sessionId").and_then(|v| v.as_str()) == Some(session)
                 && request.params.get("messageId").and_then(|v| v.as_str()) == Some(message)

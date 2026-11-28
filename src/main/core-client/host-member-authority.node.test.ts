@@ -280,6 +280,60 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
       { agentAttribution: queuedAttribution },
     );
     const producerOperation = await observe(0, "question");
+    const answerMessage = createUuidV7();
+    const answerRun = createUuidV7();
+    const panelAnswerOperation = operation();
+    const recordAnswerRun = () =>
+      host.recordAgentRun({
+        session_id: sessionId,
+        run_id: answerRun,
+        message_id: answerMessage,
+        driver: "codex",
+        label: "Codex",
+      });
+    await expect(recordAnswerRun()).rejects.toMatchObject({
+      status: 409,
+      coreError: { code: "conflict", retryable: true },
+    });
+    await relay(
+      bob.client,
+      {
+        operation: "session_respond",
+        input: {
+          sessionId,
+          runId,
+          requestId: "question",
+          submissionId: answerMessage,
+          answers: { choice: "Yes" },
+        },
+      },
+      async (options) => {
+        const admit = (operationId: string, messageId: string) =>
+          host.workspaceApply(
+            {
+              operationId,
+              intent: {
+                kind: "mutate_session",
+                session_id: sessionId,
+                intent: {
+                  kind: "admit_runtime_message",
+                  message_id: messageId,
+                  requester: { kind: "member" },
+                },
+              },
+            },
+            options,
+          );
+        await expect(admit(operation(), createUuidV7())).rejects.toMatchObject({
+          coreError: { code: "unauthorized" },
+        });
+        await admit(panelAnswerOperation, answerMessage);
+        await recordAnswerRun();
+        // A lost reply can retry with another Core operation but the same Runtime input.
+        await admit(operation(), answerMessage);
+        await recordAnswerRun();
+      },
+    );
     const decisionSessionId = createUuidV7();
     const decisionOperation = operation();
     await host.workspaceApply({
@@ -327,6 +381,27 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
         on_behalf_of: bob.identity.member_id,
       });
       expect(actor(producerOperation)).toEqual({ type: "service", kind: "agent_runtime" });
+      expect(actor(panelAnswerOperation)).toEqual({
+        type: "member",
+        member_id: bob.identity.member_id,
+      });
+      expect(
+        database
+          .prepare(
+            "SELECT member_id, message_id FROM session_run_members WHERE session_id=? AND run_id=?",
+          )
+          .get(sessionId, answerRun),
+      ).toMatchObject({
+        member_id: bob.identity.member_id,
+        message_id: answerMessage,
+      });
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM session_requesting_members WHERE session_id=? AND message_id=?",
+          )
+          .get(sessionId, answerMessage),
+      ).toMatchObject({ count: 1 });
       expect(actor(decisionOperation)).toEqual({ type: "service", kind: "agent_runtime" });
       const decisionGrant = database
         .prepare(

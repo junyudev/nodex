@@ -25,6 +25,11 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import {
+  ExecutionHost,
+  ExecutionHostError,
+  MessageInvocation,
+} from "@nodex/provider-core/server/ExecutionHost";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
@@ -270,11 +275,80 @@ it.effect("keeps unanswered siblings pending and records each answer batch exact
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("cannot project an answer or its Run before the Host admits the submission", () => {
+  const suffix = "member-admission";
+  const submission = MessageId.make("question-submission");
+  let coreAvailable = false;
+  let acceptances = 0;
+  const hostLayer = Layer.succeed(ExecutionHost, {
+    threadCreationOwner: "host",
+    prepareTurn: () => Effect.succeed({}),
+    admitMessage: (input) =>
+      Effect.gen(function* () {
+        assert.deepEqual(input, {
+          rootThreadId: ThreadId.make(`question-test:${suffix}`),
+          messageId: submission,
+          requester: { kind: "member" },
+        });
+        if (!coreAvailable)
+          return yield* new ExecutionHostError({
+            operation: "message.admit",
+            message: "Nodex could not record who sent this message. Retry the send.",
+          });
+        acceptances++;
+      }),
+  });
+  return Effect.gen(function* () {
+    const f = yield* seedQuestion(suffix);
+    const command = {
+      type: "runtime-request.respond" as const,
+      commandId: CommandId.make("answer:member-admission"),
+      threadId: f.threadId,
+      requestId: f.requestId,
+      answers: { first: "Use the screenshot", second: "main" },
+      inboundMessage: { id: submission, text: "Use the screenshot, main" },
+    };
+    const dispatch = f.orchestrator.dispatch(command);
+    assert.match((yield* Effect.flip(dispatch)).message, /Retry the send/);
+    const waiting = yield* f.projections.getThreadProjection(f.threadId);
+    assert.deepEqual(waiting.messages, []);
+    assert.deepEqual(waiting.runs, []);
+    assert.equal(waiting.runtimeRequests[0]?.status, "pending");
+
+    coreAvailable = true;
+    const accepted = yield* dispatch;
+    const projected = yield* f.projections.getThreadProjection(f.threadId);
+    assert.deepEqual(
+      projected.messages.map((message) => message.id),
+      [submission],
+    );
+    assert.deepEqual(
+      projected.runs.map((run) => run.userMessageId),
+      [submission],
+    );
+    assert.equal(projected.runtimeRequests[0]?.status, "resolved");
+    assert.deepEqual(yield* dispatch, accepted);
+    assert.equal(acceptances, 1);
+  }).pipe(Effect.provide(layerTest.pipe(Layer.provide(hostLayer))));
+});
+
 it.effect.each(["queue_after_active", "start_immediately"] as const)(
   "retains a refused steer's pending receipt through %s until provider acceptance",
-  (type) =>
-    Effect.gen(function* () {
-      const fixture = yield* seedQuestion(`steer-fallback:${type}`, true);
+  (type) => {
+    let acceptances = 0;
+    const hostLayer = Layer.succeed(ExecutionHost, {
+      threadCreationOwner: "host",
+      prepareTurn: () => Effect.succeed({}),
+      admitMessage: ({ requester }) =>
+        Effect.sync(() => {
+          assert.deepEqual(requester, { kind: "member", proof: "steering-member" });
+          acceptances++;
+        }),
+    });
+    return Effect.gen(function* () {
+      const fixture = yield* seedQuestion(`steer-fallback:${type}`, true).pipe(
+        Effect.provideService(MessageInvocation, { memberProof: "steering-member" }),
+      );
       const initial = yield* fixture.projections.getThreadProjection(fixture.threadId);
       const original = initial.messages[0]!;
       yield* fixture.orchestrator.dispatch({
@@ -298,6 +372,7 @@ it.effect.each(["queue_after_active", "start_immediately"] as const)(
         type: "message.dispatch",
         commandId: CommandId.make(`fallback:${type}`),
         threadId: fixture.threadId,
+        continuationOfRunId: initial.runs[0]!.id,
         messageId: original.id,
         text: original.text,
         attachments: original.attachments,
@@ -327,7 +402,9 @@ it.effect.each(["queue_after_active", "start_immediately"] as const)(
       );
       assert.ok(item?.type === "user_message");
       assert.equal(item.delivery, "accepted");
-    }).pipe(Effect.provide(layerTest)),
+      assert.equal(acceptances, 1);
+    }).pipe(Effect.provide(layerTest.pipe(Layer.provide(hostLayer))));
+  },
 );
 
 it.effect("delivers only this batch's attachments and preserves earlier answer history", () =>

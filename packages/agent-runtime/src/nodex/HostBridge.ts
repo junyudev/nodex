@@ -36,7 +36,12 @@ const Result = Schema.Union([
     success: Schema.Literal(false),
     error: Schema.Struct({
       message: Schema.String,
-      code: Schema.optionalKey(Schema.Literal(NODEX_FAILURE_CODES.claudeCodeUnavailable)),
+      code: Schema.optionalKey(
+        Schema.Literals([
+          NODEX_FAILURE_CODES.claudeCodeUnavailable,
+          NODEX_FAILURE_CODES.messageAdmissionMissing,
+        ]),
+      ),
     }),
   }),
 ]);
@@ -611,6 +616,17 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
         next.delete(token);
         return next;
       }),
+    ...(configuration.host === undefined
+      ? {}
+      : {
+          admitMessage: (message: ExecutionHost.RuntimeMessageAdmission) =>
+            exchange({
+              type: "host.request",
+              operation: "message.admit",
+              identity: { runtimeId, runtimeGeneration },
+              message,
+            }).pipe(Effect.asVoid),
+        }),
     prepareTurn,
     registerNativeSession,
     prepareThread,
@@ -740,8 +756,10 @@ export const layerExecutionHost = Layer.effect(
   Effect.gen(function* () {
     const bridge = yield* HostBridge;
     return {
-      threadCreationOwner: "host" as const,
       runtimeGeneration: bridge.runtimeGeneration,
+      ...(bridge.admitMessage
+        ? { threadCreationOwner: "host" as const, admitMessage: bridge.admitMessage }
+        : {}),
       prepareTurn: bridge.prepareTurn,
       captureNativeToolCall: bridge.captureNativeToolCall,
       releaseNativeToolCall: bridge.releaseNativeToolCall,

@@ -2157,7 +2157,8 @@ export const layer: Layer.Layer<
                 const showFailureMessage =
                   startError instanceof ProviderAdapter.ProviderTurnOwnershipConflictError ||
                   failure.code === NODEX_FAILURE_CODES.modelNotApplied ||
-                  failure.code === NODEX_FAILURE_CODES.claudeCodeUnavailable;
+                  failure.code === NODEX_FAILURE_CODES.claudeCodeUnavailable ||
+                  failure.code === NODEX_FAILURE_CODES.messageAdmissionMissing;
                 yield* finalizeRootRun(
                   makeFailedTerminalEvent(
                     showFailureMessage

@@ -148,6 +148,7 @@ void import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-ap
       }),
     );
     const launchId = createUuidV7();
+    const messageId = createUuidV7();
     yield* Effect.promise(() =>
       scenario.client.workspaceApply({
         operationId: createUuidV7(),
@@ -156,7 +157,7 @@ void import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-ap
           launch_id: launchId,
           page_id: pageId,
           session_id: sessionId,
-          message_id: createUuidV7(),
+          message_id: messageId,
           brief: name,
           again: false,
           selection: { instanceId, model: "gpt-5.4", effort: null },
@@ -198,13 +199,13 @@ void import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-ap
     const sent = yield* runtime.request("thread.send", {
       threadId,
       commandId: `send:${threadId}`,
-      messageId: createUuidV7(),
+      messageId,
       text: "Keep working",
       attachments: [],
       mode: "auto",
       createdBy: "system",
     });
-    return { pageId, sessionId, threadId, runId: sent.runId, instanceId };
+    return { pageId, sessionId, threadId, messageId, runId: sent.runId, instanceId };
   });
   const application = yield* makeApplication({
     connect: Effect.succeed(runtime),
@@ -327,6 +328,25 @@ it.live(
       Effect.gen(function* () {
         const { scenario } = yield* acquireScenario;
         const f = yield* fixture(scenario);
+        const handshake = scenario.client.handshake;
+        const host = yield* makeHost(f.runtime, {
+          projectlessId: "profile:projectless",
+          providers: { codex: { driver: "codex", config: {} } },
+          execute: () => Effect.die("No application tools are used"),
+        }).pipe(
+          Effect.provideService(CoreModules, f.core as never),
+          Effect.provideService(CoreAuthority, {
+            identity: {
+              profileId: handshake.generation.profile_id,
+              libraryId: handshake.library_id,
+              storeEpoch: handshake.store_epoch,
+            },
+          } as never),
+          Effect.provideService(MainConfig, {} as never),
+        );
+        f.setHost((request) =>
+          request.operation === "message.admit" ? host(request) : Effect.succeed({}),
+        );
         const first = yield* f.start("Pause Alpha");
         yield* f.runtime.request("thread.execution", { threadId: first.threadId }).pipe(
           Effect.repeat({
@@ -344,7 +364,16 @@ it.live(
           }),
           Effect.timeout(STANDARD_TEST_TIMEOUT_MS),
         );
-        yield* f.runtime.request("thread.send", {
+        yield* Effect.promise(() =>
+          scenario.client.recordAgentRun({
+            session_id: first.sessionId,
+            run_id: first.runId,
+            message_id: first.messageId,
+            driver: "codex",
+            label: "Codex",
+          }),
+        );
+        const followup = {
           threadId: first.threadId,
           commandId: "continue:alpha",
           messageId: "continue:alpha",
@@ -352,7 +381,17 @@ it.live(
           attachments: [],
           mode: "queue",
           createdBy: "agent",
+        } as const;
+        const unattributed = yield* f.runtime.request("thread.send", followup).pipe(Effect.result);
+        expect(unattributed).toMatchObject({
+          _tag: "Failure",
+          failure: { message: "Nodex could not identify which Agent sent this message." },
         });
+        const continued = yield* f.runtime.request("thread.send", {
+          ...followup,
+          continuationOfRunId: first.runId,
+        });
+        expect(continued.delivery).toBe("queued");
         const scope = { kind: "project" as const, project_id: scenario.manifest.projectId };
         yield* Effect.promise(() =>
           scenario.client.workspaceApply({
@@ -406,6 +445,15 @@ it.live(
             );
           expect(detail.recentRuns).toHaveLength(chat === first ? 2 : 1);
         }
+        yield* Effect.promise(() =>
+          scenario.client.recordAgentRun({
+            session_id: first.sessionId,
+            run_id: continued.runId,
+            message_id: continued.messageId,
+            driver: "codex",
+            label: "Codex",
+          }),
+        );
         const attempts = yield* f.readRows(
           "SELECT run_id, COUNT(*) AS count FROM orchestration_v2_projection_run_attempts GROUP BY run_id",
         );

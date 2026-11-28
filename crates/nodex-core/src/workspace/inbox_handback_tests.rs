@@ -193,6 +193,7 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
             "worker",
             Some("run:test"),
             Some(&work.message_id),
+            true,
             "codex",
             "Codex",
         )

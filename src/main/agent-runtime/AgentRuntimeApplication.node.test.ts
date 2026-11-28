@@ -225,7 +225,6 @@ const setup = (
   >();
   const calls: Array<{ method: AgentRuntimeMethod; input: unknown }> = [];
   const applied: ProjectWorkspaceApplyInput[] = [];
-  const acceptedUserMessages: string[] = [];
   const receipt = new Map<string, string>();
   const actors: unknown[] = [];
   const hostInvocations: { kind: string; proof: string | null }[] = [];
@@ -560,14 +559,6 @@ const setup = (
       if (previous !== undefined && previous !== encoded)
         return yield* Effect.fail(new Error("Immutable request changed"));
       if (previous !== undefined) return {};
-      if (
-        input.intent.kind === "mutate_session" &&
-        input.intent.intent.kind === "record_user_message"
-      ) {
-        if (!acceptedUserMessages.includes(input.intent.intent.message_id))
-          acceptedUserMessages.push(input.intent.intent.message_id);
-        return {};
-      }
       if (
         input.intent.kind === "mutate_session" &&
         input.intent.intent.kind === "record_agent_message"
@@ -1584,7 +1575,6 @@ const setup = (
     imports,
     calls,
     applied,
-    acceptedUserMessages,
     actors,
     hostInvocations,
     order,
@@ -8346,48 +8336,7 @@ it.effect(
     }),
 );
 
-it.effect("only person-authored accepted Runtime sends confirm reminder cancellation", () =>
-  Effect.gen(function* () {
-    const f = setup();
-    const owner = yield* f.owner;
-    const started = yield* owner.launch(launch);
-    const accepted = () => f.acceptedUserMessages;
-    assert.deepEqual(accepted(), [launch.message.messageId]);
-    yield* owner.message({
-      sessionId: started.sessionId,
-      message: { messageId: "person", text: "Continue" },
-    });
-    assert.deepEqual(accepted(), [launch.message.messageId, "person"]);
-    yield* owner
-      .message({
-        sessionId: started.sessionId,
-        message: { messageId: "agent", text: "Agent update" },
-      })
-      .pipe(Effect.provideService(CoreApplicationAgent, agent));
-    assert.deepEqual(accepted(), [launch.message.messageId, "person"]);
-    yield* owner.sendMessage({
-      sessionId: started.sessionId,
-      mode: "queue",
-      message: { messageId: "inbox", text: "Confirmed send" },
-    });
-    assert.deepEqual(accepted(), [launch.message.messageId, "person", "inbox"]);
-    yield* owner.sendMessage({
-      sessionId: started.sessionId,
-      mode: "queue",
-      senderThreadId: "agent-source",
-      message: { messageId: "forwarded", text: "Forwarded update" },
-    });
-    assert.deepEqual(accepted(), [launch.message.messageId, "person", "inbox"]);
-    const sent = f.calls.find(
-      (call) =>
-        call.method === "thread.send" &&
-        (call.input as { messageId?: string }).messageId === "forwarded",
-    );
-    assert.equal((sent?.input as { createdBy?: string }).createdBy, "user");
-  }),
-);
-
-it.effect("automatic launches do not confirm a person-authored message", () =>
+it.effect("automatic launches carry the Automation identity and server authorship", () =>
   Effect.gen(function* () {
     const f = setup();
     const owner = yield* f.owner;
@@ -8407,7 +8356,6 @@ it.effect("automatic launches do not confirm a person-authored message", () =>
       creationSource: "server",
       scheduledTaskId: "automation:definition",
     });
-    assert.deepEqual(f.acceptedUserMessages, []);
   }),
 );
 
@@ -8598,12 +8546,11 @@ it.effect("aligns inactive bound roots with restored Session placement and archi
   }),
 );
 
-it.effect("host input is server-created and never confirms person activity, including replay", () =>
+it.effect("host input keeps server authorship and can replay its receipt", () =>
   Effect.gen(function* () {
     const f = setup();
     const owner = yield* f.owner;
     const started = yield* owner.launch({ ...launch, messageOrigin: "host" });
-    assert.deepEqual(f.acceptedUserMessages, []);
     const initial = [...f.commands.values()].find((command) => command.type === "message.dispatch");
     assert.deepInclude(initial, { createdBy: "system", creationSource: "server" });
     const host = {
@@ -8616,7 +8563,6 @@ it.effect("host input is server-created and never confirms person activity, incl
     yield* owner.sendMessage(host);
     const sent = f.calls.find((call) => call.method === "thread.send");
     assert.deepInclude(sent?.input, { createdBy: "system" });
-    assert.deepEqual(f.acceptedUserMessages, []);
     f.state.messageReplay = {
       delivery: "queued",
       messageId: "host-update",
@@ -8624,7 +8570,6 @@ it.effect("host input is server-created and never confirms person activity, incl
       turnItemId: null,
     } as never;
     yield* owner.sendMessage(host);
-    assert.deepEqual(f.acceptedUserMessages, []);
     assert.equal(
       (yield* owner.sendMessage(host).pipe(
         Effect.provideService(CoreApplicationAgent, {
@@ -9244,52 +9189,45 @@ it.effect(
     }),
 );
 
-it.effect(
-  "heartbeat provenance is independent of queued message authorship and reminder acceptance",
-  () =>
-    Effect.gen(function* () {
-      const f = setup();
-      const owner = yield* f.owner;
-      yield* owner.launch(launch);
-      yield* owner.queueMessage({
-        sessionId: launch.sessionId,
-        message: { messageId: "heartbeat", text: "Continue" },
-        automationExecution: {
-          automationId: "automation:definition",
-          runId: "automation:run",
-          leaseId: "automation:lease",
-          dispatchId: "automation:dispatch",
-        },
-      });
-      yield* owner.queueMessage({
-        sessionId: launch.sessionId,
-        message: { messageId: "person-followup", text: "Also review the tests" },
-      });
-      const admissions = [...f.commands.values()].filter(
-        (command) => command.type === "message.dispatch",
-      );
-      assert.equal(
-        admissions.find((command) => command.messageId === "heartbeat")?.createdBy,
-        "user",
-      );
-      assert.equal(
-        admissions.find((command) => command.messageId === "person-followup")?.createdBy,
-        "user",
-      );
-      assert.equal(
-        admissions.find((command) => command.messageId === "heartbeat")?.scheduledTaskId,
-        "automation:definition",
-      );
-      assert.equal(
-        admissions.find((command) => command.messageId === "person-followup")?.scheduledTaskId,
-        undefined,
-      );
-      assert.deepEqual(f.acceptedUserMessages, [
-        launch.message.messageId,
-        "heartbeat",
-        "person-followup",
-      ]);
-    }),
+it.effect("heartbeat provenance is independent of queued message authorship", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    yield* owner.launch(launch);
+    yield* owner.queueMessage({
+      sessionId: launch.sessionId,
+      message: { messageId: "heartbeat", text: "Continue" },
+      automationExecution: {
+        automationId: "automation:definition",
+        runId: "automation:run",
+        leaseId: "automation:lease",
+        dispatchId: "automation:dispatch",
+      },
+    });
+    yield* owner.queueMessage({
+      sessionId: launch.sessionId,
+      message: { messageId: "person-followup", text: "Also review the tests" },
+    });
+    const admissions = [...f.commands.values()].filter(
+      (command) => command.type === "message.dispatch",
+    );
+    assert.equal(
+      admissions.find((command) => command.messageId === "heartbeat")?.createdBy,
+      "user",
+    );
+    assert.equal(
+      admissions.find((command) => command.messageId === "person-followup")?.createdBy,
+      "user",
+    );
+    assert.equal(
+      admissions.find((command) => command.messageId === "heartbeat")?.scheduledTaskId,
+      "automation:definition",
+    );
+    assert.equal(
+      admissions.find((command) => command.messageId === "person-followup")?.scheduledTaskId,
+      undefined,
+    );
+  }),
 );
 
 it.effect(
@@ -9318,7 +9256,6 @@ it.effect(
         "automation:definition",
       );
       assert.equal(command?.type === "message.dispatch" && command.createdBy, "user");
-      assert.isTrue(f.acceptedUserMessages.includes("automation:message"));
     }),
 );
 

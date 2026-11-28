@@ -578,6 +578,8 @@ export interface AgentRuntimeOperations
   };
   readonly "thread.send": {
     readonly input: {
+      readonly messageInvocation?: RuntimeMessageInvocation;
+      readonly scheduledTaskId?: string;
       readonly threadId: string;
       readonly commandId: string;
       readonly messageId: string;
@@ -598,6 +600,8 @@ export interface AgentRuntimeOperations
       readonly createdBy: "user" | "agent" | "system";
       readonly senderThreadId?: string;
       readonly senderRunId?: string | null;
+      /** A Host continuation inherits the requester of this Run in the target Thread. */
+      readonly continuationOfRunId?: string;
       readonly modeLimit?: AgentDispatchModeLimit;
     };
     readonly output: {
@@ -724,7 +728,11 @@ export interface AgentRuntimeOperations
     readonly output: AgentThreadAuthority | null;
   };
   readonly "command.dispatch": {
-    readonly input: { readonly command: AgentCommand; readonly modeLimit?: AgentDispatchModeLimit };
+    readonly input: {
+      readonly command: AgentCommand;
+      readonly modeLimit?: AgentDispatchModeLimit;
+      readonly messageInvocation?: RuntimeMessageInvocation;
+    };
     readonly output: { readonly sequence: number };
   };
   /** Durable admission evidence, independent of a Thread's current execution/lifecycle state. */
@@ -738,6 +746,7 @@ export interface AgentRuntimeOperations
   };
   readonly "thread.compact": {
     readonly input: {
+      readonly messageInvocation?: RuntimeMessageInvocation;
       readonly threadId: string;
       readonly requestId: string;
       readonly failedRunId?: string;
@@ -1123,7 +1132,17 @@ export type AgentHostToolIdentity = AgentHostExecutionIdentity & {
   readonly mcpRequestId?: string | number;
   readonly requestMetadata?: Readonly<Record<string, unknown>>;
 };
+export type RuntimeMessageInvocation =
+  typeof import("@nodex/provider-core/server/ExecutionHost").RuntimeMessageInvocation.Type;
+
 export type AgentHostRequest =
+  | {
+      readonly type: "host.request";
+      readonly id: string;
+      readonly operation: "message.admit";
+      readonly identity: { readonly runtimeId: string; readonly runtimeGeneration: string };
+      readonly message: import("@nodex/provider-core/server/ExecutionHost").RuntimeMessageAdmission;
+    }
   | {
       readonly type: "host.request";
       readonly id: string;
@@ -1207,7 +1226,9 @@ export type AgentHostResult =
       readonly success: false;
       readonly error: {
         readonly message: string;
-        readonly code?: typeof NODEX_FAILURE_CODES.claudeCodeUnavailable;
+        readonly code?:
+          | typeof NODEX_FAILURE_CODES.claudeCodeUnavailable
+          | typeof NODEX_FAILURE_CODES.messageAdmissionMissing;
       };
     };
 
