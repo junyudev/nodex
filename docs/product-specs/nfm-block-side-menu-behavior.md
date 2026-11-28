@@ -1,7 +1,7 @@
 # Page Editor Block Side Menu Behavior
 
 Status: Active
-Last updated: 2026-10-31
+Last updated: 2026-11-29
 
 ## Purpose
 
@@ -99,6 +99,13 @@ The side menu surface is a compact dialog:
 - Submenu flyouts prefer the right side for `Turn into`, `Color`, `Move to`, `Send to chat`, and Code `Language`, with their shared Popover collision handling
 - Entry/exit motion: `200ms` opacity/scale, with reduced-motion fallback
 - Transform origin follows the resolved placement: right center on the left side, left center on the right side
+
+The hovered Block's gutter holds two quiet controls: Add block (`24px` square) and
+the drag handle (`18 × 24px`), each drawing a `16px` glyph in tertiary ink. The
+handle uses the compact two-by-three grip shared by every Nodex drag handle. Hover
+gives a control one soft foreground tint with a small corner radius and no
+transition; the drag handle keeps that tint, and reports itself expanded, while
+the menu it opened is showing.
 
 The hover-only drag handle remains attached to the same Block and DOM node from
 primary-button `pointerdown` until the click/cancel settles or the native drag
