@@ -684,6 +684,7 @@ pub(super) fn apply(
                         &event.semantic_key,
                     )
                 });
+                let mut intake_appends = super::inbox::github::IntakeAppends::default();
                 for event in ordered {
                     validate_event(connection, library, &source, partition, event)?;
                     if event.occurred_at_ms < previous.cursor.baseline_at_ms {
@@ -737,14 +738,20 @@ pub(super) fn apply(
                             && event.actor_class == SourceActorClass::Person
                         {
                             let captured = super::inbox::github::ingest(
-                                connection, library, context, epoch, operation, scope, &id, event,
-                                &at,
+                                scope,
+                                library,
+                                context,
+                                operation,
+                                &mut intake_appends,
+                                &id,
+                                event,
                             )?;
                             effects.absorb_workspace(captured);
                             effects.operation_kind = "inbox_source_ingest";
                         }
                     }
                 }
+                intake_appends.flush(scope, context, library, operation)?;
                 for evidence in quarantine {
                     let key = crate::document::sha256(json(evidence)?.as_bytes());
                     record_failure(
