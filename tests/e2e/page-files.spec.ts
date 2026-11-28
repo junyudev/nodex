@@ -5,14 +5,18 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test, type Locator } from "@playwright/test";
+import { fromMarkdown } from "mdast-util-from-markdown";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../scripts/scenarios/scenarios/board-dense";
-import { focusBoardDenseUi } from "../../scripts/scenarios/scenarios/board-dense-ui";
+import {
+  focusBoardDenseUi,
+  pageStageBodyEditor,
+} from "../../scripts/scenarios/scenarios/board-dense-ui";
 
 const PNG_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAYCAIAAAAUMWhjAAAAJElEQVR4nGMwTptJU8QwasGoBaMWjFowasGoBaMWjFowNCwAANObli6VLqqlAAAAAElFTkSuQmCC";
+const FILE_IMAGE_BLOCK = '[data-content-type="image"][data-url^="nodex://files/"]';
 const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
 
@@ -37,9 +41,7 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
       await application.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1440, height: 960 });
       });
-      await focusBoardDenseUi(page, manifest);
-
-      const stage = page.locator('[data-page-stage-surface="true"]:visible');
+      const stage = await focusBoardDenseUi(page, manifest);
       await expect(stage.getByRole("button", { name: "Add Page Files" })).toHaveCount(0);
       await chooseEmptyPageProperty(stage, "Tags");
       await expect(page.getByPlaceholder("Search options…")).toBeVisible();
@@ -79,8 +81,9 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
       const filesElement = await files.elementHandle();
       if (!filesElement) throw new Error("Files row is unavailable");
 
-      const editor = stage.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
-      await editor.click();
+      const editor = pageStageBodyEditor(stage);
+      await editor.getByText("Keep Board and Page views convergent.", { exact: true }).click();
+      await expect(editor).toBeFocused();
       await page.keyboard.type("x");
       await page.waitForTimeout(800);
       expect(await filesElement.evaluate((element) => element.isConnected)).toBe(true);
@@ -94,10 +97,7 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
 
       await writeTestClipboardImage(application, PNG_DATA_URL);
       await page.keyboard.press(primaryShortcut("v"));
-
-      const pastedImageBlock = stage
-        .locator('[data-content-type="image"][data-url^="nodex://files/"]')
-        .last();
+      const pastedImageBlock = editor.locator(FILE_IMAGE_BLOCK);
       const pastedImage = pastedImageBlock.locator("img");
       await expect(pastedImage).toBeVisible();
       await expect(pastedImage).toHaveAttribute("src", /^blob:/u);
@@ -107,7 +107,7 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
       await expect(tree.getByRole("treeitem")).toHaveCount(1);
       await expect(tree.getByRole("treeitem", { name: "In page" })).toHaveCount(0);
 
-      await pastedImageBlock.click();
+      await pastedImage.click();
       const imageToolbar = page.locator('[role="toolbar"]').filter({
         has: page.getByRole("button", { name: "Download image" }),
       });
@@ -115,7 +115,7 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
       const toolbarBounds = await imageToolbar.boundingBox();
       if (!toolbarBounds) throw new Error("Image toolbar has no visible geometry");
 
-      await pastedImageBlock.dblclick();
+      await pastedImage.dblclick();
       const imagePreview = page.getByRole("dialog", { name: "Image preview" });
       await expect(imagePreview).toBeVisible();
       const previewOwnsToolbarPoint = await page.evaluate(
@@ -152,26 +152,34 @@ test("copies portable File references by default and local blob paths when enabl
       await application.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1440, height: 960 });
       });
-      await focusBoardDenseUi(page, manifest);
-
-      const stage = page.locator('[data-page-stage-surface="true"]:visible');
-      const editor = stage.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
-      await editor.click();
+      const stage = await focusBoardDenseUi(page, manifest);
+      const editor = pageStageBodyEditor(stage);
+      const paragraph = editor.getByText("Keep Board and Page views convergent.", { exact: true });
+      await paragraph.click();
+      await expect(editor).toBeFocused();
       await writeTestClipboardImage(application, PNG_DATA_URL);
       await page.keyboard.press(primaryShortcut("v"));
 
-      const imageBlock = stage
-        .locator('[data-content-type="image"][data-url^="nodex://files/"]')
-        .last();
-      await expect(imageBlock.locator("img")).toBeVisible();
-      await imageBlock.click();
+      const imageBlock = editor.locator(FILE_IMAGE_BLOCK);
+      const image = imageBlock.locator("img");
+      await expect(image).toBeVisible();
+      const fileReference = await imageBlock.getAttribute("data-url");
+      if (!fileReference) throw new Error("Pasted image has no File reference");
+      const readCopiedImageSource = async (): Promise<string | undefined> => {
+        const text = await application.evaluate(({ clipboard }) => clipboard.readText());
+        const [block] = fromMarkdown(text).children;
+        const image = block?.type === "paragraph" ? block.children[0] : undefined;
+        return image?.type === "image" ? image.url : undefined;
+      };
+
+      await image.click();
       await page.keyboard.press(primaryShortcut("c"));
-      await expect
-        .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
-        .toMatch(/nodex:\/\/files\//u);
+      await expect.poll(readCopiedImageSource).toBe(fileReference);
 
       await openWorkbenchSettings(page);
-      const localPathSwitch = page.getByRole("switch", {
+      const settings = page.getByTestId("settings-route-shell");
+      await settings.getByRole("link", { name: "Editor", exact: true }).click();
+      const localPathSwitch = settings.getByRole("switch", {
         name: "Copy file references as local paths",
       });
       await expect(localPathSwitch).toHaveAttribute("aria-checked", "false");
@@ -179,28 +187,24 @@ test("copies portable File references by default and local blob paths when enabl
       await expect(localPathSwitch).toHaveAttribute("aria-checked", "true");
       await closeWorkbenchSettings(page);
 
-      await imageBlock.click();
+      await image.click();
       await page.keyboard.press(primaryShortcut("c"));
-      await expect
-        .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
-        .toMatch(/\/cache\/file-exports\/[0-9a-f]{64}\.png/u);
-      const resolvedText = await application.evaluate(({ clipboard }) => clipboard.readText());
-      const blobPath = resolvedText.match(
-        /(\/[^\n()<>]*\/cache\/file-exports\/[0-9a-f]{64}\.png)/u,
-      )?.[1];
-      if (!blobPath) throw new Error(`Copied text has no local Blob path: ${resolvedText}`);
-      expect(path.dirname(blobPath)).toBe(path.join(profile.nodexHome, "cache", "file-exports"));
-      expect((await stat(blobPath)).isFile()).toBe(true);
-      const bytes = await readFile(blobPath);
-      expect(path.basename(blobPath)).toBe(
-        `${createHash("sha256").update(bytes).digest("hex")}.png`,
-      );
+      const exportRoot = path.join(profile.nodexHome, "cache", "file-exports");
+      await expect(async () => {
+        const exportPath = await readCopiedImageSource();
+        if (!exportPath) throw new Error("Copied image has no local File path");
+        const hashDirectory = path.dirname(exportPath);
+        expect(path.dirname(hashDirectory)).toBe(exportRoot);
+        expect((await stat(exportPath)).isFile()).toBe(true);
+        const bytes = await readFile(exportPath);
+        expect(path.basename(hashDirectory)).toBe(createHash("sha256").update(bytes).digest("hex"));
+        expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+      }).toPass();
 
-      const imageBlocks = stage.locator('[data-content-type="image"][data-url^="nodex://files/"]');
-      const imageBlockCount = await imageBlocks.count();
-      await editor.click();
+      await editor.getByRole("heading", { name: "Rendering contract", exact: true }).click();
+      await expect(editor).toBeFocused();
       await page.keyboard.press(primaryShortcut("v"));
-      await expect(imageBlocks).toHaveCount(imageBlockCount + 1);
+      await expect(imageBlock).toHaveCount(2);
     },
   );
 });
@@ -217,7 +221,7 @@ test("imports native files and folders with canonical identities", async () => {
       await application.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1440, height: 960 });
       });
-      await focusBoardDenseUi(page, manifest);
+      const stage = await focusBoardDenseUi(page, manifest);
 
       const fixturePaths = [
         path.join(profile.runRoot, "picked-data.json"),
@@ -247,7 +251,6 @@ test("imports native files and folders with canonical identities", async () => {
         });
       }, fixturePaths);
 
-      const stage = page.locator('[data-page-stage-surface="true"]:visible');
       await chooseEmptyPageProperty(stage, "Files");
       const dialog = page.getByRole("dialog", { name: "Page files" });
       await expect(dialog).toBeVisible();

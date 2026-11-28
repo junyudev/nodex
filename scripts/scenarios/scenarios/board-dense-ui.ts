@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
 import { openProjectBoard } from "../harness/project-board-ui";
 
 import { WORKFLOW_STATUS_ORDER } from "../../../src/shared/workflow-status";
@@ -11,6 +11,10 @@ export interface BoardDenseUiObservation {
   readonly pageStageVisible: boolean;
   readonly editorVisible: boolean;
 }
+
+/** A Page Stage's body can contain independently editable Page references. */
+export const pageStageBodyEditor = (stage: Locator): Locator =>
+  stage.locator('.ProseMirror[contenteditable="true"]:not(.ProseMirror *)');
 
 export const focusBoardDenseProjectHome = async (
   page: Page,
@@ -30,25 +34,24 @@ export const focusBoardDenseProjectHome = async (
   await primaryCard.waitFor();
 };
 
-export const focusBoardDenseUi = async (page: Page, manifest: ScenarioManifest): Promise<void> => {
-  const pageTab = page.getByRole("tab", { name: "Unify Database View rendering" });
-  const pageSurface = page.locator('[data-page-stage-surface="true"]:visible');
-  if (
-    (await pageTab.isVisible().catch(() => false)) &&
-    (await pageSurface.isVisible().catch(() => false))
-  ) {
-    return;
-  }
-  await focusBoardDenseProjectHome(page, manifest);
+export const focusBoardDenseUi = async (
+  page: Page,
+  manifest: ScenarioManifest,
+): Promise<Locator> => {
   const primaryPageId = manifest.pageIdsByKey[BOARD_DENSE_PRIMARY_PAGE_KEY];
   if (!primaryPageId) throw new Error("board/dense manifest has no primary Page");
-  const primaryCard = page.locator(`[data-board-uuid-v7="${primaryPageId}"]`);
-  await primaryCard
-    .locator('[data-card-context-menu-trigger="true"]')
-    .evaluate((element) => (element as HTMLElement).click());
-  await pageTab.waitFor();
-  await pageSurface.waitFor();
-  await page.locator('.nfm-editor .ProseMirror[contenteditable="true"]:visible').waitFor();
+  const pageTab = page.getByRole("tab", { name: "Unify Database View rendering", exact: true });
+  const stage = page.locator(`[data-page-stage-page-id="${primaryPageId}"]:visible`);
+  if (!(await pageTab.isVisible()) || !(await stage.isVisible())) {
+    await focusBoardDenseProjectHome(page, manifest);
+    const primaryCard = page.locator(`[data-board-uuid-v7="${primaryPageId}"]`);
+    await primaryCard
+      .locator('[data-card-context-menu-trigger="true"]')
+      .evaluate((element) => (element as HTMLElement).click());
+    await pageTab.waitFor();
+  }
+  await pageStageBodyEditor(stage).waitFor();
+  return stage;
 };
 
 export const observeBoardDenseUi = async (page: Page): Promise<BoardDenseUiObservation> => {
@@ -66,12 +69,11 @@ export const observeBoardDenseUi = async (page: Page): Promise<BoardDenseUiObser
     ),
   );
   const cardsByStatus = Object.fromEntries(entries);
+  const stage = page.locator('[data-page-stage-surface="true"]:visible');
   return {
     totalCards: Object.values(cardsByStatus).reduce((total, count) => total + count, 0),
     cardsByStatus,
-    pageStageVisible: await page.locator('[data-page-stage-surface="true"]:visible').isVisible(),
-    editorVisible: await page
-      .locator('.nfm-editor .ProseMirror[contenteditable="true"]:visible')
-      .isVisible(),
+    pageStageVisible: await stage.isVisible(),
+    editorVisible: await pageStageBodyEditor(stage).isVisible(),
   };
 };
