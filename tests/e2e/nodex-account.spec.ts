@@ -340,7 +340,7 @@ test("usage meter choices follow the Profile across windows and restart", async 
       expect(await first.evaluate(() => window.api!.invoke("window:new", {}))).toBe(true);
     });
     await openWorkbenchSettings(second);
-    await second.getByRole("link", { name: "General", exact: true }).click();
+    await second.getByRole("link", { name: "Appearance", exact: true }).click();
     const section = second.getByRole("region", { name: "Usage meters", exact: true });
     const codex = section.getByRole("switch", { name: "Codex", exact: true });
     await expect(codex).toBeChecked();
@@ -352,7 +352,7 @@ test("usage meter choices follow the Profile across windows and restart", async 
     if (artifacts) {
       await mkdir(artifacts, { recursive: true });
       await section.scrollIntoViewIfNeeded();
-      await second.screenshot({ path: path.join(artifacts, "usage-meters-general.png") });
+      await second.screenshot({ path: path.join(artifacts, "usage-meters-appearance.png") });
       await first.screenshot({ path: path.join(artifacts, "usage-meters-hidden-rail.png") });
     }
     const credit = section.getByRole("switch", { name: "Nodex credits", exact: true });
@@ -361,7 +361,7 @@ test("usage meter choices follow the Profile across windows and restart", async 
     await expect(rail.locator("[data-nodex-credit-meter]")).toHaveCount(0);
     first = await harness.restart();
     await openWorkbenchSettings(first);
-    await first.getByRole("link", { name: "General", exact: true }).click();
+    await first.getByRole("link", { name: "Appearance", exact: true }).click();
     const restored = first.getByRole("region", { name: "Usage meters", exact: true });
     await expect(restored.getByRole("switch", { name: "Claude", exact: true })).toBeChecked();
     await expect(restored.getByRole("switch", { name: "Codex", exact: true })).not.toBeChecked();
@@ -374,7 +374,7 @@ test("usage meter choices follow the Profile across windows and restart", async 
     await expect
       .poll(
         async () => {
-          await first.getByRole("link", { name: "General", exact: true }).click();
+          await first.getByRole("link", { name: "Appearance", exact: true }).click();
           await openNodexAccount(first);
           return first.getByLabel("Remaining credits").textContent();
         },
