@@ -14,6 +14,7 @@ export {
 } from "./codex-image-pointers";
 export {
   CONTENT_IMAGE_GC_TIME_MS,
+  readContentAudio,
   readContentImage,
   requiresContentImageRead,
 } from "./content-image-read";
@@ -80,6 +81,7 @@ export {
   type PlaygroundTool,
   type ResolvedComposerImageInput,
 } from "./types";
+export { type ContentAudioSource, useContentAudioSource } from "./use-content-audio-source";
 export { type ContentImage, useContentImage } from "./use-content-image";
 export {
   type ResolvedImageAsset,

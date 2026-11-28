@@ -22,7 +22,7 @@ import {
   type HostedChatAttachmentChunk,
 } from "../../shared/schemas/agent-runtime-api";
 import { makeHostedChatInput } from "./hosted-chat-input";
-import { readHostedChatImage } from "./hosted-chat-attachment";
+import { readHostedChatAttachment } from "./hosted-chat-attachment";
 import { makeRemoteHostCall, RemoteHostError } from "./remote-host-call";
 
 /** A team Desktop requests its execution owner through this Space's authenticated Core, never a local Runtime. */
@@ -170,16 +170,16 @@ export const live = Layer.effectDiscard(
         catch: (cause) =>
           new RemoteHostError({ message: cause instanceof Error ? cause.message : String(cause) }),
       });
-    // Two pictures at a time leave the Member's host calls for the transcript around them.
-    const pictures = yield* Semaphore.make(2);
+    // Two attachments at a time leave the Member's host calls for the transcript around them.
+    const attachments = yield* Semaphore.make(2);
     yield* ipc.handleQuery("agent-runtime:session:attachment", (_, input) =>
       hosted(() => AgentRuntimeAttachmentSchema.parse(input)).pipe(
         Effect.flatMap((reference) =>
-          readHostedChatImage(reference, (range) =>
+          readHostedChatAttachment(reference, (range) =>
             callHost<HostedChatAttachmentChunk>("session_attachment", range),
           ),
         ),
-        pictures.withPermit,
+        attachments.withPermit,
       ),
     );
     // A Member starts a new chat on the host, which makes them its owner; their own unstarted

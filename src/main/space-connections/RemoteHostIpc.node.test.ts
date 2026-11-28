@@ -492,7 +492,7 @@ describe("RemoteHostIpc", () => {
     ),
   );
 
-  it.effect("shows a hosted chat's picture on a team desktop, read whole from its Space host", () =>
+  it.effect("reads a hosted chat's picture and tool-result audio whole from its Space host", () =>
     Effect.gen(function* () {
       const home = yield* Effect.acquireRelease(
         Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-hosted-picture-"))),
@@ -503,6 +503,7 @@ describe("RemoteHostIpc", () => {
         Buffer.from("89504e470d0a1a0a", "hex"),
         Buffer.alloc(HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES + 4096, 7),
       ]);
+      const audio = Buffer.alloc(HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES + 4, 8);
       const recorded = {
         photo: { bytes: photo, mimeType: "image/png" },
         page: { bytes: Buffer.from("<html><script>alert(1)</script>"), mimeType: "image/png" },
@@ -529,14 +530,23 @@ describe("RemoteHostIpc", () => {
             ),
         } as unknown as ProjectWorkspace["Service"]),
         Effect.provideService(AgentRuntimeApplication, {
-          attachment: ({ attachmentId }: { attachmentId: keyof typeof recorded }) =>
-            Effect.succeed({
-              path: join(home, attachmentId),
-              attachment: {
-                name: `${attachmentId}.png`,
-                mimeType: recorded[attachmentId].mimeType,
-              },
-            }),
+          itemContent: () => Effect.succeed({ contentVersion: "version" }),
+          attachment: ({
+            attachmentId,
+          }: {
+            attachmentId: keyof typeof recorded | "tool-result:1";
+          }) =>
+            Effect.succeed(
+              attachmentId === "tool-result:1"
+                ? { dataUrl: `data:audio/ogg;base64,${audio.toString("base64")}` }
+                : {
+                    path: join(home, attachmentId),
+                    attachment: {
+                      name: `${attachmentId}.png`,
+                      mimeType: recorded[attachmentId].mimeType,
+                    },
+                  },
+            ),
         } as unknown as AgentRuntimeApplication["Service"]),
       );
       const host = { attachments } as unknown as HeadlessHost["Service"];
@@ -605,6 +615,15 @@ describe("RemoteHostIpc", () => {
       // A picture larger than a chat can hold is not read past its first range.
       expect(yield* read("poster")).toBeNull();
       expect(calls).toHaveLength(2);
+
+      calls.length = 0;
+      expect(yield* read("tool-result:1")).toEqual({
+        dataUrl: `data:audio/ogg;base64,${audio.toString("base64")}`,
+      });
+      expect(calls.map(({ input }) => (input as { offset: number }).offset)).toEqual([
+        0,
+        HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES,
+      ]);
     }).pipe(Effect.scoped),
   );
 

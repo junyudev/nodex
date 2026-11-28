@@ -13,8 +13,15 @@ import {
   toolOutputImages,
   toolOutputIndicatesFailure,
 } from "@nodex/runtime-shared/toolOutput";
+import * as Predicate from "effect/Predicate";
+import { toolResultAudioMimeType } from "../toolResultAudio.ts";
 import { MAX_STORED_COMMAND_OUTPUT_BYTES } from "./commandOutputStorage.ts";
-import { withToolResultImages } from "./toolResultImages.ts";
+import {
+  isInlineToolResultAudio,
+  servedToolResultAudio,
+  toolResultOutputBlocks,
+  withToolResultImages,
+} from "./toolResultMedia.ts";
 
 const MAX_DETAIL_STRING_BYTES = 32_768;
 const MAX_DYNAMIC_VALUE_BYTES = 16_384;
@@ -122,14 +129,31 @@ function projectMcpCallForWire(call: McpToolCall): McpToolCall {
   };
 }
 
-function isMcpJsonRecord(value: McpJson): value is { readonly [key: string]: McpJson } {
+function isMcpJsonRecord(value: unknown): value is { readonly [key: string]: McpJson } {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Keep original content positions, so an image descriptor resolves the exact recorded block. */
-function boundIndexedToolContent(blocks: ReadonlyArray<McpJson>): McpJson[] {
+/** Keep original content positions, so a media attachment resolves the recorded block. */
+function boundIndexedToolContent<Block>(blocks: ReadonlyArray<Block>): Array<Block | McpJson> {
   let remainingBytes = MAX_ON_DEMAND_BYTES;
-  const content = blocks.slice(0, 1024).map((block): McpJson => {
+  const content = blocks.slice(0, 1024).map((block): Block | McpJson => {
+    if (isInlineToolResultAudio(block)) {
+      const audio = servedToolResultAudio(block);
+      const availability: Record<string, McpJson> = audio ? { attachmentAvailable: true } : {};
+      if (block.type === "inputAudio") return { type: "inputAudio", audioUrl: "", ...availability };
+      // Audio always stays typed, even after text has used up the detail budget.
+      const marker = {
+        type: "audio",
+        data: "",
+        mimeType: audio?.mimeType ?? toolResultAudioMimeType(block.mimeType) ?? "",
+        ...availability,
+      };
+      if (!isMcpJsonRecord(block) || !Predicate.isObject(block.annotations)) return marker;
+      const bytes = Buffer.byteLength(JSON.stringify(block.annotations), "utf8");
+      if (bytes > Math.min(remainingBytes, MAX_DYNAMIC_VALUE_BYTES)) return marker;
+      remainingBytes -= bytes;
+      return { ...marker, annotations: block.annotations };
+    }
     if (
       isMcpJsonRecord(block) &&
       block.type === "inputImage" &&
@@ -138,7 +162,10 @@ function boundIndexedToolContent(blocks: ReadonlyArray<McpJson>): McpJson[] {
     )
       return { type: "inputImage" };
     if (isMcpJsonRecord(block) && block.type === "image") {
-      const { data: _data, ...marker } = block;
+      const { data: _data, ...marker } =
+        isMcpJsonRecord(block.source) && block.source.type === "base64"
+          ? (omitToolOutputImageData(block) as typeof block)
+          : block;
       const size = Buffer.byteLength(JSON.stringify(marker), "utf8");
       if (size > Math.min(remainingBytes, MAX_DYNAMIC_VALUE_BYTES))
         return {
@@ -150,7 +177,7 @@ function boundIndexedToolContent(blocks: ReadonlyArray<McpJson>): McpJson[] {
       remainingBytes -= size;
       return marker;
     }
-    const serialized = JSON.stringify(block);
+    const serialized = JSON.stringify(block) ?? String(block);
     const size = Buffer.byteLength(serialized, "utf8");
     if (size <= remainingBytes) {
       remainingBytes -= size;
@@ -297,11 +324,29 @@ function boundDynamicValue(value: unknown): unknown {
 }
 
 /**
- * A tool output for a detail read, without image bytes. When the rest is too
- * large to send whole, its truncated text still comes with the image markers,
- * in order, so clients can load each image by index.
+ * A tool output for a detail read, without media bytes. Attachment-backed audio
+ * stays at its original index even when the surrounding text must be truncated.
  */
 function boundToolOutput(output: unknown): unknown {
+  // A failed MCP call can repeat its typed result under the diagnostic's result field.
+  if (
+    isMcpJsonRecord(output) &&
+    typeof output.error === "string" &&
+    toolResultOutputBlocks(output.result).some(isInlineToolResultAudio)
+  ) {
+    return { error: truncateDetail(output.error), result: boundToolOutput(output.result) };
+  }
+  if (toolResultOutputBlocks(output).some(isInlineToolResultAudio)) {
+    if (Array.isArray(output)) return boundIndexedToolContent(output);
+    if (Predicate.isObject(output) && Array.isArray(output.content)) {
+      const { content, ...metadata } = output;
+      return {
+        ...(summarizeDynamicValue(metadata) as Record<string, unknown>),
+        content: boundIndexedToolContent(content),
+      };
+    }
+    return boundIndexedToolContent([output])[0];
+  }
   if (Array.isArray(output) && output.some((block) => block?.type === "inputImage")) {
     return boundIndexedToolContent(output);
   }
@@ -320,7 +365,7 @@ function boundToolOutput(output: unknown): unknown {
 /**
  * Projects one item for an on-demand detail read: keeps the input and output
  * the timeline withholds, bounded so a huge result cannot stall the socket.
- * Image bytes are left out; clients load them as `tool-output-image` assets.
+ * Media bytes are left out. Clients load them through the item's attachments.
  */
 export function projectTurnItemForDetail(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
   switch (item.type) {

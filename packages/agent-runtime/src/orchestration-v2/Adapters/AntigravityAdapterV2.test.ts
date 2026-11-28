@@ -23,7 +23,7 @@ import { DEFAULT_MAX_BYTES } from "@nodex/runtime-shared/BoundedQueue";
 import { resolveSelfInvocation } from "@nodex/runtime-shared/nodeRuntime";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { keepViewedImage } from "../viewedImageCopy.ts";
-import { toolResultImages, toolResultPicture } from "../toolResultImages.ts";
+import { toolResultImages, toolResultMediaDataUrl } from "../toolResultMedia.ts";
 import { htmlRenderFromToolItem } from "@nodex/runtime-shared/toolOutput";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -2214,7 +2214,7 @@ describe("AntigravityAdapterV2 subagent reads", () => {
         { attachmentId: "tool-result:1", mimeType: "image/png" },
       ]);
       assert.equal(
-        toolResultPicture(screenshot, "tool-result:1"),
+        toolResultMediaDataUrl(screenshot, "tool-result:1"),
         `data:image/png;base64,${picture.data}`,
       );
       const captured = tool("screen-frames");
@@ -2226,7 +2226,7 @@ describe("AntigravityAdapterV2 subagent reads", () => {
       ]);
       for (const [index, frame] of frames.slice(0, 2).entries()) {
         assert.isTrue(
-          toolResultPicture(captured, `tool-result:${index + 1}`) ===
+          toolResultMediaDataUrl(captured, `tool-result:${index + 1}`) ===
             `data:image/png;base64,${frame.data}`,
         );
       }

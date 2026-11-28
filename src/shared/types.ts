@@ -3380,13 +3380,24 @@ export interface CodexMcpToolCallAnnotations {
   lastModified?: string;
 }
 
+type ProtocolDynamicToolOutputContent = NonNullable<
+  ProtocolDynamicToolCallItem["contentItems"]
+>[number];
+
+/** A transcript audio block can defer its bytes to the owning Runtime attachment. */
+export type CodexDynamicToolOutputContent =
+  | Exclude<ProtocolDynamicToolOutputContent, { type: "inputAudio" }>
+  | (Extract<ProtocolDynamicToolOutputContent, { type: "inputAudio" }> & {
+      readonly source?: string;
+    });
+
 export interface CodexDynamicToolCallView {
   callId: ProtocolDynamicToolCallItem["id"];
   namespace: ProtocolDynamicToolCallItem["namespace"];
   tool: ProtocolDynamicToolCallItem["tool"];
   arguments: ProtocolDynamicToolCallItem["arguments"];
   status?: ProtocolDynamicToolCallItem["status"];
-  contentItems?: ProtocolDynamicToolCallItem["contentItems"];
+  contentItems?: CodexDynamicToolOutputContent[] | null;
   success?: ProtocolDynamicToolCallItem["success"];
   durationMs?: ProtocolDynamicToolCallItem["durationMs"];
   displayTitle?: string | null;
@@ -3469,6 +3480,8 @@ export type CodexMcpToolCallContentBlock =
       type: "audio";
       data: string;
       mimeType: string;
+      /** Scoped Runtime attachment for tool-result audio. */
+      source?: string;
       annotations?: CodexMcpToolCallAnnotations;
     }
   | {

@@ -5,6 +5,7 @@ import { lstat, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseToolResultAudioDataUrl } from "@nodex/agent-runtime/tool-result-audio";
 import { parseBase64DataUrl } from "@nodex/agent-runtime/image-mime";
 import { resolveMarkdownImagePath } from "@nodex/agent-runtime/markdown-image-paths";
 import { localMarkdownImagePaths } from "@nodex/agent-runtime/markdown-images";
@@ -24,7 +25,10 @@ import { CodexGateway } from "../main/codex-runtime/CodexGateway";
 import { openRegularFile } from "../main/platform/node/open-regular-file";
 import { ProjectWorkspace } from "../main/project-application/ProjectWorkspace";
 import type { ProjectSession } from "../shared/types";
-import { parseReplyPictureAttachmentId } from "../shared/agent-runtime-attachments";
+import {
+  isAgentRuntimeToolResultAttachmentId,
+  parseReplyPictureAttachmentId,
+} from "../shared/agent-runtime-attachments";
 import {
   RENDERABLE_IMAGE_SIGNATURE_BYTES,
   renderableImageType,
@@ -52,10 +56,9 @@ export class ChatAttachmentRefusal extends Schema.TaggedError<ChatAttachmentRefu
 const missing = () => new ChatAttachmentRefusal({ reason: "missing" });
 const changed = () => new ChatAttachmentRefusal({ reason: "changed" });
 
-/** Images a tool returned inline are decoded once and kept briefly for the ranges that follow. */
+/** Media a tool returned inline are decoded once and kept briefly for the ranges that follow. */
 const INLINE_CACHE_BYTES = 24 * 1024 * 1024;
-const TOOL_RESULT = /^tool-result:(?:0|[1-9]\d*)$/u;
-interface InlineImage {
+interface InlineAttachment {
   readonly bytes: Buffer;
   readonly mimeType: string | null;
   /** The picture these bytes are, for an entry later ranges find by version alone. */
@@ -147,9 +150,9 @@ export const make = Effect.gen(function* () {
         }
       : null;
   // Keyed by version, which names the attachment and its item's content; most recently read last.
-  const inline = new Map<string, InlineImage>();
+  const inline = new Map<string, InlineAttachment>();
   let inlineBytes = 0;
-  const remember = (key: string, entry: InlineImage) => {
+  const remember = (key: string, entry: InlineAttachment) => {
     inline.set(key, entry);
     inlineBytes += entry.bytes.length;
     for (const [oldest, value] of inline) {
@@ -166,7 +169,7 @@ export const make = Effect.gen(function* () {
     return entry;
   };
 
-  const chunk = (entry: InlineImage, offset: number, length: number) => {
+  const chunk = (entry: InlineAttachment, offset: number, length: number) => {
     const start = Math.min(offset, entry.bytes.length);
     return {
       base64: entry.bytes.subarray(start, start + length).toString("base64"),
@@ -360,7 +363,7 @@ export const make = Effect.gen(function* () {
     const { sessionId, sourceThreadId, itemId, attachmentId } = attachment;
     const identity = [sessionId, input.threadId ?? "", sourceThreadId ?? "", itemId, attachmentId];
 
-    if (TOOL_RESULT.test(attachmentId)) {
+    if (isAgentRuntimeToolResultAttachmentId(attachmentId)) {
       // The item's content version covers its inline bytes without carrying them on every range.
       const itemVersion = runtime
         .itemContent({
@@ -383,11 +386,15 @@ export const make = Effect.gen(function* () {
       let entry = recall(version);
       if (!entry) {
         const resource = yield* runtime.attachment(attachment).pipe(Effect.mapError(unavailable));
-        const parsed = resource && "dataUrl" in resource && parseBase64DataUrl(resource.dataUrl);
-        if (!parsed) return yield* unavailable();
+        if (!resource || !("dataUrl" in resource)) return yield* unavailable();
+        const { dataUrl } = resource;
+        const audio = /^data:audio\//iu.test(dataUrl);
+        const parsed = audio ? parseToolResultAudioDataUrl(dataUrl) : parseBase64DataUrl(dataUrl);
+        if (!parsed || (!audio && !parsed.mimeType.startsWith("image/")))
+          return yield* unavailable();
         const bytes = Buffer.from(parsed.base64, "base64");
         if ((yield* itemVersion) !== current) return yield* changed();
-        entry = { bytes, mimeType: contentType(parsed.mimeType, bytes) };
+        entry = { bytes, mimeType: audio ? parsed.mimeType : contentType(parsed.mimeType, bytes) };
         remember(version, entry);
       }
       return { ...chunk(entry, offset, length), name: null, version };

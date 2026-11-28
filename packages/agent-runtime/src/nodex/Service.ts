@@ -152,7 +152,7 @@ import {
   assertPublicWirePayloadBudget,
   projectTurnItemForDetail,
 } from "../orchestration-v2/WireProjection.ts";
-import { withToolResultImages } from "../orchestration-v2/toolResultImages.ts";
+import { withToolResultImages } from "../orchestration-v2/toolResultMedia.ts";
 import {
   THREAD_HISTORY_PAGE_POLICY,
   THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,

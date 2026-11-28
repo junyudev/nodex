@@ -10,7 +10,7 @@ import { buildCodexFileChangePatchRows } from "../../../shared/codex-file-change
 import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
 import {
   buildAgentRuntimeAttachmentSource,
-  buildAgentRuntimeToolResultImageSource,
+  buildAgentRuntimeToolResultSource,
 } from "../../../shared/agent-runtime-attachments";
 import {
   isAgentRuntimeItemHidden,
@@ -360,7 +360,7 @@ describe("Runtime application tool presentation", () => {
     });
   });
 
-  test("dynamic tool presentation preserves the execution title and typed output content", () => {
+  test("dynamic tool presentation preserves the execution title and addresses inline audio by index", () => {
     const contentItems = [
       { type: "inputText", text: "Image captured" },
       { type: "inputImage", imageUrl: "data:image/png;base64,aW1hZ2U=" },
@@ -375,7 +375,19 @@ describe("Runtime application tool presentation", () => {
     ).toMatchObject({
       type: "dynamicToolCall",
       displayTitle: "Inspecting workspace",
-      contentItems,
+      contentItems: [
+        contentItems[0],
+        contentItems[1],
+        {
+          type: "inputAudio",
+          audioUrl: "",
+          source: buildAgentRuntimeToolResultSource({
+            sourceThreadId: "parent",
+            itemId: "item",
+            contentIndex: 2,
+          }),
+        },
+      ],
     });
   });
 
@@ -455,7 +467,7 @@ describe("Runtime application tool presentation", () => {
   });
 
   test("Claude MCP calls retain native identity, metadata and typed result images through projection", () => {
-    const source = buildAgentRuntimeToolResultImageSource({
+    const source = buildAgentRuntimeToolResultSource({
       sourceThreadId: "parent",
       itemId: "item",
       contentIndex: 1,
@@ -520,6 +532,68 @@ describe("Runtime application tool presentation", () => {
     });
   });
 
+  test("tool audio keeps its original attachment identity through transcript normalization", () => {
+    const source = buildAgentRuntimeToolResultSource({
+      sourceThreadId: "parent",
+      itemId: "item",
+      contentIndex: 1,
+    });
+    const recorded = { type: "audio", mimeType: "audio/wav", data: "", attachmentAvailable: true };
+    const unavailable = { type: "audio", mimeType: "audio/wav", data: "" };
+    const mcp = projectAgentRuntimeItem({
+      ...tool("speech.synthesize"),
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-audio",
+        server: "speech",
+        tool: "synthesize",
+        status: "completed",
+        arguments: {},
+        result: {
+          content: [{ type: "text", text: "Narration" }, recorded, unavailable],
+        },
+      },
+    });
+    const mcpView = projectCodexCanonicalTurnItemViews({
+      threadId: "parent",
+      turnId: "parent-run",
+      items: [mcp!],
+      observedAtMs: 1,
+      turnStatus: "completed",
+    })[0];
+    const mcpResult = mcpView?.mcpToolCall?.result;
+    expect(mcpResult?.type === "success" ? mcpResult.content : null).toEqual([
+      { type: "text", text: "Narration", annotations: undefined },
+      { ...unavailable, source, annotations: undefined },
+      { ...unavailable, annotations: undefined },
+    ]);
+
+    const dynamic = projectAgentRuntimeItem({
+      ...tool("synthesize"),
+      output: {
+        content: [
+          { type: "inputText", text: "Narration" },
+          { type: "inputAudio", audioUrl: "", attachmentAvailable: true },
+          { type: "inputAudio", audioUrl: "" },
+        ],
+        structuredContent: { clipCount: 2 },
+      },
+    });
+    const dynamicView = projectCodexCanonicalTurnItemViews({
+      threadId: "parent",
+      turnId: "parent-run",
+      items: [dynamic!],
+      observedAtMs: 1,
+      turnStatus: "completed",
+    })[0];
+    expect(dynamicView?.dynamicToolCall?.contentItems).toEqual([
+      { type: "inputText", text: '{"clipCount":2}' },
+      { type: "inputText", text: "Narration" },
+      { type: "inputAudio", audioUrl: "", source },
+      { type: "inputAudio", audioUrl: "" },
+    ]);
+  });
+
   test("application MCP tools keep their registered identity and complete media result", () => {
     const projected = projectAgentRuntimeItem({
       ...tool("nodex_app.capture"),
@@ -548,7 +622,7 @@ describe("Runtime application tool presentation", () => {
         { type: "inputText", text: "Captured" },
         {
           type: "inputImage",
-          imageUrl: buildAgentRuntimeToolResultImageSource({
+          imageUrl: buildAgentRuntimeToolResultSource({
             sourceThreadId: "parent",
             itemId: "item",
             contentIndex: 1,

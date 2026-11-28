@@ -1,3 +1,4 @@
+import { MAX_TOOL_RESULT_AUDIO_BASE64_LENGTH } from "../toolResultAudio.ts";
 import {
   MessageId,
   RunId,
@@ -273,6 +274,86 @@ describe("orchestration V2 wire projection", () => {
     });
     expect(Buffer.byteLength(JSON.stringify(detail))).toBeLessThan(270_000);
     expect(JSON.stringify(detail)).toContain("output truncated for transport");
+  });
+
+  it("withholds MCP audio bytes without spending the detail budget or shifting content", () => {
+    const data = "AAAB".repeat(100_000);
+    const clip = { type: "audio", mimeType: "audio/x-wav", data };
+    const item = decodeTurnItem({
+      ...base,
+      output: { error: "Tool reported an error", result: [clip] },
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-audio",
+        server: "speech",
+        tool: "synthesize",
+        status: "completed",
+        arguments: {},
+        result: {
+          content: [
+            clip,
+            { type: "text", text: "Transcript" },
+            { type: "audio", mimeType: "audio/unknown", data },
+          ],
+        },
+      },
+    });
+    expect(projectTurnItemForWire(item)).toMatchObject({
+      outputOmitted: true,
+      mcpToolCall: { result: { content: [] } },
+    });
+    const detail = decodeTurnItemJson(encodeTurnItemJson(projectTurnItemForDetail(item)));
+    expect(detail).toMatchObject({
+      output: {
+        error: "Tool reported an error",
+        result: [{ type: "audio", mimeType: "audio/x-wav", data: "", attachmentAvailable: true }],
+      },
+      mcpToolCall: {
+        result: {
+          content: [
+            { type: "audio", mimeType: "audio/x-wav", data: "", attachmentAvailable: true },
+            { type: "text", text: "Transcript" },
+            { type: "audio", mimeType: "", data: "" },
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(detail)).not.toContain(data);
+    expect(JSON.stringify(projectTurnItemForWire(item))).not.toContain(data);
+    expect(detail).not.toHaveProperty("mcpToolCall.result.content.2.attachmentAvailable");
+  });
+
+  it("keeps dynamic audio typed after the text budget and rejects clips above the attachment cap", () => {
+    const item = {
+      ...base,
+      output: {
+        content: [
+          { type: "inputText", text: "x".repeat(400_000) },
+          { type: "inputAudio", audioUrl: `data:audio/mp4;base64,${"AAAB".repeat(100_000)}` },
+          {
+            type: "inputAudio",
+            audioUrl: `data:audio/wav;base64,${"A".repeat(MAX_TOOL_RESULT_AUDIO_BASE64_LENGTH + 4)}`,
+          },
+        ],
+        structuredContent: { complete: true },
+      },
+    };
+    const wire = projectTurnItemForWire(item);
+    expect(wire).toMatchObject({ outputOmitted: true });
+    expect(wire).not.toHaveProperty("output");
+    const detail = projectTurnItemForDetail(item);
+    expect(detail).toMatchObject({
+      output: {
+        content: [
+          { type: "text" },
+          { type: "inputAudio", audioUrl: "", attachmentAvailable: true },
+          { type: "inputAudio", audioUrl: "" },
+        ],
+        structuredContent: { complete: true },
+      },
+    });
+    expect(detail).not.toHaveProperty("output.content.2.attachmentAvailable");
+    expect(Buffer.byteLength(JSON.stringify(detail))).toBeLessThan(270_000);
   });
 
   it("keeps dynamic result image indexes after truncation and preserves remote image URLs", () => {

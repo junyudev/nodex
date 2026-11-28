@@ -4,9 +4,9 @@ import * as FileSystem from "effect/FileSystem";
 import { ServerConfig } from "../config.ts";
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import { ProjectionStoreV2 } from "../orchestration-v2/ProjectionStore.ts";
-import { toolResultPicture } from "../orchestration-v2/toolResultImages.ts";
+import { toolResultMediaDataUrl } from "../orchestration-v2/toolResultMedia.ts";
 
-/** Resolve one image from the target's visible native history or captured fork prefix. */
+/** Resolve one attachment from the target's visible native history or captured fork prefix. */
 export const make = Effect.gen(function* () {
   const projections = yield* ProjectionStoreV2;
   const config = yield* ServerConfig;
@@ -37,7 +37,7 @@ export const make = Effect.gen(function* () {
       return path !== null && (yield* fs.exists(path)) ? { path, attachment } : null;
     }
     if (item.type === "dynamic_tool") {
-      const dataUrl = toolResultPicture(item, input.attachmentId);
+      const dataUrl = toolResultMediaDataUrl(item, input.attachmentId);
       return dataUrl === null ? null : { dataUrl };
     }
     return null;

@@ -69,6 +69,7 @@ import type { CodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import { normalizeCodexServiceTier } from "../codex-service-tier";
 import { codexImageInputSource } from "../codex-image-input";
 import type {
+  CodexDynamicToolOutputContent,
   CodexFileChangeLineCounts,
   CodexImportedMarkdownImage,
   CodexItemStatus,
@@ -616,8 +617,12 @@ interface CodexCanonicalToolResultImages {
   readonly resultImageSources?: readonly string[];
 }
 
-export type CodexCanonicalDynamicToolCallItem = Extract<ThreadItem, { type: "dynamicToolCall" }> &
+export type CodexCanonicalDynamicToolCallItem = Omit<
+  Extract<ThreadItem, { type: "dynamicToolCall" }>,
+  "contentItems"
+> &
   CodexCanonicalToolResultImages & {
+    readonly contentItems: CodexDynamicToolOutputContent[] | null;
     /** An execution owner may supply a semantic label independently of the tool identity. */
     readonly displayTitle?: string | null;
     readonly outputOmitted?: boolean;
