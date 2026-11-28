@@ -14,21 +14,27 @@ import { parseArgs } from "node:util";
 import { format } from "prettier";
 import { stringify } from "yaml";
 import { upsertChangeMedia, type ChangeMediaItem } from "../../src/shared/change-media";
-import { CHANGES_README } from "../../src/shared/changelog";
+import { CHANGES_README, parseChangelog, RELEASE_MEDIA_PATH } from "../../src/shared/changelog";
+import {
+  parseReleaseMedia,
+  upsertReleaseMedia,
+  validateReleaseMediaTargets,
+} from "../release/release-media";
 import { readMediaFile, resolveMediaStore, storeMediaFile } from "./store";
 
-export async function addChangeMedia(
+async function addMedia(
   cwd: string,
-  changeFile: string,
+  file: string,
   options: ChangeMediaItem,
+  update: (file: { path: string; content: string }, item: ChangeMediaItem) => Promise<string>,
 ): Promise<{ readonly paths: readonly string[]; readonly item: ChangeMediaItem }> {
-  const changePath = resolve(cwd, changeFile);
-  const path = relative(cwd, changePath).split(sep).join("/");
-  const stats = lstatSync(changePath);
-  if (!stats.isFile() || realpathSync(changePath) !== join(realpathSync(cwd), path)) {
-    throw new Error(`${path} must be a regular change file. See ${CHANGES_README}.`);
+  const target = resolve(cwd, file);
+  const path = relative(cwd, target).split(sep).join("/");
+  const stats = lstatSync(target);
+  if (!stats.isFile() || realpathSync(target) !== join(realpathSync(cwd), path)) {
+    throw new Error(`${path} must be a regular file within the worktree. See ${CHANGES_README}.`);
   }
-  const original = readFileSync(changePath);
+  const original = readFileSync(target);
   if (!isUtf8(original)) throw new Error(`${path} must be a UTF-8 file. See ${CHANGES_README}.`);
 
   const light =
@@ -39,28 +45,48 @@ export async function addChangeMedia(
     ...(light && { light: light.name }),
     ...(dark && { dark: dark.name }),
   };
-  const { media, body } = upsertChangeMedia({ path, content: original.toString("utf8") }, item);
-  // Match Oxfmt's YAML formatting while preserving the original Markdown bytes.
-  const header = await format(stringify({ media }, { lineWidth: 0 }), { parser: "yaml" });
-  const separator = /^(?:\r\n?|\n)/u.test(body) ? "" : "\n";
-  const updated = `---\n${header}---\n${separator}${body}`;
+  const updated = await update({ path, content: original.toString("utf8") }, item);
 
   const store = resolveMediaStore(cwd);
   const paths = [light, dark].flatMap((media) => (media ? [storeMediaFile(store, media)] : []));
   const staging = mkdtempSync(join(cwd, ".media-add-"));
   try {
-    const temporary = join(staging, "change.md");
+    const temporary = join(staging, "entry");
     writeFileSync(temporary, updated, { mode: stats.mode });
-    if (!readFileSync(changePath).equals(original)) {
+    if (!readFileSync(target).equals(original)) {
       throw new Error(
         `${path} changed while its media was being added. Run vp run media:add again.`,
       );
     }
-    renameSync(temporary, changePath);
+    renameSync(temporary, target);
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
   return { paths, item };
+}
+
+export function addChangeMedia(cwd: string, changeFile: string, options: ChangeMediaItem) {
+  return addMedia(cwd, changeFile, options, async (file, item) => {
+    const { media, body } = upsertChangeMedia(file, item);
+    // Match Oxfmt's YAML formatting while preserving the original Markdown bytes.
+    const header = await format(stringify({ media }, { lineWidth: 0 }), { parser: "yaml" });
+    const separator = /^(?:\r\n?|\n)/u.test(body) ? "" : "\n";
+    return `---\n${header}---\n${separator}${body}`;
+  });
+}
+
+export function addReleaseMedia(
+  cwd: string,
+  version: string,
+  slug: string,
+  options: ChangeMediaItem,
+) {
+  return addMedia(cwd, RELEASE_MEDIA_PATH, options, ({ content }, item) => {
+    const updated = upsertReleaseMedia(content, version, slug, item);
+    const releases = parseChangelog(readFileSync(join(cwd, "CHANGELOG.md"), "utf8"));
+    validateReleaseMediaTargets(cwd, parseReleaseMedia(updated), releases);
+    return format(updated, { parser: "yaml" });
+  });
 }
 
 async function main(): Promise<void> {
@@ -73,23 +99,30 @@ async function main(): Promise<void> {
       caption: { type: "string" },
       light: { type: "string" },
       dark: { type: "string" },
+      release: { type: "string" },
     },
   });
   const [file] = positionals;
   if (
     positionals.length !== 1 ||
     !file ||
+    values.release === "" ||
     values.caption === undefined ||
     !(values.light || values.dark)
   ) {
     throw new Error(
-      'Usage: vp run media:add -- <change-file> --caption "<text>" [--light <file>] [--dark <file>].',
+      'Usage: vp run media:add -- <change-file> | --release <version> <slug>, with --caption "<text>" [--light <file>] [--dark <file>].',
     );
   }
-  const { paths, item } = await addChangeMedia(process.cwd(), file, {
-    ...values,
+  const options = {
     caption: values.caption,
-  });
+    light: values.light,
+    dark: values.dark,
+  };
+  const cwd = process.cwd();
+  const { paths, item } = await (values.release === undefined
+    ? addChangeMedia(cwd, file, options)
+    : addReleaseMedia(cwd, values.release, file, options));
   process.stdout.write(`${paths.join("\n")}\n${JSON.stringify(item, null, 2)}\n`);
 }
 

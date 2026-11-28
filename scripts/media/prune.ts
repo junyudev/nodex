@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { CHANGES_DIRECTORY } from "../../src/shared/changelog";
+import { CHANGES_DIRECTORY, RELEASE_MEDIA_PATH } from "../../src/shared/changelog";
 import { MEDIA_FILE } from "../../src/shared/release-media";
 import { resolveMediaStore } from "./store";
 
@@ -43,8 +43,8 @@ const git = (cwd: string, args: readonly string[]): string =>
   });
 
 /**
- * Every media name mentioned under `changes/` anywhere a change could still be published from: each
- * worktree's files as they are now, including edits not committed yet, and every branch and tag.
+ * Every media name mentioned in the change files or release media YAML across all worktrees,
+ * including edits not committed yet, and every branch and tag.
  * Matching names in the raw text keeps a picture whenever any file mentions it, even one that does
  * not parse.
  */
@@ -54,9 +54,12 @@ export function referencedMedia(cwd: string): Set<string> {
     for (const [name] of text.matchAll(REFERENCE)) names.add(name);
   };
 
-  for (const line of git(cwd, ["worktree", "list", "--porcelain"]).split("\n")) {
+  for (const line of git(cwd, ["worktree", "list", "--porcelain", "-z"]).split("\0")) {
     if (!line.startsWith("worktree ")) continue;
-    const directory = join(line.slice("worktree ".length), CHANGES_DIRECTORY);
+    const worktree = line.slice("worktree ".length);
+    const backfill = join(worktree, RELEASE_MEDIA_PATH);
+    if (existsSync(backfill)) collect(readFileSync(backfill, "utf8"));
+    const directory = join(worktree, CHANGES_DIRECTORY);
     if (!existsSync(directory)) continue;
     for (const entry of readdirSync(directory, { recursive: true, withFileTypes: true })) {
       if (entry.isFile()) collect(readFileSync(join(entry.parentPath, entry.name), "utf8"));
@@ -85,6 +88,7 @@ export function referencedMedia(cwd: string): Set<string> {
           ...refs.slice(start, start + 200),
           "--",
           CHANGES_DIRECTORY,
+          RELEASE_MEDIA_PATH,
         ]),
       );
     } catch (error) {
@@ -133,7 +137,7 @@ function main(): void {
   }
   if (!values.delete) {
     process.stdout.write(
-      `${orphans.length} of ${stored.length} pictures (${megabytes(total)}) are referenced by no change file and older than ${graceDays} days. Run with --delete to remove them.\n`,
+      `${orphans.length} of ${stored.length} pictures (${megabytes(total)}) are unreferenced and older than ${graceDays} days. Run with --delete to remove them.\n`,
     );
     return;
   }

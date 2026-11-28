@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { RELEASE_MEDIA_PATH } from "../../src/shared/changelog.ts";
 import { findCheckoutFocusedTests } from "../testing/focused-tests.ts";
 
 import {
@@ -26,11 +27,10 @@ export type { AppTestSuite, CiGatePlan, DependencyKind, StaticGroup } from "./ci
 const RELEASE_PATHS = new Set(["Cargo.lock", "Cargo.toml", "package.json"]);
 
 /**
- * The published release notes and the changes not released yet. `release:check` reads both with
- * the parser release automation and the website share, so it alone validates them.
+ * `release:check` validates release notes, including pictures added to published changes.
  */
 const isReleaseNotesPath = (path: string): boolean =>
-  path === "CHANGELOG.md" || path.startsWith("changes/");
+  path === "CHANGELOG.md" || path === RELEASE_MEDIA_PATH || path.startsWith("changes/");
 
 const isRendererCompilerCheckPath = (path: string): boolean =>
   path === "scripts/ci/react-compiler-ratchet.ts" ||

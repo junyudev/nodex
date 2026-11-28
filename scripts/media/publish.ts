@@ -5,7 +5,8 @@ import { parseArgs } from "node:util";
 import { AwsClient } from "aws4fetch";
 import { readUnreleasedChangesWithMedia } from "../../src/shared/change-media";
 import { mediaDescriptionFile, mediaKey, mediaUrl } from "../../src/shared/release-media";
-import { readChangeFilesAtRef } from "../release/changelog";
+import { readChangeFilesAtRef, resolveReleaseRef } from "../release/changelog";
+import { readReleaseMediaAtRef, releaseMediaAttachments } from "../release/release-media";
 import { encodeMedia } from "./encode";
 import { isMediaPublished, referencedMediaFiles } from "./public";
 import { readMediaFile, resolveMediaStore } from "./store";
@@ -115,6 +116,13 @@ async function publishFile(
   }
 }
 
+export function mediaFilesAtRef(cwd: string, ref: string): readonly string[] {
+  const sha = resolveReleaseRef(cwd, ref);
+  const changes = readUnreleasedChangesWithMedia(readChangeFilesAtRef(cwd, sha));
+  const backfill = releaseMediaAttachments(readReleaseMediaAtRef(cwd, sha));
+  return referencedMediaFiles([...changes, ...backfill]);
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args[0] === "--") args.shift();
@@ -129,8 +137,7 @@ async function main(): Promise<void> {
 
   const [ref = "HEAD"] = positionals;
   const cwd = process.cwd();
-  const changes = readUnreleasedChangesWithMedia(readChangeFilesAtRef(cwd, ref));
-  const files = referencedMediaFiles(changes);
+  const files = mediaFilesAtRef(cwd, ref);
   const dryRun = values["dry-run"];
   let client: AwsClient | undefined;
   const getClient = dryRun ? undefined : () => (client ??= mediaClient());

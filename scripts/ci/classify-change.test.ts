@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 
+import { RELEASE_MEDIA_PATH } from "../../src/shared/changelog";
 import { APP_TEST_SUITES, STATIC_GROUPS } from "./ci-gate-plan";
 import { buildChangeClassificationDocument, classifyChangedPaths } from "./classify-change";
 
@@ -30,6 +31,7 @@ describe("CI change classification", () => {
     ["changes/fixed/2026-11-24-editor.md", "docs/release.md"],
     ["changes/README.md", "changes/added/2026-11-24-editor.md"],
     ["changes/fixed/nested/malformed.txt"],
+    [RELEASE_MEDIA_PATH],
   ])("validates release notes with release:check alone: %s", (...paths) => {
     expect(classifyChangedPaths(paths)).toEqual({
       allGates: false,
@@ -48,21 +50,23 @@ describe("CI change classification", () => {
     });
   });
 
-  test("adds release:check to the plan of the change a release note describes", () => {
-    const change = "changes/added/2026-11-24-editor.md";
-    const source = classifyChangedPaths(["src/renderer/components/app.tsx"]);
-    const withNotes = classifyChangedPaths(["src/renderer/components/app.tsx", change]);
-    expect(withNotes).toEqual({
-      ...source,
-      staticGroups: expect.arrayContaining([...source.staticGroups, "repository-contracts"]),
-    });
-    expect(withNotes.relatedPaths).not.toContain(change);
-    expect(classifyChangedPaths(["packages/landing/src/App.tsx", change])).toMatchObject({
-      landingOnly: true,
-      staticGroups: ["source-ownership", "repository-contracts", "landing"],
-      relatedPaths: ["packages/landing/src/App.tsx"],
-    });
-  });
+  test.each(["changes/added/2026-11-24-editor.md", RELEASE_MEDIA_PATH])(
+    "checks %s even alongside changes in other gates",
+    (change) => {
+      const source = classifyChangedPaths(["src/renderer/components/app.tsx"]);
+      const withNotes = classifyChangedPaths(["src/renderer/components/app.tsx", change]);
+      expect(withNotes).toEqual({
+        ...source,
+        staticGroups: expect.arrayContaining([...source.staticGroups, "repository-contracts"]),
+      });
+      expect(withNotes.relatedPaths).not.toContain(change);
+      expect(classifyChangedPaths(["packages/landing/src/App.tsx", change])).toMatchObject({
+        landingOnly: true,
+        staticGroups: ["source-ownership", "repository-contracts", "landing"],
+        relatedPaths: ["packages/landing/src/App.tsx"],
+      });
+    },
+  );
 
   test("selects only the landing owner for landing plus documentation", () => {
     expect(classifyChangedPaths(["packages/landing/src/App.tsx", "README.md"])).toMatchObject({

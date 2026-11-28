@@ -14,6 +14,13 @@ const changeFile = (path: string, content: Buffer): RepositoryFile => {
   return { path, content: content.toString("utf8") };
 };
 
+const git = (cwd: string, ...args: string[]): Buffer =>
+  execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+
+export function resolveReleaseRef(cwd: string, ref: string): string {
+  return git(cwd, "rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`).toString().trim();
+}
+
 export function readChangeFiles(cwd: string): readonly RepositoryFile[] {
   const directory = lstatSync(join(cwd, CHANGES_DIRECTORY), { throwIfNoEntry: false });
   if (!directory) return [];
@@ -30,10 +37,8 @@ export function readChangeFiles(cwd: string): readonly RepositoryFile[] {
 }
 
 export function readChangeFilesAtRef(cwd: string, ref: string): readonly RepositoryFile[] {
-  const git = (...args: string[]): Buffer =>
-    execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
-  const sha = git("rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`).toString().trim();
-  const tree = git("ls-tree", "-r", "-z", sha, "--", CHANGES_DIRECTORY).toString("utf8");
+  const sha = resolveReleaseRef(cwd, ref);
+  const tree = git(cwd, "ls-tree", "-r", "-z", sha, "--", CHANGES_DIRECTORY).toString("utf8");
   return tree
     .split("\0")
     .filter(Boolean)
@@ -45,7 +50,7 @@ export function readChangeFilesAtRef(cwd: string, ref: string): readonly Reposit
       if (mode !== "100644" && mode !== "100755") {
         throw new Error(`${path} must be a regular file.`);
       }
-      return changeFile(path, git("show", `${sha}:${path}`));
+      return changeFile(path, git(cwd, "show", `${sha}:${path}`));
     });
 }
 

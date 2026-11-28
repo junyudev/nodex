@@ -7,19 +7,21 @@ import { root } from "astro:config/server";
 import changelog from "../../../../CHANGELOG.md?raw";
 import { resolveMediaStore } from "../../../../scripts/media/store";
 import { readChangeFilesAtRef } from "../../../../scripts/release/changelog";
+import { mergeReleaseMedia, parseReleaseMedia } from "../../../../scripts/release/release-media";
 import {
+  readTaggedChanges,
   readUnreleasedChangesWithMedia,
   type UnreleasedChange,
 } from "../../../../src/shared/change-media";
 import { parseChangelog, type PublishedRelease } from "../../../../src/shared/changelog";
 import { mediaDescriptionFile, mediaUrl } from "../../../../src/shared/release-media";
 import {
-  readTaggedChanges,
   releasesToShow,
   resolvePublishedMedia,
   type ChangelogRelease,
   type ShownMediaFile,
 } from "../changelog";
+import releaseMedia from "../release-media.yaml?raw";
 
 const repositoryRoot = fileURLToPath(new URL("../../", root));
 const strict = process.env.NODEX_LANDING_DEPLOY === "1";
@@ -184,6 +186,12 @@ async function loadChangelogReleases(): Promise<ChangelogRelease[]> {
   const releases = parseChangelog(changelog);
   const unreleased = readUnreleasedChangesWithMedia(changeFiles);
   const taggedChanges = readPublishedChanges(releases);
+  const backfilledChanges = mergeReleaseMedia(
+    parseReleaseMedia(releaseMedia),
+    releases,
+    ({ version }) => taggedChanges.get(version),
+  );
+  for (const [version, changes] of backfilledChanges) taggedChanges.set(version, changes);
   const [publishedMedia, localMedia] = await Promise.all([
     loadPublishedMedia(mediaReferences(taggedChanges.values())),
     import.meta.env.DEV ? loadLocalMedia(mediaReferences([unreleased])) : undefined,
@@ -193,7 +201,7 @@ async function loadChangelogReleases(): Promise<ChangelogRelease[]> {
 
 let changelogReleases: Promise<ChangelogRelease[]> | undefined;
 
-/** Shares the same release data across the changelog index and its entry routes. */
+/** Shares the same release data across the changelog index, entry routes, and feed. */
 export function getChangelogReleases(): Promise<ChangelogRelease[]> {
   return (changelogReleases ??= loadChangelogReleases());
 }

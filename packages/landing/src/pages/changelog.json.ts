@@ -1,6 +1,6 @@
-import changelog from "../../../../CHANGELOG.md?raw";
 import { changelogFeed } from "../changelog";
+import { getChangelogReleases } from "../lib/changelog-data";
 
 export const prerender = true;
 
-export const GET = () => Response.json(changelogFeed(changelog));
+export const GET = async () => Response.json(changelogFeed(await getChangelogReleases()));

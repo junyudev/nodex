@@ -5,7 +5,9 @@ import {
   parsePublishedMedia,
 } from "../../src/shared/release-media";
 
-export function referencedMediaFiles(changes: readonly UnreleasedChange[]): readonly string[] {
+export function referencedMediaFiles(
+  changes: Iterable<Pick<UnreleasedChange, "media">>,
+): readonly string[] {
   const files = new Set<string>();
   for (const { media } of changes) {
     for (const { light, dark } of media) {

@@ -1,0 +1,23 @@
+# Pictures added to published changelog entries, by release version and change slug.
+"0.5.15":
+  aerial-view:
+    - caption: A Claude Code chat and the four subagents it delegated to across Codex and OpenCode
+      light: db694439d1e2fd48d36828e344f82f5ddbe81a9f11335972ee736dafbb21e1e9.png
+      dark: dc49feb369ae95fad2a149069a6e9f3f4f3be3662ef45409f5f89de0949af997.png
+  tables-fit-their-content:
+    - caption: Short tables stay compact while a table of links takes the full width of the page
+      light: 237f3186cb6758085a45cd5b07032ec4f49ef0b930c67a560ac024360c6d5621.png
+      dark: 7920df2840df6f50f86b55d8dda8dbae374281b14c65b65504e9514513201adb.png
+  nodex-without-a-chat:
+    - caption: Activity lists each decision Nodex made and why, with the run behind it one click away
+      light: 426c88f507035a8e7dc20d3a66a47ac6c6b5f73bf2c31703250030cce74b980d.png
+      dark: 819b24785edce4c9f0e85863ac4ff74177ff50a8929f8a095870e2c41976bdbb.png
+"0.5.13":
+  arrange-sidebar-by-attention:
+    - caption: "The sidebar arranged by attention: what needs you comes first, then what is working"
+      light: e82c502bedcec706c6eee267a464a169784a51c5e4f8d3a3f9947f06ab487a1a.png
+      dark: 3feb61498ae2e20bdb0354dc26d728faea68c1b16fb01df916eb32a924fe29f7.png
+  whats-new-in-the-app:
+    - caption: What's new opens a release's notes in the app, now with a picture for the changes that have one
+      light: f9611565e418de3c5c8f3e2d6f65ea6e107d251c60323d896ef3ea1d1c755443.png
+      dark: 7c109a80d815e93eb69f232978c3d3602ba0e32d02b6a9c9d9f5ce89b4c85d23.png

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CHANGELOG_SECTION_KINDS, type ChangelogSectionKind } from "./changelog";
+import { isMediaCaption, MEDIA_ORIGIN } from "./release-media";
 
 /**
  * The public Nodex changelog feed: the most recent published releases from CHANGELOG.md, published by
@@ -11,6 +12,19 @@ import { CHANGELOG_SECTION_KINDS, type ChangelogSectionKind } from "./changelog"
 export const CHANGELOG_PAGE_URL = "https://nodex.jyu.app/changelog/";
 /** Where the website publishes the feed. */
 export const CHANGELOG_FEED_URL = "https://nodex.jyu.app/changelog.json";
+export const MAX_CHANGELOG_ENTRY_MEDIA = 4;
+
+export interface ChangelogImage {
+  readonly src: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface ChangelogEntryMedia {
+  readonly caption: string;
+  readonly light?: ChangelogImage;
+  readonly dark?: ChangelogImage;
+}
 
 /** One changelog bullet, split after its first sentence. Both parts keep inline Markdown. */
 export interface ChangelogEntry {
@@ -18,6 +32,9 @@ export interface ChangelogEntry {
   readonly lead: string;
   /** What follows the lead; empty when the entry is a single sentence. */
   readonly detail: string;
+  /** The entry's page on the Nodex website. */
+  readonly url?: string;
+  readonly media?: readonly ChangelogEntryMedia[];
 }
 
 export interface ChangelogSection {
@@ -53,14 +70,40 @@ const httpsUrl = z
     const url = URL.parse(value);
     return !!url && !url.username && !url.password;
   });
+const urlOnOrigin = (origin: string) =>
+  httpsUrl.refine((value) => URL.parse(value)?.origin === origin);
+// WebP encodes at most 16,383 pixels per side.
+const pixelSize = z.int().min(1).max(16_383);
+const imageSchema = z.object({
+  src: urlOnOrigin(MEDIA_ORIGIN),
+  width: pixelSize,
+  height: pixelSize,
+});
+const mediaSchema = z
+  .object({
+    caption: z.string().refine(isMediaCaption),
+    light: imageSchema.optional(),
+    dark: imageSchema.optional(),
+  })
+  .refine(({ light, dark }) => light !== undefined || dark !== undefined);
+const entrySchema = z
+  .object({
+    lead: z.string().min(1).max(1024),
+    detail: z.string().max(8192),
+    url: urlOnOrigin(new URL(CHANGELOG_PAGE_URL).origin).optional().catch(undefined),
+    media: z.array(mediaSchema).min(1).max(MAX_CHANGELOG_ENTRY_MEDIA).optional().catch(undefined),
+  })
+  .transform(({ url, media, ...entry }) => ({
+    ...entry,
+    ...(url && { url }),
+    ...(media && { media }),
+  }));
+
 const sectionKind = z.enum(CHANGELOG_SECTION_KINDS);
 const sectionSchema = z.union([
   z.object({
     kind: sectionKind,
-    entries: z
-      .array(z.object({ lead: z.string().min(1).max(1024), detail: z.string().max(8192) }))
-      .min(1)
-      .max(100),
+    entries: z.array(entrySchema).min(1).max(100),
   }),
   z
     .object({

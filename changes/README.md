@@ -51,9 +51,21 @@ and the files wait in `notes.local/media/` until the release publishes them. A c
 of plain text, and reusing a caption replaces that picture. Attach pictures before the Nightly you
 promote: a release publishes what its source holds.
 
-Only a release uploads pictures, and only those its change files still name, so drafts and
-reshoots never leave the computer. `vp run media:prune` lists stored pictures that no worktree,
-branch or tag mentions and that were stored more than 14 days ago; add `--delete` to remove them.
+Publishing uploads the pictures referenced by the selected Git ref. `vp run media:prune` lists
+stored pictures that no worktree, branch or tag mentions and that were stored more than 14 days
+ago. Add `--delete` to remove them.
+
+For a published change, use the release version and the change's slug from its stable tag.
+
+```bash
+vp run media:add -- --release 0.5.15 aerial-view --caption "What the picture shows" --light light.png
+```
+
+This writes to `packages/landing/src/release-media.yaml`, under the quoted version and slug,
+using the same item fields. The website shows these pictures after any from the tag. Commit the
+attachment list and publish the referenced files with `vp run media:publish -- <ref>` before
+merging the attachment changes. See [publishing release media](../docs/release.md#ship-a-stable-release)
+for the credentials and report command.
 
 ## Update or remove a change
 

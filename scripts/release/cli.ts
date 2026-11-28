@@ -1,13 +1,20 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { parseChangelog } from "../../src/shared/changelog";
 import { checkLocalChangeMedia } from "../media/store";
+import {
+  readReleaseMedia,
+  readReleaseMediaAtRef,
+  releaseMediaAttachments,
+  validateReleaseMediaTargets,
+} from "./release-media";
 import {
   assembleReleaseBundle,
   parseReleaseBundleManifest,
   recordArchitectureBuild,
   type MacArchitecture,
 } from "./bundle";
-import { renderReleaseNotesAtRef } from "./changelog";
+import { renderReleaseNotesAtRef, resolveReleaseRef } from "./changelog";
 import { publishBrowserRuntime } from "./browser-runtime";
 import { buildWindowsDistribution } from "./windows-distribution";
 import { buildAndroidDistribution, buildIosDistribution } from "./mobile-distribution";
@@ -101,10 +108,16 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "check") {
-    const snapshot = flags.has("head")
-      ? inspectReleaseSourceAtRef(projectRoot, required(flags, "head"))
+    const ref = flags.has("head")
+      ? resolveReleaseRef(projectRoot, required(flags, "head"))
+      : undefined;
+    const snapshot = ref
+      ? inspectReleaseSourceAtRef(projectRoot, ref)
       : inspectReleaseSource(projectRoot);
-    checkLocalChangeMedia(projectRoot, validateReleaseSource(snapshot));
+    const changes = validateReleaseSource(snapshot);
+    const backfill = ref ? readReleaseMediaAtRef(projectRoot, ref) : readReleaseMedia(projectRoot);
+    validateReleaseMediaTargets(projectRoot, backfill, parseChangelog(snapshot.changelog));
+    checkLocalChangeMedia(projectRoot, [...changes, ...releaseMediaAttachments(backfill)]);
     writeJson(flags.get("output"), { version: snapshot.packageVersion });
     return;
   }

@@ -2,6 +2,7 @@ import { expect, test, describe } from "vite-plus/test";
 import { readUnreleasedChangesWithMedia } from "./change-media";
 import { CHANGELOG_PAGE_URL, decodeChangelogFeed } from "./changelog-feed";
 import { changelogInlineTokens } from "./changelog-inline";
+import { mediaUrl } from "./release-media";
 import {
   assertReleaseHeadline,
   formatChangelog,
@@ -23,6 +24,13 @@ describe("changelog feed", () => {
     sections: [section],
   };
   const feed = { schemaVersion: 1, url: CHANGELOG_PAGE_URL, releases: [release] };
+  const permalink = `${CHANGELOG_PAGE_URL}v1.2.3/example/`;
+  const image = { src: mediaUrl(`${"a".repeat(64)}.1600w.webp`), width: 1600, height: 900 };
+  const picture = { caption: "New release notes", light: image };
+  const withEntries = (entries: readonly unknown[]) => ({
+    ...feed,
+    releases: [{ ...release, sections: [{ ...section, entries }] }],
+  });
 
   test("skips unknown sections and releases that have nothing to display", () => {
     const futureSection = { kind: "future", entries: { new: "shape" } };
@@ -41,6 +49,36 @@ describe("changelog feed", () => {
   test("accepts a headline up to 120 characters", () => {
     const value = { ...feed, releases: [{ ...release, headline: "x".repeat(120) }] };
     expect(decodeChangelogFeed(value)).toEqual(value);
+  });
+
+  test.each(
+    [
+      [{ ...picture, light: { ...image, src: "https://media.nodex.jyu.app.evil.test/capture" } }],
+      [{ ...picture, light: { ...image, src: "https://media.nodex.jyu.app:8443/capture" } }],
+      [{ ...picture, light: { ...image, src: "http://media.nodex.jyu.app/capture" } }],
+      [{ ...picture, light: { ...image, src: "https://user@media.nodex.jyu.app/capture" } }],
+      [{ ...picture, light: { ...image, height: 12.5 } }],
+      [{ ...picture, light: { ...image, width: 16_384 } }],
+      [{ caption: picture.caption }],
+      [{ ...picture, caption: " " }],
+      [picture, picture, picture, picture, picture],
+    ].map((media) => [media] as const),
+  )(
+    "drops malformed entry media without dropping its permalink, neighbors or release %#",
+    (media) => {
+      const valid = { ...entry, url: permalink, media: [picture] };
+      const textAndUrl = { ...entry, url: permalink };
+      expect(decodeChangelogFeed(withEntries([{ ...textAndUrl, media }, valid]))).toStrictEqual(
+        withEntries([textAndUrl, valid]),
+      );
+    },
+  );
+
+  test("drops a permalink outside the website while keeping valid media", () => {
+    const illustrated = { ...entry, media: [picture] };
+    expect(
+      decodeChangelogFeed(withEntries([{ ...illustrated, url: "https://other.test/changelog/" }])),
+    ).toStrictEqual(withEntries([illustrated]));
   });
 
   test.each([

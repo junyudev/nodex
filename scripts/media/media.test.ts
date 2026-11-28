@@ -13,9 +13,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { readUnreleasedChangesWithMedia } from "../../src/shared/change-media";
-import { addChangeMedia } from "./add";
+import { formatChangelog, RELEASE_MEDIA_PATH } from "../../src/shared/changelog";
+import { readReleaseMedia, releaseMediaAttachments } from "../release/release-media";
+import { addChangeMedia, addReleaseMedia } from "./add";
 import { describeMedia, imageVariantWidths } from "./encode";
 import { orphanedMedia, referencedMedia, storedMedia } from "./prune";
+import { mediaFilesAtRef } from "./publish";
 import { checkLocalChangeMedia, readMediaFile, storeMediaFile } from "./store";
 
 let fixture: string;
@@ -24,6 +27,29 @@ const path = "changes/added/2026-11-26-example.md";
 const body = "An entry with **detail**.  \r\n  Wrapped line.\r\n\r\n";
 const png = Buffer.from("89504e470d0a1a0a", "hex");
 const mp4 = Buffer.from("000000146674797069736f6d0000000069736f6d", "hex");
+const name = (digit: string, extension = "png") => `${digit.repeat(64)}.${extension}`;
+const backfill = (media: string) =>
+  `"0.2.0":\n  example:\n    - caption: A picture\n      light: ${media}\n`;
+const git = (cwd: string, ...args: string[]) =>
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd, stdio: "ignore" },
+  );
+
+function writeBackfill(cwd: string, content: string) {
+  const target = join(cwd, RELEASE_MEDIA_PATH);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, content);
+}
 
 test("keeps full image width and adds a half-width variant at the capture threshold", () => {
   expect(imageVariantWidths(1199)).toEqual([1199]);
@@ -167,41 +193,101 @@ test("checks for referenced files when the local store exists and CI is unset", 
   expect(() => checkLocalChangeMedia(fixture, changes)).not.toThrow();
 });
 
-test("prunes only pictures that no worktree, branch or tag mentions once their grace period ends", () => {
-  const name = (digit: string, extension = "png") => `${digit.repeat(64)}.${extension}`;
-  const git = (cwd: string, ...args: string[]) =>
-    execFileSync(
-      "git",
-      [
-        "-c",
-        "user.name=Test",
-        "-c",
-        "user.email=test@example.invalid",
-        "-c",
-        "commit.gpgsign=false",
-        ...args,
-      ],
-      { cwd, stdio: "ignore" },
-    );
+test("adds and reshoots a published entry's picture using the stable tag", async () => {
+  git(fixture, "init", "-q", "-b", "main");
+  writeFileSync(join(fixture, path), "An entry.\n");
+  git(fixture, "add", "changes");
+  git(fixture, "commit", "-q", "-m", "Release source");
+  git(fixture, "tag", "v0.2.0");
+  rmSync(join(fixture, path));
+  writeFileSync(
+    join(fixture, "CHANGELOG.md"),
+    formatChangelog([
+      {
+        version: "0.2.0",
+        date: "2026-11-26",
+        headline: "A release",
+        sections: [{ kind: "added", entries: ["An entry."] }],
+      },
+    ]),
+  );
+  writeBackfill(fixture, "# Added pictures\n{}\n");
+  const caption = 'Review: "Ready"';
+  const output = execFileSync(
+    process.execPath,
+    [
+      fileURLToPath(import.meta.resolve("tsx/cli")),
+      join(import.meta.dirname, "add.ts"),
+      "--",
+      "--release",
+      "0.2.0",
+      "example",
+      "--caption",
+      caption,
+      "--light",
+      "light.png",
+    ],
+    { cwd: fixture, encoding: "utf8" },
+  );
+  const first = readMediaFile(join(fixture, "light.png"));
+  expect(output).toContain(join(store, first.name));
+  expect(readFileSync(join(fixture, RELEASE_MEDIA_PATH), "utf8")).toContain(
+    '# Added pictures\n"0.2.0":\n  example:\n',
+  );
+
+  const reshot = await addReleaseMedia(fixture, "0.2.0", "example", { caption, dark: "dark.mp4" });
+  const attachments = releaseMediaAttachments(readReleaseMedia(fixture));
+  expect(attachments.map(({ media }) => media)).toEqual([[reshot.item]]);
+  expect(readFileSync(reshot.paths[0]!)).toEqual(mp4);
+  expect(readFileSync(join(store, first.name))).toEqual(png);
+  await expect(
+    addReleaseMedia(fixture, "0.2.0", "typo", { caption, light: "light.png" }),
+  ).rejects.toThrow(/typo.*does not match a change slug/u);
+
+  vi.stubEnv("CI", undefined);
+  expect(() => checkLocalChangeMedia(fixture, attachments)).not.toThrow();
+  rmSync(reshot.paths[0]!);
+  expect(() => checkLocalChangeMedia(fixture, attachments)).toThrow(
+    /release-media\.yaml.*v0\.2\.0, example.*missing/u,
+  );
+  vi.stubEnv("CI", "true");
+  expect(() => checkLocalChangeMedia(fixture, attachments)).not.toThrow();
+});
+
+test("publishes references from the selected ref and prunes only media unreferenced across worktrees, branches and tags", () => {
   const change = (media: string) =>
     `---\nmedia:\n  - caption: A picture\n    light: ${media}\n---\nAn entry.\n`;
   const other = `${fixture}-worktree`;
   try {
     git(fixture, "init", "-q", "-b", "main");
     git(fixture, "commit", "-q", "--allow-empty", "-m", "Start");
+    expect(mediaFilesAtRef(fixture, "main")).toEqual([]);
+    // A tag can be the last remaining reference to its pictures.
+    git(fixture, "checkout", "-q", "-b", "tag-source");
+    writeBackfill(fixture, backfill(name("e")));
+    git(fixture, "add", RELEASE_MEDIA_PATH);
+    git(fixture, "commit", "-q", "-m", "Tag pictures");
+    git(fixture, "tag", "with-pictures");
+    git(fixture, "checkout", "-q", "main");
+    git(fixture, "branch", "-D", "tag-source");
     // A branch that is not checked out anywhere still holds its pictures.
     git(fixture, "checkout", "-q", "-b", "draft");
     writeFileSync(join(fixture, "changes/added/2026-11-26-branch.md"), change(name("a")));
-    git(fixture, "add", "changes");
+    writeBackfill(fixture, backfill(name("f")));
+    git(fixture, "add", "changes", RELEASE_MEDIA_PATH);
     git(fixture, "commit", "-q", "-m", "Draft");
     git(fixture, "checkout", "-q", "main");
     // So does an edit not committed yet in another worktree.
     git(fixture, "worktree", "add", "-q", "-b", "work", other);
     mkdirSync(join(other, "changes/fixed"), { recursive: true });
     writeFileSync(join(other, "changes/fixed/2026-11-26-work.md"), change(name("b", "mp4")));
+    writeBackfill(other, `Still editing: [${name("7")}\n`);
+    expect(mediaFilesAtRef(other, "draft")).toEqual([name("a"), name("f")]);
+    expect(mediaFilesAtRef(other, "with-pictures")).toEqual([name("e")]);
 
     mkdirSync(store, { recursive: true });
-    for (const file of [name("a"), name("b", "mp4"), name("c"), name("d")]) {
+    const referenced = [name("a"), name("b", "mp4"), name("e"), name("f"), name("7")];
+    for (const file of [...referenced, name("c"), name("d")]) {
       writeFileSync(join(store, file), "picture");
     }
     const now = Date.now();
@@ -211,7 +297,7 @@ test("prunes only pictures that no worktree, branch or tag mentions once their g
       stored: now - (ages[file.name] ?? 30) * 86_400_000,
     }));
 
-    expect(referencedMedia(fixture)).toEqual(new Set([name("a"), name("b", "mp4")]));
+    expect(referencedMedia(fixture)).toEqual(new Set(referenced));
     expect(
       orphanedMedia(stored, referencedMedia(fixture), now, 14).map(({ name }) => name),
     ).toEqual([name("c")]);

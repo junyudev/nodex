@@ -40,6 +40,9 @@ The site takes published entry slugs and media references from each stable tag's
 change files. Their grouped text and order must match `CHANGELOG.md`. Releases
 through `v0.1.2` may be missing their tags from the public archive. These releases
 and tags without change files have text-only entries when no source is available.
+The site appends pictures from `packages/landing/src/release-media.yaml` to the
+tagged entries they name. Every build and `release:check` require each listed
+version and slug to match a published change at its stable tag.
 
 The deployment workflow shallow-fetches stable `vX.Y.Z` tags and sets
 `NODEX_LANDING_DEPLOY=1`. A missing tag from `v0.1.3` onward or a missing or
@@ -50,6 +53,10 @@ shallow CI checkouts, warn and use the archived text or the available media.
 local store as `media:add` (including `NODEX_MEDIA_STORE` overrides). It serves
 the originals and uses `ffprobe` from FFmpeg for clip dimensions. Production
 builds keep Unreleased text-only.
+
+The What's new JSON feed uses the same published entries and permalinks. It
+includes up to four image items per entry, using the widest published WebP per
+theme. Clips remain available on the website.
 
 ### Demo media capture
 

@@ -9295,6 +9295,7 @@
   "ui.toolbarButton.moreActions": "更多操作",
   "whatsNew.fullChangelog": "完整更新日志",
   "whatsNew.loading": "正在加载最近的版本",
+  "whatsNew.openChangePage": "在更新日志中查看",
   "whatsNew.openFailed": "无法打开更新日志",
   "whatsNew.openOnWebsite": "在完整更新日志中查看",
   "whatsNew.releaseDescription": "Nodex {version} 的更新内容",
