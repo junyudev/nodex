@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  GITHUB_REACTIONS,
   gitHubThreadKey,
   type GitHubActor,
   type GitHubCheck,
@@ -8,7 +9,9 @@ import {
   type GitHubIssueStateReason,
   type GitHubMergeMethod,
   type GitHubPullRequestDetail,
+  type GitHubReactions,
   type GitHubReviewComment,
+  type GitHubReviewThread,
   type GitHubReviewer,
   type GitHubReviewState,
   type GitHubThreadRef,
@@ -36,6 +39,21 @@ const repositoryAccess = z.object({
 });
 const connection = <T extends z.ZodType>(node: T) =>
   z.object({ nodes: z.array(node.nullable()).nullable() });
+const forwardPage = z.object({ hasNextPage: z.boolean() });
+const id = z.object({ id: text });
+const reviewContext = id.extend({ commit: oid.nullable() });
+const reactions = id.extend({
+  viewerCanReact: z.boolean(),
+  reactionGroups: z
+    .array(
+      z.object({
+        content: text,
+        viewerHasReacted: z.boolean(),
+        reactors: z.object({ totalCount: count }),
+      }),
+    )
+    .nullable(),
+});
 const nodes = <T>(value: { nodes: readonly (T | null)[] | null } | null | undefined): T[] =>
   value?.nodes?.filter((node): node is T => node !== null) ?? [];
 
@@ -67,46 +85,56 @@ const summariesResponse = z.object({
 });
 
 const reviewer = z.object({ combinedSlug: text.optional() }).extend(actor.partial().shape);
-const inline = z.object({
-  id: text,
+const reviewComment = reactions.extend({
+  databaseId: count.nullable(),
   author: actor.nullable(),
-  isMinimized: z.boolean(),
   body: text,
   createdAt: text,
+  lastEditedAt: text.nullable(),
   url: text,
+  diffHunk: text,
+  state: text,
+  pullRequestReview: id.nullable(),
+  viewerCanUpdate: z.boolean(),
+  viewerCanDelete: z.boolean(),
+});
+const diffSide = z.enum(["LEFT", "RIGHT"]);
+const reviewThread = id.extend({
   path: text,
+  subjectType: z.enum(["LINE", "FILE"]),
+  diffSide,
+  startDiffSide: diffSide.nullable(),
   line: count.nullable(),
   startLine: count.nullable(),
-  diffHunk: text,
-  outdated: z.boolean(),
-  replyTo: z.object({ id: text }).nullable(),
-});
-const reviewThread = z.object({
-  diffSide: z.enum(["LEFT", "RIGHT"]),
+  originalLine: count.nullable(),
+  originalStartLine: count.nullable(),
   isOutdated: z.boolean(),
   isResolved: z.boolean(),
-  comments: connection(z.object({ id: text })),
+  viewerCanReply: z.boolean(),
+  viewerCanResolve: z.boolean(),
+  viewerCanUnresolve: z.boolean(),
+  comments: connection(reviewComment).extend({ pageInfo: forwardPage }),
 });
-const comment = z.object({
+const comment = reactions.extend({
   __typename: z.literal("IssueComment"),
-  id: text,
   author: actor.nullable(),
   isMinimized: z.boolean(),
   body: text,
   createdAt: text,
   lastEditedAt: text.nullable(),
   url: text,
+  viewerCanUpdate: z.boolean(),
+  viewerCanDelete: z.boolean(),
 });
-const review = z.object({
+const review = reactions.extend({
   __typename: z.literal("PullRequestReview"),
-  id: text,
   author: actor.nullable(),
   isMinimized: z.boolean(),
   state: text,
   body: text,
   submittedAt: text.nullable(),
   url: text,
-  comments: connection(inline),
+  viewerCanUpdate: z.boolean(),
 });
 const commit = z.object({
   __typename: z.literal("PullRequestCommit"),
@@ -165,7 +193,7 @@ const timelineEvent = z.discriminatedUnion("__typename", [
   event.extend({ __typename: z.literal("CrossReferencedEvent"), source: summary.nullable() }),
 ]);
 const activity = z.discriminatedUnion("__typename", [comment, review, commit, timelineEvent]);
-const base = z.object({
+const base = reactions.extend({
   url: text,
   title: text,
   body: text,
@@ -174,6 +202,7 @@ const base = z.object({
   closedAt: text.nullable(),
   locked: z.boolean(),
   state,
+  viewerCanUpdate: z.boolean(),
   viewerCanClose: z.boolean(),
   viewerCanReopen: z.boolean(),
   author: actor.nullable(),
@@ -220,7 +249,9 @@ const check = z.discriminatedUnion("__typename", [
 ]);
 const pullRequest = base.extend({
   isDraft: z.boolean(),
-  viewerCanUpdate: z.boolean(),
+  isInMergeQueue: z.boolean(),
+  viewerCanEnableAutoMerge: z.boolean(),
+  viewerCanDisableAutoMerge: z.boolean(),
   baseRefName: text,
   headRefName: text,
   headRefOid: text,
@@ -258,7 +289,13 @@ const pullRequest = base.extend({
       isMinimized: z.boolean(),
     }),
   ).nullable(),
-  reviewThreads: connection(reviewThread),
+  reviewThreads: connection(reviewThread).extend({ pageInfo: forwardPage }),
+  reviews: connection(
+    reviewContext.extend({
+      body: text,
+      comments: z.object({ totalCount: count }),
+    }),
+  ).nullable(),
   commits: connection(
     z.object({
       commit: z.object({
@@ -297,6 +334,45 @@ export const pullRequestResponse = z.object({
         rebaseMergeAllowed: z.boolean(),
         viewerDefaultMergeMethod: text.nullable(),
         pullRequest: pullRequest.nullable(),
+      })
+      .nullable(),
+  }),
+});
+
+export const reviewContextResponse = z.object({
+  data: z.object({
+    repository: z
+      .object({
+        pullRequest: id
+          .extend({
+            headRefOid: text,
+            reviews: connection(reviewContext).nullable(),
+          })
+          .nullable(),
+      })
+      .nullable(),
+    node: z.object({ pullRequest: id.optional() }).nullable().optional(),
+  }),
+});
+
+export const fileViewsResponse = z.object({
+  data: z.object({
+    repository: z
+      .object({
+        pullRequest: z
+          .object({
+            headRefOid: text,
+            baseRefOid: text,
+            files: connection(
+              z.object({
+                path: text,
+                viewerViewedState: z.enum(["VIEWED", "UNVIEWED", "DISMISSED"]).transform(lower),
+              }),
+            )
+              .extend({ pageInfo: forwardPage.extend({ endCursor: text.nullable() }) })
+              .nullable(),
+          })
+          .nullable(),
       })
       .nullable(),
   }),
@@ -391,6 +467,19 @@ function anchor(url: string): string {
   return /^r\d+$/u.test(hash) ? `discussion_${hash}` : hash;
 }
 
+function projectReactions(node: z.infer<typeof reactions>): GitHubReactions {
+  const groups = new Map(node.reactionGroups?.map((group) => [group.content, group]));
+  return {
+    subjectId: node.id,
+    viewerCanReact: node.viewerCanReact,
+    groups: GITHUB_REACTIONS.flatMap((content) => {
+      const group = groups.get(content.toUpperCase());
+      if (!group || group.reactors.totalCount === 0) return [];
+      return [{ content, count: group.reactors.totalCount, viewerReacted: group.viewerHasReacted }];
+    }),
+  };
+}
+
 function projectEvent(
   host: string,
   node: z.infer<typeof timelineEvent>,
@@ -454,34 +543,51 @@ function projectEvent(
   }
 }
 
-function projectInline(
-  node: z.infer<typeof inline>,
-  threads: ReadonlyMap<string, z.infer<typeof reviewThread>>,
-): GitHubReviewComment {
-  const thread = threads.get(node.replyTo?.id ?? node.id);
-  const outdated = node.outdated || (thread?.isOutdated ?? false);
+function projectReviewComment(node: z.infer<typeof reviewComment>): GitHubReviewComment {
+  const pending = node.state === "PENDING";
   return {
     id: node.id,
-    anchor: anchor(node.url),
+    anchor: node.databaseId === null ? anchor(node.url) : `discussion_r${node.databaseId}`,
+    reviewId: node.pullRequestReview?.id ?? null,
     author: mapActor(node.author),
     body: node.body,
     createdAt: node.createdAt,
+    edited: node.lastEditedAt !== null,
     url: node.url,
+    pending,
+    canEdit: node.viewerCanUpdate,
+    canDelete: node.viewerCanDelete,
+    reactions: pending ? null : projectReactions(node),
+  };
+}
+
+function projectReviewThread(node: z.infer<typeof reviewThread>): GitHubReviewThread {
+  const comments = nodes(node.comments);
+  return {
+    id: node.id,
     path: node.path,
-    line: outdated ? null : node.line,
-    startLine: outdated ? null : node.startLine,
-    side: thread?.diffSide === "LEFT" ? "left" : "right",
-    diffHunk: node.diffHunk,
-    outdated,
-    resolved: thread?.isResolved ?? false,
-    replyToId: node.replyTo?.id ?? null,
+    subject: lower(node.subjectType),
+    side: lower(node.diffSide),
+    startSide: node.startDiffSide && lower(node.startDiffSide),
+    line: node.isOutdated ? null : node.line,
+    startLine: node.isOutdated ? null : node.startLine,
+    originalLine: node.originalLine,
+    originalStartLine: node.originalStartLine,
+    diffHunk: comments[0]?.diffHunk ?? "",
+    outdated: node.isOutdated,
+    resolved: node.isResolved,
+    canReply: node.viewerCanReply,
+    canResolve: node.viewerCanResolve,
+    canUnresolve: node.viewerCanUnresolve,
+    comments: comments.map(projectReviewComment),
+    commentsTruncated: node.comments.pageInfo.hasNextPage,
   };
 }
 
 function projectTimeline(
   host: string,
   value: z.infer<typeof base>["timelineItems"],
-  threads: ReadonlyMap<string, z.infer<typeof reviewThread>> = new Map(),
+  threadIdsByReview?: ReadonlyMap<string, readonly string[]>,
 ): GitHubTimelineItem[] {
   return nodes(value).flatMap((node): GitHubTimelineItem[] => {
     switch (node.__typename) {
@@ -497,6 +603,9 @@ function projectTimeline(
             createdAt: node.createdAt,
             edited: node.lastEditedAt !== null,
             url: node.url,
+            canEdit: node.viewerCanUpdate,
+            canDelete: node.viewerCanDelete,
+            reactions: projectReactions(node),
           },
         ];
       case "PullRequestReview": {
@@ -512,9 +621,9 @@ function projectTimeline(
             body: node.body,
             submittedAt: node.submittedAt,
             url: node.url,
-            comments: nodes(node.comments)
-              .filter((comment) => !comment.isMinimized)
-              .map((comment) => projectInline(comment, threads)),
+            canEdit: node.viewerCanUpdate,
+            reactions: projectReactions(node),
+            threadIds: threadIdsByReview?.get(node.id) ?? [],
           },
         ];
       }
@@ -555,7 +664,7 @@ function projectBase(
   ref: GitHubThreadRef,
   login: string,
   observedAt: string,
-  threads?: ReadonlyMap<string, z.infer<typeof reviewThread>>,
+  threadIdsByReview?: ReadonlyMap<string, readonly string[]>,
 ) {
   const canWrite =
     repository.viewerPermission === "WRITE" ||
@@ -567,18 +676,20 @@ function projectBase(
     url: thread.url,
     title: thread.title,
     body: thread.body,
+    reactions: projectReactions(thread),
     author: mapActor(thread.author),
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
     closedAt: thread.closedAt,
     labels: nodes(thread.labels),
     assignees: nodes(thread.assignees).flatMap((value) => mapActor(value) ?? []),
-    timeline: projectTimeline(ref.host, thread.timelineItems, threads),
+    timeline: projectTimeline(ref.host, thread.timelineItems, threadIdsByReview),
     timelineTruncated: thread.timelineItems.pageInfo.hasPreviousPage,
     locked: thread.locked,
     observedAt,
     viewer: {
       login,
+      canEdit: thread.viewerCanUpdate,
       canComment: writable && (!thread.locked || canWrite),
       canChangeState:
         writable && (thread.state === "OPEN" ? thread.viewerCanClose : thread.viewerCanReopen),
@@ -684,12 +795,16 @@ export function projectPullRequest(
   login: string,
   observedAt: string,
 ): GitHubPullRequestDetail {
-  const threads = new Map(
-    nodes(value.reviewThreads).flatMap((thread) => {
-      const root = nodes(thread.comments)[0];
-      return root ? [[root.id, thread] as const] : [];
-    }),
-  );
+  const threads = nodes(value.reviewThreads).map(projectReviewThread);
+  const threadIdsByReview = new Map<string, string[]>();
+  for (const thread of threads) {
+    const reviewId = thread.comments[0]?.reviewId;
+    if (!reviewId) continue;
+    const ids = threadIdsByReview.get(reviewId);
+    if (ids) ids.push(thread.id);
+    else threadIdsByReview.set(reviewId, [thread.id]);
+  }
+  const pending = nodes(value.reviews)[0];
   const contexts = nodes(value.commits)[0]?.commit.statusCheckRollup?.contexts;
   const mergeMethods: GitHubMergeMethod[] = [];
   if (repository.mergeCommitAllowed) mergeMethods.push("merge");
@@ -697,7 +812,7 @@ export function projectPullRequest(
   if (repository.rebaseMergeAllowed) mergeMethods.push("rebase");
   const preferred = repository.viewerDefaultMergeMethod?.toLowerCase();
   mergeMethods.sort((a, b) => Number(b === preferred) - Number(a === preferred));
-  const base = projectBase(value, repository, ref, login, observedAt, threads);
+  const base = projectBase(value, repository, ref, login, observedAt, threadIdsByReview);
   const autoMerge = value.autoMergeRequest;
   const canUpdate = value.state === "OPEN" && !repository.isArchived && !repository.isLocked;
   return {
@@ -724,6 +839,17 @@ export function projectPullRequest(
     autoMerge: autoMerge
       ? { method: lower(autoMerge.mergeMethod), enabledBy: autoMerge.enabledBy?.login ?? null }
       : null,
+    mergeQueued: value.isInMergeQueue,
+    reviewThreads: threads,
+    reviewThreadsTruncated: value.reviewThreads.pageInfo.hasNextPage,
+    pendingReview: pending
+      ? {
+          id: pending.id,
+          commitSha: pending.commit?.oid ?? null,
+          body: pending.body,
+          commentCount: pending.comments.totalCount,
+        }
+      : null,
     closingIssues: nodes(value.closingIssuesReferences).map((item) => mapSummary(ref.host, item)),
     viewer: {
       ...base.viewer,
@@ -733,6 +859,12 @@ export function projectPullRequest(
         mergeMethods.length > 0 &&
         ["WRITE", "MAINTAIN", "ADMIN"].includes(repository.viewerPermission ?? ""),
       canChangeDraft: canUpdate && value.viewerCanUpdate,
+      canApprove:
+        value.state === "OPEN" &&
+        base.viewer.canComment &&
+        lower(login) !== base.author?.login.toLowerCase(),
+      canEnableAutoMerge: value.viewerCanEnableAutoMerge,
+      canDisableAutoMerge: value.viewerCanDisableAutoMerge,
       mergeMethods,
     },
   };

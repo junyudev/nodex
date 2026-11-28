@@ -177,25 +177,95 @@ export type GitHubIssueStateReason = "completed" | "not_planned" | "duplicate";
 
 export type GitHubReviewState = "approved" | "changes_requested" | "commented" | "dismissed";
 
+/** GitHub's eight reactions, in the order GitHub shows them. */
+export const GITHUB_REACTIONS = [
+  "thumbs_up",
+  "thumbs_down",
+  "laugh",
+  "hooray",
+  "confused",
+  "heart",
+  "rocket",
+  "eyes",
+] as const;
+
+export type GitHubReactionContent = (typeof GITHUB_REACTIONS)[number];
+
+export interface GitHubReaction {
+  readonly content: GitHubReactionContent;
+  readonly count: number;
+  readonly viewerReacted: boolean;
+}
+
+/** The reactions on one thing people can react to: a description, comment or review. */
+export interface GitHubReactions {
+  /** The GraphQL node the reactions belong to. */
+  readonly subjectId: string;
+  /** Only reactions someone chose, in `GITHUB_REACTIONS` order. */
+  readonly groups: readonly GitHubReaction[];
+  readonly viewerCanReact: boolean;
+}
+
+export type GitHubDiffSide = "left" | "right";
+
 export interface GitHubReviewComment {
+  /** GraphQL node id. */
   readonly id: string;
   /** `discussion_r<databaseId>`. */
   readonly anchor: string;
+  /** The review the comment was written in; a reply can belong to a later review. */
+  readonly reviewId: string | null;
   readonly author: GitHubActor | null;
   readonly body: string;
   readonly createdAt: string;
+  readonly edited: boolean;
   readonly url: string;
+  /** Part of the viewer's unsubmitted review: only the viewer sees it. */
+  readonly pending: boolean;
+  readonly canEdit: boolean;
+  readonly canDelete: boolean;
+  /** Null for pending comments, which nobody can react to yet. */
+  readonly reactions: GitHubReactions | null;
+}
+
+/**
+ * A conversation on lines of the change (or on a whole file), with its replies.
+ *
+ * `line`/`startLine` place it in the current diff and are null once the code it discussed
+ * changed (`outdated`); `originalLine`/`originalStartLine` place it in the diff it was written
+ * on, which `diffHunk` shows.
+ */
+export interface GitHubReviewThread {
+  /** GraphQL node id, which replies and resolution address. */
+  readonly id: string;
   readonly path: string;
-  /** Null when the comment no longer maps onto the current diff. */
+  readonly subject: "line" | "file";
+  readonly side: GitHubDiffSide;
+  readonly startSide: GitHubDiffSide | null;
   readonly line: number | null;
   readonly startLine: number | null;
-  readonly side: "left" | "right";
-  /** The diff hunk GitHub stored with the comment, ending at its line. */
+  readonly originalLine: number | null;
+  readonly originalStartLine: number | null;
+  /** The diff hunk GitHub stored with the first comment, ending at its line. */
   readonly diffHunk: string;
   readonly outdated: boolean;
   readonly resolved: boolean;
-  /** The first comment of the thread this one replies to, when it is a reply. */
-  readonly replyToId: string | null;
+  readonly canReply: boolean;
+  readonly canResolve: boolean;
+  readonly canUnresolve: boolean;
+  /** Oldest first; the first comment opened the thread. */
+  readonly comments: readonly GitHubReviewComment[];
+  /** The thread holds more replies than were read. */
+  readonly commentsTruncated: boolean;
+}
+
+/** The viewer's own review, started and not yet submitted. Only the viewer sees it. */
+export interface GitHubPendingReview {
+  readonly id: string;
+  /** The head the review was started on; comments anchor to that revision. */
+  readonly commitSha: string | null;
+  readonly body: string;
+  readonly commentCount: number;
 }
 
 export type GitHubTimelineEvent =
@@ -232,6 +302,9 @@ export type GitHubTimelineItem =
       readonly createdAt: string;
       readonly edited: boolean;
       readonly url: string;
+      readonly canEdit: boolean;
+      readonly canDelete: boolean;
+      readonly reactions: GitHubReactions;
     }
   | {
       readonly kind: "review";
@@ -243,8 +316,11 @@ export type GitHubTimelineItem =
       readonly body: string;
       readonly submittedAt: string;
       readonly url: string;
-      /** Inline comments submitted with this review, in thread order. */
-      readonly comments: readonly GitHubReviewComment[];
+      /** The review's own words can be changed; a submitted review cannot be deleted. */
+      readonly canEdit: boolean;
+      readonly reactions: GitHubReactions;
+      /** Ids of the `reviewThreads` this review opened, in the order GitHub lists them. */
+      readonly threadIds: readonly string[];
     }
   | {
       readonly kind: "commit";
@@ -315,6 +391,8 @@ export interface GitHubViewer {
   readonly canComment: boolean;
   /** Close and reopen. */
   readonly canChangeState: boolean;
+  /** Change the title and description. */
+  readonly canEdit: boolean;
 }
 
 interface GitHubThreadDetailBase {
@@ -324,6 +402,8 @@ interface GitHubThreadDetailBase {
   readonly title: string;
   /** GitHub Flavored Markdown. */
   readonly body: string;
+  /** Reactions on the description. */
+  readonly reactions: GitHubReactions;
   readonly author: GitHubActor | null;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -373,6 +453,13 @@ export interface GitHubPullRequestDetail extends GitHubThreadDetailBase {
     readonly method: GitHubMergeMethod;
     readonly enabledBy: string | null;
   } | null;
+  /** Waiting in the base branch's merge queue. */
+  readonly mergeQueued: boolean;
+  /** Every review conversation on the change, including the viewer's pending comments. */
+  readonly reviewThreads: readonly GitHubReviewThread[];
+  /** The change holds more review threads than were read. */
+  readonly reviewThreadsTruncated: boolean;
+  readonly pendingReview: GitHubPendingReview | null;
   /** Issues this pull request closes when merged. */
   readonly closingIssues: readonly GitHubThreadSummary[];
   readonly viewer: GitHubViewer & {
@@ -381,6 +468,10 @@ export interface GitHubPullRequestDetail extends GitHubThreadDetailBase {
     readonly canChangeDraft: boolean;
     /** Methods the repository allows, the preferred one first. */
     readonly mergeMethods: readonly GitHubMergeMethod[];
+    /** Approve or request changes; GitHub never lets a pull request's author do either. */
+    readonly canApprove: boolean;
+    readonly canEnableAutoMerge: boolean;
+    readonly canDisableAutoMerge: boolean;
   };
 }
 
@@ -395,6 +486,12 @@ export type GitHubPullRequestFileStatus =
   | "changed"
   | "unchanged";
 
+/**
+ * The viewer's mark on a changed file, kept by GitHub. `dismissed` means the file changed after
+ * the viewer marked it viewed.
+ */
+export type GitHubFileViewedState = "viewed" | "unviewed" | "dismissed";
+
 export interface GitHubPullRequestFile {
   readonly path: string;
   readonly previousPath: string | null;
@@ -403,6 +500,7 @@ export interface GitHubPullRequestFile {
   readonly deletions: number;
   /** The file's unified hunks without headers; null for binary files and diffs GitHub withholds. */
   readonly patch: string | null;
+  readonly viewed: GitHubFileViewedState;
 }
 
 export interface GitHubPullRequestFiles {
@@ -448,13 +546,35 @@ export type GitHubPullRequestFilesResult =
   | { readonly status: "ready"; readonly files: GitHubPullRequestFiles }
   | GitHubUnavailable;
 
+const commitSha = z.string().regex(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u);
+const nodeId = z.string().trim().min(1).max(200);
+const markdownBody = z.string().trim().min(1).max(65_536);
+const diffSide = z.enum(["left", "right"]);
+const mergeMethod = z.enum(["merge", "squash", "rebase"]);
+
+/**
+ * Where a new line comment or reply goes.
+ *
+ * - `publish`: posted at once, visible to everyone.
+ * - `start_review`: opens the viewer's pending review with this comment.
+ * - `pending_review`: joins the viewer's pending review `reviewId`, which GitHub must still hold.
+ *
+ * While the viewer has a pending review, GitHub takes their new comments only into it.
+ */
+export const gitHubReviewDeliverySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("publish") }),
+  z.strictObject({ kind: z.literal("start_review") }),
+  z.strictObject({ kind: z.literal("pending_review"), reviewId: nodeId }),
+]);
+export type GitHubReviewDelivery = z.infer<typeof gitHubReviewDeliverySchema>;
+
 export const gitHubThreadCommandSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("comment"), body: z.string().trim().min(1).max(65_536) }),
+  z.strictObject({ type: z.literal("comment"), body: markdownBody }),
   z.strictObject({
     type: z.literal("merge"),
-    method: z.enum(["merge", "squash", "rebase"]),
+    method: mergeMethod,
     /** GitHub refuses the merge when new commits arrived after the reader saw this head. */
-    expectedHeadSha: z.string().regex(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u),
+    expectedHeadSha: commitSha,
   }),
   z.strictObject({
     type: z.literal("set_state"),
@@ -462,14 +582,98 @@ export const gitHubThreadCommandSchema = z.discriminatedUnion("type", [
     reason: z.enum(["completed", "not_planned"]).optional(),
   }),
   z.strictObject({ type: z.literal("set_draft"), draft: z.boolean() }),
+  /** The issue's or pull request's own title or description. */
+  z
+    .strictObject({
+      type: z.literal("edit"),
+      title: z.string().trim().min(1).max(1024).optional(),
+      body: z.string().max(65_536).optional(),
+    })
+    .refine((command) => command.title !== undefined || command.body !== undefined),
+  z.strictObject({
+    type: z.literal("edit_comment"),
+    target: z.strictObject({
+      kind: z.enum(["issue_comment", "review", "review_comment"]),
+      id: nodeId,
+    }),
+    body: z.string().max(65_536),
+  }),
+  z.strictObject({
+    type: z.literal("delete_comment"),
+    target: z.strictObject({ kind: z.enum(["issue_comment", "review_comment"]), id: nodeId }),
+  }),
+  z.strictObject({
+    type: z.literal("react"),
+    subjectId: nodeId,
+    content: z.enum(GITHUB_REACTIONS),
+    /** Whether the viewer's reaction should exist afterwards. */
+    reacted: z.boolean(),
+  }),
+  /** A new conversation on a line, a range of lines, or (without `line`) a whole file. */
+  z
+    .strictObject({
+      type: z.literal("add_review_comment"),
+      path: z.string().min(1).max(4096),
+      side: diffSide,
+      line: z.number().int().min(1).nullable(),
+      startSide: diffSide.optional(),
+      startLine: z.number().int().min(1).optional(),
+      body: markdownBody,
+      /** The head the commenter saw; GitHub anchors the comment to it. */
+      expectedHeadSha: commitSha,
+      delivery: gitHubReviewDeliverySchema,
+    })
+    .refine(
+      (command) =>
+        command.startLine === undefined ||
+        (command.line !== null &&
+          command.startSide !== undefined &&
+          (command.startSide !== command.side || command.startLine < command.line)),
+    ),
+  z.strictObject({
+    type: z.literal("reply"),
+    threadId: nodeId,
+    body: markdownBody,
+    /** `start_review` is not offered for replies: a reply joins or skips a pending review. */
+    delivery: z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("publish") }),
+      z.strictObject({ kind: z.literal("pending_review"), reviewId: nodeId }),
+    ]),
+  }),
+  z.strictObject({ type: z.literal("resolve_thread"), threadId: nodeId, resolved: z.boolean() }),
+  /**
+   * Submits a review: the viewer's pending review when `pendingReviewId` names it, a review of
+   * `expectedHeadSha` with only `body` otherwise.
+   */
+  z.strictObject({
+    type: z.literal("submit_review"),
+    event: z.enum(["comment", "approve", "request_changes"]),
+    body: z.string().max(65_536),
+    expectedHeadSha: commitSha,
+    pendingReviewId: nodeId.nullable(),
+  }),
+  z.strictObject({ type: z.literal("discard_review"), pendingReviewId: nodeId }),
+  z.strictObject({
+    type: z.literal("enable_auto_merge"),
+    method: mergeMethod,
+    expectedHeadSha: commitSha,
+  }),
+  z.strictObject({ type: z.literal("disable_auto_merge") }),
+  z.strictObject({
+    type: z.literal("set_file_viewed"),
+    path: z.string().min(1).max(4096),
+    viewed: z.boolean(),
+  }),
 ]);
 
 export type GitHubThreadCommand = z.infer<typeof gitHubThreadCommandSchema>;
 
 export type GitHubThreadCommandResult =
   | { readonly status: "applied"; readonly url: string | null }
-  /** A merge was refused because the head moved since the reader saw it. */
+  /** The head moved since the reader saw it: a merge, review or line comment did not apply. */
   | { readonly status: "head_changed" }
+  /** The viewer's pending review was submitted, discarded or replaced meanwhile. */
+  | { readonly status: "review_changed" }
   /** GitHub refused the change, for example a protected branch or a merge conflict. */
   | { readonly status: "rejected"; readonly message: string }
   | GitHubUnavailable;

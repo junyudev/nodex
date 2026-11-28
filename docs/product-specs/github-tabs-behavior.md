@@ -32,14 +32,19 @@ in green, a draft in gray, merged in purple, closed in red; an open issue in gre
 issue in purple, an issue closed as not planned in gray. Its location reads `owner/repo#N`.
 
 The toolbar names the repository and number, switches a pull request between **Overview** and
-**Files N**, and offers **Refresh**, **Open on GitHub** and a menu: **Add to chat**, **Copy link**,
-**Copy branch name**, then **Ready for review** or **Convert to draft**, and **Close** or
-**Reopen** (an issue can also be **Closed as not planned**). Open on GitHub always opens the
-GitHub page, never another GitHub tab.
+**Files N**, and offers **Review** (on an open pull request the viewer can comment on, or whenever
+they have a pending review, with its pending comment count), **Refresh**, **Open on GitHub** and a
+menu: **Add to chat**, **Add N open comments to chat** and **Add N failing checks to chat** when
+there are any, **Copy link**, **Copy branch name**, then **Ready for review** or **Convert to
+draft**, and **Close** or **Reopen** (an issue can also be **Closed as not planned**). Open on
+GitHub always opens the GitHub page, never another GitHub tab.
 
 ## Overview
 
-Overview reads like a Page: the title, a property list, the description, then the activity.
+Overview reads like a Page: the title, a property list, the description, then the activity. A
+person GitHub lets change them edits the title in place, as a Page title (Enter or leaving it
+saves, Escape puts it back), and the description with **Edit description**, or **Add a
+description** when there is none.
 
 | Property               | Shows                                                                                                                                                       |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -60,17 +65,45 @@ running checks, behind its base, other branch rules, mergeability still being co
 ready. Failing or running checks that no rule requires do not block a merge.
 
 The description is GitHub Markdown in Nodex's prose; `#N`, `owner/repo#N` and `@login` become
-links as on GitHub. Activity lists, oldest first, comments, reviews with their inline comments
-(the lines they point at, and resolved threads folded), pushes folded into one row per run of
-commits, and changes such as merges, closes, labels, review requests, renames and mentions from
-other threads. When older activity exists than the tab reads, it says so and links to GitHub.
+links as on GitHub. Activity lists, oldest first, comments, reviews with the conversations they
+opened, pushes folded into one row per run of commits, and changes such as merges, closes, labels,
+review requests, renames and mentions from other threads. When older activity exists than the tab
+reads, it says so and links to GitHub. Its menu shows **All activity**, **Comments** (comments and
+reviews only) or **Comments from people** (without bots); the choice is kept for every GitHub tab.
+
+A review conversation lists its replies under its first comment, wherever they were written; a
+review that only replied elsewhere is not repeated. A conversation names its file and lines and
+shows them, says when it is outdated, and offers **Reply** and **Resolve** or **Reopen** to those
+GitHub lets. Resolved conversations fold to one line, and several resolved ones of a review to one
+row. A comment or review body taller than the fold shows its start under a fade with **Show
+more**; opening a `<details>` inside it unfolds it.
+
+The description, comments, reviews and review comments show their reactions with counts, the
+viewer's own pressed; pressing one adds or removes the viewer's, and the picker offers GitHub's
+eight. A comment's menu offers **Copy link**, **Open on GitHub**, and **Edit** or **Delete** when
+GitHub allows the viewer; deleting asks once in place. A review's words can be edited, not deleted.
 
 ## Files
 
-Files lists every changed file of the current head as a diff, in the style of a chat's file changes. A small
-change starts with every file open; past 2,000 changed lines only the first five open; a file with
-more than 400 changed lines starts folded. A file GitHub does not diff, such as a binary file,
-links to GitHub. Files reads up to 300 files and says when a pull request changes more.
+Files lists every changed file of the current head as a diff, in the style of a chat's file
+changes. A small change starts with every file open; past 2,000 changed lines only the first five
+open; a file with more than 400 changed lines starts folded. A file GitHub does not diff, such as a
+binary file, links to GitHub. Files reads up to 300 files and says when a pull request changes
+more.
+
+When the tab is wide enough, a tree of the changed files sits beside the diffs, with a filter and
+each file's open comment count; choosing a file opens and scrolls to it. The tree's toggle is kept
+for every GitHub tab.
+
+Each file carries the viewer's **Viewed** mark, kept by GitHub and so shared with github.com.
+Marking a file viewed folds it, and a viewed file starts folded; a file that changed after it was
+marked reads **Changed since viewed**. The summary counts the viewed files.
+
+Review conversations sit at the lines they discuss (outdated ones read in Overview), and
+conversations on a whole file sit above its diff. On an open pull request, the plus beside a line,
+or a drag across line numbers, starts a comment on those lines: **Comment** posts it at once, and
+**Start review** keeps it private in a pending review. While the viewer has a pending review, new
+comments and replies join it with **Add to review**, as GitHub requires.
 
 ## Acting on the thread
 
@@ -79,6 +112,18 @@ links to GitHub. Files reads up to 300 files and says when a pull request change
 - **Merge** uses the repository's allowed methods, its default first; the chevron chooses another.
   The first press arms the button for four seconds and the second merges. A merge names the head
   the reader saw, and when new commits arrived meanwhile it does not merge and says so.
+- While GitHub still waits on checks or reviews and the viewer may enable auto-merge, the button
+  reads **Merge when ready** (or its squash and rebase forms) and turns auto-merge on at once.
+  Status then reads **Merges when ready** with **Cancel auto-merge**; a pull request in the merge
+  queue reads **Queued to merge**.
+- **Review** submits **Comment**, **Approve** or **Request changes** with a summary. Requesting
+  changes needs words, and so does a comment review with no pending comments; an approval does
+  not. The author, a draft and a closed pull request offer only Comment. A pending review is
+  submitted as it is, its comments included, or discarded with **Discard review** after one
+  confirmation. A review or line comment names the head the reader saw: when new commits arrived
+  it does not apply and says so, and when the pending review changed elsewhere it says so too.
+- A reply, resolution, reaction, viewed mark, edit or deletion shows at once and is taken back,
+  with GitHub's reason, if GitHub refuses it. Text being written stays until GitHub accepts it.
 - **Ready for review**, **Convert to draft**, **Close** and **Reopen** apply at once; each can be
   undone by the opposite action.
 - After any change the tab reads the thread again. A refusal from GitHub, such as a branch rule,
@@ -86,17 +131,20 @@ links to GitHub. Files reads up to 300 files and says when a pull request change
 
 ## Add to chat
 
-In a Scene with a chat, a comment, review, inline comment, failing check or the whole thread can
-be added to that chat's draft as an attachment. The attachment names the thread, its URL and
-branch, the author, and for inline comments the file, lines and the diff lines they point at. It
-is marked as external GitHub data for the Agent to treat as context, never as instructions.
+In a Scene with a chat, a comment, review, review conversation, failing check or the whole thread
+can be added to that chat's draft as an attachment, and so can every open conversation or every
+failing check at once, for an Agent to address together. The attachment names the thread, its URL,
+branch and head, the author, and for conversations the file, lines, the diff lines they point at
+and every reply. It is marked as external GitHub data for the Agent to treat as context, never as
+instructions.
 
 ## Freshness
 
 The tab reads the thread when it opens, when the window regains focus after 20 seconds, every 30
 seconds while an open pull request's checks are running or its mergeability is being computed,
 and every two minutes otherwise, only while the tab is showing. **Refresh** reads at once. Files
-read when shown. A tab in the background spends no GitHub requests.
+read when shown and again for a new head; a viewed mark updates them in place. A tab in the
+background spends no GitHub requests.
 
 ## When a thread cannot be read
 

@@ -42,9 +42,15 @@ import type {
 import { gitHubThreadLabel, gitHubThreadUrl } from "../../../shared/github-thread";
 import { gitHubUnavailableDescription, gitHubUnavailableTitle } from "./github-thread-copy";
 import { GitHubPullRequestFilesView } from "./github-thread-files";
-import { gitHubChatContext, type GitHubChatContextSubject } from "./github-thread-model";
+import {
+  failingGitHubChecks,
+  gitHubChatContext,
+  openGitHubReviewThreads,
+  type GitHubChatContextSubject,
+} from "./github-thread-model";
 import { GitHubThreadOverview } from "./github-thread-overview";
 import { useOpenOnGitHub } from "./github-thread-parts";
+import { GitHubReviewButton } from "./github-thread-review-submit";
 import {
   GitHubThreadStateIcon,
   gitHubThreadStateOf,
@@ -54,7 +60,7 @@ import type { GitHubThreadCommandRunner } from "./github-thread-surface-types";
 import {
   gitHubChatContextPromptInput,
   useGitHubThread,
-  useGitHubThreadCommand,
+  useGitHubThreadCommands,
   useGitHubThreadLinks,
 } from "./use-github-thread";
 
@@ -83,7 +89,7 @@ export function GitHubThreadSurface(props: GitHubThreadSurfaceProps) {
   const { thread, kindHint } = props;
   const query = useGitHubThread(thread);
   const links = useGitHubThreadLinks(thread);
-  const mutation = useGitHubThreadCommand(thread);
+  const run = useGitHubThreadCommands(thread);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const result = query.data;
   const detail = result?.status === "ready" ? result.detail : null;
@@ -141,16 +147,6 @@ export function GitHubThreadSurface(props: GitHubThreadSurfaceProps) {
     },
     [],
   );
-
-  const run: GitHubThreadCommandRunner & { readonly post: (body: string) => Promise<boolean> } = {
-    pending: mutation.isPending,
-    command: (command) => mutation.mutate(command),
-    post: (body) =>
-      mutation
-        .mutateAsync({ type: "comment", body })
-        .then((outcome) => outcome.status === "applied")
-        .catch(() => false),
-  };
 
   const { onAddToChatComposer } = props;
   const addToChat =
@@ -216,7 +212,7 @@ export function GitHubThreadSurface(props: GitHubThreadSurfaceProps) {
           onRetry={() => void query.refetch()}
         />
       ) : view === "files" && result.detail.kind === "pull_request" ? (
-        <GitHubPullRequestFilesView pr={result.detail} />
+        <GitHubPullRequestFilesView pr={result.detail} run={run} onAddToChat={addToChat} />
       ) : (
         <GitHubThreadOverview
           detail={result.detail}
@@ -330,6 +326,14 @@ function GitHubThreadToolbar({
         },
       ]}
       trailing={[
+        ...(pr
+          ? [
+              {
+                id: "review",
+                content: <GitHubReviewButton pr={pr} run={run} />,
+              },
+            ]
+          : []),
         {
           id: "refresh",
           collapsePriority: 1,
@@ -378,15 +382,7 @@ function GitHubThreadToolbar({
               }
             >
               {onAddToChat && detail ? (
-                <NodexDropdownItem
-                  leftSlot={<SendToChatIcon className="icon-xs" />}
-                  onSelect={() => onAddToChat({ kind: "thread" })}
-                >
-                  <FormattedMessage
-                    id="githubThread.activity.addToChat"
-                    defaultMessage="Add to chat"
-                  />
-                </NodexDropdownItem>
+                <AddToChatItems detail={detail} onAddToChat={onAddToChat} />
               ) : null}
               <NodexDropdownItem
                 leftSlot={<CopyIcon className="icon-xs" />}
@@ -438,6 +434,55 @@ function GitHubThreadToolbar({
   );
 }
 
+/**
+ * The thread, or the work it asks for, handed to the chat beside it: every open conversation or
+ * every failing check at once, for an Agent to address together.
+ */
+function AddToChatItems({
+  detail,
+  onAddToChat,
+}: {
+  readonly detail: GitHubThreadDetail;
+  readonly onAddToChat: (subject: GitHubChatContextSubject) => void;
+}) {
+  const openThreads = openGitHubReviewThreads(detail).length;
+  const failingChecks = failingGitHubChecks(detail).length;
+  return (
+    <>
+      <NodexDropdownItem
+        leftSlot={<SendToChatIcon className="icon-xs" />}
+        onSelect={() => onAddToChat({ kind: "thread" })}
+      >
+        <FormattedMessage id="githubThread.activity.addToChat" defaultMessage="Add to chat" />
+      </NodexDropdownItem>
+      {openThreads > 0 ? (
+        <NodexDropdownItem
+          leftSlot={<SendToChatIcon className="icon-xs" />}
+          onSelect={() => onAddToChat({ kind: "open_review_threads" })}
+        >
+          <FormattedMessage
+            id="githubThread.addToChat.openThreads"
+            defaultMessage="Add {count, plural, one {# open comment} other {# open comments}} to chat"
+            values={{ count: openThreads }}
+          />
+        </NodexDropdownItem>
+      ) : null}
+      {failingChecks > 0 ? (
+        <NodexDropdownItem
+          leftSlot={<SendToChatIcon className="icon-xs" />}
+          onSelect={() => onAddToChat({ kind: "failing_checks" })}
+        >
+          <FormattedMessage
+            id="githubThread.addToChat.failingChecks"
+            defaultMessage="Add {count, plural, one {# failing check} other {# failing checks}} to chat"
+            values={{ count: failingChecks }}
+          />
+        </NodexDropdownItem>
+      ) : null}
+    </>
+  );
+}
+
 /** Lifecycle changes that can be undone, so they apply at once. */
 function ThreadStateItems({
   detail,
@@ -452,7 +497,7 @@ function ThreadStateItems({
       <NodexDropdownItem
         key="draft"
         disabled={run.pending}
-        onSelect={() => run.command({ type: "set_draft", draft: !detail.draft })}
+        onSelect={() => void run.run({ type: "set_draft", draft: !detail.draft })}
       >
         {detail.draft ? (
           <FormattedMessage
@@ -474,7 +519,7 @@ function ThreadStateItems({
       <NodexDropdownItem
         key="state"
         disabled={run.pending}
-        onSelect={() => run.command({ type: "set_state", state: closing ? "closed" : "open" })}
+        onSelect={() => void run.run({ type: "set_state", state: closing ? "closed" : "open" })}
       >
         {closing ? (
           <FormattedMessage
@@ -497,7 +542,7 @@ function ThreadStateItems({
           key="not-planned"
           disabled={run.pending}
           onSelect={() =>
-            run.command({ type: "set_state", state: "closed", reason: "not_planned" })
+            void run.run({ type: "set_state", state: "closed", reason: "not_planned" })
           }
         >
           <FormattedMessage

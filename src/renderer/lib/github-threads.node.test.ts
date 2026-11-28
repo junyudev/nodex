@@ -4,6 +4,7 @@ import {
   GITHUB_THREAD_SUMMARY_BATCH_LIMIT,
   gitHubThreadKey,
   type GitHubIssueDetail,
+  type GitHubPullRequestFilesResult,
   type GitHubThreadRef,
   type GitHubThreadSummariesResult,
   type GitHubThreadSummary,
@@ -11,6 +12,7 @@ import {
 } from "../../shared/github-thread";
 import {
   createGitHubThreadSummaryBatcher,
+  gitHubPullRequestFilesQueryOptions,
   gitHubThreadQueryKey,
   gitHubThreadQueryOptions,
   gitHubThreadSummaryQueryOptions,
@@ -27,6 +29,7 @@ const detail: GitHubIssueDetail = {
   state: "closed",
   stateReason: "not_planned",
   body: "Full description",
+  reactions: { subjectId: "I_1", groups: [], viewerCanReact: true },
   author: null,
   createdAt: "2026-10-10T09:30:00Z",
   updatedAt: "2026-10-10T09:30:00Z",
@@ -38,7 +41,7 @@ const detail: GitHubIssueDetail = {
   timelineTruncated: false,
   locked: false,
   closingPullRequests: [],
-  viewer: { login: "me", canComment: true, canChangeState: true },
+  viewer: { login: "me", canComment: true, canChangeState: true, canEdit: false },
 };
 const summary = (thread: GitHubThreadRef): GitHubThreadSummary => ({
   ref: thread,
@@ -141,6 +144,51 @@ test("summary reads reuse fresh detail, receive updates from tabs, and refresh a
 
     await runGitHubThreadCommand(client, ref, { type: "set_state", state: "open" });
     expect(await client.fetchQuery(options)).toEqual({ status: "ready", summary: summary(ref) });
+  } finally {
+    client.clear();
+  }
+});
+
+test("a viewed mark patches the files it belongs to instead of reading every patch again", async () => {
+  const client = new QueryClient();
+  const invoke = vi.fn(async (channel: string) => {
+    if (channel === "github:thread-command") return { status: "applied", url: null };
+    throw Error(`Unexpected channel ${channel}`);
+  });
+  vi.stubGlobal("window", { api: { invoke } });
+  const head = "a".repeat(40);
+  const file = {
+    path: "src/a.ts",
+    previousPath: null,
+    status: "modified" as const,
+    additions: 1,
+    deletions: 0,
+    patch: "@@ -1 +1 @@\n+a",
+    viewed: "unviewed" as const,
+  };
+  try {
+    const files = gitHubPullRequestFilesQueryOptions(ref, head);
+    const read: GitHubPullRequestFilesResult = {
+      status: "ready",
+      files: { headSha: head, files: [file, { ...file, path: "src/b.ts" }], truncated: false },
+    };
+    client.setQueryData(files.queryKey, read);
+    client.setQueryData(gitHubThreadQueryKey(ref), { status: "ready", detail });
+
+    await runGitHubThreadCommand(client, ref, {
+      type: "set_file_viewed",
+      path: "src/a.ts",
+      viewed: true,
+    });
+
+    const state = client.getQueryState(files.queryKey);
+    expect(state?.isInvalidated).toBe(false);
+    expect(client.getQueryState(gitHubThreadQueryKey(ref))?.isInvalidated).toBe(false);
+    const result = state?.data;
+    expect(result?.status === "ready" && result.files.files.map((item) => item.viewed)).toEqual([
+      "viewed",
+      "unviewed",
+    ]);
   } finally {
     client.clear();
   }

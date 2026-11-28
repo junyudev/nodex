@@ -13,6 +13,7 @@ import * as Layer from "effect/Layer";
 import { z } from "zod";
 import {
   gitHubThreadKey,
+  type GitHubFileViewedState,
   type GitHubPullRequestFiles,
   type GitHubPullRequestFilesResult,
   type GitHubThreadCommand,
@@ -28,20 +29,25 @@ import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { readSources, type SourceCatalogError } from "../sources/SourceCatalog";
 import { GitHubAccount, type GitHubAccountVerificationError } from "./GitHubAccount";
 import {
+  gitHubThreadMutations,
+  readGitHubFileViews,
   readGitHubIssue,
   readGitHubPullRequest,
+  readGitHubReviewContext,
   readGitHubThreadSummaries,
   resolveGitHubThread,
   setGitHubPullRequestDraft,
 } from "./GitHubThreadDocuments";
 import {
   canonicalRef,
+  fileViewsResponse,
   identityResponse,
   issueResponse,
   projectIssue,
   projectPullRequest,
   projectThreadSummaries,
   pullRequestResponse,
+  reviewContextResponse,
 } from "./GitHubThreadProjection";
 
 const admission = { allowReserve: true, allowPaused: false };
@@ -69,11 +75,19 @@ const filesResponse = z
   .max(pageSize);
 const updatedThreadResult = z.object({ html_url: z.string() });
 const mergeResult = z.object({ merged: z.boolean(), message: z.string() });
-const draftResult = z.object({
-  data: z.object({
-    change: z.object({ pullRequest: z.object({ url: z.string() }).nullable() }).nullable(),
-  }),
+const mutationEnvelope = z.object({
+  data: z.unknown(),
+  errors: z.array(z.object({ message: z.string() })).optional(),
 });
+const mutationAck = z.object({ clientMutationId: z.string().nullable() });
+const startedReview = z.object({ pullRequestReview: z.object({ id: z.string() }) });
+const draftResult = z.object({ pullRequest: z.object({ url: z.string() }) });
+const unexpectedResponse = "GitHub returned an incomplete or unexpected response.";
+const changedFilesMessage =
+  "The pull request changed while loading files. Refresh to see the latest changes.";
+const applied = { status: "applied", url: null } as const;
+const headChanged = { status: "head_changed" } as const;
+const reviewChanged = { status: "review_changed" } as const;
 
 type ThreadError =
   | GitHubApiError
@@ -137,12 +151,21 @@ function rejection(
   operation: GitHubThreadCommand["type"],
 ): GitHubThreadCommandResult {
   if ("_tag" in error && error._tag === "GitHubApiResponseError") {
-    if (operation === "merge" && error.status === 409) return { status: "head_changed" };
+    const message = error.githubErrors?.join("\n") || error.message;
+    if (operation === "merge" && error.status === 409) return headChanged;
     if (
-      [403, 405, 422].includes(error.status) ||
-      (operation === "set_draft" && error.status === 200)
+      operation === "enable_auto_merge" &&
+      (error.status === 409 ||
+        /\bhead(?: ref)?(?: sha| oid| commit)?\b[^\n]*(?:does not match|did not match|doesn't match|mismatch|changed|modified|stale|out of date)/iu.test(
+          message,
+        ))
+    )
+      return headChanged;
+    if (
+      [403, 405, 409, 422].includes(error.status) ||
+      (error.operation.startsWith("thread.mutation.") && error.githubErrors?.length)
     ) {
-      return { status: "rejected", message: error.githubErrors?.join("\n") || error.message };
+      return { status: "rejected", message };
     }
   }
   return projectError(error);
@@ -151,7 +174,7 @@ function rejection(
 function decodeBody<T>(parse: (value: unknown) => T, body: string) {
   return Effect.try({
     try: () => parse(JSON.parse(body)),
-    catch: () => unavailable("failed", "GitHub returned an incomplete or unexpected response."),
+    catch: () => unavailable("failed", unexpectedResponse),
   });
 }
 
@@ -161,11 +184,15 @@ function decode<T>(schema: z.ZodType<T>, body: string) {
 
 function decodeRest<T>(schema: z.ZodType<T>, response: GitHubRestResponse) {
   if (response.truncated || response.invalidUtf8)
-    return Effect.fail(
-      unavailable("failed", "GitHub returned an incomplete or unexpected response."),
-    );
+    return Effect.fail(unavailable("failed", unexpectedResponse));
   return decode(schema, response.body);
 }
+
+const responseUrl = (response: GitHubRestResponse) =>
+  decodeRest(updatedThreadResult, response).pipe(
+    Effect.map((result) => result.html_url),
+    Effect.orElseSucceed(() => null),
+  );
 
 function lookupKey(ref: GitHubThreadRef, fingerprint: string): ThreadLookupKey {
   return [fingerprint, ref.host, ref.owner.toLowerCase(), ref.repo.toLowerCase(), ref.number];
@@ -231,21 +258,20 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
       return projectIssue(repository, repository.issue, ref, login, observedAt);
     }
     const operation = "thread.pull_request";
-    const body = yield* api
-      .graphql({ ...input, operation, query: readGitHubPullRequest(true) })
-      .pipe(
-        Effect.catchIf(
-          (error): error is GitHubApiResponseError =>
-            error._tag === "GitHubApiResponseError" &&
-            (error.githubErrors?.some((message) =>
-              /(?:isRequired|pullRequestNumber).*(?:doesn't exist|doesn't accept|does not exist|unknown)|(?:unknown (?:argument|field)|cannot query field).*(?:isRequired|pullRequestNumber)/iu.test(
-                message,
-              ),
-            ) ??
-              false),
-          () => api.graphql({ ...input, operation, query: readGitHubPullRequest(false) }),
-        ),
-      );
+    const pullInput = { ...input, operation, variables: { ...input.variables, login } };
+    const body = yield* api.graphql({ ...pullInput, query: readGitHubPullRequest(true) }).pipe(
+      Effect.catchIf(
+        (error): error is GitHubApiResponseError =>
+          error._tag === "GitHubApiResponseError" &&
+          (error.githubErrors?.some((message) =>
+            /(?:isRequired|pullRequestNumber).*(?:doesn't exist|doesn't accept|does not exist|unknown)|(?:unknown (?:argument|field)|cannot query field).*(?:isRequired|pullRequestNumber)/iu.test(
+              message,
+            ),
+          ) ??
+            false),
+        () => api.graphql({ ...pullInput, query: readGitHubPullRequest(false) }),
+      ),
+    );
     const {
       data: { repository },
     } = yield* decode(pullRequestResponse, body);
@@ -269,7 +295,7 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
       })
       .pipe(Effect.flatMap((response) => decodeRest(pullHead, response)));
     const before = yield* snapshot;
-    const files: GitHubPullRequestFiles["files"][number][] = [];
+    const files: z.infer<typeof filesResponse> = [];
     let hasMore = false;
     for (let page = 1; page <= maxFilePages; page++) {
       const response = yield* api.rest({
@@ -279,19 +305,34 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
         maxResponseBytes: maxFilePageBytes,
       });
       const values = yield* decodeRest(filesResponse, response);
-      files.push(
-        ...values.map((file) => ({
-          path: file.filename,
-          previousPath: file.previous_filename ?? null,
-          status: file.status,
-          additions: file.additions,
-          deletions: file.deletions,
-          patch: file.patch ?? null,
-        })),
-      );
+      files.push(...values);
       hasMore =
         /;\s*rel="next"/u.test(response.headers.link ?? "") || files.length < before.changed_files;
       if (!hasMore || values.length === 0) break;
+    }
+    const viewed = new Map<string, GitHubFileViewedState>();
+    let cursor: string | null = null;
+    for (let page = 0; page < maxFilePages; page++) {
+      const operation = "thread.files.viewed";
+      const body: string = yield* api.graphql({
+        ...request,
+        operation,
+        query: readGitHubFileViews,
+        variables: { ...variables(ref), cursor },
+        maxResponseBytes: smallResponseBytes,
+      });
+      const { data } = yield* decode(fileViewsResponse, body);
+      const pull = data.repository?.pullRequest;
+      if (!pull) return yield* new GitHubApiNotFoundError({ host: ref.host, operation });
+      if (pull.headRefOid !== before.head.sha || pull.baseRefOid !== before.base.sha)
+        return yield* Effect.fail(unavailable("failed", changedFilesMessage));
+      if (!pull.files) break;
+      for (const file of pull.files.nodes ?? []) {
+        if (file) viewed.set(file.path, file.viewerViewedState);
+      }
+      if (!pull.files.pageInfo.hasNextPage) break;
+      cursor = pull.files.pageInfo.endCursor;
+      if (cursor === null) return yield* Effect.fail(unavailable("failed", unexpectedResponse));
     }
     const after = yield* snapshot;
     if (
@@ -299,13 +340,20 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
       before.base.sha !== after.base.sha ||
       before.changed_files !== after.changed_files
     )
-      return yield* Effect.fail(
-        unavailable(
-          "failed",
-          "The pull request changed while loading files. Refresh to see the latest changes.",
-        ),
-      );
-    return { headSha: after.head.sha, files, truncated: hasMore };
+      return yield* Effect.fail(unavailable("failed", changedFilesMessage));
+    return {
+      headSha: after.head.sha,
+      files: files.map((file) => ({
+        path: file.filename,
+        previousPath: file.previous_filename ?? null,
+        status: file.status,
+        additions: file.additions,
+        deletions: file.deletions,
+        patch: file.patch ?? null,
+        viewed: viewed.get(file.filename) ?? "unviewed",
+      })),
+      truncated: hasMore,
+    };
   });
 
   // Zero lifetime shares pending lookups only. The renderer owns foreground freshness.
@@ -380,11 +428,162 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
     Effect.catch((error) => Effect.succeed(projectError(error))),
   );
 
+  const reviewContext = Effect.fn("GitHubThreads.reviewContext")(function* (
+    ref: GitHubThreadRef,
+    login: string,
+    threadId?: string,
+  ) {
+    const operation = "thread.review_context";
+    const body = yield* api.graphql({
+      host: ref.host,
+      operation,
+      query: readGitHubReviewContext(threadId !== undefined),
+      variables: { ...variables(ref), login, threadId },
+      allowMissingFields: threadId !== undefined,
+      maxResponseBytes: smallResponseBytes,
+      ...admission,
+    });
+    const { data } = yield* decode(reviewContextResponse, body);
+    const pull = data.repository?.pullRequest;
+    if (!pull) return yield* new GitHubApiNotFoundError({ host: ref.host, operation });
+    const pending = pull.reviews?.nodes?.[0] ?? null;
+    return {
+      id: pull.id,
+      headSha: pull.headRefOid,
+      pending,
+      pendingOnHead: pending?.commit?.oid === pull.headRefOid,
+      threadPullRequestId: data.node?.pullRequest?.id ?? null,
+    };
+  });
+
+  const resolvePullRequestId = Effect.fn("GitHubThreads.resolvePullRequestId")(function* (
+    ref: GitHubThreadRef,
+  ) {
+    const thread = yield* resolve(ref);
+    if (thread.kind !== "PullRequest")
+      return yield* new GitHubApiNotFoundError({ host: ref.host, operation: "thread.identity" });
+    return thread.id;
+  });
+
+  const writeGraphql = Effect.fn("GitHubThreads.writeGraphql")(function* <T>(
+    host: string,
+    type: GitHubThreadCommand["type"],
+    query: string,
+    variables: Readonly<Record<string, unknown>>,
+    change: z.ZodType<T>,
+  ) {
+    const operation = `thread.mutation.${type}`;
+    const body = yield* api.graphql({
+      host,
+      operation,
+      query,
+      variables,
+      maxResponseBytes: smallResponseBytes,
+      // Keep field-scoped NOT_FOUND errors so the command can surface GitHub's explanation.
+      allowMissingFields: true,
+      ...admission,
+    });
+    const { data, errors } = yield* decode(mutationEnvelope, body);
+    if (errors?.length) {
+      return yield* new GitHubApiResponseError({
+        host,
+        operation,
+        status: 200,
+        githubErrors: errors.map((error) => error.message),
+      });
+    }
+    return yield* Effect.try({
+      try: () => z.object({ change }).parse(data).change,
+      catch: () => unavailable("failed", unexpectedResponse),
+    });
+  });
+
+  const addReviewComment = Effect.fn("GitHubThreads.addReviewComment")(function* (
+    ref: GitHubThreadRef,
+    login: string,
+    command: Extract<GitHubThreadCommand, { type: "add_review_comment" }>,
+  ): Effect.fn.Return<GitHubThreadCommandResult, ThreadError> {
+    const { id, headSha, pending, pendingOnHead } = yield* reviewContext(ref, login);
+    if (headSha !== command.expectedHeadSha) return headChanged;
+
+    const { delivery, body, path, line, startLine } = command;
+    if (
+      delivery.kind === "pending_review"
+        ? pending?.id !== delivery.reviewId || !pendingOnHead
+        : pending !== null
+    )
+      return reviewChanged;
+
+    const side = command.side.toUpperCase();
+    const startSide = startLine === undefined ? undefined : command.startSide?.toUpperCase();
+    if (delivery.kind === "publish") {
+      const response = yield* api.rest({
+        host: ref.host,
+        operation: "thread.add_review_comment",
+        method: "POST",
+        path: `${restPath(ref, "pulls")}/comments`,
+        body: {
+          body,
+          path,
+          commit_id: headSha,
+          ...(line === null
+            ? { subject_type: "file" }
+            : {
+                line,
+                side,
+                start_line: startLine,
+                start_side: startSide,
+              }),
+        },
+        maxResponseBytes: smallResponseBytes,
+        ...admission,
+      });
+      return { status: "applied", url: yield* responseUrl(response) };
+    }
+
+    const position = line === null ? { subjectType: "FILE" } : { line, side, startLine, startSide };
+    const thread = { body, path, ...position };
+    let pullRequestReviewId: string;
+    if (delivery.kind === "start_review") {
+      // DraftPullRequestReviewThread only supports line comments. Open a pending review first
+      // for a file-level comment, then attach it with AddPullRequestReviewThreadInput.
+      const { pullRequestReview } = yield* writeGraphql(
+        ref.host,
+        command.type,
+        gitHubThreadMutations.startReview,
+        {
+          input: {
+            pullRequestId: id,
+            commitOID: headSha,
+            ...(line === null ? {} : { threads: [thread] }),
+          },
+        },
+        startedReview,
+      );
+      if (line !== null) return applied;
+      pullRequestReviewId = pullRequestReview.id;
+    } else {
+      pullRequestReviewId = delivery.reviewId;
+    }
+
+    yield* writeGraphql(
+      ref.host,
+      command.type,
+      gitHubThreadMutations.addThread,
+      { input: { pullRequestReviewId, ...thread } },
+      mutationAck,
+    );
+    return applied;
+  });
+
   const mutate = Effect.fn("GitHubThreads.mutate")(function* (
     ref: GitHubThreadRef,
+    login: string,
     command: GitHubThreadCommand,
   ): Effect.fn.Return<GitHubThreadCommandResult, ThreadError> {
     const write = { host: ref.host, maxResponseBytes: smallResponseBytes, ...admission };
+    const graphql = (query: string, input: Readonly<Record<string, unknown>>) =>
+      writeGraphql(ref.host, command.type, query, { input }, mutationAck).pipe(Effect.as(applied));
     switch (command.type) {
       case "comment": {
         const result = yield* api.rest({
@@ -394,11 +593,7 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
           path: `${restPath(ref, "issues")}/comments`,
           body: { body: command.body },
         });
-        const url = yield* decode(updatedThreadResult, result.body).pipe(
-          Effect.map((result) => result.html_url),
-          Effect.orElseSucceed(() => null),
-        );
-        return { status: "applied", url };
+        return { status: "applied", url: yield* responseUrl(result) };
       }
       case "merge": {
         const response = yield* api.rest({
@@ -429,29 +624,126 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
               }
             : { state: command.state },
         });
-        const url = yield* decode(updatedThreadResult, response.body).pipe(
-          Effect.map((result) => result.html_url),
-          Effect.orElseSucceed(() => null),
-        );
-        return { status: "applied", url };
+        return { status: "applied", url: yield* responseUrl(response) };
       }
       case "set_draft": {
         const thread = yield* resolve(ref);
         if (thread.kind !== "PullRequest")
           return { status: "rejected", message: "Only pull requests can be drafts." };
-        const response = yield* api.graphql({
-          ...write,
-          operation: "thread.draft",
-          variables: { id: thread.id },
-          query: setGitHubPullRequestDraft(command.draft),
-        });
-        const { data } = yield* decode(draftResult, response);
-        if (!data.change?.pullRequest)
-          return yield* Effect.fail(
-            unavailable("failed", "GitHub did not confirm the draft change."),
-          );
-        return { status: "applied", url: data.change.pullRequest.url };
+        const { pullRequest } = yield* writeGraphql(
+          ref.host,
+          command.type,
+          setGitHubPullRequestDraft(command.draft),
+          { id: thread.id },
+          draftResult,
+        );
+        return { status: "applied", url: pullRequest.url };
       }
+      case "edit": {
+        const { title, body } = command;
+        const response = yield* api.rest({
+          ...write,
+          operation: "thread.edit",
+          method: "PATCH",
+          path: restPath(ref, "issues"),
+          body: { title, body },
+        });
+        return { status: "applied", url: yield* responseUrl(response) };
+      }
+      case "edit_comment": {
+        const { id, kind } = command.target;
+        const field = {
+          issue_comment: "id",
+          review: "pullRequestReviewId",
+          review_comment: "pullRequestReviewCommentId",
+        }[kind];
+        return yield* graphql(gitHubThreadMutations.editComment[kind], {
+          [field]: id,
+          body: command.body,
+        });
+      }
+      case "delete_comment":
+        return yield* graphql(gitHubThreadMutations.deleteComment[command.target.kind], {
+          id: command.target.id,
+        });
+      case "react":
+        return yield* graphql(
+          command.reacted
+            ? gitHubThreadMutations.addReaction
+            : gitHubThreadMutations.removeReaction,
+          { subjectId: command.subjectId, content: command.content.toUpperCase() },
+        );
+      case "add_review_comment":
+        return yield* addReviewComment(ref, login, command);
+      case "reply": {
+        const { delivery, threadId, body } = command;
+        if (delivery.kind === "pending_review") {
+          const context = yield* reviewContext(ref, login, threadId);
+          if (context.pending?.id !== delivery.reviewId || !context.pendingOnHead)
+            return reviewChanged;
+          if (context.threadPullRequestId !== context.id)
+            return {
+              status: "rejected",
+              message: "This review thread does not belong to the pull request.",
+            };
+        }
+        return yield* graphql(gitHubThreadMutations.reply, {
+          pullRequestReviewThreadId: threadId,
+          body,
+          ...(delivery.kind === "pending_review" && { pullRequestReviewId: delivery.reviewId }),
+        });
+      }
+      case "resolve_thread":
+        return yield* graphql(
+          command.resolved ? gitHubThreadMutations.resolve : gitHubThreadMutations.unresolve,
+          { threadId: command.threadId },
+        );
+      case "submit_review": {
+        const { pending, headSha } = yield* reviewContext(ref, login);
+        if ((pending?.id ?? null) !== command.pendingReviewId) return reviewChanged;
+        const event = command.event.toUpperCase();
+        if (pending) {
+          return yield* graphql(gitHubThreadMutations.submitReview, {
+            pullRequestReviewId: pending.id,
+            event,
+            body: command.body,
+          });
+        }
+        if (headSha !== command.expectedHeadSha) return headChanged;
+        const response = yield* api.rest({
+          ...write,
+          operation: "thread.submit_review",
+          method: "POST",
+          path: `${restPath(ref, "pulls")}/reviews`,
+          body: { commit_id: headSha, event, body: command.body.trim() ? command.body : undefined },
+        });
+        return { status: "applied", url: yield* responseUrl(response) };
+      }
+      case "discard_review": {
+        const { pending } = yield* reviewContext(ref, login);
+        if (pending?.id !== command.pendingReviewId) return reviewChanged;
+        return yield* graphql(gitHubThreadMutations.discardReview, {
+          pullRequestReviewId: pending.id,
+        });
+      }
+      case "enable_auto_merge": {
+        const { id, headSha } = yield* reviewContext(ref, login);
+        if (headSha !== command.expectedHeadSha) return headChanged;
+        return yield* graphql(gitHubThreadMutations.enableAutoMerge, {
+          pullRequestId: id,
+          mergeMethod: command.method.toUpperCase(),
+          expectedHeadOid: headSha,
+        });
+      }
+      case "disable_auto_merge":
+        return yield* graphql(gitHubThreadMutations.disableAutoMerge, {
+          pullRequestId: yield* resolvePullRequestId(ref),
+        });
+      case "set_file_viewed":
+        return yield* graphql(
+          command.viewed ? gitHubThreadMutations.markViewed : gitHubThreadMutations.unmarkViewed,
+          { pullRequestId: yield* resolvePullRequestId(ref), path: command.path },
+        );
     }
   });
 
@@ -462,7 +754,7 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
     ): Effect.fn.Return<GitHubThreadCommandResult, ThreadError> {
       const account = yield* verify(ref.host);
       return yield* account
-        .use(mutate(ref, command))
+        .use(mutate(ref, account.login, command))
         .pipe(Effect.catch((error) => Effect.succeed(rejection(error, command.type))));
     },
     Effect.catch((error) => Effect.succeed(projectError(error))),

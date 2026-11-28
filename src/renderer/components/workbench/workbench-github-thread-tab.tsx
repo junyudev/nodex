@@ -1,8 +1,14 @@
-import { useSyncExternalStore } from "react";
-import { GitHubThreadSurface } from "@/features/github-thread/github-thread-surface";
+import { lazy, Suspense, useSyncExternalStore } from "react";
+import {
+  PageStageBodyPlaceholder,
+  PageStageContentLayout,
+  PageStageFrame,
+  PageTitlePlaceholder,
+} from "@/components/board/page-stage/frame";
 import { useGitHubThreadTabPresentation } from "@/features/github-thread/github-thread-tab-presentation";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { openLink, type LinkRouter } from "@/lib/link-opening";
+import { readPageStageContentWidthPreference } from "@/lib/page-stage-layout";
 import type { IntlShape } from "@/lib/i18n";
 import type { CodexPromptInput } from "@/lib/types";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
@@ -27,6 +33,12 @@ interface GitHubTabPresentationInput {
 }
 
 type TabChrome = Pick<AppShellTabItem, "title" | "location" | "iconElement">;
+
+// Reading and reviewing a thread is a large feature that only a GitHub tab needs, so it loads
+// when the first one shows rather than with the Workbench.
+const GitHubThreadSurface = lazy(async () => ({
+  default: (await import("@/features/github-thread/github-thread-surface")).GitHubThreadSurface,
+}));
 
 export function GitHubThreadTabChrome({
   config,
@@ -119,34 +131,49 @@ export function WorkbenchGitHubThreadSurface({
       recordHistory: false,
     });
   };
+  const titleSnapshot =
+    windowOwner.read().windowState.scenesByOwnerKey[sceneKey]?.panelSurfacesById[surfaceId]
+      ?.titleSnapshot ?? null;
   return (
-    <GitHubThreadSurface
-      thread={config.thread}
-      kindHint={config.kind}
-      titleSnapshot={
-        windowOwner.read().windowState.scenesByOwnerKey[sceneKey]?.panelSurfacesById[surfaceId]
-          ?.titleSnapshot ?? null
+    <Suspense
+      fallback={
+        <PageStageFrame
+          aria-busy
+          toolbar={null}
+          limitMainContentWidth={readPageStageContentWidthPreference()}
+        >
+          <PageStageContentLayout
+            title={<PageTitlePlaceholder title={titleSnapshot} />}
+            body={<PageStageBodyPlaceholder seed={gitHubThreadLabel(config.thread)} />}
+          />
+        </PageStageFrame>
       }
-      {...(onAddToChatComposer ? { onAddToChatComposer } : {})}
-      view={view}
-      onViewChange={(view) => update({ state: { view } })}
-      onTitleSnapshotChange={(title) => {
-        const titleSnapshot = title.slice(0, 2_000);
-        const surface =
-          windowOwner.read().windowState.scenesByOwnerKey[sceneKey]?.panelSurfacesById[surfaceId];
-        if (titleSnapshot.trim() && titleSnapshot !== surface?.titleSnapshot)
-          update({ titleSnapshot });
-      }}
-      reveal={pending?.target ?? null}
-      onRevealConsumed={() => {
-        if (!pending) return;
-        windowOwner.dispatchEphemeral({
-          type: "update",
-          field: "gitHubThreadRevealsByScene",
-          update: (current) =>
-            withoutConsumedReveal(current, sceneKey, surfaceId, pending.operationId),
-        });
-      }}
-    />
+    >
+      <GitHubThreadSurface
+        thread={config.thread}
+        kindHint={config.kind}
+        titleSnapshot={titleSnapshot}
+        {...(onAddToChatComposer ? { onAddToChatComposer } : {})}
+        view={view}
+        onViewChange={(view) => update({ state: { view } })}
+        onTitleSnapshotChange={(title) => {
+          const titleSnapshot = title.slice(0, 2_000);
+          const surface =
+            windowOwner.read().windowState.scenesByOwnerKey[sceneKey]?.panelSurfacesById[surfaceId];
+          if (titleSnapshot.trim() && titleSnapshot !== surface?.titleSnapshot)
+            update({ titleSnapshot });
+        }}
+        reveal={pending?.target ?? null}
+        onRevealConsumed={() => {
+          if (!pending) return;
+          windowOwner.dispatchEphemeral({
+            type: "update",
+            field: "gitHubThreadRevealsByScene",
+            update: (current) =>
+              withoutConsumedReveal(current, sceneKey, surfaceId, pending.operationId),
+          });
+        }}
+      />
+    </Suspense>
   );
 }

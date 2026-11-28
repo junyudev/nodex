@@ -192,14 +192,28 @@ function StatusRow({ detail, run }: PropertiesProps) {
                 size="toolbar"
                 variant="secondary"
                 disabled={!detail.viewer.canChangeDraft || run.pending}
-                onClick={() => run.command({ type: "set_draft", draft: false })}
+                onClick={() => void run.run({ type: "set_draft", draft: false })}
               >
                 <FormattedMessage
                   id="githubThread.actions.readyForReview"
                   defaultMessage="Ready for review"
                 />
               </NodexButton>
-            ) : (
+            ) : detail.autoMerge ? (
+              detail.viewer.canDisableAutoMerge ? (
+                <NodexButton
+                  size="toolbar"
+                  variant="secondary"
+                  disabled={run.pending}
+                  onClick={() => void run.run({ type: "disable_auto_merge" })}
+                >
+                  <FormattedMessage
+                    id="githubThread.merge.cancelAuto"
+                    defaultMessage="Cancel auto-merge"
+                  />
+                </NodexButton>
+              ) : null
+            ) : detail.mergeQueued ? null : (
               <MergeButton pr={detail} canMerge={decision.canMerge} run={run} />
             )}
           </span>
@@ -232,7 +246,8 @@ const MERGE_CONFIRM_MS = 4000;
 
 /**
  * Merging cannot be taken back, so the button asks once more in place: the first press arms it,
- * the second merges. The method stays a choice beside it.
+ * the second merges. While GitHub still waits on checks or reviews, it offers to merge when they
+ * are met instead, which can be cancelled. The method stays a choice beside it.
  */
 function MergeButton({
   pr,
@@ -253,45 +268,75 @@ function MergeButton({
     const timeout = window.setTimeout(() => setArmedAt(null), MERGE_CONFIRM_MS);
     return () => window.clearTimeout(timeout);
   }, [armedAt]);
+  const whenReady = !canMerge && pr.viewer.canEnableAutoMerge;
   if (!pr.viewer.canMerge || methods.length === 0) return null;
   const methodLabel = (value: GitHubMergeMethod) =>
-    intl.formatMessage(
-      {
-        id: "githubThread.merge.method",
-        defaultMessage:
-          "{method, select, squash {Squash and merge} rebase {Rebase and merge} other {Merge}}",
-      },
-      { method: value },
-    );
+    whenReady
+      ? intl.formatMessage(
+          {
+            id: "githubThread.merge.whenReady",
+            defaultMessage:
+              "{method, select, squash {Squash when ready} rebase {Rebase when ready} other {Merge when ready}}",
+          },
+          { method: value },
+        )
+      : intl.formatMessage(
+          {
+            id: "githubThread.merge.method",
+            defaultMessage:
+              "{method, select, squash {Squash and merge} rebase {Rebase and merge} other {Merge}}",
+          },
+          { method: value },
+        );
   const armed = armedAt !== null;
-  const disabled = !canMerge || run.pending;
+  const disabled = !(canMerge || whenReady) || run.pending;
+  const press = () => {
+    if (whenReady) {
+      void run.run({ type: "enable_auto_merge", method, expectedHeadSha: pr.headSha });
+      return;
+    }
+    if (!armed) {
+      setArmedAt(Date.now());
+      return;
+    }
+    setArmedAt(null);
+    void run.run({ type: "merge", method, expectedHeadSha: pr.headSha });
+  };
+  const button = (
+    <NodexButton
+      size="toolbar"
+      variant={armed ? "accentAction" : whenReady ? "secondary" : "primary"}
+      disabled={disabled}
+      className={cn(methods.length > 1 && "rounded-r-none")}
+      onClick={press}
+    >
+      {armed
+        ? intl.formatMessage(
+            {
+              id: "githubThread.merge.confirm",
+              defaultMessage:
+                "{method, select, squash {Confirm squash} rebase {Confirm rebase} other {Confirm merge}}",
+            },
+            { method },
+          )
+        : methodLabel(method)}
+    </NodexButton>
+  );
   return (
     <span className="flex items-center">
-      <NodexButton
-        size="toolbar"
-        variant={armed ? "accentAction" : "primary"}
-        disabled={disabled}
-        className={cn(methods.length > 1 && "rounded-r-none")}
-        onClick={() => {
-          if (!armed) {
-            setArmedAt(Date.now());
-            return;
-          }
-          setArmedAt(null);
-          run.command({ type: "merge", method, expectedHeadSha: pr.headSha });
-        }}
-      >
-        {armed
-          ? intl.formatMessage(
-              {
-                id: "githubThread.merge.confirm",
-                defaultMessage:
-                  "{method, select, squash {Confirm squash} rebase {Confirm rebase} other {Confirm merge}}",
-              },
-              { method },
-            )
-          : methodLabel(method)}
-      </NodexButton>
+      {whenReady ? (
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "githubThread.merge.whenReadyTooltip",
+            defaultMessage: "GitHub merges it once its checks and reviews are met",
+          })}
+          side="top"
+        >
+          <span className="inline-flex">{button}</span>
+        </NodexTooltip>
+      ) : (
+        button
+      )}
       {methods.length > 1 ? (
         <NodexDropdownMenu
           align="end"
@@ -299,13 +344,18 @@ function MergeButton({
           triggerButton={
             <NodexButton
               size="toolbar"
-              variant="primary"
+              variant={whenReady ? "secondary" : "primary"}
               disabled={disabled}
               aria-label={intl.formatMessage({
                 id: "githubThread.merge.chooseMethod",
                 defaultMessage: "Choose how to merge",
               })}
-              className="rounded-l-none border-l-[0.5px] border-l-(--color-background-primary-solid-hover) px-1"
+              className={cn(
+                "rounded-l-none border-l-[0.5px] px-1",
+                whenReady
+                  ? "border-l-token-border"
+                  : "border-l-(--color-background-primary-solid-hover)",
+              )}
             >
               <ChevronDownIcon className="icon-2xs" />
             </NodexButton>

@@ -1,13 +1,12 @@
-import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
+import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import {
   AssigneeIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
-  CopyIcon,
   EditIcon,
   PullRequestDraftIcon,
   PullRequestMergedIcon,
-  SendToChatIcon,
   SuccessCircleIcon,
   TagsIcon,
   ThreadSummaryCommitIcon,
@@ -19,21 +18,28 @@ import {
   SlashCircleIcon,
   WarningCircleIcon,
 } from "@/components/shared/icons/plugin-detail-icons";
-import { NodexIconButton } from "@/components/ui/button";
-import { toast } from "@/components/ui/toast";
-import { writeTextToClipboard } from "@/lib/clipboard";
-import { cn } from "@/lib/utils";
+import {
+  NodexDropdownMenu,
+  NodexDropdownRadioGroup,
+  NodexDropdownRadioItem,
+} from "@/components/ui/dropdown";
 import type {
-  GitHubReviewComment,
   GitHubReviewState,
+  GitHubReviewThread,
   GitHubThreadDetail,
   GitHubTimelineEvent,
   GitHubTimelineItem,
 } from "../../../shared/github-thread";
 import {
+  GitHubWrittenItemActions,
+  GitHubWrittenItemBody,
+  useGitHubWrittenItem,
+} from "./github-thread-comment";
+import {
   commitAuthors,
-  diffHunkTail,
+  GITHUB_ACTIVITY_FILTERS,
   projectGitHubActivity,
+  type GitHubActivityFilter,
   type GitHubActivityRow,
   type GitHubChatContextSubject,
 } from "./github-thread-model";
@@ -41,27 +47,46 @@ import {
   GitHubActorName,
   GitHubAvatar,
   GitHubLabelChip,
-  GitHubMarkdown,
   GitHubRelativeTime,
   GitHubSectionHeading,
   GitHubThreadReferenceChip,
   useOpenOnGitHub,
 } from "./github-thread-parts";
+import { useGitHubActivityFilter } from "./github-thread-preferences";
+import { GitHubReviewThreadCard } from "./github-thread-review-thread";
 import { GitHubThreadStateIcon, gitHubThreadStateOf } from "./github-thread-state";
+import type { GitHubThreadCommandRunner } from "./github-thread-surface-types";
 
 type AddToChat = ((subject: GitHubChatContextSubject) => void) | null;
+
+function activityFilterLabel(intl: IntlShape, filter: GitHubActivityFilter): string {
+  return intl.formatMessage(
+    {
+      id: "githubThread.activity.filter",
+      defaultMessage:
+        "{filter, select, comments {Comments} people {Comments from people} other {All activity}}",
+    },
+    { filter },
+  );
+}
 
 /** Everything that happened on the thread, oldest first, the way the reader catches up. */
 export function GitHubThreadActivity({
   detail,
+  run,
   onAddToChat,
 }: {
   readonly detail: GitHubThreadDetail;
+  readonly run: GitHubThreadCommandRunner;
   readonly onAddToChat: AddToChat;
 }) {
   const intl = useIntl();
   const openOnGitHub = useOpenOnGitHub();
-  const rows = projectGitHubActivity(detail.timeline, detail.kind);
+  const [filter, setFilter] = useGitHubActivityFilter();
+  const rows = projectGitHubActivity(detail.timeline, detail.kind, {
+    threads: detail.kind === "pull_request" ? detail.reviewThreads : [],
+    filter,
+  });
   return (
     <section
       aria-label={intl.formatMessage({
@@ -70,7 +95,33 @@ export function GitHubThreadActivity({
       })}
       className="flex flex-col gap-1"
     >
-      <GitHubSectionHeading>
+      <GitHubSectionHeading
+        trailing={
+          <NodexDropdownMenu
+            align="end"
+            triggerButton={
+              <button
+                type="button"
+                className="cursor-interaction flex h-6 items-center gap-1 rounded-md px-1.5 text-sm font-normal text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-text-primary aria-expanded:bg-token-foreground/5"
+              >
+                {activityFilterLabel(intl, filter)}
+                <ChevronDownIcon className="icon-2xs" />
+              </button>
+            }
+          >
+            <NodexDropdownRadioGroup
+              value={filter}
+              onValueChange={(value) => setFilter(value as GitHubActivityFilter)}
+            >
+              {GITHUB_ACTIVITY_FILTERS.map((value) => (
+                <NodexDropdownRadioItem key={value} value={value}>
+                  {activityFilterLabel(intl, value)}
+                </NodexDropdownRadioItem>
+              ))}
+            </NodexDropdownRadioGroup>
+          </NodexDropdownMenu>
+        }
+      >
         <FormattedMessage id="githubThread.activity.heading" defaultMessage="Activity" />
       </GitHubSectionHeading>
       {detail.timelineTruncated ? (
@@ -87,16 +138,23 @@ export function GitHubThreadActivity({
       ) : null}
       {rows.length === 0 ? (
         <p className="text-sm text-token-description-foreground">
-          <FormattedMessage
-            id="githubThread.activity.empty"
-            defaultMessage="Nothing has happened yet."
-          />
+          {filter === "all" ? (
+            <FormattedMessage
+              id="githubThread.activity.empty"
+              defaultMessage="Nothing has happened yet."
+            />
+          ) : (
+            <FormattedMessage
+              id="githubThread.activity.emptyFiltered"
+              defaultMessage="Nothing to show with this filter."
+            />
+          )}
         </p>
       ) : (
         <ol className="flex flex-col">
           {rows.map((row) => (
             <li key={row.id}>
-              <ActivityRow row={row} detail={detail} onAddToChat={onAddToChat} />
+              <ActivityRow row={row} detail={detail} run={run} onAddToChat={onAddToChat} />
             </li>
           ))}
         </ol>
@@ -108,41 +166,19 @@ export function GitHubThreadActivity({
 function ActivityRow({
   row,
   detail,
+  run,
   onAddToChat,
 }: {
   readonly row: GitHubActivityRow;
   readonly detail: GitHubThreadDetail;
+  readonly run: GitHubThreadCommandRunner;
   readonly onAddToChat: AddToChat;
 }) {
   switch (row.kind) {
     case "comment":
-      return (
-        <ConversationEntry
-          anchor={row.anchor}
-          rail={<GitHubAvatar actor={row.author} size={20} />}
-          header={
-            <>
-              <GitHubActorName actor={row.author} avatar={false} />
-              <GitHubRelativeTime at={row.createdAt} href={row.url} />
-              {row.edited ? (
-                <span className="text-token-description-foreground">
-                  <FormattedMessage id="githubThread.activity.edited" defaultMessage="edited" />
-                </span>
-              ) : null}
-            </>
-          }
-          actions={
-            <EntryActions
-              url={row.url}
-              onAddToChat={onAddToChat ? () => onAddToChat({ kind: "comment", item: row }) : null}
-            />
-          }
-        >
-          <GitHubMarkdown markdown={row.body} thread={detail.ref} />
-        </ConversationEntry>
-      );
+      return <CommentEntry item={row} detail={detail} run={run} onAddToChat={onAddToChat} />;
     case "review":
-      return <ReviewEntry row={row} detail={detail} onAddToChat={onAddToChat} />;
+      return <ReviewEntry row={row} detail={detail} run={run} onAddToChat={onAddToChat} />;
     case "commits":
       return <CommitsEntry commits={row.commits} />;
     case "event":
@@ -150,97 +186,98 @@ function ActivityRow({
   }
 }
 
-/** A person speaking: their avatar on the rail, a header line, then what they said. */
+/**
+ * A person speaking: their avatar on the rail, a header line, then what they said. What follows
+ * it (a review's conversations) sits outside its hover group, so pointing at a reply does not
+ * light up the review's own actions.
+ */
 function ConversationEntry({
   anchor,
   rail,
   header,
   actions,
   children,
+  after,
 }: {
   readonly anchor: string;
   readonly rail: ReactNode;
   readonly header: ReactNode;
   readonly actions?: ReactNode;
   readonly children?: ReactNode;
+  readonly after?: ReactNode;
 }) {
   return (
     <article
       id={anchor}
       data-github-anchor={anchor}
-      className="group/entry grid scroll-mt-16 grid-cols-[20px_minmax(0,1fr)] gap-x-2.5 py-2 data-[revealed=true]:rounded-lg data-[revealed=true]:bg-token-foreground/5"
+      className="grid scroll-mt-16 grid-cols-[20px_minmax(0,1fr)] gap-x-2.5 py-2 data-[revealed=true]:rounded-lg data-[revealed=true]:bg-token-foreground/5"
     >
       <div className="pt-px">{rail}</div>
       <div className="min-w-0">
-        <div className="flex h-5 min-w-0 items-center gap-1.5 text-sm">
-          {header}
-          {actions ? (
-            <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-hover/entry:opacity-100 group-focus-within/entry:opacity-100">
-              {actions}
-            </span>
-          ) : null}
+        <div className="group/entry">
+          <div className="flex h-5 min-w-0 items-center gap-1.5 text-sm">
+            {header}
+            {actions ? (
+              <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-focus-within/entry:opacity-100 group-hover/entry:opacity-100 has-[[aria-expanded=true]]:opacity-100">
+                {actions}
+              </span>
+            ) : null}
+          </div>
+          {children ? <div className="mt-1 min-w-0">{children}</div> : null}
         </div>
-        {children ? <div className="mt-1 min-w-0">{children}</div> : null}
+        {after}
       </div>
     </article>
   );
 }
 
-function EntryActions({
-  url,
+function CommentEntry({
+  item,
+  detail,
+  run,
   onAddToChat,
 }: {
-  readonly url: string;
-  readonly onAddToChat: (() => void) | null;
+  readonly item: Extract<GitHubTimelineItem, { kind: "comment" }>;
+  readonly detail: GitHubThreadDetail;
+  readonly run: GitHubThreadCommandRunner;
+  readonly onAddToChat: AddToChat;
 }) {
-  const intl = useIntl();
-  return (
-    <>
-      {onAddToChat ? (
-        <NodexIconButton
-          size="xs"
-          icon={SendToChatIcon}
-          ariaLabel={intl.formatMessage({
-            id: "githubThread.activity.addToChat",
-            defaultMessage: "Add to chat",
-          })}
-          title={intl.formatMessage({
-            id: "githubThread.activity.addToChat",
-            defaultMessage: "Add to chat",
-          })}
-          onClick={onAddToChat}
-        />
-      ) : null}
-      <NodexIconButton
-        size="xs"
-        icon={CopyIcon}
-        ariaLabel={intl.formatMessage({
-          id: "githubThread.activity.copyLink",
-          defaultMessage: "Copy link",
-        })}
-        title={intl.formatMessage({
-          id: "githubThread.activity.copyLink",
-          defaultMessage: "Copy link",
-        })}
-        onClick={() => void copyLink(url)}
-      />
-    </>
+  const state = useGitHubWrittenItem(
+    {
+      id: item.id,
+      body: item.body,
+      url: item.url,
+      reactions: item.reactions,
+      edit: item.canEdit ? { kind: "issue_comment", id: item.id } : null,
+      remove: item.canDelete ? { kind: "issue_comment", id: item.id } : null,
+    },
+    run,
   );
-}
-
-async function copyLink(url: string) {
-  const intl = getIntl();
-  if (await writeTextToClipboard(url))
-    toast.success(
-      intl.formatMessage({ id: "githubThread.copiedLink", defaultMessage: "Copied link" }),
-    );
-  else
-    toast.danger(
-      intl.formatMessage({
-        id: "githubThread.copyLinkFailed",
-        defaultMessage: "Couldn’t copy the link",
-      }),
-    );
+  return (
+    <ConversationEntry
+      anchor={item.anchor}
+      rail={<GitHubAvatar actor={item.author} size={20} />}
+      header={
+        <>
+          <GitHubActorName actor={item.author} avatar={false} />
+          <GitHubRelativeTime at={item.createdAt} href={item.url} />
+          {item.edited ? (
+            <span className="text-token-description-foreground">
+              <FormattedMessage id="githubThread.activity.edited" defaultMessage="edited" />
+            </span>
+          ) : null}
+        </>
+      }
+      actions={
+        <GitHubWrittenItemActions
+          state={state}
+          onAddToChat={onAddToChat ? () => onAddToChat({ kind: "comment", item }) : null}
+        />
+      }
+    >
+      <GitHubWrittenItemBody state={state} thread={detail.ref} />
+    </ConversationEntry>
+  );
 }
 
 const REVIEW_GLYPH: Record<GitHubReviewState, ReactNode> = {
@@ -253,14 +290,31 @@ const REVIEW_GLYPH: Record<GitHubReviewState, ReactNode> = {
 function ReviewEntry({
   row,
   detail,
+  run,
   onAddToChat,
 }: {
   readonly row: Extract<GitHubActivityRow, { kind: "review" }>;
   readonly detail: GitHubThreadDetail;
+  readonly run: GitHubThreadCommandRunner;
   readonly onAddToChat: AddToChat;
 }) {
   const { review } = row;
-  const [showResolved, setShowResolved] = useState(false);
+  const state = useGitHubWrittenItem(
+    {
+      id: review.id,
+      body: review.body,
+      url: review.url,
+      reactions: review.reactions,
+      edit: review.canEdit ? { kind: "review", id: review.id } : null,
+      remove: null,
+    },
+    run,
+  );
+  const open = row.threads.filter((thread) => !thread.resolved);
+  const resolved = row.threads.filter((thread) => thread.resolved);
+  // A review without words has nothing to react to; GitHub offers reactions only on its body.
+  const hasBody =
+    review.body.trim().length > 0 || state.mode !== "read" || review.reactions.groups.length > 0;
   return (
     <ConversationEntry
       anchor={review.anchor}
@@ -280,150 +334,72 @@ function ReviewEntry({
         </>
       }
       actions={
-        <EntryActions
-          url={review.url}
+        <GitHubWrittenItemActions
+          state={state}
           onAddToChat={onAddToChat ? () => onAddToChat({ kind: "review", item: review }) : null}
         />
       }
+      after={
+        detail.kind === "pull_request" && row.threads.length > 0 ? (
+          <div className="mt-2 flex flex-col gap-2">
+            {open.map((thread) => (
+              <GitHubReviewThreadCard
+                key={thread.id}
+                thread={thread}
+                pr={detail}
+                run={run}
+                placement="activity"
+                onAddToChat={onAddToChat}
+              />
+            ))}
+            {resolved.length > 0 ? (
+              <ResolvedThreads
+                threads={resolved}
+                render={(thread) => (
+                  <GitHubReviewThreadCard
+                    key={thread.id}
+                    thread={thread}
+                    pr={detail}
+                    run={run}
+                    placement="activity"
+                    onAddToChat={onAddToChat}
+                  />
+                )}
+              />
+            ) : null}
+          </div>
+        ) : null
+      }
     >
-      {review.body.trim() || row.openComments.length > 0 || row.resolvedComments.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          {review.body.trim() ? (
-            <GitHubMarkdown markdown={review.body} thread={detail.ref} />
-          ) : null}
-          {row.openComments.map((comment) => (
-            <ReviewCommentCard
-              key={comment.id}
-              comment={comment}
-              detail={detail}
-              onAddToChat={onAddToChat}
-            />
-          ))}
-          {row.resolvedComments.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                aria-expanded={showResolved}
-                onClick={() => setShowResolved((open) => !open)}
-                className="cursor-interaction flex items-center gap-1 self-start text-sm text-token-description-foreground hover:text-token-text-primary"
-              >
-                <ChevronRightIcon
-                  className={cn(
-                    "icon-2xs transition-transform duration-150",
-                    showResolved && "rotate-90",
-                  )}
-                />
-                <FormattedMessage
-                  id="githubThread.activity.resolvedComments"
-                  defaultMessage="{count, plural, one {# resolved comment} other {# resolved comments}}"
-                  values={{ count: row.resolvedComments.length }}
-                />
-              </button>
-              {showResolved
-                ? row.resolvedComments.map((comment) => (
-                    <ReviewCommentCard
-                      key={comment.id}
-                      comment={comment}
-                      detail={detail}
-                      onAddToChat={onAddToChat}
-                    />
-                  ))
-                : null}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {hasBody ? <GitHubWrittenItemBody state={state} thread={detail.ref} /> : null}
     </ConversationEntry>
   );
 }
 
-/** One inline comment: where in the change it points, the lines it points at, and the words. */
-function ReviewCommentCard({
-  comment,
-  detail,
-  onAddToChat,
+/** Settled conversations stay out of the way, one line to bring them back. */
+function ResolvedThreads({
+  threads,
+  render,
 }: {
-  readonly comment: GitHubReviewComment;
-  readonly detail: GitHubThreadDetail;
-  readonly onAddToChat: AddToChat;
+  readonly threads: readonly GitHubReviewThread[];
+  readonly render: (thread: GitHubReviewThread) => ReactNode;
 }) {
-  const intl = useIntl();
-  const tail = diffHunkTail(comment.diffHunk);
-  const position =
-    comment.line === null
-      ? null
-      : comment.startLine && comment.startLine !== comment.line
-        ? `${comment.startLine}–${comment.line}`
-        : String(comment.line);
+  const [shown, setShown] = useState(threads.length === 1);
+  if (shown) return <>{threads.map(render)}</>;
   return (
-    <div
-      id={comment.anchor}
-      data-github-anchor={comment.anchor}
-      className="group/card scroll-mt-16 overflow-hidden rounded-lg ring-[0.5px] ring-token-border ring-inset data-[revealed=true]:bg-token-foreground/5"
+    <button
+      type="button"
+      aria-expanded={false}
+      onClick={() => setShown(true)}
+      className="cursor-interaction flex items-center gap-1 self-start text-sm text-token-description-foreground hover:text-token-text-primary"
     >
-      <div className="flex h-7 min-w-0 items-center gap-1.5 border-b-[0.5px] border-token-border px-2.5 text-xs text-token-description-foreground">
-        <span className="flex min-w-0 font-mono">
-          <span className="min-w-0 truncate">{comment.path}</span>
-          {position ? <span className="shrink-0 tabular-nums">:{position}</span> : null}
-        </span>
-        {comment.outdated ? (
-          <span className="shrink-0 rounded-sm bg-token-foreground/5 px-1">
-            <FormattedMessage id="githubThread.activity.outdated" defaultMessage="Outdated" />
-          </span>
-        ) : null}
-        {comment.resolved ? (
-          <span className="shrink-0 rounded-sm bg-token-foreground/5 px-1">
-            <FormattedMessage id="githubThread.activity.resolved" defaultMessage="Resolved" />
-          </span>
-        ) : null}
-        <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-hover/card:opacity-100 group-focus-within/card:opacity-100">
-          {onAddToChat ? (
-            <NodexIconButton
-              size="xs"
-              icon={SendToChatIcon}
-              ariaLabel={intl.formatMessage({
-                id: "githubThread.activity.addToChat",
-                defaultMessage: "Add to chat",
-              })}
-              title={intl.formatMessage({
-                id: "githubThread.activity.addToChat",
-                defaultMessage: "Add to chat",
-              })}
-              onClick={() => onAddToChat({ kind: "review_comment", comment })}
-            />
-          ) : null}
-        </span>
-      </div>
-      {tail.length > 0 ? (
-        <pre className="overflow-x-auto bg-token-foreground/[0.03] px-2.5 py-1 font-mono text-xs leading-5">
-          {tail.map((line, index) => (
-            <div
-              key={index}
-              className={cn(
-                "whitespace-pre",
-                line.startsWith("+") && "text-token-git-decoration-added-resource-foreground",
-                line.startsWith("-") && "text-token-git-decoration-deleted-resource-foreground",
-                !line.startsWith("+") &&
-                  !line.startsWith("-") &&
-                  "text-token-description-foreground",
-              )}
-            >
-              {line || " "}
-            </div>
-          ))}
-        </pre>
-      ) : null}
-      <div className="flex gap-2 px-2.5 py-2">
-        <GitHubAvatar actor={comment.author} />
-        <div className="min-w-0 flex-1">
-          <div className="flex h-4 items-center gap-1.5 text-xs">
-            <GitHubActorName actor={comment.author} avatar={false} />
-            <GitHubRelativeTime at={comment.createdAt} href={comment.url} />
-          </div>
-          <GitHubMarkdown markdown={comment.body} thread={detail.ref} className="mt-1" />
-        </div>
-      </div>
-    </div>
+      <ChevronRightIcon className="icon-2xs" />
+      <FormattedMessage
+        id="githubThread.activity.resolvedConversations"
+        defaultMessage="{count, plural, one {# resolved conversation} other {# resolved conversations}}"
+        values={{ count: threads.length }}
+      />
+    </button>
   );
 }
 

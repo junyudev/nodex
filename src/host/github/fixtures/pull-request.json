@@ -89,12 +89,57 @@
               "comments": {
                 "nodes": [
                   {
-                    "id": "PRRC_kwDODKw3uc8AAAABE4BItg"
+                    "id": "PRRC_kwDODKw3uc8AAAABE4BItg",
+                    "author": {
+                      "login": "copilot-pull-request-reviewer",
+                      "avatarUrl": "https://avatars.githubusercontent.com/in/946600?v=4",
+                      "url": "https://github.com/apps/copilot-pull-request-reviewer",
+                      "__typename": "Bot"
+                    },
+                    "body": "Keep this check separate from the fallback path.",
+                    "createdAt": "2026-11-18T23:12:35Z",
+                    "url": "https://github.com/cli/cli/pull/15100#discussion_r4622141622",
+                    "diffHunk": "@@ -71,2 +71,3 @@\n+\treturn err",
+                    "databaseId": 4622141622,
+                    "lastEditedAt": null,
+                    "state": "SUBMITTED",
+                    "pullRequestReview": {
+                      "id": "PRR_kwDODKw3uc8AAAABY6SNoQ"
+                    },
+                    "viewerCanUpdate": false,
+                    "viewerCanDelete": false,
+                    "viewerCanReact": true,
+                    "reactionGroups": [
+                      {
+                        "content": "THUMBS_UP",
+                        "viewerHasReacted": false,
+                        "reactors": {
+                          "totalCount": 1
+                        }
+                      }
+                    ]
                   }
-                ]
-              }
+                ],
+                "pageInfo": {
+                  "hasNextPage": true
+                }
+              },
+              "id": "PRRT_logout",
+              "path": "pkg/cmd/auth/logout/logout.go",
+              "subjectType": "LINE",
+              "startDiffSide": "LEFT",
+              "line": 73,
+              "startLine": 72,
+              "originalLine": 73,
+              "originalStartLine": 72,
+              "viewerCanReply": true,
+              "viewerCanResolve": false,
+              "viewerCanUnresolve": true
             }
-          ]
+          ],
+          "pageInfo": {
+            "hasNextPage": true
+          }
         },
         "commits": {
           "totalCount": 7,
@@ -171,29 +216,17 @@
               "body": "",
               "submittedAt": "2026-11-18T23:12:36Z",
               "url": "https://github.com/cli/cli/pull/15100#pullrequestreview-5966695841",
-              "comments": {
-                "nodes": [
-                  {
-                    "id": "PRRC_kwDODKw3uc8AAAABE4BItg",
-                    "author": {
-                      "login": "copilot-pull-request-reviewer",
-                      "avatarUrl": "https://avatars.githubusercontent.com/in/946600?v=4",
-                      "url": "https://github.com/apps/copilot-pull-request-reviewer",
-                      "__typename": "Bot"
-                    },
-                    "isMinimized": false,
-                    "body": "Keep this check separate from the fallback path.",
-                    "createdAt": "2026-11-18T23:12:35Z",
-                    "url": "https://github.com/cli/cli/pull/15100#discussion_r4622141622",
-                    "path": "pkg/cmd/auth/logout/logout.go",
-                    "line": null,
-                    "startLine": null,
-                    "diffHunk": "@@ -71,2 +71,3 @@\n+\treturn err",
-                    "outdated": true,
-                    "replyTo": null
+              "viewerCanUpdate": false,
+              "viewerCanReact": true,
+              "reactionGroups": [
+                {
+                  "content": "HOORAY",
+                  "viewerHasReacted": false,
+                  "reactors": {
+                    "totalCount": 1
                   }
-                ]
-              }
+                }
+              ]
             },
             {
               "__typename": "CrossReferencedEvent",
@@ -236,6 +269,37 @@
               "mergeRefName": "trunk"
             }
           ]
+        },
+        "id": "PR_nodex_fixture",
+        "viewerCanReact": true,
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "viewerHasReacted": true,
+            "reactors": {
+              "totalCount": 2
+            }
+          },
+          {
+            "content": "THUMBS_UP",
+            "viewerHasReacted": false,
+            "reactors": {
+              "totalCount": 4
+            }
+          },
+          {
+            "content": "LAUGH",
+            "viewerHasReacted": false,
+            "reactors": {
+              "totalCount": 0
+            }
+          }
+        ],
+        "isInMergeQueue": false,
+        "viewerCanEnableAutoMerge": false,
+        "viewerCanDisableAutoMerge": false,
+        "reviews": {
+          "nodes": []
         }
       }
     }

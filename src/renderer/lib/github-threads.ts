@@ -2,6 +2,7 @@ import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react
 import {
   GITHUB_THREAD_SUMMARY_BATCH_LIMIT,
   gitHubThreadKey,
+  type GitHubFileViewedState,
   type GitHubThreadCommand,
   type GitHubThreadCommandResult,
   type GitHubThreadDetail,
@@ -101,6 +102,9 @@ export function projectGitHubThreadSummary(detail: GitHubThreadDetail): GitHubTh
 export const gitHubThreadQueryKey = (ref: GitHubThreadRef) =>
   spaceQueryKey(["github-thread", gitHubThreadKey(ref)]);
 
+export const gitHubPullRequestFilesQueryPrefix = (ref: GitHubThreadRef) =>
+  [...gitHubThreadQueryKey(ref), "files"] as const;
+
 export const gitHubThreadSummaryQueryKey = (ref: GitHubThreadRef) =>
   spaceQueryKey(["github-thread-summary", gitHubThreadKey(ref)]);
 
@@ -150,7 +154,7 @@ export function gitHubThreadSummaryQueryOptions(ref: GitHubThreadRef) {
 
 export function gitHubPullRequestFilesQueryOptions(ref: GitHubThreadRef, headSha: string) {
   return queryOptions({
-    queryKey: [...gitHubThreadQueryKey(ref), "files", headSha] as const,
+    queryKey: [...gitHubPullRequestFilesQueryPrefix(ref), headSha] as const,
     queryFn: async ({ client }): Promise<GitHubPullRequestFilesResult> => {
       const result = await invokeRendererQuery("github:thread-files", ref);
       if (result.status !== "ready" || result.files.headSha === headSha) return result;
@@ -174,24 +178,67 @@ const threadCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
+/** A viewed mark is the viewer's own: the files it belongs to are patched, not read again. */
+function markFileViewed(
+  queryClient: QueryClient,
+  ref: GitHubThreadRef,
+  path: string,
+  viewed: GitHubFileViewedState,
+) {
+  queryClient.setQueriesData<GitHubPullRequestFilesResult>(
+    { queryKey: gitHubPullRequestFilesQueryPrefix(ref) },
+    (result) =>
+      result?.status === "ready"
+        ? {
+            ...result,
+            files: {
+              ...result.files,
+              files: result.files.files.map((file) =>
+                file.path === path ? { ...file, viewed } : file,
+              ),
+            },
+          }
+        : result,
+  );
+}
+
 export async function runGitHubThreadCommand(
   queryClient: QueryClient,
   ref: GitHubThreadRef,
   command: GitHubThreadCommand,
 ): Promise<GitHubThreadCommandResult> {
+  if (command.type === "set_file_viewed") {
+    const result = await invokePlainCommand(threadCommand, ref, command);
+    if (result.status === "applied")
+      markFileViewed(queryClient, ref, command.path, command.viewed ? "viewed" : "unviewed");
+    return result;
+  }
+  let result: GitHubThreadCommandResult | undefined;
   try {
-    return await invokePlainCommand(threadCommand, ref, command);
+    result = await invokePlainCommand(threadCommand, ref, command);
+    return result;
   } finally {
     const summary = { queryKey: gitHubThreadSummaryQueryKey(ref), exact: true };
     // An initial summary request can still be reading the pre-command state.
     await queryClient.cancelQueries(summary);
-    void queryClient.invalidateQueries({ queryKey: gitHubThreadQueryKey(ref) });
+    // Files belong to a head: a new head reads its own files, so they are left alone here.
+    const detail = queryClient.invalidateQueries({
+      queryKey: gitHubThreadQueryKey(ref),
+      exact: true,
+    });
     void queryClient.invalidateQueries(summary);
+    // What a change wrote reads back before the control that wrote it lets go, so a draft gives
+    // way to the comment it became rather than to a gap.
+    if (result?.status === "applied") await detail;
   }
 }
 
+export const gitHubThreadCommandMutationKey = (ref: GitHubThreadRef) =>
+  [...gitHubThreadQueryKey(ref), "command"] as const;
+
 export const gitHubThreadMutationOptions = (queryClient: QueryClient, ref: GitHubThreadRef) =>
   mutationOptions({
+    mutationKey: gitHubThreadCommandMutationKey(ref),
     mutationFn: (command: GitHubThreadCommand) => runGitHubThreadCommand(queryClient, ref, command),
     retry: false,
   });

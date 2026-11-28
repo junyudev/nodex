@@ -48,6 +48,16 @@ export function gitHubMergeReadinessLabel(
         id: "githubThread.readiness.conflicts",
         defaultMessage: "Has conflicts with its base",
       });
+    case "queued":
+      return intl.formatMessage({
+        id: "githubThread.readiness.queued",
+        defaultMessage: "Queued to merge",
+      });
+    case "auto_merge":
+      return intl.formatMessage({
+        id: "githubThread.readiness.autoMerge",
+        defaultMessage: "Merges when ready",
+      });
     case "checks_failing":
       return intl.formatMessage(
         {
