@@ -27,7 +27,7 @@ function mediaDataBytes(payload: string, base64: boolean) {
 /** A mounted decoder owns this URL; file bytes and downloads remain with the media resource. */
 export function attachMediaDataSource(element: HTMLMediaElement, source: string): () => void {
   const comma = source.indexOf(",");
-  if (comma < 0) throw new Error("Invalid video data URL");
+  if (comma < 0) throw new Error("Invalid media data URL");
   const fragment = source.indexOf("#");
   const header = source.slice(5, comma);
   const payload = source.slice(comma + 1, fragment < 0 ? undefined : fragment);
@@ -43,6 +43,33 @@ export function attachMediaDataSource(element: HTMLMediaElement, source: string)
     }
     URL.revokeObjectURL(url);
   };
+}
+
+/** Binds carried bytes to a player, reporting bytes it cannot decode instead of throwing. */
+export function bindMediaDataSource(
+  element: HTMLMediaElement,
+  source: string,
+  onError: () => void,
+): (() => void) | undefined {
+  try {
+    return attachMediaDataSource(element, source);
+  } catch {
+    onError();
+    return undefined;
+  }
+}
+
+let soundingPlayer: HTMLMediaElement | null = null;
+
+/** One conversation player sounds at a time: starting one pauses the one that was playing. */
+export function claimMediaPlayback(element: HTMLMediaElement) {
+  if (soundingPlayer && soundingPlayer !== element && !soundingPlayer.paused)
+    soundingPlayer.pause();
+  soundingPlayer = element;
+}
+
+export function releaseMediaPlayback(element: HTMLMediaElement) {
+  if (soundingPlayer === element) soundingPlayer = null;
 }
 
 // Native media handles are mutable platform resources, separate from playback snapshots.

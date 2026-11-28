@@ -35,6 +35,7 @@ import { resolveMcpToolActivityLabel } from "./mcp-tool-call-labels";
 import { McpCapabilityViewFrame } from "./mcp-capability-view-frame";
 import { useThreadMcpApps } from "./mcp-apps-context";
 import { ToolCallCodePanel } from "./tool-call-inspection";
+import { ToolResultAudio } from "./tool-result-audio";
 import { inspectMcpToolCall, ToolCallInspector } from "./tool-call-inspector";
 import { WebMcpToolActivity } from "./webmcp-tool-activity";
 import { NO_STEP_IMAGES, StepImageStrip } from "../step-images";
@@ -323,12 +324,11 @@ function McpContentBlock({
     const annotations = formatAnnotations(block.annotations);
 
     return (
-      <div className="flex flex-col gap-0.5">
-        <audio
-          className="w-full gap-0.5"
-          controls
-          src={`data:${block.mimeType};base64,${block.data}`}
-          preload="metadata"
+      <div className="flex flex-col gap-1.5">
+        <ToolResultAudio
+          url={block.data ? `data:${block.mimeType};base64,${block.data}` : null}
+          source={block.source}
+          mimeType={block.mimeType || undefined}
         />
         {textValue && textPreview?.kind === "omitted" ? (
           <ToolCallCodePanel

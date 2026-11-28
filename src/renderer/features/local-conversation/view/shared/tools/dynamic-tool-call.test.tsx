@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { describe, expect, test, onTestFinished, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState, type ReactElement } from "react";
@@ -224,6 +224,16 @@ describe("DynamicToolCall", () => {
   test("script activities show their pictures on the row and reveal code and other media when opened", async () => {
     const imageUrl = "data:image/png;base64,aW1hZ2U=";
     const audioUrl = "data:audio/wav;base64,YXVkaW8=";
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = vi.fn(() => "blob:tool-audio");
+        static revokeObjectURL = vi.fn();
+      },
+    );
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
     const view = renderWithQueryClient(
       <TooltipProvider>
         <DynamicToolCall
@@ -256,7 +266,10 @@ describe("DynamicToolCall", () => {
     expect(view.getByText("console.log('ready')")).toBeTruthy();
     expect(view.getByText("ready")).toBeTruthy();
     expect(view.getAllByRole("img", { name: "Tool output" })).toEqual([picture]);
-    expect(view.container.querySelector("audio")?.getAttribute("src")).toBe(audioUrl);
+    // Carried audio plays in the transcript's own player, decoded from the result's bytes.
+    expect(view.getByRole("button", { name: "Play Audio" })).toBeTruthy();
+    expect(view.getByText("WAV audio")).toBeTruthy();
+    expect(view.container.querySelector("audio")?.getAttribute("src")).toBe("blob:tool-audio");
     expect(view.getByRole("button", { name: "Inspect tool call" })).toBeTruthy();
   });
 

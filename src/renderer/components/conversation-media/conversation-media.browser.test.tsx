@@ -24,6 +24,7 @@ const source: ContentImageScope = {
   ...THIS_COMPUTER_IMAGE_SCOPE,
   hostId: "remote-media",
   conversationId: "thread",
+  cwd: "/media",
   sourceIdentity: "item-one",
   authority: {},
   isCurrent: () => true,
@@ -33,6 +34,16 @@ async function click(element: HTMLElement) {
   await act(async () => {
     await userEvent.click(element);
     await Promise.resolve();
+  });
+}
+function nativeMediaEvent(element: HTMLMediaElement, type: "playing" | "pause") {
+  return new Promise<void>((resolve, reject) => {
+    element.addEventListener(type, () => resolve(), { once: true });
+    element.addEventListener(
+      "error",
+      () => reject(new Error(element.error?.message || `Native ${type} failed`)),
+      { once: true },
+    );
   });
 }
 /** Finish native seeking, or reject on test cancellation so every caller can unwind. */
@@ -153,7 +164,7 @@ test("decodes captured file media, preserves grouped image identity through term
     },
   });
   const content =
-    "Ordinary paragraph.\n\n![One](/media/one.png)\n\n![Two](/media/two.png)\n\n## Playback\n\n![Silent](/media/silent.wav)\n\n[**Before video *![Synthetic video](/media/clip.webm)* after video**](https://example.test/review)";
+    "Ordinary paragraph.\n\n![One](/media/one.png)\n\n![Two](/media/two.png)\n\n## Playback\n\n![Silent](silent.wav)\n\n[**Before video *![Synthetic video](/media/clip.webm)* after video**](https://example.test/review)";
   const revokeSource = vi.spyOn(URL, "revokeObjectURL");
   const client = createTestQueryClient();
   const tree = (streaming: boolean, value = content) => (
@@ -183,7 +194,14 @@ test("decodes captured file media, preserves grouped image identity through term
     await image.decode();
     expect(image.getBoundingClientRect().height).toBeLessThanOrEqual(160.5);
     expect(view.container.querySelectorAll('[data-markdown-image-grid="true"]')).toHaveLength(1);
-    const streamingAudio = await view.findByLabelText("Silent");
+    const streamingAudio = (await view.findByLabelText("Silent")) as HTMLAudioElement;
+    // The player shows the clip's length once its decoder reports it. Its decoder may refine what it
+    // reports while it reads the rest of the clip, so the test waits for the whole clip to load.
+    await view.findByText("0:00 / 0:01");
+    await waitFor(() => {
+      expect(streamingAudio.readyState).toBe(HTMLMediaElement.HAVE_ENOUGH_DATA);
+      expect(streamingAudio.networkState).not.toBe(HTMLMediaElement.NETWORK_LOADING);
+    });
     await settleAsyncRender();
     await waitFor(() => expect(view.getByLabelText("Synthetic video").tagName).toBe("VIDEO"));
     const streamingVideo = view.getByLabelText("Synthetic video");
@@ -274,8 +292,20 @@ test("decodes captured file media, preserves grouped image identity through term
     const decodedVideoUrl = video.getAttribute("src");
     expect(decodedVideoUrl?.startsWith("blob:")).toBe(true);
     expect(video.currentSrc).toBe(decodedVideoUrl);
-    await click(view.getByRole("button", { name: "Play video" }));
+    // One conversation player sounds at a time: starting the video pauses the audio. The audio's
+    // native events settle inside one interaction boundary, so playback never updates outside it.
+    audio.loop = true;
+    await act(async () => {
+      const sounding = nativeMediaEvent(audio, "playing");
+      await userEvent.click(view.getByRole("button", { name: "Play silent.wav" }));
+      await sounding;
+      const paused = nativeMediaEvent(audio, "pause");
+      await userEvent.click(view.getByRole("button", { name: "Play video" }));
+      await paused;
+    });
     await waitFor(() => expect(video.paused).toBe(false));
+    expect(audio.paused).toBe(true);
+    expect(view.getByRole("button", { name: "Play silent.wav" })).toBeTruthy();
     await click(view.getByRole("button", { name: "Pause video" }));
     await waitFor(() => expect(video.paused).toBe(true));
     const player = video.parentElement;

@@ -14,7 +14,11 @@ import {
 } from "@/components/conversation-media/conversation-media";
 import { THIS_COMPUTER_IMAGE_SCOPE, type ContentImageScope } from "@/lib/content-image";
 import { openNodexMenu } from "@/test/dom";
-import { attachMediaDataSource } from "@/components/conversation-media/conversation-media-playback";
+import {
+  attachMediaDataSource,
+  claimMediaPlayback,
+  releaseMediaPlayback,
+} from "@/components/conversation-media/conversation-media-playback";
 
 describe("conversation video lazy", () => {
   const source: ContentImageScope = {
@@ -199,6 +203,34 @@ describe("conversation video player", () => {
       reader.readAsArrayBuffer(blob);
     });
   }
+
+  test("lets one conversation player sound at a time", () => {
+    const player = (tag: "audio" | "video") => {
+      const element = document.createElement(tag);
+      let paused = true;
+      Object.defineProperty(element, "paused", { get: () => paused });
+      const pause = vi.spyOn(element, "pause").mockImplementation(() => {
+        paused = true;
+      });
+      const start = () => {
+        paused = false;
+        claimMediaPlayback(element);
+      };
+      return { element, pause, start };
+    };
+    const voice = player("audio");
+    const clip = player("video");
+    voice.start();
+    clip.start();
+    expect(voice.pause).toHaveBeenCalledOnce();
+    expect(clip.element.paused).toBe(false);
+    // Resuming the sounding player, or one that already retired, leaves the other alone.
+    clip.start();
+    releaseMediaPlayback(clip.element);
+    voice.start();
+    expect(clip.pause).not.toHaveBeenCalled();
+    releaseMediaPlayback(voice.element);
+  });
 
   test("gives a data video a decoder-owned Blob URL with exact bytes and fragment, and releases only its own src", async () => {
     const blobs: Blob[] = [];

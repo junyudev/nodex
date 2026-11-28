@@ -4,6 +4,7 @@ import { posix } from "node:path";
 import mimeDatabase from "mime-db/db.json";
 import {
   classifyConversationMedia,
+  conversationMediaFilename,
   conversationMediaBadge,
   conversationMediaCachePolicy,
   conversationMediaMimeType,
@@ -73,6 +74,11 @@ describe("ordinary media locator policy", () => {
       kind: "stream",
       path: "/home/me/demo.mp4",
     });
+    expect(
+      resolveConversationMediaTarget("out/voice.wav", { ...inFolder, hostId: "local" }),
+    ).toMatchObject({ kind: "stream", path: "/home/me/app/out/voice.wav" });
+    // A relative file is named by its own name, as an absolute one is.
+    expect(conversationMediaFilename("out/voice%20note.wav?raw")).toBe("voice note.wav");
     expect(resolveConversationMediaTarget("shots/before.png", scope)).toEqual({ kind: "blocked" });
   });
   test.each([
@@ -87,7 +93,12 @@ describe("ordinary media locator policy", () => {
     ["//server/share/x.wav", "audio"],
     ["//x.mp3", "image"],
     ["https://a/x.mp3", "image"],
-    ["file:///x.mp3", "image"],
+    ["file:///x.mp3", "audio"],
+    ["file:///a%20b.wav", "audio"],
+    ["out/voice.wav", "audio"],
+    ["../clips/demo.mp4", "video"],
+    ["shots/before.png", "image"],
+    ["out/voice.wav?raw", "image"],
     ["sandbox:/x.mp3", "image"],
     ["/x.mp3?raw", "image"],
     ["/x.mp3#L2", "image"],

@@ -59,6 +59,7 @@ export {
   conversationMediaBadge,
   conversationMediaCachePolicy,
   conversationMediaDataUrl,
+  conversationMediaExtension,
   conversationMediaFilename,
   conversationMediaMimeType,
   resolveConversationMediaTarget,
