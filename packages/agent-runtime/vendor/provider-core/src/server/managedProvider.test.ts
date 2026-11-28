@@ -17,7 +17,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ProviderHost from "./ProviderHost.ts";
-import { makeManagedServerProvider } from "./managedProvider.ts";
+import { makeManagedServerProvider, type PreparedProviderSnapshot } from "./managedProvider.ts";
 
 const emptyCapabilities = createModelCapabilities({ optionDescriptors: [] });
 const fastModeCapabilities = createModelCapabilities({
@@ -510,7 +510,7 @@ describe("makeManagedServerProvider", () => {
       Stream.runCollect,
       Effect.forkChild({ startImmediately: true }),
     );
-    const firstCheck = yield* provider.initialCheck.pipe(
+    const firstCheck = yield* provider.awaitChecked.pipe(
       Effect.forkChild({ startImmediately: true }),
     );
     assert.strictEqual((yield* provider.getSnapshot).checkPending, true);
@@ -548,6 +548,44 @@ describe("makeManagedServerProvider", () => {
         yield* Deferred.succeed(releaseCatalog, undefined);
         assert.deepStrictEqual(yield* Fiber.join(updates), [cached, enrichedSnapshot]);
         yield* Deferred.await(closed);
+      }),
+    ).pipe(Effect.provide(layerAlwaysRunTest)),
+  );
+
+  it.effect("waits for model discovery on a check after signing in", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const signedOut: ServerProvider = {
+          ...refreshedSnapshot,
+          status: "warning",
+          auth: { status: "unauthenticated" },
+        };
+        const currentCheck = yield* Ref.make<ServerProvider | PreparedProviderSnapshot>(signedOut);
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          resolveMaintenance: () => Effect.succeed(maintenanceCapabilities),
+          getSettings: Effect.succeed({ enabled: true }),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          checkProvider: Ref.get(currentCheck),
+          refreshInterval: "1 hour",
+        });
+        yield* provider.awaitChecked;
+        assert.deepStrictEqual(yield* provider.getSnapshot, signedOut);
+
+        const catalog = yield* Deferred.make<ServerProvider>();
+        yield* Ref.set(currentCheck, {
+          snapshot: refreshedSnapshot,
+          complete: Deferred.await(catalog),
+        });
+        yield* provider.refresh;
+        const reader = yield* provider.awaitChecked.pipe(Effect.forkChild({ startImmediately: true }));
+        assert.strictEqual((yield* provider.getSnapshot).auth.status, "authenticated");
+        assert.isUndefined(reader.pollUnsafe());
+
+        yield* Deferred.succeed(catalog, enrichedSnapshot);
+        yield* Fiber.join(reader);
+        assert.deepStrictEqual((yield* provider.getSnapshot).models, enrichedSnapshot.models);
       }),
     ).pipe(Effect.provide(layerAlwaysRunTest)),
   );

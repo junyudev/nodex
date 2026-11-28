@@ -103,7 +103,7 @@ it.effect(
           }),
         },
       });
-      yield* instance.snapshot.initialCheck;
+      yield* instance.snapshot.awaitChecked;
       const snapshot = yield* instance.snapshot.getSnapshot;
       assert.equal(snapshot.models.find(({ isDefault }) => isDefault)?.slug, "claude-fable-5-3");
 

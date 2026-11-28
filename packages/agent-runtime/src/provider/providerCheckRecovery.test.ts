@@ -84,7 +84,7 @@ const providerAnswering = (answers: ReadonlyArray<ServerProvider>) =>
       ),
       refreshInterval: "5 minutes",
     });
-    yield* provider.initialCheck;
+    yield* provider.awaitChecked;
     yield* settle;
     return checks;
   });

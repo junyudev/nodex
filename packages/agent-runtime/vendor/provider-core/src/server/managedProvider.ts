@@ -40,6 +40,7 @@ export interface PreparedProviderSnapshot {
 interface ProviderSnapshotState {
   readonly snapshot: ServerProvider;
   readonly enrichmentGeneration: number;
+  readonly modelReads: Deferred.Deferred<void> | undefined;
 }
 
 function withUsageLimits(
@@ -105,11 +106,10 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
         ? { ...initialSnapshot, checkPending: true, installed: false, status: "warning" }
         : initialSnapshot,
     enrichmentGeneration: 0,
+    modelReads: undefined,
   });
   const settingsRef = yield* Ref.make(initialSettings);
   const enrichmentFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
-  // Settles once the reads the latest check deferred have published, or were abandoned.
-  const deferredReadsRef = yield* Ref.make<Effect.Effect<void>>(Effect.void);
   const scope = yield* Effect.scope;
 
   const publishEnrichedSnapshot = Effect.fn("publishEnrichedSnapshot")(function* (
@@ -152,7 +152,10 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     settings: Settings,
     snapshot: ServerProvider,
     generation: number,
-    completion?: Effect.Effect<ServerProvider>,
+    completion?: {
+      readonly read: Effect.Effect<ServerProvider>;
+      readonly done: Deferred.Deferred<void>;
+    },
   ) {
     const previousFiber = yield* Ref.getAndSet(enrichmentFiberRef, null);
     if (previousFiber) {
@@ -161,20 +164,15 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
 
     // Enrichment resolves binaries and package-manager state, which a disabled
     // provider has no use for.
-    if ((!input.enrichSnapshot && !completion) || !snapshot.enabled) {
-      yield* Ref.set(deferredReadsRef, Effect.void);
-      return;
-    }
+    if ((!input.enrichSnapshot && !completion) || !snapshot.enabled) return;
 
-    const deferredReads = yield* Deferred.make<void>();
-    const settleDeferredReads = Deferred.succeed(deferredReads, undefined);
-    yield* Ref.set(deferredReadsRef, completion ? Deferred.await(deferredReads) : Effect.void);
+    const settleModelReads = completion ? Deferred.succeed(completion.done, undefined) : Effect.void;
     const getSnapshot = Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
     const fiber = yield* Effect.gen(function* () {
       if (completion) {
-        const completed = yield* completion;
+        const completed = yield* completion.read;
         yield* publishEnrichedSnapshot(generation, completed, snapshot);
-        yield* settleDeferredReads;
+        yield* settleModelReads;
       }
       if (input.enrichSnapshot) {
         yield* input.enrichSnapshot({
@@ -185,7 +183,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
         });
       }
     }).pipe(
-      Effect.ensuring(settleDeferredReads),
+      Effect.ensuring(settleModelReads),
       Effect.ignoreCause({ log: true }),
       Effect.forkIn(scope),
     );
@@ -211,8 +209,9 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       const state = yield* Ref.get(snapshotStateRef);
       const nextGeneration = state.enrichmentGeneration + 1;
       yield* Ref.set(snapshotStateRef, {
-        ...state,
+        snapshot: state.snapshot,
         enrichmentGeneration: nextGeneration,
+        modelReads: undefined,
       });
       yield* Ref.set(settingsRef, nextSettings);
       yield* restartSnapshotEnrichment(nextSettings, state.snapshot, nextGeneration);
@@ -220,6 +219,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     }
 
     const checkScope = yield* Scope.fork(scope);
+    const modelReadsDone = yield* Deferred.make<void>();
     return yield* Effect.gen(function* () {
       const checked = yield* input.checkProvider.pipe(
         Effect.provideService(Scope.Scope, checkScope),
@@ -242,6 +242,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
         }
       }
       yield* Ref.set(recheckPendingRef, false);
+      const modelReads = complete && probedSnapshot.enabled ? modelReadsDone : undefined;
       const { snapshot: nextSnapshot, generation: nextGeneration } = yield* Ref.modify(
         snapshotStateRef,
         (state) => {
@@ -274,24 +275,33 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
           );
           return [
             { snapshot, generation },
-            { snapshot, enrichmentGeneration: generation },
+            { snapshot, enrichmentGeneration: generation, modelReads },
           ] as const;
         },
       );
       yield* Ref.set(settingsRef, nextSettings);
       yield* PubSub.publish(changesPubSub, nextSnapshot);
       yield* Queue.offer(scheduleChanges, undefined);
-      if (!complete) yield* Scope.close(checkScope, Exit.void);
+      if (!modelReads) yield* Scope.close(checkScope, Exit.void);
       yield* restartSnapshotEnrichment(
         nextSettings,
         nextSnapshot,
         nextGeneration,
-        complete?.pipe(Effect.onExit((exit) => Scope.close(checkScope, exit))),
+        complete && modelReads
+          ? {
+              read: complete.pipe(Effect.onExit((exit) => Scope.close(checkScope, exit))),
+              done: modelReads,
+            }
+          : undefined,
       );
       return nextSnapshot;
     }).pipe(
       Effect.onExit((exit) =>
-        Exit.isFailure(exit) ? Scope.close(checkScope, exit) : Effect.void,
+        Exit.isFailure(exit)
+          ? Scope.close(checkScope, exit).pipe(
+              Effect.ensuring(Deferred.succeed(modelReadsDone, undefined)),
+            )
+          : Effect.void,
       ),
     );
   });
@@ -408,20 +418,26 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
 
   const initialCheck = yield* Deferred.make<void>();
   yield* applySnapshot(initialSettings, { forceRefresh: true }).pipe(
-    // Readiness published without any model choice cannot answer a reader choosing a model, so
-    // the first check lasts until the model reads it deferred have answered.
-    Effect.tap((snapshot) =>
-      snapshot.models.length > 0 ? Effect.void : Effect.flatten(Ref.get(deferredReadsRef)),
-    ),
     Effect.ignoreCause({ log: true }),
     Effect.ensuring(Deferred.succeed(initialCheck, undefined)),
     Effect.forkScoped,
   );
 
+  const awaitChecked = Effect.gen(function* () {
+    yield* Deferred.await(initialCheck);
+    while (true) {
+      const { snapshot, modelReads } = yield* Ref.get(snapshotStateRef);
+      if (snapshot.models.length > 0 || !modelReads) return;
+      yield* Deferred.await(modelReads);
+      // A refresh may have replaced this check while we were waiting.
+      if ((yield* Ref.get(snapshotStateRef)).modelReads === modelReads) return;
+    }
+  });
+
   return {
     resolveMaintenance: input.resolveMaintenance,
     getSnapshot: Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot)),
-    initialCheck: Deferred.await(initialCheck),
+    awaitChecked,
     refresh: refreshSnapshot().pipe(Effect.tapError(Effect.logError), Effect.orDie),
     applyUsageLimits,
     get streamChanges() {
