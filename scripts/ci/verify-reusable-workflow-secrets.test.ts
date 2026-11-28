@@ -62,6 +62,23 @@ test("allows the Sparkle signing key only in a direct protected environment job"
   ).toThrow("must not resolve protected environment secrets across a reusable workflow boundary");
 });
 
+test("allows the SignPath submitter token only in the opted-in Windows installer job", () => {
+  const filePath = path.resolve(".github/workflows/_windows-distribution.yml");
+  const signing = {
+    environment: "${{ inputs.authenticode && 'windows-authenticode' || 'windows-validation' }}",
+    steps: [{ with: { "api-token": "${{ secrets.SIGNPATH_API_TOKEN }}" } }],
+  };
+  expect(() =>
+    verifyDeclaredReferences(filePath, reusableWorkflow({ installer: signing })),
+  ).not.toThrow();
+  expect(() =>
+    verifyDeclaredReferences(
+      filePath,
+      reusableWorkflow({ installer: { ...signing, environment: "windows-validation" } }),
+    ),
+  ).toThrow("must not resolve protected environment secrets");
+});
+
 test("rejects transporting a protected environment secret from a caller", () => {
   const callerPath = path.resolve(".github/workflows/caller.yml");
   const calledPath = path.resolve(".github/workflows/called.yml");

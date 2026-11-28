@@ -49,10 +49,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NIGHTLY_TAG: ${{ inputs.nightly_tag }}
           RELEASE_HEADLINE: ${{ inputs.headline }}
+          REQUIRE_WINDOWS_AUTHENTICODE: ${{ vars.NODEX_WINDOWS_AUTHENTICODE == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           args=(--repo "${GITHUB_REPOSITORY}" --dir "${RUNNER_TEMP}/nightly" --output "${RUNNER_TEMP}/candidate.json")
+          if [[ "${REQUIRE_WINDOWS_AUTHENTICODE}" == true ]]; then args+=(--require-windows-authenticode true); fi
           if [[ -n "${NIGHTLY_TAG}" ]]; then args+=(--tag "${NIGHTLY_TAG}"); fi
           vp exec tsx scripts/release/cli.ts resolve-promotion "${args[@]}" --headline="${RELEASE_HEADLINE}"
           # shellcheck disable=SC2016

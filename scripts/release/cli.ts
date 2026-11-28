@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { windowsAuthenticodePolicy } from "../windows-signing";
 import { checkLocalChangeMedia } from "../media/store";
 import {
   assembleReleaseBundle,
@@ -125,6 +126,7 @@ const main = async (): Promise<void> => {
       required(flags, "dir"),
       flags.get("headline") ?? "",
       flags.get("tag"),
+      flags.get("require-windows-authenticode") === "true",
     );
     writeJson(required(flags, "output"), result);
     return;
@@ -240,7 +242,11 @@ const main = async (): Promise<void> => {
     });
     return;
   }
-  if (command === "build-windows") {
+  if (
+    command === "build-windows" ||
+    command === "package-windows" ||
+    command === "verify-windows"
+  ) {
     const architecture = required(flags, "arch");
     if (architecture !== "x64" && architecture !== "arm64")
       throw new Error("Windows --arch must be x64 or arm64.");
@@ -250,6 +256,13 @@ const main = async (): Promise<void> => {
       identityPath: required(flags, "identity"),
       outputDirectory: required(flags, "output"),
       release: flags.get("release") === "true",
+      phase:
+        command === "verify-windows"
+          ? {
+              kind: "verify",
+              signing: windowsAuthenticodePolicy(process.env.NODEX_AUTHENTICODE_CERT_SHA256),
+            }
+          : { kind: command === "package-windows" ? "package" : "all" },
     });
     return;
   }

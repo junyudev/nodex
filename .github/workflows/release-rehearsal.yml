@@ -7,6 +7,10 @@ on:
         description: Full protected-main commit SHA to rehearse
         required: true
         type: string
+      windows_authenticode:
+        description: Exercise SignPath production signing on this unpublished rehearsal
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -98,6 +102,7 @@ jobs:
     with:
       source_sha: ${{ needs.validate.outputs.source_sha }}
       source_tree: ${{ needs.certification.outputs.source_tree }}
+      authenticode: ${{ inputs.windows_authenticode }}
       retention_days: 14
 
   mobile-distribution:

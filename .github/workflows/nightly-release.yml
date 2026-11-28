@@ -119,6 +119,7 @@ jobs:
     with:
       source_sha: ${{ needs.resolve.outputs.source_sha }}
       source_tree: ${{ needs.certification.outputs.source_tree }}
+      authenticode: ${{ vars.NODEX_WINDOWS_AUTHENTICODE == 'true' }}
       retention_days: 14
 
   mobile-distribution:

@@ -202,13 +202,16 @@ selected in Settings.
 
 The repository must have these environments, restricted to protected `main`.
 They separate deployment policy and audit. Reusable workflows receive only the
-explicit repository-secret contract declared by their caller; protected
-environment secrets are resolved only by direct jobs.
+explicit repository-secret contract declared by their caller. Direct finalizers
+resolve their own protected environment secrets. The reusable Windows installer
+job resolves its SignPath submitter token directly from its protected environment
+when signing is enabled.
 
 | Environment                 | Authority                                                                        |
 | --------------------------- | -------------------------------------------------------------------------------- |
 | `release-source`            | Secret-free protected-main source and candidate verification                     |
 | `macos-distribution`        | Apple signing/notarization; Sentry upload from each official Nightly arm64 build |
+| `windows-authenticode`      | Submit the certified Windows x64 installer to SignPath when enabled              |
 | `mobile-distribution`       | Sign the Android APK and the App Store iOS build                                 |
 | `testflight`                | Upload the certified iOS build and submit it to the public TestFlight beta       |
 | `sparkle-feed-finalization` | Sign macOS and Windows appcasts and enclosures after every native build passes   |
@@ -254,6 +257,11 @@ on implicit secret inheritance or same-name precedence inside nested reusable
 workflows. Record PAT expiry dates in release operations and rotate them before
 expiry. Remove duplicate credentials from the legacy `release` environment
 after rehearsal succeeds.
+
+For the opt-in SignPath environment secret, certificate pin, and rollout, see
+[Enable SignPath Foundation signing](release-windows.md#enable-signpath-foundation-signing).
+Its token stays in the protected environment and is passed only to the SignPath
+action.
 
 The official Skills publisher authenticates Git through a GitHub-scoped Basic
 extra header and keeps credentials out of remote URLs. Historical mirror inventories
@@ -440,7 +448,9 @@ length and Ed25519 signature cover the exact installer bytes. The appcast is
 also signed with Sparkle; its closed update manifest records a detached
 signature over the final XML bytes. Assembly independently verifies both
 signatures against `resources/sparkle/public-key.txt` before accepting the Bundle.
-This authenticates update bytes; Windows installers do not yet use Authenticode.
+This authenticates update bytes. When Authenticode is enabled, Windows verifies
+and probes the already-signed installer before Sparkle authenticates those
+exact bytes. Stable promotion requires the signed Nightly's verified provenance.
 
 Native distribution passes `NODEX_BUILD_IDENTITY_PATH` and
 `NODEX_APP_UPDATES=enabled` through build and packaging. Windows CI validation

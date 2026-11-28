@@ -708,7 +708,10 @@ export function recordArchitectureBuild(options: {
   return manifest;
 }
 
-export const readArchitectureDirectory = (directory: string): ArchitectureBuildManifest => {
+export const readArchitectureDirectory = (
+  directory: string,
+  requireWindowsAuthenticode = false,
+): ArchitectureBuildManifest => {
   const root = resolve(directory);
   const manifest = parseArchitectureBuildManifest(readJson(join(root, "architecture-build.json")));
   const expected =
@@ -740,6 +743,15 @@ export const readArchitectureDirectory = (directory: string): ArchitectureBuildM
       throw new Error(
         "Windows package provenance does not match its architecture manifest and probe.",
       );
+    }
+    if (
+      requireWindowsAuthenticode &&
+      (!isRecord(provenance.authenticode) ||
+        provenance.authenticode.kind !== "authenticode" ||
+        typeof provenance.authenticode.certificateSha256 !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(provenance.authenticode.certificateSha256))
+    ) {
+      throw new Error("Stable promotion requires a Nightly with verified Windows Authenticode.");
     }
     const probe = readJson(probePath);
     if (

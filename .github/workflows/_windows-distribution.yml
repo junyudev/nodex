@@ -15,6 +15,10 @@ on:
         description: Consume certified Release Identity and enable its update channel
         default: true
         type: boolean
+      authenticode:
+        description: Sign the official x64 installer through SignPath Foundation
+        default: false
+        type: boolean
       arch:
         description: Native Windows architecture
         default: x64
@@ -31,10 +35,15 @@ permissions:
   actions: read
   contents: read
 
+defaults:
+  run:
+    shell: pwsh
+
 jobs:
   installer:
     name: installer ${{ inputs.arch }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.authenticode && 120 || 60 }}
+    environment: ${{ inputs.authenticode && 'windows-authenticode' || 'windows-validation' }}
     runs-on: ${{ !inputs.release && inputs.arch == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     env:
       NODE_OPTIONS: --max-old-space-size=6144
@@ -44,6 +53,18 @@ jobs:
       BUILD_IDENTITY_PATH: ${{ github.workspace }}/.generated/release-inputs/identity/build-identity.json
       RELEASE_OUTPUT: ${{ github.workspace }}/.generated/release-architecture/windows-${{ inputs.arch }}
     steps:
+      - name: Require protected release scope for Authenticode
+        if: inputs.authenticode
+        env:
+          RELEASE_BUILD: ${{ inputs.release }}
+          RELEASE_ARCH: ${{ inputs.arch }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          if ($env:RELEASE_BUILD -ne 'true' -or $env:RELEASE_ARCH -ne 'x64' -or
+              $env:DIAGNOSTIC_INSTALLER_RUN_ID -ne '' -or $env:GITHUB_REF -ne 'refs/heads/main' -or
+              $env:WORKFLOW_REF -cnotmatch '/[.]github/workflows/(nightly-release|release-rehearsal)[.]yml@refs/heads/main$') {
+            throw 'Authenticode requires an official Nightly or Distribution Rehearsal on main.'
+          }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -52,6 +73,9 @@ jobs:
       - uses: ./.github/actions/setup-vite-plus
       - uses: ./.github/actions/setup-windows-rust
       - run: vp install --frozen-lockfile
+      - name: Exercise Authenticode verification with a disposable certificate
+        if: ${{ !inputs.release && inputs.arch == 'x64' && inputs.installer_run_id == '' }}
+        run: ./scripts/testing/test-windows-authenticode.ps1
       - name: Require native Node
         env:
           RELEASE_BUILD: ${{ inputs.release }}
@@ -78,12 +102,62 @@ jobs:
       - name: Resolve validation identity with updates disabled
         if: ${{ !inputs.release && inputs.installer_run_id == '' }}
         run: vp run release:resolve:source -- --head "$env:RELEASE_SOURCE_SHA" --output "$env:BUILD_IDENTITY_PATH"
-      - name: Build, package, probe, and record native distribution
-        if: inputs.installer_run_id == ''
+      - name: Build, package, probe, and record unsigned distribution
+        if: inputs.installer_run_id == '' && !inputs.authenticode
         run: >-
           vp exec tsx scripts/release/cli.ts build-windows
           --arch ${{ inputs.arch }} --identity "$env:BUILD_IDENTITY_PATH"
           --release ${{ inputs.release }} --output "$env:RELEASE_OUTPUT"
+      - name: Build official installer for signing
+        if: inputs.authenticode
+        id: signing-input
+        env:
+          CERTIFICATE_SHA256: ${{ vars.NODEX_AUTHENTICODE_CERT_SHA256 }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+        run: |
+          if ($env:CERTIFICATE_SHA256 -notmatch '^[0-9a-f]{64}$' -or !$env:SIGNPATH_ORGANIZATION_ID) {
+            throw 'Set NODEX_AUTHENTICODE_CERT_SHA256 and SIGNPATH_ORGANIZATION_ID in windows-authenticode.'
+          }
+          vp exec tsx scripts/release/cli.ts package-windows --arch x64 --identity "$env:BUILD_IDENTITY_PATH" --release true --output "$env:RELEASE_OUTPUT"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $identity = Get-Content -Raw "$env:BUILD_IDENTITY_PATH" | ConvertFrom-Json
+          "name=Nodex-$($identity.version)-win-x64-setup.exe" >> $env:GITHUB_OUTPUT
+          "version=$($identity.version)" >> $env:GITHUB_OUTPUT
+      - name: Upload source-certified installer for SignPath
+        if: inputs.authenticode
+        id: signing-artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned-windows-x64-${{ inputs.source_sha }}-${{ github.run_attempt }}
+          path: dist/${{ steps.signing-input.outputs.name }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Request SignPath Authenticode signature
+        if: inputs.authenticode
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: nodex
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: windows-x64-installer
+          github-artifact-id: ${{ steps.signing-artifact.outputs.artifact-id }}
+          parameters: |
+            version: ${{ toJSON(steps.signing-input.outputs.version) }}
+          wait-for-completion: "true"
+          wait-for-completion-timeout-in-seconds: "1800"
+          download-signed-artifact-timeout-in-seconds: "900"
+          output-artifact-directory: ${{ runner.temp }}/windows-authenticode
+      - name: Verify, probe, and record signed distribution
+        if: inputs.authenticode
+        env:
+          INSTALLER_NAME: ${{ steps.signing-input.outputs.name }}
+          NODEX_AUTHENTICODE_CERT_SHA256: ${{ vars.NODEX_AUTHENTICODE_CERT_SHA256 }}
+        run: |
+          $signed = Join-Path "$env:RUNNER_TEMP/windows-authenticode" $env:INSTALLER_NAME
+          Copy-Item -LiteralPath $signed -Destination "dist/$env:INSTALLER_NAME" -Force
+          vp exec tsx scripts/release/cli.ts verify-windows --arch x64 --identity "$env:BUILD_IDENTITY_PATH" --release true --output "$env:RELEASE_OUTPUT"
       - name: Report installed Desktop Tool conformance
         if: inputs.installer_run_id == ''
         env:
