@@ -13,6 +13,7 @@ import {
 } from "../../shared/app-component-manifest";
 import { appBuildOrdinal } from "../../shared/app-version";
 import type { AppComponentId, AppComponentsState } from "../../shared/app-components";
+import { parseImmutableReleaseDownloadUrl } from "../../shared/release-download";
 import type { AppUpdaterEvent } from "../app-updater";
 import type { AppComponentDefinition } from "./AppComponentCatalog";
 import {
@@ -47,35 +48,27 @@ export function appComponentUpdate(
   const ordinal = appBuildOrdinal(buildVersion);
   if (!verifiedEnclosureUrl || !appComponentReleaseVersion.safeParse(version).success || !ordinal)
     return null;
-  const url = URL.parse(verifiedEnclosureUrl);
-  if (
-    url?.origin !== "https://github.com" ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  )
-    return null;
-  const path = /^\/junyudev\/nodex\/releases\/download\/(v[^/]+)\/([^/]+)$/u.exec(url.pathname);
-  if (!path) return null;
-  const [, tag, asset] = path;
+  const download = parseImmutableReleaseDownloadUrl(verifiedEnclosureUrl);
+  if (download?.channel !== channel) return null;
+  const { tag, assetName } = download;
   const stableTag = `v${version}`;
-  const nightlyDate = tag.slice(stableTag.length + "-nightly.".length).split(".")[0];
-  const channelTag =
-    channel === "stable" ? stableTag : `${stableTag}-nightly.${nightlyDate}.${ordinal}`;
-  if (tag !== channelTag || (channel === "nightly" && !/^\d{8}$/u.test(nightlyDate))) return null;
+  const matchesTag =
+    channel === "stable"
+      ? tag === stableTag
+      : tag.startsWith(`${stableTag}-`) && tag.endsWith(`.${ordinal}`);
+  if (!matchesTag) return null;
   const matchesTarget =
     target === "win32-x64"
-      ? asset === `Nodex-${version}-windows-x64.exe`
-      : asset === `Nodex-${version}-arm64.tar.xz` ||
-        asset === `Nodex-${version}-arm64.zip` ||
-        (asset.startsWith("Nodex-") && asset.endsWith(`-to-${version}-arm64.delta`));
+      ? assetName === `Nodex-${version}-windows-x64.exe`
+      : assetName === `Nodex-${version}-arm64.tar.xz` ||
+        assetName === `Nodex-${version}-arm64.zip` ||
+        (assetName.startsWith("Nodex-") && assetName.endsWith(`-to-${version}-arm64.delta`));
   if (!matchesTarget) return null;
   return {
     target,
     version,
     buildVersion,
-    manifestUrl: new URL(appComponentManifestName(version, target), url).href,
+    manifestUrl: new URL(appComponentManifestName(version, target), verifiedEnclosureUrl).href,
   };
 }
 

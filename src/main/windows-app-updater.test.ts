@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { releaseDownloadUrl } from "../shared/release-download";
 import { windowsUpdateInstallerCommand } from "./windows-update-handoff";
 import { APP_UPDATE_PUBLIC_KEY, compareAppBuildVersions } from "./app-update-trust";
 import {
@@ -159,6 +160,15 @@ describe("windows-app-updater", () => {
           "1.1.1",
         ),
       ).toMatchObject({ buildVersion: "1.1.3", releaseNotes: "Fixes & improvements" });
+    });
+    test("accepts a release bucket installer and rejects a third-party mirror", () => {
+      const bucketUrl = releaseDownloadUrl("v0.2.3", "Nodex-0.2.3-windows-x64.exe");
+      const bucketFeed = feed(xmlItem().replace(url, bucketUrl));
+      expect(selectWindowsUpdate(bucketFeed, "x64", "1.1.1")).toMatchObject({ url: bucketUrl });
+      const thirdPartyFeed = bucketFeed.replace("dl.nodex.jyu.app", "example.test");
+      expect(() => selectWindowsUpdate(thirdPartyFeed, "x64", "1.1.1")).toThrow(
+        "immutable Nodex release download URL",
+      );
     });
     test.each(["1.1.1", "1.1.0", "0.99.99"])("does not offer same or older build %s", (version) => {
       expect(selectWindowsUpdate(feed(xmlItem(version)), "x64", "1.1.1")).toBeNull();
