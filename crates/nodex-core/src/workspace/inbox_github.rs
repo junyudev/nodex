@@ -1,9 +1,11 @@
 //! GitHub requests retain external authorship and never acquire the person's start grant.
 use super::*;
+use crate::infrastructure::durable_mutation::DurableMutationScope;
 use nodex_core_contracts::{
     inbox::ProjectWorkspaceInboxSource,
     sources::{ExternalThread, SourceTriggerInput},
 };
+use std::collections::{BTreeMap, btree_map::Entry};
 
 pub(in crate::workspace) fn provenance(
     thread: &ExternalThread,
@@ -61,18 +63,111 @@ pub(in crate::workspace) fn register(
     c.execute("INSERT INTO github_intakes(external_thread_id,page_id) VALUES(?1,?2) ON CONFLICT(external_thread_id) DO UPDATE SET page_id=excluded.page_id",params![external_thread_id,page])?;
     Ok(())
 }
-#[allow(clippy::too_many_arguments)]
+
+/// Keep only the new excerpts between Triggers. Materialize each affected body once
+/// inside the same Source commit, after all of its Triggers have been linked.
+#[derive(Default)]
+pub(in crate::workspace) struct IntakeAppends(BTreeMap<String, IntakeAppend>);
+
+struct IntakeAppend {
+    initial_bytes: usize,
+    suffix: String,
+}
+
+impl IntakeAppends {
+    fn append(
+        &mut self,
+        c: &Connection,
+        page: &str,
+        markdown: &str,
+        event: &SourceTriggerInput,
+    ) -> Result<(), StoreError> {
+        let pending = match self.0.entry(page.into()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(IntakeAppend {
+                initial_bytes: c.query_row(
+                    "SELECT length(CAST(m.markdown AS BLOB))
+                     FROM pages p JOIN document_materializations m ON m.document_id=p.document_id
+                     WHERE p.block_id=?1",
+                    [page],
+                    |r| {
+                        let bytes = r.get(0)?;
+                        usize::try_from(bytes)
+                            .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(0, bytes))
+                    },
+                )?,
+                suffix: String::new(),
+            }),
+        };
+        let remaining =
+            MAX_MESSAGE_BYTES.saturating_sub(pending.initial_bytes + pending.suffix.len());
+        let compact;
+        let excerpt = if markdown.len() + 2 <= remaining {
+            markdown
+        } else {
+            compact = text_paragraphs_markdown(&format!(
+                "GitHub update · {} · {}",
+                event.kind, event.url
+            ));
+            if compact.len() + 2 > remaining {
+                return Ok(());
+            }
+            &compact
+        };
+        pending.suffix.push_str("\n\n");
+        pending.suffix.push_str(excerpt);
+        Ok(())
+    }
+
+    pub(in crate::workspace) fn flush(
+        self,
+        scope: &DurableMutationScope<'_>,
+        context: &BoundModuleContext,
+        library: &str,
+        operation: &str,
+    ) -> Result<(), StoreError> {
+        let c = scope.connection();
+        for (page, pending) in self.0 {
+            if pending.suffix.is_empty() {
+                continue;
+            }
+            let (generation, head) = document_head(c, &page)?;
+            let mut body: String = c.query_row(
+                "SELECT m.markdown FROM pages p
+                 JOIN document_materializations m ON m.document_id=p.document_id
+                 WHERE p.block_id=?1",
+                [&page],
+                |r| r.get(0),
+            )?;
+            body.push_str(&pending.suffix);
+            crate::document::edit_page_in_scope(
+                c,
+                scope,
+                context,
+                library,
+                &page,
+                generation,
+                head,
+                Some(&body),
+                None,
+                &stable_uuid_v7(operation, "github-update", &page),
+            )?;
+        }
+        Ok(())
+    }
+}
+
 pub(in crate::workspace) fn ingest(
-    c: &Connection,
+    scope: &DurableMutationScope<'_>,
     library: &str,
     context: &BoundModuleContext,
-    epoch: &str,
     operation: &str,
-    scope: &crate::infrastructure::durable_mutation::DurableMutationScope<'_>,
+    appends: &mut IntakeAppends,
     trigger: &str,
     event: &SourceTriggerInput,
-    now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
+    let c = scope.connection();
+    let now = scope.committed_at();
     let thread = super::super::thread_follows::thread(c, library, &event.thread_id)?;
     let author = provenance(&thread, &event.actor_login);
     let existing: Option<String> = c
@@ -103,7 +198,7 @@ pub(in crate::workspace) fn ingest(
             c,
             library,
             context,
-            epoch,
+            scope.store_epoch(),
             &stable_uuid_v7(operation, "github-intake", &thread.id),
             scope,
             &page,
@@ -124,34 +219,8 @@ pub(in crate::workspace) fn ingest(
             now,
         )?
     } else {
-        let (generation, head) = document_head(c, &page)?;
-        let previous:String=c.query_row("SELECT m.markdown FROM pages p JOIN document_materializations m ON m.document_id=p.document_id WHERE p.block_id=?1",[&page],|r|r.get(0))?;
-        let body = format!("{previous}\n\n{markdown}");
-        let compact =
-            text_paragraphs_markdown(&format!("GitHub update · {} · {}", event.kind, event.url));
-        let compact = format!("{previous}\n\n{compact}");
-        let next = if body.len() <= MAX_MESSAGE_BYTES {
-            Some(body)
-        } else if compact.len() <= MAX_MESSAGE_BYTES {
-            Some(compact)
-        } else {
-            None
-        };
-        // The Page is a bounded intake projection. Every complete update remains a linked immutable Trigger.
-        if let Some(body) = next {
-            crate::document::edit_page_in_scope(
-                c,
-                scope,
-                context,
-                library,
-                &page,
-                generation,
-                head,
-                Some(&body),
-                None,
-                &stable_uuid_v7(operation, "github-update", trigger),
-            )?;
-        }
+        // The body is a bounded projection. Every complete update remains an immutable Trigger.
+        appends.append(c, &page, &markdown, event)?;
         if c.query_row(
             "SELECT COALESCE((SELECT triage FROM inbox_intake WHERE page_id=?1),0)",
             [&page],
