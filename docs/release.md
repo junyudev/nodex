@@ -187,15 +187,22 @@ before the desktop release that requires it reaches people.
 the desktop release: it draws the same cards, but nothing in the app depends on it. Its version
 lives in `packages/nodex-card/package.json`, which is private so the workspace manifest is never
 published by mistake. The build writes the package as published into `dist/`, with a manifest
-that keeps only the runtime dependency on the pinned ccusage:
+that keeps only the runtime dependency on the pinned ccusage.
+
+Merging a version bump publishes it. After Main CI passes on a commit,
+[`publish-nodex-card.yml`](../.github/workflows/publish-nodex-card.yml) checks that the commit
+is on protected main with a green Main CI, and publishes the package's version if npm does not
+have it yet. npm trusts that workflow by file name (trusted publishing over OIDC), so no npm token
+exists and no 2FA prompt waits on a person; each version carries a provenance attestation. To
+publish from an earlier main commit, run the workflow by hand:
 
 ```bash
-vp run --filter nodex-card build
-npm publish packages/nodex-card/dist --access public
+gh workflow run publish-nodex-card.yml -f source_sha=<full protected-main sha>
 ```
 
-Publish from `main` after its CI passes, bump the version for every publish, and smoke-test the
-published package with `npx nodex-card@<version> --no-open`.
+Smoke-test a published version with `npx nodex-card@<version> --no-open`. The trusted publisher
+is configured once on npmjs.com under the package's settings (GitHub Actions, `junyudev/nodex`,
+`publish-nodex-card.yml`); renaming the workflow file breaks publishing until it is updated there.
 
 ## Build Identity and Release Identity
 
