@@ -1,4 +1,5 @@
 import { Block, PartialBlock } from "../../blocks/defaultBlocks.js";
+import { setTextCursorAfterBlock } from "../../api/blockManipulation/selections/textCursorPosition.js";
 import { editorHasBlockWithType } from "../../blocks/defaultBlockTypeGuards.js";
 import type { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
 import {
@@ -13,46 +14,21 @@ import { FormattingToolbarExtension } from "../FormattingToolbar/FormattingToolb
 import { DefaultSuggestionItem } from "./DefaultSuggestionItem.js";
 import { SuggestionMenu } from "./SuggestionMenu.js";
 
-// Sets the editor's text cursor position to the next content editable block,
-// so either a block with inline content or a table. If no such block exists
-// after the current one, an empty paragraph is appended to the end of the
-// document and the cursor is moved to it.
-function setSelectionToNextContentEditableBlock<
+// A Block without inline content cannot hold the caret, so writing continues
+// on the line below it, as it does after typing `---`.
+function continueTypingAfterContentlessBlock<
   BSchema extends BlockSchema,
   I extends InlineContentSchema,
   S extends StyleSchema,
->(editor: BlockNoteEditor<BSchema, I, S>) {
-  let block: Block<BSchema, I, S> | undefined =
-    editor.getTextCursorPosition().block;
-  let contentType = editor.schema.blockSchema[block.type].content;
-
-  while (contentType === "none") {
-    block = editor.getTextCursorPosition().nextBlock;
-    if (block === undefined) {
-      // No content editable block exists after the current one, so we append
-      // an empty paragraph to the end of the document and move the cursor to
-      // it.
-      const lastBlock = editor.document[editor.document.length - 1];
-      const newBlock = editor.insertBlocks(
-        [{ type: "paragraph" }],
-        lastBlock,
-        "after",
-      )[0];
-      editor.setTextCursorPosition(newBlock, "end");
-      return;
-    }
-    contentType = editor.schema.blockSchema[block.type].content as
-      | "inline"
-      | "table"
-      | "none";
-    editor.setTextCursorPosition(block, "end");
-  }
+>(editor: BlockNoteEditor<BSchema, I, S>, block: Block<BSchema, I, S>) {
+  if (editor.schema.blockSchema[block.type].content !== "none") return;
+  editor.transact((tr) => setTextCursorAfterBlock(tr, block.id));
 }
 
 // Checks if the current block is empty or only contains a slash, and if so,
 // updates the current block instead of inserting a new one below. If the new
-// block doesn't contain editable content, the cursor is moved to the next block
-// that does.
+// block doesn't contain editable content, writing continues on the line below
+// it.
 export function insertOrUpdateBlockForSlashMenu<
   BSchema extends BlockSchema,
   I extends InlineContentSchema,
@@ -87,7 +63,7 @@ export function insertOrUpdateBlockForSlashMenu<
     editor.setTextCursorPosition(editor.getTextCursorPosition().nextBlock!);
   }
 
-  setSelectionToNextContentEditableBlock(editor);
+  continueTypingAfterContentlessBlock(editor, newBlock);
 
   return newBlock;
 }

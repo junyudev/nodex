@@ -1,5 +1,16 @@
 import { BlockNoteEditor, dispatchHistoryBoundary, type PartialBlock } from "@blocknote/core";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, test, vi } from "vite-plus/test";
+import { insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  test,
+  vi,
+} from "vite-plus/test";
 import { NFM_AUTOLINK_SETTINGS_STORAGE_KEY } from "@/lib/nfm-autolink-settings";
 import { createNfmLinkExtension } from "./nfm-link-extension";
 import { createNfmEditorExtensions, NFM_DISABLED_EXTENSIONS } from "./nfm-editor-extensions";
@@ -346,31 +357,134 @@ describe("automatic transform history", () => {
         editor._tiptapEditor.destroy();
       }
     });
+  });
 
-    it("restores the literal divider prefix before removing its input", () => {
-      const editor = BlockNoteEditor.create({
+  describe("NFM divider continuation", () => {
+    const dividerLine = { id: "divider-line", type: "paragraph" } as const;
+    const divider = { id: dividerLine.id, type: "divider" };
+    const blankParagraph = { type: "paragraph", content: [], children: [] };
+    let editor: typeof nfmSchema.BlockNoteEditor;
+
+    function mountEditor(initialContent: (typeof nfmSchema.PartialBlock)[] = [dividerLine]) {
+      editor = BlockNoteEditor.create({
         schema: nfmSchema,
         disableExtensions: [...NFM_DISABLED_EXTENSIONS],
         extensions: createNfmEditorExtensions(),
+        initialContent,
       });
-      const mount = document.createElement("div");
-      editor.mount(mount);
+      editor.mount(document.createElement("div"));
+      editor.setTextCursorPosition(dividerLine.id, "start");
+    }
 
-      try {
-        const blockId = editor.document[0]?.id;
-        if (!blockId) throw new Error("Expected an initial paragraph");
-        editor.setTextCursorPosition(blockId, "start");
-        typeString(editor, "---");
+    function expectCaretInParagraph(block: typeof nfmSchema.Block) {
+      const { selection } = editor.prosemirrorState;
+      expect(selection).toBeInstanceOf(TextSelection);
+      expect(selection.empty).toBe(true);
+      expect(selection.$from.parent.type.name).toBe("paragraph");
+      expect(selection.$from.parentOffset).toBe(0);
+      expect(editor.getTextCursorPosition().block.id).toBe(block.id);
+    }
 
-        expect(editor.document[0].type).toBe("divider");
-        expect(editor.undo()).toBe(true);
-        expect(editor.document[0].type).toBe("paragraph");
-        expect(editor.document[0].content).toEqual([{ type: "text", text: "---", styles: {} }]);
-        expect(editor.undo()).toBe(true);
-        expect(editor.document[0].content).toEqual([]);
-      } finally {
-        editor._tiptapEditor.destroy();
-      }
+    afterEach(() => {
+      editor._tiptapEditor.destroy();
+    });
+
+    describe.each([
+      ["typed divider", () => typeString(editor, "---")],
+      ["slash-menu divider", () => insertOrUpdateBlockForSlashMenu(editor, { type: "divider" })],
+    ] as const)("%s", (_name, createDivider) => {
+      it("continues typing in a new paragraph below a divider on the only line", () => {
+        mountEditor();
+        createDivider();
+
+        expect(editor.document).toMatchObject([divider, blankParagraph]);
+        expectCaretInParagraph(editor.document[1]);
+
+        typeString(editor, "x");
+
+        expect(editor.document).toMatchObject([
+          divider,
+          { type: "paragraph", content: [{ type: "text", text: "x", styles: {} }] },
+        ]);
+      });
+
+      it("inserts a blank line before the next non-empty paragraph", () => {
+        mountEditor([dividerLine, { type: "paragraph", content: "Keep this text" }]);
+        const following = editor.document[1];
+
+        createDivider();
+
+        expect(editor.document).toMatchObject([divider, blankParagraph, following]);
+        expectCaretInParagraph(editor.document[1]);
+      });
+
+      it("continues at the same nesting level when the divider is the last child", () => {
+        mountEditor([
+          { type: "bulletListItem", content: "Parent", children: [dividerLine] },
+          { type: "paragraph", content: "After the list" },
+        ]);
+        const following = editor.document[1];
+
+        createDivider();
+
+        expect(editor.document).toMatchObject([
+          { type: "bulletListItem", children: [divider, blankParagraph] },
+          following,
+        ]);
+        expectCaretInParagraph(editor.document[0].children[1]);
+      });
+    });
+
+    it("reuses an existing blank paragraph below a typed divider", () => {
+      mountEditor([dividerLine, { type: "paragraph" }]);
+      const blankLine = editor.document[1];
+
+      typeString(editor, "---");
+
+      expect(editor.document).toMatchObject([divider, blankLine]);
+      expectCaretInParagraph(blankLine);
+    });
+
+    it("keeps the divider prefix literal at the start of a non-empty paragraph", () => {
+      mountEditor([{ ...dividerLine, content: "hello" }]);
+
+      typeString(editor, "---");
+
+      expect(editor.document).toMatchObject([
+        { ...dividerLine, content: [{ type: "text", text: "---hello", styles: {} }] },
+      ]);
+    });
+
+    it("restores the literal divider prefix and removes the continuation with Backspace", () => {
+      mountEditor();
+      typeString(editor, "---");
+
+      expect(editor.document).toMatchObject([divider, blankParagraph]);
+
+      expect(pressKey(editor, "Backspace")).toBe(true);
+      expect(editor.document).toMatchObject([
+        { ...dividerLine, content: [{ type: "text", text: "---", styles: {} }] },
+      ]);
+      const { $from } = editor.prosemirrorState.selection;
+      expect({ text: $from.parent.textContent, offset: $from.parentOffset }).toEqual({
+        text: "---",
+        offset: 3,
+      });
+    });
+
+    it("restores the literal divider prefix before removing its input", () => {
+      mountEditor();
+      typeString(editor, "---");
+
+      expect(editor.document).toMatchObject([divider, blankParagraph]);
+
+      expect(editor.undo()).toBe(true);
+      expect(editor.document).toMatchObject([
+        { ...dividerLine, content: [{ type: "text", text: "---", styles: {} }] },
+      ]);
+
+      expect(editor.undo()).toBe(true);
+      expect(editor.document).toMatchObject([{ ...dividerLine, content: [] }]);
     });
   });
 });

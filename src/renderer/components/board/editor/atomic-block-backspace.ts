@@ -1,3 +1,5 @@
+import { undoAutomaticInputRule } from "@blocknote/core";
+import type { EditorState } from "@tiptap/pm/state";
 import {
   blockAcceptsPlainTextMerge,
   blockUsesPreviewFirstSource,
@@ -14,6 +16,8 @@ export interface AtomicBackspaceEditor {
   readonly schema: {
     readonly blockSchema: Readonly<Record<string, { readonly content?: string }>>;
   };
+  /** Knows whether Backspace would restore the literal input of an automatic transform. */
+  readonly prosemirrorState?: EditorState;
   readonly prosemirrorView?: {
     readonly state: {
       readonly selection: {
@@ -51,6 +55,9 @@ export function planBackspaceAcrossAtomicBlocks(
 ): AtomicBlockBackspacePlan | null {
   const view = editor.prosemirrorView;
   if (!view?.state.selection.empty || view.state.selection.$from.parentOffset !== 0) return null;
+  // Backspace right after an automatic transform restores its literal input, even where the
+  // transform left the caret beside an atomic Block, as `---` does below its new divider.
+  if (editor.prosemirrorState && undoAutomaticInputRule(editor.prosemirrorState)) return null;
 
   const cursor = editor.getTextCursorPosition();
   if (blockUsesPreviewFirstSource(editor.schema, cursor.block.type)) {

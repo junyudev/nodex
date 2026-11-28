@@ -1,7 +1,7 @@
 # Page Editor Automatic Transform History Behavior
 
 Status: Active
-Last Updated: 2026-10-28
+Last Updated: 2026-11-29
 
 ## Purpose
 
@@ -37,6 +37,8 @@ Undo restores the complete delimiters exactly once and restores the caret to the
 Heading, list, checklist, quote, code-block, divider, toggle, and future Block-prefix rules use the same two-entry history model. Space-triggered and Enter-triggered forms restore an editable literal prefix on the first Undo; the second Undo removes the user input.
 
 An immediate Backspace after an automatic transform may restore its literal input as the editor's input-rule convenience. It restores the literal syntax once and never duplicates the final delimiter, whitespace, newline, or other trigger. This convenience does not replace or fork the normal Undo/Redo history lane.
+
+A Block-prefix rule that creates a Block without text, such as `---` creating a divider, applies only when the line holds nothing but its syntax; `---hello` stays literal text. Because that Block cannot hold the caret, writing continues on the line below it at the same level: an empty paragraph already there takes the caret, otherwise a new one opens directly after the Block. Opening that line is part of the transform, so the first Undo, or the immediate Backspace, restores the literal `---` and removes the added line in one step.
 
 ## Composition input
 

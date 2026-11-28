@@ -12,6 +12,7 @@ import type {
   StyleSchema,
 } from "../../../schema/index.js";
 import { UnreachableCaseError } from "../../../util/typescript.js";
+import { insertBlocks } from "../commands/insertBlocks/insertBlocks.js";
 import {
   getBlockInfo,
   getBlockInfoFromSelection,
@@ -53,6 +54,41 @@ export function getTextCursorPosition<
     parentBlock:
       parentNode === undefined ? undefined : nodeToBlock(parentNode, tr.doc),
   };
+}
+
+/** Whether a Block is a blank line: an empty paragraph without children. */
+function isBlankLineBlock(node: Node | null): boolean {
+  return (
+    node?.type.name === "blockContainer" &&
+    node.childCount === 1 &&
+    node.firstChild?.type.name === "paragraph" &&
+    node.firstChild.content.size === 0
+  );
+}
+
+/**
+ * Continues writing on the line below a Block, at the Block's own level. A
+ * blank line already there takes the caret; otherwise a new paragraph opens
+ * directly after the Block. Typing that creates a Block without inline
+ * content, such as a divider, lands here because that Block cannot hold the
+ * caret itself.
+ */
+export function setTextCursorAfterBlock(
+  tr: Transaction,
+  targetBlock: BlockIdentifier,
+) {
+  const id = typeof targetBlock === "string" ? targetBlock : targetBlock.id;
+  const posInfo = getNodeById(id, tr.doc);
+  if (!posInfo) {
+    throw new Error(`Block with ID ${id} not found`);
+  }
+
+  const afterPos = posInfo.posBeforeNode + posInfo.node.nodeSize;
+  if (!isBlankLineBlock(tr.doc.resolve(afterPos).nodeAfter)) {
+    insertBlocks(tr, [{ type: "paragraph" }], id, "after");
+  }
+  // blockContainer opens, then its paragraph opens: the caret sits inside both.
+  tr.setSelection(TextSelection.create(tr.doc, afterPos + 2));
 }
 
 export function setTextCursorPosition(

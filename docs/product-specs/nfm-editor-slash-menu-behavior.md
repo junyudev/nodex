@@ -1,7 +1,7 @@
 # Page Editor Slash Menu Behavior
 
 Status: Active
-Last updated: 2026-08-27
+Last updated: 2026-11-29
 
 ## Purpose
 
@@ -31,6 +31,11 @@ insertion behavior.
 Callout uses the ordinary slash replacement boundary: choosing it converts the
 empty slash paragraph into a Callout without creating an extra sibling. Table
 uses the Page editor table initializer rather than a dependency default.
+
+A Block without text, such as Divider, cannot hold the caret, so writing
+continues on the line below it exactly as after typing `---`: an empty
+paragraph already there takes the caret, otherwise a new one opens directly
+after the Block at its own level.
 
 Canvas, Subpage, Mention a page, and Embed page appear only when the current
 host exposes the corresponding capability. Page connection semantics are

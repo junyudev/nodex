@@ -594,6 +594,18 @@
   opacity: 1;
 }
 
+/*
+ * A divider is a hairline centred in exactly one text line, so turning `---` into a divider
+ * moves nothing below it and its side-menu handle lines up as on text. Translucent text ink
+ * keeps it quiet on every theme while it still reads as a deliberate break.
+ */
+.nfm-editor .bn-block-content[data-content-type="divider"] hr {
+  height: 0;
+  margin-block: calc((1lh - 1px) / 2);
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+
 /* Enclosed Blocks own one semantic surface around content and direct children. */
 .nfm-editor .bn-block[data-content-type="callout"] {
   margin-block: 4px;

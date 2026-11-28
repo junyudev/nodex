@@ -5,7 +5,10 @@ import {
 import { keymap } from "@tiptap/pm/keymap";
 import { Plugin } from "prosemirror-state";
 import { updateBlockTr } from "../../../api/blockManipulation/commands/updateBlock/updateBlock.js";
-import { setTextCursorPosition } from "../../../api/blockManipulation/selections/textCursorPosition.js";
+import {
+  setTextCursorAfterBlock,
+  setTextCursorPosition,
+} from "../../../api/blockManipulation/selections/textCursorPosition.js";
 import {
   getBlockInfoFromSelection,
   getNodeId,
@@ -581,17 +584,36 @@ export class ExtensionManager {
                   return null;
                 }
 
+                // A Block without inline content would discard the rest of
+                // the line, so it forms only from a line that is exactly the
+                // match: `---hello` stays text.
+                const holdsText =
+                  this.editor.schema.blockSchema[
+                    replaceWith.type ?? blockInfo.blockNoteType
+                  ]?.content !== "none";
+                if (
+                  !holdsText &&
+                  blockInfo.blockContent.node.content.size !==
+                    range.to - range.from
+                ) {
+                  return null;
+                }
+
                 tr.deleteRange(range.from, range.to);
                 updateBlockTr(tr, blockInfo.bnBlock.beforePos, replaceWith);
+                const blockId = getNodeId(blockInfo.bnBlock.node, tr.doc);
                 // updateBlockTr's replaceWith path leaves the selection after
                 // the new block when the content is replaced wholesale (e.g.
-                // when the rule returns content: []). Move the cursor back
-                // inside the new block so the user can keep typing.
-                setTextCursorPosition(
-                  tr,
-                  getNodeId(blockInfo.bnBlock.node, tr.doc),
-                  "start",
-                );
+                // when the rule returns content: []). Keep the caret where the
+                // user goes on typing: inside the new block, or on the line
+                // below one that cannot hold it. Both belong to this one
+                // transform, so Undo and the immediate Backspace restore the
+                // literal input in a single step.
+                if (holdsText) {
+                  setTextCursorPosition(tr, blockId, "start");
+                } else {
+                  setTextCursorAfterBlock(tr, blockId);
+                }
                 return tr;
               }
               return null;
