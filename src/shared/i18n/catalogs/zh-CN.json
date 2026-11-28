@@ -7044,7 +7044,7 @@
   "mini.location.searchProjects": "搜索项目",
   "mini.notice.open": "打开",
   "mini.notice.saved": "已保存到收件箱",
-  "mini.stack.showAll": "还有 {count} 个",
+  "mini.stack.clearAll": "全部清除",
   "mini.stack.showLess": "收起",
   "mini.start.edit": "编辑",
   "mini.start.retry": "重试",

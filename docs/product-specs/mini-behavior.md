@@ -23,8 +23,9 @@ you, a Turn that is your move, and what each action does read exactly as they do
   Mini comes first until it is under way, so you see it take; then, most urgent first: what needs
   your answer, approval, review or reply; what failed; a chat that finished and you have not seen;
   what is working. Newest first within each. A Page Turn about a chat stands in for that chat's
-  own card. Collapsed, the front card shows with the next ones as plates behind it and `N more`
-  expands the list; `Show less` collapses it.
+  own card. Collapsed, the front card shows with the next ones as plates behind it; clicking the
+  stack unfolds the list, as a stack of notifications does. Unfolded, `Show less` folds it again
+  and `Clear all` dismisses every card but a chat Mini is still starting or could not start.
 - **Composer.** Grows from the dock when **Open Mini** (`Shift+Option+Space`) or `New chat` asks
   for it: the Inbox composer with images, dictation and a chip naming where a new chat works.
   Escape, the shortcut again or a click elsewhere give the keyboard back to the app you were in.
@@ -43,7 +44,8 @@ you, a Turn that is your move, and what each action does read exactly as they do
   this computer, `Stop` while its Run works and you may stop it, and `Dismiss`.
   Dismissing a finished chat marks it read, as opening it would. A dismissed card returns when
   its chat or Turn changes again.
-- Clicking a card opens it in Nodex.
+- Clicking a card on its own, or one in the unfolded list, opens it in Nodex; its buttons act
+  in place either way.
 
 ## Starting and saving
 
@@ -78,8 +80,7 @@ system notification already shown, and chat snooze notifications follow their us
   Nodex first creates the panel when you ask for it. When Mini is enabled,
   Nodex prepares its panel at launch.
   **Open Mini** defaults to `Shift+Option+Space` on macOS and `Shift+Alt+Space`
-  on Windows. A focused Workbench window runs **Capture to Inbox** instead.
-  Change or clear the shortcut in **Settings → Keyboard shortcuts**. The chord
+  on Windows, from any app and from Nodex itself. Change or clear the shortcut in **Settings → Keyboard shortcuts**. The chord
   requires Command/Control or Alt and an ordinary key, must differ from global
   Dictation, and can be held by only one Nodex instance.
 - Mini can be hidden, resting without the keyboard, or focused for typing.
@@ -92,9 +93,9 @@ system notification already shown, and chat snooze notifications follow their us
 - The Profile keeps whether Mini is shown (off by default) and how a shown Mini
   rests: **Always** (the default) keeps it on screen, **When active** follows
   the activity reported by the panel. A hidden Mini is on screen only while
-  focused. A resting Mini steps aside while a Workbench window is focused and
-  returns according to the same settings. Opening a Page, Inbox, or chat from Mini brings the personal
-  Workbench forward.
+  focused. A shown Mini stays on screen while a Nodex window is in front too, so
+  the person decides where it sits rather than Nodex moving it away. Opening a
+  Page, Inbox, or chat from Mini brings the personal Workbench forward.
 - Mini first appears at bottom center. Drag it anywhere in the work area, including onto
   another display. A press that travels less than a few pixels stays a click. Hold Option
   (⌥) on macOS or Alt on Windows when releasing to snap to a corner or the center of the
@@ -130,7 +131,7 @@ chat's Nodex window, as before. On macOS, **Send to Mini** on the preview shows 
 the previews of every chat in one stack beside Mini's content, level with its dock or composer:
 to the right, or to the left when Mini sits at the right of the screen. The previews stay where
 the person put them when another app comes forward. Dragging or snapping Mini moves the stack
-with it. While previews are docked, Mini stays on screen even with a Workbench window focused or
-while **When active** would otherwise hide it. **Return Picture-in-Picture to Nodex**, **Hide
+with it. While previews are docked, Mini stays on screen even while **When active** would otherwise
+hide it. **Return Picture-in-Picture to Nodex**, **Hide
 Mini**, or setting Mini to **Off** moves the stack back to a Nodex window. A chat card's
 `Hide preview` and `Show preview` set that chat's preview as its own preview controls do.
