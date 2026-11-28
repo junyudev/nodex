@@ -93,8 +93,9 @@ export const live = (preloadPath: string) =>
           }),
         );
       }
-      // Each drop can update a different display, so persist them in order.
-      const placements = yield* Queue.unbounded<MiniPlacement>();
+      // Each drop can update a different display, so persist them in order. Drops come one per
+      // gesture; should saving ever fall this far behind, only the oldest positions are lost.
+      const placements = yield* Queue.sliding<MiniPlacement>(32);
       yield* Effect.addFinalizer(() => Queue.shutdown(placements));
       yield* Queue.take(placements).pipe(
         Effect.flatMap((input) => settings.update({ type: "update-mini-placement", input })),
