@@ -170,6 +170,15 @@ export function gitHubPullRequestFilesQueryOptions(ref: GitHubThreadRef, headSha
   });
 }
 
+export function gitHubThreadMediaQueryOptions(ref: GitHubThreadRef, url: string) {
+  return queryOptions({
+    queryKey: spaceQueryKey(["github-thread-media", gitHubThreadKey(ref), url]),
+    queryFn: () => invokeRendererQuery("github:thread-media", { ref, url }),
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
 const threadCommand = defineRendererCommand({
   key: "github.changeThread",
   channel: "github:thread-command",

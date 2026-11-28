@@ -161,6 +161,10 @@ The tab keeps its place and says why, with the fix and **Open on GitHub**:
 
 A failed refresh keeps what the tab already shows.
 
+GitHub-hosted images and videos in descriptions, comments and reviews display inline, including
+attachments in private repositories your connected account can access. Videos have playback and
+seeking controls. If an attachment cannot be displayed, you can open it on GitHub.
+
 ## Boundaries
 
 Inline GitHub thread links read titles and states in batches using the connected account.

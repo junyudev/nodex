@@ -448,6 +448,9 @@ const make = (
     } as unknown as ChatGptDesktop["Service"]),
     Layer.succeed(AppProtocolRuntime, {
       installed: true,
+      authorizeGitHubMedia: () => {
+        throw new Error("Unexpected GitHub media capability");
+      },
       authorizeHostFile: () => "app://authorized",
       registerHostFileReader: () => Effect.void,
     }),

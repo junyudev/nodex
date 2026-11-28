@@ -1,6 +1,7 @@
 import { cn } from "../../../../../lib/utils";
 import { MarkdownCore } from "./markdown-core";
 import type { CSSProperties } from "react";
+import type { Components } from "streamdown";
 import type { ConversationVisualizationContext } from "../../inline-visualization-context";
 import type { FileMarkdownMediaScope } from "@/lib/file-markdown-media/file-markdown-media-model";
 import {
@@ -14,6 +15,7 @@ import type { ConversationMarkdownNativeSource } from "../../conversation-markdo
 export interface MarkdownRendererProps {
   dialect?: MarkdownDisplayDialect;
   content: string;
+  documentImage?: Components["img"];
   className?: string;
   style?: CSSProperties;
   parseIncompleteMarkdown?: boolean;
@@ -29,6 +31,7 @@ export interface MarkdownRendererProps {
 
 export function MarkdownRenderer({
   content,
+  documentImage,
   dialect,
   className,
   style,
@@ -47,6 +50,7 @@ export function MarkdownRenderer({
       {adaptiveBuffering ? (
         <BufferedMarkdown
           content={content}
+          documentImage={documentImage}
           dialect={dialect}
           parseIncompleteMarkdown={parseIncompleteMarkdown}
           preserveLineBreaks={preserveLineBreaks}
@@ -61,6 +65,7 @@ export function MarkdownRenderer({
       ) : (
         <MarkdownCore
           content={content}
+          documentImage={documentImage}
           dialect={dialect}
           parseIncompleteMarkdown={parseIncompleteMarkdown}
           preserveLineBreaks={preserveLineBreaks}

@@ -483,6 +483,12 @@ fingerprints are never persisted or sent to the renderer. Credential failures
 retain only a categorical reason. Only same-host HTTPS API pagination is accepted.
 GitHub Source ingestion performs read-only network operations.
 
+Only personal Space IPC can authorize GitHub thread media. Main issues an opaque
+`app://fs/github-media/<asset-id>` capability behind the existing renderer origin gate.
+Every byte request verifies that the connected credential still matches the credential that
+authorized it. Only bounded image and video responses from GitHub's attachment CDN are served.
+CDN requests omit credentials, and URLs signed during resolution stay in the Host.
+
 ## Agent CLI attribution
 
 A provider shell resolves the Host-managed `nodex` command at invocation time.

@@ -25,6 +25,9 @@ import {
   type GitHubUnavailable,
   type GitHubUnavailableReason,
 } from "../../shared/github-thread";
+import { parseGitHubAttachment } from "../../shared/github-media";
+import type { GitHubMediaByteRange } from "../../main/platform/node/GitHubMediaCdn";
+import { makeGitHubThreadMedia } from "./GitHubThreadMedia";
 import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { readSources, type SourceCatalogError } from "../sources/SourceCatalog";
 import { GitHubAccount, type GitHubAccountVerificationError } from "./GitHubAccount";
@@ -220,6 +223,35 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
     if (!account) return yield* Effect.fail(unavailable("not_connected"));
     return yield* accounts.verify(host, account.account_login, account.account_id, true);
   });
+
+  const media = yield* makeGitHubThreadMedia(api);
+  const attachment = Effect.fn("GitHubThreads.attachment")(
+    function* (ref: GitHubThreadRef, url: string) {
+      const target = parseGitHubAttachment(url);
+      if (ref.host !== "github.com" || !target) return unavailable("not_found");
+      const account = yield* verify(ref.host);
+      const resolve = (verified: typeof account) =>
+        verified.use(media.resolve(ref, target, verified.fingerprint));
+      const { kind, mimeType, size } = yield* resolve(account);
+      const fingerprint = account.fingerprint;
+      const read = Effect.fn("GitHubThreads.readAttachment")(
+        function* (range: GitHubMediaByteRange | null, signal: AbortSignal) {
+          const current = yield* verify(ref.host);
+          if (current.fingerprint !== fingerprint) return null;
+          const resolved = yield* resolve(current);
+          if (resolved.size !== size || resolved.mimeType !== mimeType) return null;
+          return yield* media.read(resolved, range, signal);
+        },
+        Effect.orElseSucceed(() => null),
+      );
+      return { status: "ready" as const, kind, mimeType, size, read };
+    },
+    Effect.catch((error) => {
+      // The REST response could mention a CDN URL. Keep error details inside the Host.
+      const result = projectError(error);
+      return Effect.succeed({ ...result, message: null });
+    }),
+  );
 
   const resolve = Effect.fn("GitHubThreads.resolve")(function* (ref: GitHubThreadRef) {
     const operation = "thread.identity";
@@ -760,7 +792,7 @@ export const makeGitHubThreads = Effect.fn("GitHubThreads.make")(function* (
     Effect.catch((error) => Effect.succeed(projectError(error))),
   );
 
-  return { read, summaries, files, command };
+  return { read, summaries, files, command, attachment };
 });
 
 export class GitHubThreads extends Context.Service<

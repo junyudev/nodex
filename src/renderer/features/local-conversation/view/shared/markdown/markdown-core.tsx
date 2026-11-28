@@ -37,6 +37,7 @@ import { ConversationTaskSuggestion } from "./conversation-task-suggestion";
 interface MarkdownCoreProps {
   dialect?: MarkdownDisplayDialect;
   content: string;
+  documentImage?: Components["img"];
   sourceIdentity?: string;
   parseIncompleteMarkdown?: boolean;
   preserveLineBreaks?: boolean;
@@ -111,6 +112,7 @@ const renderVisualizedConversationDirective: ConversationDirectiveRenderer = (to
 };
 export function MarkdownCore({
   content,
+  documentImage,
   dialect = "document",
   sourceIdentity,
   parseIncompleteMarkdown = false,
@@ -124,6 +126,11 @@ export function MarkdownCore({
   nativeSource,
 }: MarkdownCoreProps) {
   const components = visualizationContext ? visualizationComponents : streamdownComponents;
+  const documentComponents = {
+    ...components,
+    ...(documentImage ? { img: documentImage } : {}),
+    ...(fileMediaScope ? fileMarkdownMediaComponents : {}),
+  };
 
   return (
     <ConversationVisualizationContext.Provider value={visualizationContext ?? null}>
@@ -161,9 +168,7 @@ export function MarkdownCore({
               preserveLineBreaks={preserveLineBreaks}
               visualizations={Boolean(visualizationContext)}
               fileMedia={Boolean(fileMediaScope)}
-              components={
-                fileMediaScope ? { ...components, ...fileMarkdownMediaComponents } : components
-              }
+              components={documentImage || fileMediaScope ? documentComponents : components}
               className={`
           [&>*:first-child]:mt-0
           [&>*:last-child]:mb-0

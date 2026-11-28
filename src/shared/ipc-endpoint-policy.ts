@@ -245,6 +245,7 @@ type QueryEndpointPolicy =
   | "gh-pr-status"
   | "github:thread"
   | "github:thread-files"
+  | "github:thread-media"
   | "github:thread-summaries"
   | "git:repository:identity"
   | "global-dictation-capture-bare-modifier-hotkey"

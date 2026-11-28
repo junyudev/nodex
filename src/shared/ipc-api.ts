@@ -1,3 +1,4 @@
+import type { GitHubMediaResult } from "./github-media";
 import type {
   GitHubPullRequestFilesResult,
   GitHubThreadCommand,
@@ -2247,6 +2248,10 @@ export interface IpcApi
   "github:thread-summaries": {
     args: [refs: readonly GitHubThreadRef[]];
     result: GitHubThreadSummariesResult;
+  };
+  "github:thread-media": {
+    args: [input: { ref: GitHubThreadRef; url: string }];
+    result: GitHubMediaResult;
   };
   "github:thread-files": { args: [ref: GitHubThreadRef]; result: GitHubPullRequestFilesResult };
   "github:thread-command": {

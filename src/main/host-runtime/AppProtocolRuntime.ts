@@ -5,8 +5,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
 import { lookup as lookupMimeType } from "mime-types";
-import { registerAppProtocol } from "../app-protocol";
-import { buildAppHostAssetUrl } from "../../shared/app-protocol";
+import { registerAppProtocol, type AppGitHubMedia } from "../app-protocol";
+import { buildAppGitHubMediaUrl, buildAppHostAssetUrl } from "../../shared/app-protocol";
 import { isAbsoluteSearchPath } from "../../shared/file-search-paths";
 import { MainConfig } from "../app/MainConfig";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
@@ -34,6 +34,7 @@ export class AppProtocolRuntime extends Context.Service<
     readonly registerHostFileReader: (
       reader: HostFileReader,
     ) => Effect.Effect<void, never, Scope.Scope>;
+    readonly authorizeGitHubMedia: (asset: AppGitHubMedia) => string;
     readonly authorizeHostFile: (input: {
       readonly hostId: string;
       readonly path: string;
@@ -50,6 +51,16 @@ export const live: Layer.Layer<AppProtocolRuntime, never, ElectronSessionHost | 
       const sessions = yield* ElectronSessionHost;
       const defaultSession = yield* sessions.defaultSession;
       let hostFileReader: HostFileReader | null = null;
+      const gitHubMedia = new Map<string, AppGitHubMedia>();
+      const authorizeGitHubMedia = (asset: AppGitHubMedia) => {
+        const id = randomUUID();
+        gitHubMedia.set(id, asset);
+        if (gitHubMedia.size > MAX_AUTHORIZED_HOST_ASSETS) {
+          const oldest = gitHubMedia.keys().next().value;
+          if (oldest) gitHubMedia.delete(oldest);
+        }
+        return buildAppGitHubMediaUrl(id);
+      };
       const assetsById = new Map<string, AuthorizedHostAsset>();
       const assetIdByKey = new Map<string, string>();
       const authorizeHostFile = (input: { readonly hostId: string; readonly path: string }) => {
@@ -85,6 +96,7 @@ export const live: Layer.Layer<AppProtocolRuntime, never, ElectronSessionHost | 
       yield* Effect.acquireRelease(
         Effect.sync(() => {
           const release = registerAppProtocol(defaultSession, {
+            getGitHubMedia: (id) => gitHubMedia.get(id),
             readHostAsset: async ({ assetId, signal }) => {
               const asset = assetsById.get(assetId);
               if (!asset || !hostFileReader) return null;
@@ -106,6 +118,7 @@ export const live: Layer.Layer<AppProtocolRuntime, never, ElectronSessionHost | 
       return AppProtocolRuntime.of({
         installed: true,
         authorizeHostFile,
+        authorizeGitHubMedia,
         registerHostFileReader: (reader) =>
           Effect.acquireRelease(
             Effect.sync(() => {

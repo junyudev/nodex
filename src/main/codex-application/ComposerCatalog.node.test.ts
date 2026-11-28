@@ -39,6 +39,9 @@ const makeGateway = (
 
 const testProtocol = AppProtocolRuntime.of({
   installed: true,
+  authorizeGitHubMedia: () => {
+    throw new Error("Unexpected GitHub media capability");
+  },
   authorizeHostFile: () => buildAppHostAssetUrl("authorized-host-image"),
   registerHostFileReader: () => Effect.void,
 });
