@@ -11,6 +11,8 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
+import { pinnedTarExecutable } from "../platform/node/pinned-tar-archive";
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
@@ -19,6 +21,7 @@ import { afterEach, expect, vi } from "vite-plus/test";
 import {
   APP_COMPONENT_MANIFEST_MAX_BYTES,
   appComponentManifestSchema,
+  type AppComponentManifestTarget,
 } from "../../shared/app-component-manifest";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
 import { writeDocumentToolsFixture } from "../platform/node/document-tools-test-fixture";
@@ -32,7 +35,8 @@ import { fetchComponentManifest, type ComponentFetch } from "./AppComponentDownl
 import {
   appComponentRoot,
   installAppComponent,
-  prepareAppComponentStore,
+  prepareAppComponentStoreSweep,
+  type AppComponentStoreInput,
   setAppComponentWanted,
   writeAppComponentReceipt,
 } from "./AppComponentStore";
@@ -40,35 +44,59 @@ import { AppComponentFetch, make } from "./AppComponents";
 import { writeClaudeCodeFixture } from "./claude-code-fixture";
 
 vi.mock("./AppComponentCatalog", { spy: true });
+async function prepareAppComponentStore(
+  input: AppComponentStoreInput & { readonly appBuildVersion?: string },
+): Promise<void> {
+  const sweep = await prepareAppComponentStoreSweep(input);
+  await sweep();
+}
+
 afterEach(() => vi.mocked(appComponentCatalog).mockReset());
 
-const target = { platform: "darwin", arch: "arm64", isPackaged: true };
+interface PrefetchTestTarget {
+  platform: string;
+  arch: string;
+  isPackaged: boolean;
+  environment?: Record<string, string>;
+}
+const target: PrefetchTestTarget = {
+  platform: "darwin",
+  arch: "arm64",
+  isPackaged: true,
+};
 const currentBuild = "1.0.1";
 const update = (buildVersion = "1.0.2") => ({
+  target: "darwin-arm64" as const,
   version: "0.2.2",
   buildVersion,
   manifestUrl: `https://example.test/${buildVersion}/components.json`,
 });
 const respondWithManifest = (
-  next: ReturnType<typeof update>,
+  next: Omit<ReturnType<typeof update>, "target"> & { readonly target: AppComponentManifestTarget },
   components: readonly AppComponentDefinition[],
 ) =>
   Response.json({
     schemaVersion: 1,
+    target: next.target,
     version: next.version,
     buildVersion: next.buildVersion,
     components,
   });
 
-function archive(home: string, name: string, id: "claude-code" | "document-tools") {
+function archive(
+  home: string,
+  name: string,
+  id: "claude-code" | "document-tools",
+  windows = false,
+) {
   const source = path.join(home, name);
   const payload =
     id === "claude-code"
-      ? writeClaudeCodeFixture(source, name)
+      ? writeClaudeCodeFixture(source, name, windows)
       : writeDocumentToolsFixture(source, createHash("sha256").update(name).digest("hex")).payload;
   const assetName = `${name}.tar.gz`;
   const packed = path.join(home, assetName);
-  execFileSync("tar", ["-czf", packed, "-C", source, "."]);
+  execFileSync(pinnedTarExecutable(), ["-czf", packed, "-C", source, "."]);
   const bytes = new Uint8Array(readFileSync(packed));
   return {
     bytes,
@@ -87,9 +115,15 @@ function archive(home: string, name: string, id: "claude-code" | "document-tools
   };
 }
 
-const install = (home: string, item: ReturnType<typeof archive>, fetch?: ComponentFetch) =>
+const install = (
+  home: string,
+  item: ReturnType<typeof archive>,
+  fetch?: ComponentFetch,
+  testTarget = target,
+) =>
   installAppComponent({
     home,
+    target: testTarget,
     definition: item.definition,
     fetch: fetch ?? (() => Promise.resolve(new Response(item.bytes))),
     signal: new AbortController().signal,
@@ -97,18 +131,21 @@ const install = (home: string, item: ReturnType<typeof archive>, fetch?: Compone
     onInstalling: () => {},
   });
 
-const fixture = Effect.gen(function* () {
+const fixture = Effect.fnUntraced(function* (testTarget = target) {
+  const windows = testTarget.platform === "win32";
   const home = yield* Effect.acquireRelease(
     Effect.sync(() => mkdtempSync(path.join(tmpdir(), "nodex-prefetch-"))),
     (root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
   );
-  const current = archive(home, "current", "claude-code");
-  const next = archive(home, "next", "claude-code");
+  const current = archive(home, "current", "claude-code", windows);
+  const next = archive(home, "next", "claude-code", windows);
   const document = archive(home, "documents", "document-tools");
-  const catalog = [current.definition, document.definition];
+  const catalog = windows ? [current.definition] : [current.definition, document.definition];
   vi.mocked(appComponentCatalog).mockReturnValue(catalog);
-  yield* Effect.promise(() => install(home, current));
-  yield* Effect.promise(() => setAppComponentWanted(home, "claude-code", true));
+  yield* Effect.promise(() => install(home, current, undefined, testTarget));
+  yield* Effect.promise(() =>
+    setAppComponentWanted({ home, target: testTarget }, "claude-code", true),
+  );
   const active = new Set<string>();
   const activation = AppComponentActivation.of({
     activate: (id) =>
@@ -127,7 +164,14 @@ const fixture = Effect.gen(function* () {
     make.pipe(
       Effect.provide(
         Layer.mergeAll(
-          mainConfigLayer({ ...target, nodexHome: home, appBuildVersion: currentBuild }),
+          mainConfigLayer({
+            platform: testTarget.platform,
+            arch: testTarget.arch,
+            isPackaged: testTarget.isPackaged,
+            environment: testTarget.environment ?? {},
+            nodexHome: home,
+            appBuildVersion: currentBuild,
+          }),
           Layer.succeed(ApplicationSettings, settings),
           Layer.succeed(AppComponentFetch, { fetch }),
           Layer.succeed(AppComponentActivation, activation),
@@ -170,7 +214,7 @@ it.effect(
   "stages only changed installed pins, then drops a superseded pin even if the new manifest is unavailable",
   () =>
     Effect.gen(function* () {
-      const f = yield* fixture;
+      const f = yield* fixture();
       const documentNext = archive(f.home, "new-documents", "document-tools");
       const sharedPin = update("1.0.3");
       const replacement = update("1.0.4");
@@ -222,7 +266,7 @@ it.effect(
 
 it.effect("skips an unchanged installation and removes a staged pin when turned off", () =>
   Effect.gen(function* () {
-    const f = yield* fixture;
+    const f = yield* fixture();
     const nextDocument = archive(f.home, "new-documents", "document-tools");
     const fetch = vi.fn<ComponentFetch>((url) =>
       Promise.resolve(
@@ -254,7 +298,7 @@ it.effect(
   "retains the next partial on the old build and resumes it as the new build's current pin",
   () =>
     Effect.gen(function* () {
-      const f = yield* fixture;
+      const f = yield* fixture();
       yield* Effect.scoped(
         Effect.gen(function* () {
           const owner = yield* f.start((url, init) =>
@@ -298,7 +342,7 @@ it.effect(
 
 it.effect("disabling a Component cancels its prefetch and collects its partial", () =>
   Effect.gen(function* () {
-    const f = yield* fixture;
+    const f = yield* fixture();
     let downloadSignal: AbortSignal | null | undefined;
     const fetch = vi.fn<ComponentFetch>((url, init) => {
       if (url === update().manifestUrl)
@@ -337,7 +381,7 @@ it.effect("disabling a Component cancels its prefetch and collects its partial",
 
 it.effect("yields a prefetch to a normal install and resumes it from the saved offset", () =>
   Effect.gen(function* () {
-    const f = yield* fixture;
+    const f = yield* fixture();
     let attempt = 0;
     let firstSignal: AbortSignal | null | undefined;
     const fetch = vi.fn<ComponentFetch>((url, init) => {
@@ -367,11 +411,36 @@ it.effect("yields a prefetch to a normal install and resumes it from the saved o
   }),
 );
 
+it.effect("rejects a foreign-target manifest before fetching its Component archives", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const valid = update();
+    const foreign = update("1.0.3");
+    const different = archive(f.home, "foreign-pin", "claude-code");
+    const fetch = vi.fn<ComponentFetch>(async (url) => {
+      if (url === foreign.manifestUrl)
+        return respondWithManifest({ ...foreign, target: "win32-x64" }, [different.definition]);
+      if (url === valid.manifestUrl) return respondWithManifest(valid, [f.next.definition]);
+      return new Response(f.next.bytes);
+    });
+    const owner = yield* f.start(fetch);
+    yield* owner.prefetchUpdate(valid);
+    yield* Effect.promise(() =>
+      expect.poll(() => existsSync(f.record) && existsSync(f.root(f.next))).toBe(true),
+    );
+    fetch.mockClear();
+    yield* owner.prefetchUpdate(foreign);
+    yield* Effect.promise(() => expect.poll(() => existsSync(f.record)).toBe(false));
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([foreign.manifestUrl]);
+  }),
+);
+
 it.effect("bounds the decoded manifest and rejects invalid component definitions", () =>
   Effect.gen(function* () {
-    const f = yield* fixture;
+    const f = yield* fixture();
     const raw = {
       schemaVersion: 1,
+      target: update().target,
       version: update().version,
       buildVersion: update().buildVersion,
       components: [f.next.definition],
@@ -411,7 +480,7 @@ it.effect("bounds the decoded manifest and rejects invalid component definitions
 
 it.effect("prefetches Codex as a verified archive and retains it for the next build", () =>
   Effect.gen(function* () {
-    const f = yield* fixture;
+    const f = yield* fixture();
     const asCodex = (item: ReturnType<typeof archive>): AppComponentDefinition => ({
       ...item.definition,
       id: "codex",
@@ -424,7 +493,7 @@ it.effect("prefetches Codex as a verified archive and retains it for the next bu
     yield* Effect.promise(async () => {
       mkdirSync(installed, { recursive: true });
       await writeAppComponentReceipt(installed, 100);
-      await setAppComponentWanted(f.home, current.id, true);
+      await setAppComponentWanted({ home: f.home, target }, current.id, true);
     });
     // The real archive's digest and receipt are checked by the store. This harness owns activation.
     const fetch = vi.fn<ComponentFetch>((url) =>
@@ -447,5 +516,34 @@ it.effect("prefetches Codex as a verified archive and retains it for the next bu
     );
     expect(readFileSync(f.part)).toEqual(Buffer.from(f.next.bytes));
     expect(fetch.mock.calls.map(([url]) => url)).toEqual([update().manifestUrl, next.archive.url]);
+  }),
+);
+
+it.effect("prefetches a Windows Claude Code pin into the private store", () =>
+  Effect.gen(function* () {
+    const environment: Record<string, string> =
+      process.platform === "win32"
+        ? { NODEX_CORE_EXECUTABLE: requiredNativeExecutable("core-server") }
+        : {};
+    const testTarget = {
+      platform: "win32",
+      arch: process.arch === "x64" ? "x64" : "arm64",
+      isPackaged: true,
+      environment,
+    };
+    const f = yield* fixture(testTarget);
+    const nextUpdate = update();
+    const owner = yield* f.start((url) =>
+      Promise.resolve(
+        url === nextUpdate.manifestUrl
+          ? respondWithManifest(nextUpdate, [f.next.definition])
+          : new Response(f.next.bytes),
+      ),
+    );
+    yield* owner.prefetchUpdate(nextUpdate);
+    yield* Effect.promise(() =>
+      expect.poll(() => existsSync(path.join(f.root(f.next), "package", "claude.exe"))).toBe(true),
+    );
+    expect(readFileSync(path.join(f.root(f.next), "package", "claude.exe"), "utf8")).toBe("next");
   }),
 );

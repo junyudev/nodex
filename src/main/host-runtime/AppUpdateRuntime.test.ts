@@ -320,6 +320,30 @@ it.effect("distinguishes Nightly builds that have the same display version", () 
   }),
 );
 
+it.effect("schedules Component prefetch from the Windows updater-ready path", () =>
+  Effect.gen(function* () {
+    const harness = yield* buildHarness({ platform: "win32" });
+    yield* harness.runtime.check;
+    const base = "https://github.com/junyudev/nodex/releases/download/v0.2.2/";
+    harness.updater?.emit({
+      type: "update-ready",
+      buildVersion: "1.0.2",
+      version: "0.2.2",
+      verifiedEnclosureUrl: base + "Nodex-0.2.2-windows-x64.exe",
+    });
+    yield* waitUntil("Windows Component prefetch scheduled", () => harness.prefetches.length === 1);
+    assert.deepEqual(harness.prefetches, [
+      {
+        target: "win32-x64",
+        version: "0.2.2",
+        buildVersion: "1.0.2",
+        manifestUrl: base + "Nodex-0.2.2-components-windows-x64.json",
+      },
+    ]);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
 it.effect.each(["stable", "nightly"] as const)(
   "schedules the %s manifest only when Sparkle supplies a verified enclosure",
   (channel) =>
@@ -343,6 +367,7 @@ it.effect.each(["stable", "nightly"] as const)(
       yield* waitUntil("component prefetch scheduled", () => harness.prefetches.length === 1);
       assert.deepEqual(harness.prefetches, [
         {
+          target: "darwin-arm64",
           buildVersion: ready.buildVersion,
           version: ready.version,
           manifestUrl: base + "Nodex-0.2.2-components-arm64.json",

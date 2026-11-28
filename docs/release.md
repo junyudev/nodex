@@ -26,9 +26,8 @@ The private Bundle carries `release-notes.md` and the verified iOS payload in
 `testflight/`. The Windows x64 installer is built and probed on a native runner.
 See [Windows distribution](release-windows.md).
 
-The macOS app ships the standalone Node runtime. It downloads Desktop Tools
-into the Profile as a Component when installed through Settings. The app
-release binds the exact published archive URL, size, SHA-256, and manifest
+The macOS and Windows apps ship standalone Node and download Desktop Tools
+into the Profile at startup. The app release binds the exact published archive URL, size, SHA-256, and manifest
 SHA-256 to its tested Codex app-server. Publish the [Desktop Tools runtime
 release](#desktop-tool-runtime-releases-and-latest) before the app release that
 pins it.
@@ -38,12 +37,12 @@ the published archive URL, byte count, and archive and manifest SHA-256 digests.
 Publish the [Document Tools runtime](#document-tools-runtime-releases) before
 the app that pins it.
 
-The macOS app keeps the Agent SDK and installs its matching Claude Code
+The app ships the Agent SDK and installs its matching Claude Code
 executable on demand. Release provenance binds the npm archive URL, size, and
 SHA-256 and the executable's identity. Distribution checks the archive is
 downloadable and rejects an app that contains the native Claude package.
 
-On Apple silicon, Codex installs on first use from the official `openai/codex`
+On Apple silicon and Windows, Codex installs on first use from the official `openai/codex`
 release archive pinned in [the Codex lock](../resources/agent-runtime/codex-app-server.lock.json).
 The app ships the license and notice files used by the Component installer. Nodex
 does not republish the archive. Distribution checks the upstream URL with HEAD
@@ -53,16 +52,17 @@ staged package before running conformance. If upstream removes the asset, the
 build is not releasable until the lock is re-pinned to an available official
 release and its conformance checks pass.
 
-The Apple silicon architecture build generates `Nodex-<version>-components-arm64.json`
-from the packaged app's Component catalog and stamps it with the Build Identity's
-display version and build number. Assembly checks the manifest and includes it in the
-Release Bundle allowlist and `SHA256SUMS`. Nightly publishes it with the other certified
-assets. Stable promotion copies the same bytes to the Stable release.
+The architecture builds generate `Nodex-<version>-components-arm64.json` for Apple
+silicon and `Nodex-<version>-components-windows-x64.json` for Windows x64. Each manifest
+carries the target (`darwin-arm64` or `win32-x64`), display version, build number and
+packaged app's Component pins. Assembly verifies both manifests and includes them in the
+Release Bundle and `SHA256SUMS`. Stable promotion publishes the exact bytes from Nightly.
+Windows arm64 builds provide native verification evidence only.
 
-After Sparkle has verified and prepared an update, Nodex looks for the manifest beside
-the update archive or delta on GitHub. Stable uses `v<version>` and Nightly uses
-`v<version>-nightly.<source date>.<build ordinal>`. The installed app verifies all prepared
-Components against its own catalog before using them. If the manifest is unavailable
+When the platform updater verifies and prepares an update, Nodex looks for the matching
+manifest beside the macOS update archive or delta, or the Windows x64 installer on GitHub.
+Stable uses `v<version>` and Nightly uses `v<version>-nightly.<source date>.<build ordinal>`.
+The installed app verifies prepared Components against its own catalog before using them. If the manifest is unavailable
 or invalid, or a Component could not be prepared, the updated app installs it normally.
 
 The macOS DMG uses LZMA (`ULMO`) because it is only the first-install download:
@@ -695,7 +695,7 @@ Apple silicon includes Browser Use, Computer Use and native PiP. Windows x64
 includes Browser Use and Computer Use. Each lock entry pins the archive,
 manifest and runtime versions. A local candidate has a null URL and can be
 materialized from a supplied archive or the digest-addressed cache. Automated
-packaging selects published assets.
+distribution certifies the public downloads before publishing the app.
 
 The Desktop Tool release must never become the app Latest release. Publish
 published-target archives through:

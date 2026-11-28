@@ -53,7 +53,7 @@ const makeArchitecture = (architecture: MacArchitecture, sourceSha = SOURCE_SHA)
   const artifactSpecs = [
     [`Nodex-${VERSION}-${architecture}.dmg`, "dmg"],
     [`Nodex-${VERSION}-${architecture}.tar.xz`, "sparkle-full"],
-    [appComponentManifestName(VERSION), "components-manifest"],
+    [appComponentManifestName(VERSION, "darwin-arm64"), "components-manifest"],
   ] as const;
   const artifacts = artifactSpecs.map(([name, role]) => {
     const filePath = join(root, name);
@@ -205,12 +205,12 @@ test("assembles the complete macOS and Windows signed release closure", () => {
     identity: fixtureIdentity(),
   });
 
-  expect(bundle.schemaVersion).toBe(8);
+  expect(bundle.schemaVersion).toBe(9);
   expect(bundle.assets.map(({ name }) => name).sort()).toEqual(
     [
       `Nodex-${VERSION}-appcast-arm64.xml`,
       `Nodex-${VERSION}-arm64.tar.xz`,
-      appComponentManifestName(VERSION),
+      appComponentManifestName(VERSION, "darwin-arm64"),
       `Nodex-${VERSION}-update-arm64.json`,
       `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-arm64.delta`,
       `Nodex-${VERSION}-arm64.dmg`,
@@ -220,22 +220,28 @@ test("assembles the complete macOS and Windows signed release closure", () => {
       "release-identity.json",
       `Nodex-${VERSION}-windows-x64.exe`,
       "Nodex-latest-windows-x64.exe",
+      appComponentManifestName(VERSION, "win32-x64"),
       `Nodex-${VERSION}-appcast-windows-x64.xml`,
       `Nodex-${VERSION}-update-windows-x64.json`,
     ].sort(),
   );
-  const componentName = appComponentManifestName(VERSION);
-  const componentDigest = sha256File(join(arm64, componentName));
-  expect(sha256File(join(output, componentName))).toBe(componentDigest);
-  expect(readFileSync(join(output, "SHA256SUMS"), "utf8")).toContain(
-    `${componentDigest}  ${componentName}\n`,
-  );
-  expect(() =>
-    parseReleaseBundleManifest({
-      ...bundle,
-      assets: bundle.assets.filter(({ name }) => name !== componentName),
-    }),
-  ).toThrow("missing a required");
+  for (const [target, source] of [
+    ["darwin-arm64", arm64],
+    ["win32-x64", windows.windowsX64Directory],
+  ] as const) {
+    const componentName = appComponentManifestName(VERSION, target);
+    const componentDigest = sha256File(join(source, componentName));
+    expect(sha256File(join(output, componentName))).toBe(componentDigest);
+    expect(readFileSync(join(output, "SHA256SUMS"), "utf8")).toContain(
+      `${componentDigest}  ${componentName}\n`,
+    );
+    expect(() =>
+      parseReleaseBundleManifest({
+        ...bundle,
+        assets: bundle.assets.filter(({ name }) => name !== componentName),
+      }),
+    ).toThrow("missing a required");
+  }
   // The certified iOS build travels with the bundle for TestFlight, never as a public asset.
   expect(readFileSync(join(output, "testflight", `Nodex-${VERSION}-ios.ipa`), "utf8")).toBe(
     `ios:${VERSION}`,
@@ -318,18 +324,20 @@ test("reads a published ZIP index and rejects ZIP for new releases", () => {
     name: `Nodex-${VERSION}-arm64.zip`,
   };
   const legacyWindows = "windows-arm64";
-  const legacyAssets = bundle.assets.flatMap((asset) =>
-    asset.architecture === "windows-x64"
-      ? [
-          asset,
-          {
-            ...asset,
-            architecture: legacyWindows,
-            name: asset.name.replace("windows-x64", legacyWindows),
-          },
-        ]
-      : [asset],
-  );
+  const legacyAssets = bundle.assets
+    .filter(({ name }) => name !== appComponentManifestName(VERSION, "win32-x64"))
+    .flatMap((asset) =>
+      asset.architecture === "windows-x64"
+        ? [
+            asset,
+            {
+              ...asset,
+              architecture: legacyWindows,
+              name: asset.name.replace("windows-x64", legacyWindows),
+            },
+          ]
+        : [asset],
+    );
   const legacyArchitectures = {
     ...bundle.architectures,
     [legacyWindows]: bundle.architectures["windows-x64"],
@@ -337,9 +345,10 @@ test("reads a published ZIP index and rejects ZIP for new releases", () => {
   const historyFor = (schemaVersion: number) => ({
     ...bundle,
     schemaVersion,
-    architectures: legacyArchitectures,
+    architectures: schemaVersion === 8 ? bundle.architectures : legacyArchitectures,
     mobile: schemaVersion === 4 ? undefined : bundle.mobile,
     assets: legacyAssets
+      .filter(({ architecture }) => schemaVersion !== 8 || architecture !== legacyWindows)
       .filter(
         ({ role, name }) =>
           (schemaVersion >= 7 || role !== "components-manifest") &&
@@ -348,7 +357,7 @@ test("reads a published ZIP index and rejects ZIP for new releases", () => {
       )
       .map((asset) => (schemaVersion < 7 && asset.role === "sparkle-full" ? zipAsset : asset)),
   });
-  for (const schemaVersion of [4, 5, 6, 7]) {
+  for (const schemaVersion of [4, 5, 6, 7, 8]) {
     const legacy = historyFor(schemaVersion);
     const parsed = parseReleaseHistoryBundle(legacy);
     expect(parsed.schemaVersion).toBe(schemaVersion);

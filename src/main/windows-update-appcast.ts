@@ -94,6 +94,8 @@ export function selectWindowsUpdate(
       ) {
         throw new Error("Windows update enclosure identity is invalid.");
       }
+      if (url.pathname.split("/").at(-1) !== `Nodex-${version}-windows-${architecture}.exe`)
+        throw new Error("Windows update enclosure filename does not match its display version.");
       if (compareAppBuildVersions(buildVersion, runningBuildVersion) <= 0) continue;
       const candidate: WindowsUpdateItem = {
         buildVersion,

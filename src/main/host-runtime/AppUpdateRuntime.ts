@@ -177,13 +177,12 @@ export const layer = (
         const status = yield* publishStatus(
           reduceAppUpdateStatus(current.status, event, checkedAt),
         );
-        if (
-          config.platform !== "darwin" ||
-          status.status !== "downloaded" ||
-          event.type !== "update-ready"
-        )
-          return;
-        const update = appComponentUpdate(event, status.channel);
+        if (status.status !== "downloaded" || event.type !== "update-ready") return;
+        const update = appComponentUpdate(
+          event,
+          status.channel,
+          `${config.platform}-${config.arch}`,
+        );
         if (update && options.prefetchUpdate) yield* options.prefetchUpdate(update);
       });
       const admitEvent = (event: AppUpdaterEvent): void => {

@@ -4,8 +4,13 @@ import { APP_UPDATE_BUILD_VERSION_PATTERN, appBuildOrdinal } from "./app-version
 import { isSafeBrowserRuntimeRelativePath } from "./browser-runtime-metadata";
 
 export const APP_COMPONENT_MANIFEST_MAX_BYTES = 256 * 1024;
-export const appComponentManifestName = (version: string): string =>
-  `Nodex-${version}-components-arm64.json`;
+export const appComponentManifestTarget = z.enum(["darwin-arm64", "win32-x64"]);
+export type AppComponentManifestTarget = z.infer<typeof appComponentManifestTarget>;
+export const appComponentManifestName = (
+  version: string,
+  target: AppComponentManifestTarget,
+): string =>
+  `Nodex-${version}-components-${target === "darwin-arm64" ? "arm64" : "windows-x64"}.json`;
 
 export const appComponentReleaseVersion = z
   .string()
@@ -61,6 +66,7 @@ const component = z
 
 export const appComponentManifestSchema = z.strictObject({
   schemaVersion: z.literal(1),
+  target: appComponentManifestTarget,
   version: appComponentReleaseVersion,
   buildVersion: appComponentBuildVersion,
   components: z

@@ -12,11 +12,11 @@ import {
 import { basename, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
-  APP_COMPONENT_MANIFEST_MAX_BYTES,
   appComponentManifestName,
-  appComponentManifestSchema,
+  type AppComponentManifestTarget,
 } from "../../src/shared/app-component-manifest";
-import { macComponentManifest } from "./components";
+import { macComponentManifest, readComponentManifest } from "./components";
+import { assertWindowsInstalledProbe } from "./windows-installed-probe";
 
 import {
   buildIdentityOf,
@@ -51,13 +51,14 @@ import {
   type MobilePlatform,
 } from "./mobile";
 export type { MacArchitecture } from "./targets";
-export const RELEASE_BUNDLE_SCHEMA_VERSION = 8;
+export const RELEASE_BUNDLE_SCHEMA_VERSION = 9;
 /** Bundles that carry every desktop target; schema 5 adds Nodex Mobile. */
 export const COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS: readonly number[] = [
   4,
   5,
   6,
   7,
+  8,
   RELEASE_BUNDLE_SCHEMA_VERSION,
 ];
 /** Every bundle a published release may carry, back to the last macOS-only format. */
@@ -315,7 +316,7 @@ type ReleaseHistoryBundle = Omit<
   ReleaseBundleManifest,
   "schemaVersion" | "architectures" | "assets" | "mobile"
 > & {
-  readonly schemaVersion: 3 | 4 | 5 | 6 | 7 | typeof RELEASE_BUNDLE_SCHEMA_VERSION;
+  readonly schemaVersion: 3 | 4 | 5 | 6 | 7 | 8 | typeof RELEASE_BUNDLE_SCHEMA_VERSION;
   readonly architectures: Readonly<
     Partial<Record<ReleaseHistoryArchitecture, ReleaseBundleManifest["architectures"]["arm64"]>>
   >;
@@ -374,13 +375,14 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   const candidate = value as Partial<ReleaseHistoryBundle>;
   const macOnlyHistory = allowHistory && candidate.schemaVersion === 3;
   const current = candidate.schemaVersion === RELEASE_BUNDLE_SCHEMA_VERSION;
+  const x64Only = current || candidate.schemaVersion === 8;
   const hasCertifiedMobile =
-    current || candidate.schemaVersion === 7 || candidate.schemaVersion === 6;
-  const hasComponentManifest = current || candidate.schemaVersion === 7;
+    x64Only || candidate.schemaVersion === 7 || candidate.schemaVersion === 6;
+  const hasMacComponentManifest = x64Only || candidate.schemaVersion === 7;
   const hasMobile = hasCertifiedMobile || candidate.schemaVersion === 5;
   const architectures = macOnlyHistory
     ? (["arm64"] as const)
-    : current
+    : x64Only
       ? RELEASE_ARCHITECTURES
       : LEGACY_RELEASE_ARCHITECTURES;
   const windowsArchitectures = architectures.filter((architecture) => architecture !== "arm64");
@@ -477,13 +479,24 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
       "sparkle-full",
       "arm64",
     ],
-    ...(hasComponentManifest
-      ? ([[appComponentManifestName(version), "components-manifest", "arm64"]] as const)
+    ...(hasMacComponentManifest
+      ? ([
+          [appComponentManifestName(version, "darwin-arm64"), "components-manifest", "arm64"],
+        ] as const)
       : []),
     [`Nodex-${version}-appcast-arm64.xml`, "sparkle-appcast", "arm64"],
     [`Nodex-${version}-update-arm64.json`, "sparkle-update-manifest", "arm64"],
     ...windowsArchitectures.flatMap((architecture) => [
       [`Nodex-${version}-${architecture}.exe`, "windows-installer", architecture] as const,
+      ...(current
+        ? [
+            [
+              appComponentManifestName(version, "win32-x64"),
+              "components-manifest",
+              architecture,
+            ] as const,
+          ]
+        : []),
       ...(releaseIdentity.channel === "stable"
         ? [[`Nodex-latest-${architecture}.exe`, "windows-installer", architecture] as const]
         : []),
@@ -636,7 +649,7 @@ export function recordArchitectureBuild(options: {
     return artifactIdentity(target, role, options.architecture);
   });
 
-  const componentManifestPath = join(output, appComponentManifestName(version));
+  const componentManifestPath = join(output, appComponentManifestName(version, "darwin-arm64"));
   writeFileSync(
     componentManifestPath,
     `${JSON.stringify(macComponentManifest(buildIdentity), null, 2)}\n`,
@@ -711,14 +724,20 @@ export function recordArchitectureBuild(options: {
 export const readArchitectureDirectory = (directory: string): ArchitectureBuildManifest => {
   const root = resolve(directory);
   const manifest = parseArchitectureBuildManifest(readJson(join(root, "architecture-build.json")));
+  const target: AppComponentManifestTarget =
+    manifest.architecture === "arm64" ? "darwin-arm64" : "win32-x64";
+  const componentName = appComponentManifestName(manifest.version, target);
   const expected =
     manifest.architecture === "arm64"
       ? [
           [`Nodex-${manifest.version}-${manifest.architecture}.dmg`, "dmg"],
           [sparkleFullArchiveName(manifest.version, manifest.architecture), "sparkle-full"],
-          [appComponentManifestName(manifest.version), "components-manifest"],
+          [componentName, "components-manifest"],
         ]
-      : [[`Nodex-${manifest.version}-${manifest.architecture}.exe`, "windows-installer"]];
+      : [
+          [`Nodex-${manifest.version}-${manifest.architecture}.exe`, "windows-installer"],
+          [componentName, "components-manifest"],
+        ];
   if (manifest.architecture !== "arm64") {
     const provenancePath = join(root, "windows-build-provenance.json");
     const probePath = join(root, "installed-app-probe.json");
@@ -741,18 +760,6 @@ export const readArchitectureDirectory = (directory: string): ArchitectureBuildM
         "Windows package provenance does not match its architecture manifest and probe.",
       );
     }
-    const probe = readJson(probePath);
-    if (
-      !isRecord(probe) ||
-      !Array.isArray(probe.failures) ||
-      probe.failures.length > 0 ||
-      !probe.evidence ||
-      !probe.normalQuit ||
-      !probe.upgrade ||
-      !probe.uninstall
-    ) {
-      throw new Error("Windows installed-app probe is incomplete or unsuccessful.");
-    }
   }
   const actual = manifest.artifacts.map(({ name, role }) => [name, role]);
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -774,17 +781,17 @@ export const readArchitectureDirectory = (directory: string): ArchitectureBuildM
       throw new Error(`Architecture artifact ${artifact.name} does not match its manifest.`);
     }
   }
-  if (manifest.architecture === "arm64") {
-    const file = join(root, appComponentManifestName(manifest.version));
-    if (lstatSync(file).size > APP_COMPONENT_MANIFEST_MAX_BYTES)
-      throw new Error("Components manifest is too large.");
-    const components = appComponentManifestSchema.parse(readJson(file));
-    if (
-      components.version !== manifest.version ||
-      components.buildVersion !== manifest.buildIdentity.buildVersion
-    )
-      throw new Error("Components manifest does not match its architecture build.");
-  }
+  const components = readComponentManifest(
+    join(root, componentName),
+    target,
+    manifest.buildIdentity,
+  );
+  if (target === "win32-x64")
+    assertWindowsInstalledProbe(
+      readJson(join(root, "installed-app-probe.json")),
+      "x64",
+      components.components,
+    );
   return manifest;
 };
 
@@ -869,7 +876,12 @@ export function assembleReleaseBundle(options: {
     }
     copy(architectureRoot, `Nodex-${version}-${architecture}.dmg`, "dmg", architecture, undefined);
     copy(architectureRoot, fullName, "sparkle-full", architecture);
-    copy(architectureRoot, appComponentManifestName(version), "components-manifest", architecture);
+    copy(
+      architectureRoot,
+      appComponentManifestName(version, "darwin-arm64"),
+      "components-manifest",
+      architecture,
+    );
     if (releaseIdentity.channel === "stable") {
       copy(
         architectureRoot,
@@ -926,6 +938,12 @@ export function assembleReleaseBundle(options: {
   }
   verifySparkleAppcastContract(readFileSync(appcastPath, "utf8"), windowsUpdate);
   copy(windowsBuildDirectory, windowsUpdate.full.name, "windows-installer", windowsTarget);
+  copy(
+    windowsBuildDirectory,
+    appComponentManifestName(version, "win32-x64"),
+    "components-manifest",
+    windowsTarget,
+  );
   if (releaseIdentity.channel === "stable")
     copy(
       windowsBuildDirectory,

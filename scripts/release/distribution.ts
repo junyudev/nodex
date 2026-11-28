@@ -1,3 +1,4 @@
+import { verifyComponentDownload } from "./components";
 import {
   createSparkleArchive,
   extractSparkleArchive,
@@ -132,38 +133,15 @@ const appAtRoot = (root: string): string => {
   return join(root, appNames[0]);
 };
 
-/** Check the published URL independently of the local immutable cache. */
-type DownloadPin = { readonly url: string | null; readonly archiveSize: number };
+export const verifyMacCodexDownload = (
+  asset: Parameters<typeof verifyComponentDownload>[1],
+  fetchAsset?: typeof fetch,
+) => verifyComponentDownload("macOS Codex", asset, fetchAsset);
 
-async function verifyMacComponentDownload(
-  name: string,
-  asset: DownloadPin,
-  fetchAsset: typeof fetch = fetch,
-): Promise<void> {
-  if (!asset.url) throw new Error(`Publish the pinned macOS ${name} archive first.`);
-  const signal = AbortSignal.timeout(30_000);
-  const head = await fetchAsset(asset.url, { method: "HEAD", signal });
-  const length = head.headers.get("content-length");
-  if (head.ok && length !== null) {
-    if (Number(length) === asset.archiveSize) return;
-    throw new Error(
-      `Published macOS ${name} archive has ${length} bytes, expected ${asset.archiveSize}.`,
-    );
-  }
-  const range = await fetchAsset(asset.url, { headers: { Range: "bytes=0-0" }, signal });
-  const contentRange = range.headers.get("content-range");
-  await range.body?.cancel();
-  if (range.status !== 206 || contentRange !== `bytes 0-0/${asset.archiveSize}`)
-    throw new Error(
-      `Published macOS ${name} archive is unavailable or has the wrong size (HTTP ${range.status}).`,
-    );
-}
-
-export const verifyMacCodexDownload = (asset: DownloadPin, fetchAsset?: typeof fetch) =>
-  verifyMacComponentDownload("Codex", asset, fetchAsset);
-
-export const verifyMacDesktopToolsDownload = (asset: DownloadPin, fetchAsset?: typeof fetch) =>
-  verifyMacComponentDownload("Desktop Tools", asset, fetchAsset);
+export const verifyMacDesktopToolsDownload = (
+  asset: Parameters<typeof verifyComponentDownload>[1],
+  fetchAsset?: typeof fetch,
+) => verifyComponentDownload("macOS Desktop Tools", asset, fetchAsset);
 
 async function smokeDocumentTools(
   cwd: string,
@@ -338,7 +316,7 @@ export async function buildMacDistribution(options: {
   await Promise.all([
     verifyMacCodexDownload(codexLock.builds["darwin-arm64"]),
     verifyMacDesktopToolsDownload(desktopToolsLock.assets["darwin-arm64"]),
-    verifyMacComponentDownload("Claude Code", claudeCodeLock.assets["darwin-arm64"]),
+    verifyComponentDownload("macOS Claude Code", claudeCodeLock.assets["darwin-arm64"]),
   ]);
 
   const documentToolsLock = readWorkspaceRuntimeLock(
@@ -347,7 +325,7 @@ export async function buildMacDistribution(options: {
   const documentToolsAsset = documentToolsLock.release.assets["darwin-arm64"];
   if (!documentToolsAsset)
     throw new Error("Publish the pinned macOS Document Tools archive first.");
-  await verifyMacComponentDownload("Document Tools", documentToolsAsset);
+  await verifyComponentDownload("macOS Document Tools", documentToolsAsset);
 
   const releaseEnvironment = releaseBuildEnvironment(identity, resolve(options.identityPath));
 

@@ -1,5 +1,6 @@
 import { appComponentManifestName } from "../../src/shared/app-component-manifest";
-import { macComponentManifest } from "./components";
+import { macComponentManifest, windowsComponentManifest } from "./components";
+import { windowsComponentPins, windowsProbeFixture } from "./windows-components.fixture";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -38,6 +39,12 @@ export function makeWindowsReleaseFixture(root: string, identity = fixtureIdenti
   const name = windowsInstallerName(identity.version, arch);
   const installerPath = join(build, name);
   writeFileSync(installerPath, `installer:${arch}:${identity.version}`);
+  const componentsName = appComponentManifestName(identity.version, "win32-x64");
+  const componentsPath = join(build, componentsName);
+  writeFileSync(
+    componentsPath,
+    JSON.stringify(windowsComponentManifest(identity, windowsComponentPins)),
+  );
   const provenancePath = join(build, "windows-build-provenance.json");
   writeFileSync(provenancePath, "provenance");
   const manifest: ArchitectureBuildManifest = {
@@ -56,6 +63,13 @@ export function makeWindowsReleaseFixture(root: string, identity = fixtureIdenti
         bytes: statSync(installerPath).size,
         sha256: sha256File(installerPath),
       },
+      {
+        name: componentsName,
+        architecture,
+        role: "components-manifest",
+        bytes: statSync(componentsPath).size,
+        sha256: sha256File(componentsPath),
+      },
     ],
     packageProvenanceSha256: sha256File(provenancePath),
     agentSkills: { manifestSha256: "9".repeat(64), treeSha256: "a".repeat(64) },
@@ -69,16 +83,7 @@ export function makeWindowsReleaseFixture(root: string, identity = fixtureIdenti
     runner: { image: "test" },
   };
   const probePath = join(build, "installed-app-probe.json");
-  writeFileSync(
-    probePath,
-    JSON.stringify({
-      failures: [],
-      evidence: { target: architecture },
-      normalQuit: {},
-      upgrade: {},
-      uninstall: {},
-    }),
-  );
+  writeFileSync(probePath, JSON.stringify(windowsProbeFixture()));
   writeFileSync(
     provenancePath,
     JSON.stringify({
@@ -131,7 +136,7 @@ export function makeReleaseFixture(root: string, channel: "stable" | "nightly" =
     [
       [`Nodex-${identity.version}-arm64.dmg`, "dmg"],
       [`Nodex-${identity.version}-arm64.tar.xz`, "sparkle-full"],
-      [appComponentManifestName(identity.version), "components-manifest"],
+      [appComponentManifestName(identity.version, "darwin-arm64"), "components-manifest"],
     ] as const
   ).map(([name, role]) => {
     writeFileSync(

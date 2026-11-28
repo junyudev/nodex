@@ -155,6 +155,8 @@ jobs:
           {
             echo "## Verified Release Bundle"
             echo
+            echo "Component manifests are certified alongside their macOS and Windows installers."
+            echo
             echo '```json'
             cat "${bundle}/release-bundle.json"
             echo '```'

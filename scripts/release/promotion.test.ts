@@ -26,14 +26,17 @@ test("promotes the exact public binaries and private iOS build while replacing t
       const outputDirectory = join(directory, "bundle");
       const bundle = assembleReleaseBundle({ ...fixture, outputDirectory });
       const bundlePath = join(outputDirectory, "release-bundle.json");
-      const asset = bundle.assets.find(({ role }) => role === "components-manifest")!;
-      expect(github.releaseAssetPaths(bundlePath, fixture.windowsPublicKey)).toContain(
-        join(outputDirectory, asset.name),
-      );
-      expect(github.readPublishedReleaseIndex(bundlePath).assets.get(asset.name)).toEqual({
-        bytes: asset.bytes,
-        sha256: asset.sha256,
-      });
+      const componentManifests = bundle.assets.filter(({ role }) => role === "components-manifest");
+      expect(componentManifests.map(({ architecture }) => architecture)).toEqual([
+        "arm64",
+        "windows-x64",
+      ]);
+      const paths = github.releaseAssetPaths(bundlePath, fixture.windowsPublicKey);
+      const published = github.readPublishedReleaseIndex(bundlePath).assets;
+      for (const asset of componentManifests) {
+        expect(paths).toContain(join(outputDirectory, asset.name));
+        expect(published.get(asset.name)).toEqual({ bytes: asset.bytes, sha256: asset.sha256 });
+      }
       return bundle;
     };
     const nightly = assemble("nightly");
@@ -46,7 +49,9 @@ test("promotes the exact public binaries and private iOS build while replacing t
       assertPromotedBuildBytes(nightly, {
         ...stable,
         assets: stable.assets.map((asset) =>
-          asset.role === "components-manifest" ? { ...asset, sha256: "f".repeat(64) } : asset,
+          asset.role === "components-manifest" && asset.architecture === "windows-x64"
+            ? { ...asset, sha256: "f".repeat(64) }
+            : asset,
         ),
       }),
     ).toThrow("byte-identical");
