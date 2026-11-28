@@ -706,7 +706,14 @@ export interface ProviderAdapterV2McpApps {
 }
 
 export interface ProviderAdapterV2TurnReconciliation {
-  readonly status: "active" | "completed" | "failed" | "interrupted" | "unknown" | "process_gone";
+  readonly status:
+    | "active"
+    | "completed"
+    | "failed"
+    | "interrupted"
+    | "cancelled"
+    | "unknown"
+    | "process_gone";
   /** Idempotent snapshots normalized exactly like live events, in delivery order. */
   readonly events: ReadonlyArray<ProviderAdapterV2Event>;
   readonly failure?: import("@nodex/runtime-contracts").OrchestrationV2ProviderFailure;
@@ -731,6 +738,11 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly reconcileTurn?: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
     readonly providerTurnId: ProviderTurnId;
+  }) => Effect.Effect<ProviderAdapterV2TurnReconciliation, ProviderAdapterV2Error>;
+  /** Resolves the exact attempt even when its opening event never reached the Run observer. */
+  readonly reconcileTurnByAttempt?: (input: {
+    readonly providerThread: OrchestrationV2ProviderThread;
+    readonly attemptId: RunAttemptId;
   }) => Effect.Effect<ProviderAdapterV2TurnReconciliation, ProviderAdapterV2Error>;
   readonly codexNative?: import("./nativeInteraction.ts").CodexNativeInteraction;
   /** Manager-observed incarnation of this native session within the daemon. */

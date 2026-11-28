@@ -695,8 +695,8 @@ export interface AcpAdapterV2Flavor {
   /** Gemini-style usage: inputTokens leaves out cachedReadTokens, outputTokens leaves out thoughtTokens. */
   readonly geminiPromptUsage?: boolean;
   /**
-   * Fails a dispatched prompt after this long with no update for its session while no
-   * agent request, tool or subagent is open, and replaces the agent before the next turn.
+   * Bounds foreground silence from turn start through settlement. A decision awaiting the
+   * person suspends the deadline, as do unfinished tools and subagents while the prompt is open.
    */
   readonly promptInactivityTimeout?: Duration.Input;
   /** Grok can retain task_already_running until process exit. */
@@ -1944,9 +1944,11 @@ interface ActiveAcpTurn {
   replyOpen: boolean;
   /** The agent's own id for this turn's prompt, from `forkFromTurn.nativeTurnId`. */
   nativePromptId: string | undefined;
-  /** Clock millis of the prompt's last progress, for `promptInactivityTimeout`. */
+  /** Clock millis of the foreground turn's last progress, for `promptInactivityTimeout`. */
   lastProgressAt: number;
-  inactivityWatchdog: Fiber.Fiber<void> | undefined;
+  /** Completed assistant segments can be replayed if the Run missed the live stream. */
+  readonly assistantReplay: ProviderAdapter.ProviderAdapterV2Event[];
+  assistantReplayChars: number;
 }
 
 type AcpRuntimeTeardownState =
@@ -2660,6 +2662,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           options.testHooks?.onNativeResponseLifecycle ?? (() => Effect.void);
         const nextElicitationOrdinal = yield* Ref.make(0);
         const providerTurns = yield* Ref.make(new Map<string, OrchestrationV2ProviderTurn>());
+        // Keep the latest foreground outcome independently of the observation stream.
+        let lastTerminal: {
+          readonly turn: OrchestrationV2ProviderTurn;
+          readonly events: readonly ProviderAdapter.ProviderAdapterV2Event[];
+          readonly status: "completed" | "interrupted" | "failed" | "cancelled";
+        } | undefined;
         const snapshot = yield* Ref.make(emptySnapshotState());
 
         const awaitRuntimeTeardown = Effect.fnUntraced(function* () {
@@ -3017,9 +3025,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           flavor.promptInactivityTimeout === undefined
             ? undefined
             : Duration.toMillis(flavor.promptInactivityTimeout);
-        // Each runtime owns its unanswered agent requests, so a dead process's leftovers
-        // and late callbacks never reach its replacement.
-        let openAgentRequests = new Set<string>();
         const notePromptProgress =
           /* Provider events include streaming deltas; avoid a span for each update. */
           Effect.fnUntraced(function* (notification?: EffectAcpSchema.SessionNotification) {
@@ -3041,12 +3046,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             }
             context.lastProgressAt = yield* Clock.currentTimeMillis;
           });
-        const closeAgentRequest = (agentRequests: Set<string>, requestId: string) =>
-          Effect.suspend(() =>
-            agentRequests.delete(requestId) && agentRequests === openAgentRequests
-              ? notePromptProgress()
-              : Effect.void,
-          );
         const handleRuntimeTerminationAtGeneration = (runtimeGeneration: number) =>
           runRuntimeCallbackAtGeneration(
             runtimeGeneration,
@@ -3194,7 +3193,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           });
         const makeRuntimeInput = (
           runtimeGeneration: number,
-          agentRequests: Set<string>,
           mcpContext: AcpMcpContext,
           resumeSessionId?: string,
           onTermination: AcpAdapterV2RuntimeInput["onTermination"] = (cause) =>
@@ -3237,16 +3235,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               ...(flavor.clientCapabilitiesMeta ? { _meta: flavor.clientCapabilitiesMeta } : {}),
             },
             clientInfo: { name: "nodex", version: "0.0.0" },
-            onTermination: (error) =>
-              Effect.sync(() => agentRequests.clear()).pipe(Effect.andThen(onTermination(error))),
-            ...(promptInactivityTimeoutMillis === undefined
-              ? {}
-              : {
-                  onIncomingRequest: (requestId: string) =>
-                    Effect.sync(() => {
-                      agentRequests.add(requestId);
-                    }),
-                }),
+            onTermination,
             onOutgoingResponseFailure: (requestId, error) =>
               Ref.modify(nativeResponseAcknowledgements, (current) => {
                 const entry = current.get(requestId);
@@ -3275,7 +3264,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   ),
                   updated,
                 ] as const;
-              }).pipe(Effect.flatten, Effect.andThen(closeAgentRequest(agentRequests, requestId))),
+              }).pipe(Effect.flatten),
             onOutgoingResponse: (requestId) =>
               Ref.modify(nativeResponseAcknowledgements, (current) => {
                 const entry = current.get(requestId);
@@ -3293,6 +3282,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 updated.delete(requestId);
                 return [
                   Deferred.succeed(entry.acknowledgement, undefined).pipe(
+                    Effect.andThen(notePromptProgress()),
                     Effect.andThen(
                       emitNativeResponseLifecycle({
                         type: "removed",
@@ -3304,7 +3294,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   ),
                   updated,
                 ] as const;
-              }).pipe(Effect.flatten, Effect.andThen(closeAgentRequest(agentRequests, requestId))),
+              }).pipe(Effect.flatten),
             ...(nativeLogging?.requestLogger === undefined
               ? {}
               : { requestLogger: nativeLogging.requestLogger }),
@@ -3557,8 +3547,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             nativeId: segment.nativeItemId,
             strength: "weak" as const,
           };
-          if (kind !== "user" && emitsNode) {
-            yield* emitProviderEvent({
+          const nodeEvent = kind !== "user" && emitsNode
+            ? ({
               type: "node.updated",
               driver,
               node: {
@@ -3578,8 +3568,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 startedAt: segment.startedAt,
                 completedAt: completed ? now : null,
               },
-            });
-          }
+            } satisfies ProviderAdapter.ProviderAdapterV2Event)
+            : undefined;
+          if (nodeEvent !== undefined) yield* emitProviderEvent(nodeEvent);
           if (kind !== "reasoning") {
             const messageId = providerMessageId(segment.nativeItemId);
             const messageNodeId = kind === "user" ? context.input.rootNodeId : nodeId;
@@ -3597,8 +3588,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               createdAt: segment.startedAt,
               updatedAt: now,
             };
-            yield* emitProviderEvent({ type: "message.updated", driver, message });
-            yield* emitProviderEvent(
+            const messageEvent = { type: "message.updated", driver, message } as const;
+            const itemEvent: ProviderAdapter.ProviderAdapterV2Event =
               kind === "user"
                 ? {
                     type: "turn_item.updated",
@@ -3650,9 +3641,30 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       text,
                       streaming: !completed,
                     },
-                  },
-            );
-            if (completed) yield* rememberSnapshotMessage(message);
+                  };
+            if (completed) {
+              yield* rememberSnapshotMessage(message);
+              if (kind === "assistant") {
+                // The snapshot shares the strings already kept in native thread history.
+                // If a reply exceeds the observation budget, keep its newest segments.
+                const replay = nodeEvent === undefined
+                  ? [messageEvent, itemEvent]
+                  : [nodeEvent, messageEvent, itemEvent];
+                if (
+                  context.assistantReplay.length + replay.length > BoundedQueue.DEFAULT_MAX_ITEMS ||
+                  context.assistantReplayChars + text.length > BoundedQueue.DEFAULT_MAX_BYTES / 4
+                ) {
+                  context.assistantReplay.length = 0;
+                  context.assistantReplayChars = 0;
+                }
+                if (text.length <= BoundedQueue.DEFAULT_MAX_BYTES / 4) {
+                  context.assistantReplay.push(...replay);
+                  context.assistantReplayChars += text.length;
+                }
+              }
+            }
+            yield* emitProviderEvent(messageEvent);
+            yield* emitProviderEvent(itemEvent);
             return;
           }
           yield* emitProviderEvent({
@@ -8317,10 +8329,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           runtimeScope = yield* Scope.make();
           const mcpContext = yield* readMcpContext(threadId);
           const runtimeGeneration = yield* Ref.get(runtimeCallbackGeneration);
-          openAgentRequests = new Set();
           const candidate = yield* makeRuntimeWithPlugins(
             threadId,
-            makeRuntimeInput(runtimeGeneration, openAgentRequests, mcpContext, resumeSessionId),
+            makeRuntimeInput(runtimeGeneration, mcpContext, resumeSessionId),
             runtimeScope,
           ).pipe(
             Effect.provideService(Scope.Scope, runtimeScope),
@@ -8363,7 +8374,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           // Keep live callbacks active until replacement startup succeeds.
           const replacementGeneration = yield* allocateRuntimeCallbackGeneration;
           const replacementScope = yield* Scope.make();
-          const replacementAgentRequests = new Set<string>();
           type CandidateLifecycle =
             | { readonly _tag: "Starting" }
             | { readonly _tag: "Terminated"; readonly error: EffectAcpErrors.AcpError }
@@ -8397,7 +8407,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               threadId,
               makeRuntimeInput(
                 replacementGeneration,
-                replacementAgentRequests,
                 mcpContext,
                 undefined,
                 handleCandidateTermination,
@@ -8460,7 +8469,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   yield* replacementExit.value.commitPlugins(replacementExit.value.started.sessionId);
                   clientPolicyGrants = makeAcpClientPolicyGrants();
                   runtimeScope = replacementScope;
-                  openAgentRequests = replacementAgentRequests;
                   yield* Ref.set(runtimeCallbackGeneration, replacementGeneration);
                   yield* observedCommands?.clear ?? Effect.void;
                   prepareTerminalEnvironment(
@@ -9102,11 +9110,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           context.finalizedStatus = settledStatus;
           context.finalized = true;
           yield* cancelPendingRuntimeRequests({ providerTurnId: context.providerTurnId });
-          const watchdog = context.inactivityWatchdog;
-          context.inactivityWatchdog = undefined;
-          if (watchdog !== undefined) {
-            yield* Fiber.interrupt(watchdog).pipe(Effect.forkDetach, Effect.asVoid);
-          }
           const directStopQuarantine = yield* Ref.get(stoppedRunQuarantine);
           if (flavor.subagentsIdleOnTurnCompletion === true) {
             for (const subagent of context.subagents.values()) {
@@ -9189,12 +9192,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             updated.set(String(turn.id), turn);
             return updated;
           });
-          yield* emitProviderEvent({
+          const turnEvent = {
             type: "provider_turn.updated",
             driver,
             threadId: context.input.threadId,
             providerTurn: turn,
-          });
+          } as const;
           const updatedProviderThread: OrchestrationV2ProviderThread = {
             ...context.input.providerThread,
             providerSessionId: input.providerSessionId,
@@ -9209,11 +9212,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           yield* Ref.update(providerThreadByNativeSessionId, (current) =>
             new Map(current).set(context.nativeThreadId, updatedProviderThread),
           );
-          yield* emitProviderEvent({
+          const threadEvent = {
             type: "provider_thread.updated",
             driver,
             providerThread: updatedProviderThread,
-          });
+          } as const;
           const rootSessionId = yield* Ref.get(activeSessionId);
           const childTurnsContinue =
             settledStatus === "failed" &&
@@ -9221,7 +9224,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               (followsAgentWorkState &&
                 rootSessionId !== null &&
                 hasWorkingDescendant(rootSessionId)));
-          yield* emitProviderEvent(
+          const terminal: Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "turn.terminal" }> =
             settledStatus === "failed"
               ? {
                   type: "turn.terminal",
@@ -9253,8 +9256,15 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   status: settledStatus,
                   failure: null,
                   threadDisposition,
-                },
-          );
+                };
+          lastTerminal = {
+            turn,
+            status: settledStatus,
+            events: [turnEvent, threadEvent, ...context.assistantReplay, terminal],
+          };
+          yield* emitProviderEvent(turnEvent);
+          yield* emitProviderEvent(threadEvent);
+          yield* emitProviderEvent(terminal);
           const subagentsRequiringCarryover = [...context.subagents.values()].filter(
             acpSubagentHasPendingBackgroundWork,
           );
@@ -9320,11 +9330,23 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           yield* options.testHooks?.onDeferredFinalizeScheduled?.(debounce) ?? Effect.void;
         });
 
-        const promptInactivityPaused = Effect.fn("AcpAdapterV2.promptInactivityPaused")(function* (
-          context: ActiveAcpTurn,
-        ) {
-          if (openAgentRequests.size > 0) return true;
-          if ((yield* Ref.get(pendingRuntimeRequests)).size > 0) return true;
+        /**
+         * Whether the turn's silence is still accounted for. A decision awaiting the person
+         * always is. While the agent holds the prompt open, its unfinished tools and subagents
+         * are its own claim of work (native subagents report progress outside this session);
+         * once it has answered the prompt, that state is no longer evidence of progress.
+         */
+        const promptSilenceExplained = Effect.fnUntraced(function* (context: ActiveAcpTurn) {
+          const requests = yield* Ref.get(pendingRuntimeRequests);
+          for (const request of requests.values()) {
+            if (request.runtimeRequest.providerTurnId !== context.providerTurnId) continue;
+            const decided =
+              request.type === "approval"
+                ? Deferred.isDoneUnsafe(request.decision)
+                : Deferred.isDoneUnsafe(request.answers);
+            if (!decided) return true;
+          }
+          if (context.promptSettled) return false;
           for (const tool of context.tools.values()) {
             const status = toolStatus(tool.status);
             if (status === "pending" || status === "running" || status === "waiting") return true;
@@ -9349,15 +9371,18 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             Effect.gen(function* () {
               if (context.finalized || context.interrupted) return "done" as const;
               if ((yield* Ref.get(activeTurn)) !== context) return "done" as const;
-              if (yield* Deferred.isDone(context.promptWireSettled)) return "done" as const;
               const now = yield* Clock.currentTimeMillis;
               if (context.lastProgressAt + timeoutMillis > now) return "rearm" as const;
-              if (yield* promptInactivityPaused(context)) {
+              if (yield* promptSilenceExplained(context)) {
                 context.lastProgressAt = now;
                 return "rearm" as const;
               }
-              context.inactivityWatchdog = undefined;
-              openAgentRequests.clear();
+              // The provider already ended foreground work. Leave surviving commands
+              // to the session and let their next update wake a continuation.
+              if (context.promptSettled) {
+                yield* finalizeTurn(context, context.promptSettledStatus ?? "completed");
+                return "done" as const;
+              }
               yield* quarantineNativeTransportAtGeneration(generation);
               yield* advanceRuntimeCallbackGeneration;
               yield* Ref.set(runtimeRestartRequired, true);
@@ -9395,14 +9420,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           generation: number,
           timeoutMillis: number,
         ) {
-          yield* Deferred.await(context.promptDispatched);
-          context.lastProgressAt = yield* Clock.currentTimeMillis;
-          while (true) {
+          while (!context.finalized) {
             const sliceStartedAt = yield* Clock.currentTimeMillis;
             const remaining = context.lastProgressAt + timeoutMillis - sliceStartedAt;
             if (remaining > 0) {
               const slice = Math.min(remaining, ACP_PROMPT_INACTIVITY_SLICE_MILLIS);
-              yield* Effect.sleep(Duration.millis(slice));
+              const completed = yield* Effect.raceFirst(
+                Deferred.await(context.completed).pipe(Effect.as(true)),
+                Effect.sleep(Duration.millis(slice)).pipe(Effect.as(false)),
+              );
+              if (completed) return;
               // Host sleep is not agent silence. Timers either fire late on wake (macOS, Windows)
               // or pause while the wall clock jumps (Linux); both overrun a short slice.
               const now = yield* Clock.currentTimeMillis;
@@ -10100,8 +10127,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               backgroundFinalizeGeneration: 0,
               replyOpen: false,
               nativePromptId: undefined,
-              lastProgressAt: 0,
-              inactivityWatchdog: undefined,
+              lastProgressAt: DateTime.toEpochMillis(startedAt),
+              assistantReplay: [],
+              assistantReplayChars: 0,
             };
             const carryover = yield* Ref.getAndSet(carryoverSubagents, null);
             let rehydratedCarryoverSubagents: ReadonlyArray<ActiveAcpSubagent> = [];
@@ -10118,6 +10146,14 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               }
             }
             yield* Ref.set(activeTurn, context);
+            const promptGeneration = yield* Ref.get(runtimeCallbackGeneration);
+            if (promptInactivityTimeoutMillis !== undefined) {
+              yield* watchPromptInactivity(
+                context,
+                promptGeneration,
+                promptInactivityTimeoutMillis,
+              ).pipe(Effect.forkIn(sessionScope));
+            }
             yield* Ref.set(stoppedRunQuarantine, false);
             const runningTurn = providerTurnPayload(context, "running", null);
             yield* Ref.update(providerTurns, (current) => {
@@ -10253,19 +10289,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               flavor.watchPromptOutcome === undefined
                 ? undefined
                 : yield* flavor.watchPromptOutcome(requestedSessionId);
-            const promptGeneration = yield* Ref.get(runtimeCallbackGeneration);
             const promptOptions = {
               dispatched: context.promptDispatched,
               released: context.foregroundIdle,
             };
             context.promptSentAt = yield* Clock.currentTimeMillis;
-            if (promptInactivityTimeoutMillis !== undefined) {
-              context.inactivityWatchdog = yield* watchPromptInactivity(
-                context,
-                promptGeneration,
-                promptInactivityTimeoutMillis,
-              ).pipe(Effect.forkIn(sessionScope));
-            }
             const compactSession = isCompactionMessage(turnInput.message)
               ? flavor.compactSession
               : undefined;
@@ -10367,18 +10395,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   context.backgroundFinalizeGeneration += 1;
                   context.promptSentAt = yield* Clock.currentTimeMillis;
                   context.lastProgressAt = context.promptSentAt;
-                  const watchdog = context.inactivityWatchdog;
-                  context.inactivityWatchdog = undefined;
-                  if (watchdog !== undefined) {
-                    yield* Fiber.interrupt(watchdog).pipe(Effect.forkDetach, Effect.asVoid);
-                  }
-                  if (promptInactivityTimeoutMillis !== undefined) {
-                    context.inactivityWatchdog = yield* watchPromptInactivity(
-                      context,
-                      generation,
-                      promptInactivityTimeoutMillis,
-                    ).pipe(Effect.forkIn(sessionScope));
-                  }
                   const releasedForSteer = context.foregroundIdle;
                   yield* followPrompt(
                     context,
@@ -10485,6 +10501,28 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         const canReportBackgroundWork =
           continuationRequests !== undefined &&
           (followsAgentWorkState || postSettleContinuationEnabled);
+        const reconcileForegroundTurn = Effect.fnUntraced(function* (
+          matches: (turn: OrchestrationV2ProviderTurn) => boolean,
+        ): Effect.fn.Return<ProviderAdapter.ProviderAdapterV2TurnReconciliation> {
+          const settled = lastTerminal;
+          const context = Ref.getUnsafe(activeTurn);
+          const turn = context === null ? null : providerTurnPayload(context, "running", null);
+          if (settled !== undefined && matches(settled.turn) &&
+            (turn === null || !matches(turn) || settled.turn.runAttemptId === turn.runAttemptId)) {
+            return settled;
+          }
+          if (context === null || turn === null || !matches(turn)) {
+            return { status: "unknown", events: [] };
+          }
+          const expired =
+            promptInactivityTimeoutMillis !== undefined &&
+            (yield* Clock.currentTimeMillis) - context.lastProgressAt >= promptInactivityTimeoutMillis &&
+            !(yield* promptSilenceExplained(context));
+          return {
+            status: expired ? "unknown" : "active",
+            events: [{ type: "provider_turn.updated", driver, threadId: context.input.threadId, providerTurn: turn }],
+          };
+        });
         const sessionRuntime: ProviderAdapter.ProviderAdapterV2SessionRuntime = {
           instanceId: options.instanceId,
           driver,
@@ -10495,6 +10533,14 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           nativeSessionRetired: Ref.get(nativeSessionRetired),
           canResumeAfterRestart: canLoadSession || canResumeSession,
           events: BoundedQueue.stream(events),
+          reconcileTurn: ({ providerThread, providerTurnId }) =>
+            reconcileForegroundTurn((turn) =>
+              turn.providerThreadId === providerThread.id && turn.id === providerTurnId,
+            ),
+          reconcileTurnByAttempt: ({ providerThread, attemptId }) =>
+            reconcileForegroundTurn((turn) =>
+              turn.providerThreadId === providerThread.id && turn.runAttemptId === attemptId,
+            ),
           ...(flavor.getModelContextWindow === undefined
             ? {}
             : {

@@ -51,19 +51,27 @@ export const retryObservation = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   );
 
 /** Reattachment is bounded independently from event persistence retries. */
+const boundedReconciliation = (
+  reconciliation: Effect.Effect<
+    ProviderAdapter.ProviderAdapterV2TurnReconciliation,
+    ProviderAdapter.ProviderAdapterV2Error
+  > = Effect.succeed({ status: "unknown", events: [] }),
+) =>
+  reconciliation.pipe(
+    Effect.timeout("15 seconds"),
+    Effect.retry(Schedule.spaced("1 second").pipe(Schedule.upTo({ times: 3 }))),
+  );
+
 export const reconcileProviderTurn = (
   session: ProviderAdapter.ProviderAdapterV2SessionRuntime,
   input: Parameters<
     NonNullable<ProviderAdapter.ProviderAdapterV2SessionRuntime["reconcileTurn"]>
   >[0],
-) =>
-  (
-    session.reconcileTurn?.(input) ??
-    Effect.succeed<ProviderAdapter.ProviderAdapterV2TurnReconciliation>({
-      status: "unknown",
-      events: [],
-    })
-  ).pipe(
-    Effect.timeout("15 seconds"),
-    Effect.retry(Schedule.spaced("1 second").pipe(Schedule.upTo({ times: 3 }))),
-  );
+) => boundedReconciliation(session.reconcileTurn?.(input));
+
+export const reconcileProviderTurnByAttempt = (
+  session: ProviderAdapter.ProviderAdapterV2SessionRuntime,
+  input: Parameters<
+    NonNullable<ProviderAdapter.ProviderAdapterV2SessionRuntime["reconcileTurnByAttempt"]>
+  >[0],
+) => boundedReconciliation(session.reconcileTurnByAttempt?.(input));

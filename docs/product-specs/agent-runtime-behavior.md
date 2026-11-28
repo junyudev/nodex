@@ -176,11 +176,13 @@ native turn and report that it lost contact with the reply. A failure that origi
 Nodex says what happened instead of a generic provider error, and keeps a short redacted
 diagnostic for Copy diagnostics.
 
-Every running reply is backed either by a live native turn or by a scheduled recovery.
-Nodex checks this periodically and whenever an Agent process or connection is lost: a
-reply nobody is observing is reattached and reconciled, and a reply whose Agent never
-confirmed a turn within two minutes is resolved instead of staying "running". A native
-turn left running after its reply ended is stopped. If a message is accepted into a
+Every running reply is backed by an in-flight start, a live native turn, or a scheduled
+recovery. One observer owns the start and its subsequent provider events. A slow start
+keeps that observer until the start settles or reaches its deadline. Nodex checks an
+unobserved reply periodically and when the Agent process or connection is lost. It also
+checks a quiet ACP reply against the exact attempt, even if the opening event never
+arrived. A finished ACP turn can supply its outcome and retained assistant output directly.
+A native turn left running after its reply ended is stopped. If a message is accepted into a
 native turn whose reply had already ended, the new reply adopts that turn; a turn that
 belongs to a live reply is never silently reassigned.
 

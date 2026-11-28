@@ -97,6 +97,8 @@ const dependencies = Layer.mergeAll(
     startRootRun: (input) =>
       Effect.gen(function* () {
         liveRuns.push(input);
+        // The run worker claims the attempt, then publishes it as running.
+        NodeAssert.equal(yield* input.publishRunning, true);
         const turnInput = { ...input, message: input.message };
         const result = yield* Effect.exit(
           mode === "handoff-compact"

@@ -69,6 +69,16 @@ export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStart
 
 const isProviderTurnStartError = Schema.is(ProviderTurnStartError);
 
+/**
+ * A live Run worker holds its running publication for the whole reply. Building it outside the
+ * startup scope keeps the closure from retaining that scope's projection and history.
+ */
+const publishRunRunning = (
+  eventSink: EventSink.EventSinkV2["Service"],
+  write: Parameters<EventSink.EventSinkV2["Service"]["writeIfRunCurrent"]>[0],
+): Effect.Effect<boolean, EventSink.EventSinkV2Error> =>
+  eventSink.writeIfRunCurrent(write).pipe(Effect.map((receipt) => receipt.committed));
+
 /** These Claude start failures happen before the prompt or any handoff reaches the CLI. */
 const refusedBeforePrompt = (error: unknown): boolean =>
   Predicate.isTagged(error, "ClaudeBackgroundWorkBlocksQueryReplacementError") ||
@@ -1354,16 +1364,13 @@ export const layer: Layer.Layer<
           payload: runningRootNode,
         },
       ];
-      const runningWrite = yield* eventSink.writeIfRunCurrent({
+      const publishRunning = publishRunRunning(eventSink, {
         threadId: projection.thread.id,
         runId: run.id,
         activeAttemptId: attempt.id,
         expectedStatus: "starting",
         events,
       });
-      if (!runningWrite.committed) {
-        return;
-      }
       const continuation =
         attempt.reason === "provider_recovery"
           ? inputMessage.delivery === "accepted"
@@ -1676,6 +1683,7 @@ export const layer: Layer.Layer<
             nativeThreadId: nativeId,
             sameNativeThread,
           })),
+        publishRunning,
         shouldStartProviderTurn: runControls.shouldStartProviderTurn,
         shouldFinalizeRun: runControls.shouldFinalizeRun,
         hasUnpairedRunInterruptRequest: runControls.hasUnpairedRunInterruptRequest,

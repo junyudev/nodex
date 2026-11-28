@@ -2049,6 +2049,26 @@ export const layerWithOptions = (
               modelFamily: normalizeModelMetricLabel(model),
             },
           });
+        const accountForReconciledTerminal = (
+          reconciled: ProviderAdapter.ProviderAdapterV2TurnReconciliation,
+        ) =>
+          Ref.get(sessions).pipe(
+            Effect.flatMap((current) => {
+              if (current.get(sessionKey(providerSessionId))?.runtime !== runtime)
+                return Effect.void;
+              return Effect.forEach(
+                reconciled.events,
+                (event) =>
+                  event.type === "turn.terminal"
+                    ? observeActivity(
+                        providerSessionId,
+                        markIdle(providerSessionId, event.providerThreadId, event.runOrdinal),
+                      )
+                    : Effect.void,
+                { discard: true },
+              );
+            }),
+          );
         const view: ProviderAdapter.ProviderAdapterV2SessionRuntime = {
           ...runtime,
           nativeGeneration,
@@ -2071,30 +2091,14 @@ export const layerWithOptions = (
             ? {}
             : {
                 reconcileTurn: (input) =>
-                  runtime.reconcileTurn!(input).pipe(
-                    Effect.tap((reconciled) =>
-                      Ref.get(sessions).pipe(
-                        Effect.flatMap((current) => {
-                          if (current.get(sessionKey(providerSessionId))?.runtime !== runtime)
-                            return Effect.void;
-                          return Effect.forEach(
-                            reconciled.events,
-                            (event) =>
-                              event.type === "turn.terminal"
-                                ? observeActivity(
-                                    providerSessionId,
-                                    markIdle(
-                                      providerSessionId,
-                                      event.providerThreadId,
-                                      event.runOrdinal,
-                                    ),
-                                  )
-                                : Effect.void,
-                            { discard: true },
-                          );
-                        }),
-                      ),
-                    ),
+                  runtime.reconcileTurn!(input).pipe(Effect.tap(accountForReconciledTerminal)),
+              }),
+          ...(runtime.reconcileTurnByAttempt === undefined
+            ? {}
+            : {
+                reconcileTurnByAttempt: (input) =>
+                  runtime.reconcileTurnByAttempt!(input).pipe(
+                    Effect.tap(accountForReconciledTerminal),
                   ),
               }),
           subscribeEvents,

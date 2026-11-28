@@ -1,0 +1,1 @@
+Antigravity replies no longer stay on Running after Antigravity has finished. When its updates stop reaching Nodex, Nodex recovers the reply's outcome and text from Antigravity instead of waiting indefinitely.

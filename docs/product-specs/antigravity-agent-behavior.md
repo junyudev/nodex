@@ -136,5 +136,11 @@ action. A batch going idle leaves each child's outcome to its own transcript.
 
 Shell commands Antigravity leaves running appear in the Chat Summary's Background
 section once Antigravity hands them off. Select a command to follow its output.
+If Antigravity sends no foreground progress for 15 minutes, Nodex resolves the reply.
+An approval or question awaiting the person pauses that deadline, and so does a tool,
+command or subagent Antigravity reports as unfinished while it is still answering. Once
+Antigravity has answered, that leftover state no longer holds the reply open: commands that
+survive the reply report back through their own continuation.
+
 Use the Chat's Stop action to stop the whole execution, including its background
 commands. A command leaves Background when it exits or its Agent stops.
