@@ -94,12 +94,6 @@ export class MiniWindowController {
     screen.on("display-added", this.#reposition);
     screen.on("display-removed", this.#reposition);
     screen.on("display-metrics-changed", this.#reposition);
-    this.syncWorkbenchFocus();
-  }
-
-  syncWorkbenchFocus(): void {
-    const workbenchFocused = this.options.windows.all().some((window) => window.isFocused());
-    this.apply({ kind: "presence", update: { workbenchFocused } });
   }
 
   #ensureWindow(): void {
@@ -160,7 +154,6 @@ export class MiniWindowController {
     window.on("move", () => this.#syncPreviewHost());
     window.on("blur", () => {
       if (this.#window !== window || this.#shownGeneration !== this.generation) return;
-      this.syncWorkbenchFocus();
       this.apply({ kind: "blur", dialogOpen: this.#isHoldingBlur() });
     });
     window.webContents.once("render-process-gone", () => {
@@ -191,7 +184,6 @@ export class MiniWindowController {
   }
 
   ready(): void {
-    this.syncWorkbenchFocus();
     this.#rendererReady = true;
     if (this.#shownGeneration === this.generation) {
       this.#sendPresentation();
@@ -345,7 +337,6 @@ export class MiniWindowController {
     return (opened) => {
       release();
       if (focusLifetime !== this.#focusLifetime || this.#isHoldingBlur()) return;
-      this.syncWorkbenchFocus();
       this.apply({
         kind: "open-settled",
         opened,

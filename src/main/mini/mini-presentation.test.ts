@@ -22,75 +22,56 @@ import {
 describe("Mini presentation", () => {
   const notice = { ...EMPTY_MINI_COVERAGE, notice: true };
   const visibilityCases = MINI_VISIBILITIES.flatMap((visibility) =>
-    [false, true].flatMap((active) =>
-      [false, true].map((workbenchFocused) => ({ visibility, active, workbenchFocused })),
-    ),
+    [false, true].map((active) => ({ visibility, active })),
   );
 
-  test.each(visibilityCases)(
-    "$visibility, active=$active, Workbench focused=$workbenchFocused",
-    (input) => {
-      const initial = dispatch(initialMiniPresentation(input.visibility), {
-        kind: "presence",
-        update: {
-          workbenchFocused: input.workbenchFocused,
-          coverage: input.active ? notice : EMPTY_MINI_COVERAGE,
-        },
+  test.each(visibilityCases)("$visibility, active=$active", (input) => {
+    const initial = dispatch(initialMiniPresentation(input.visibility), {
+      kind: "presence",
+      update: { coverage: input.active ? notice : EMPTY_MINI_COVERAGE },
+    });
+    const expected =
+      input.visibility === "always" || (input.visibility === "active" && input.active)
+        ? "resting"
+        : "hidden";
+    expect(initial.event.kind).toBe(expected);
+
+    for (const trigger of ["focus", "shortcut"] as const) {
+      const focused = dispatch(initial, { kind: trigger });
+      expect(focused.event).toEqual({
+        kind: "focused",
+        generation: initial.event.generation + 1,
+        anchor: DEFAULT_MINI_ANCHOR,
+        dock: { x: 0, y: 0 },
       });
-      const expected =
-        !input.workbenchFocused &&
-        (input.visibility === "always" || (input.visibility === "active" && input.active))
-          ? "resting"
-          : "hidden";
-      expect(initial.event.kind).toBe(expected);
-
-      for (const trigger of ["focus", "shortcut"] as const) {
-        const focused = dispatch(initial, { kind: trigger });
-        expect(focused.event).toEqual({
-          kind: "focused",
-          generation: initial.event.generation + 1,
-          anchor: DEFAULT_MINI_ANCHOR,
-          dock: { x: 0, y: 0 },
+      expect(dispatch(focused, { kind: "blur", dialogOpen: true })).toBe(focused);
+      const release = dispatch(focused, {
+        kind: "release",
+        generation: focused.event.generation,
+      });
+      const blur = dispatch(focused, { kind: "blur", dialogOpen: false });
+      const toggle = dispatch(focused, { kind: "shortcut" });
+      for (const [event, reason] of [
+        [release.event, "dismissed"],
+        [blur.event, "blurred"],
+        [toggle.event, "toggled"],
+      ] as const) {
+        expect(event).toEqual({
+          kind: expected,
+          generation: focused.event.generation + 1,
+          ...(expected === "hidden"
+            ? { reason }
+            : { anchor: DEFAULT_MINI_ANCHOR, dock: { x: 0, y: 0 } }),
         });
-        expect(dispatch(focused, { kind: "blur", dialogOpen: true })).toBe(focused);
-        const release = dispatch(focused, {
-          kind: "release",
-          generation: focused.event.generation,
-        });
-        const blur = dispatch(focused, { kind: "blur", dialogOpen: false });
-        const toggle = dispatch(focused, { kind: "shortcut" });
-        for (const [event, reason] of [
-          [release.event, "dismissed"],
-          [blur.event, "blurred"],
-          [toggle.event, "toggled"],
-        ] as const) {
-          expect(event).toEqual({
-            kind: expected,
-            generation: focused.event.generation + 1,
-            ...(expected === "hidden"
-              ? { reason }
-              : { anchor: DEFAULT_MINI_ANCHOR, dock: { x: 0, y: 0 } }),
-          });
-        }
       }
-    },
-  );
+    }
+  });
 
-  test("policy, activity, and Workbench focus re-evaluate resting presence right away", () => {
+  test("policy and activity re-evaluate resting presence right away", () => {
     const hidden = initialMiniPresentation("active");
     const active = dispatch(hidden, { kind: "presence", update: { coverage: notice } });
     expect(active.event.kind).toBe("resting");
-    const behindWorkbench = dispatch(active, {
-      kind: "presence",
-      update: { workbenchFocused: true },
-    });
-    expect(behindWorkbench.event).toMatchObject({ kind: "hidden", reason: "idle" });
-    const outside = dispatch(behindWorkbench, {
-      kind: "presence",
-      update: { workbenchFocused: false },
-    });
-    expect(outside.event.kind).toBe("resting");
-    const onDemand = dispatch(outside, { kind: "presence", update: { visibility: "on-demand" } });
+    const onDemand = dispatch(active, { kind: "presence", update: { visibility: "on-demand" } });
     expect(onDemand.event).toMatchObject({ kind: "hidden", reason: "idle" });
     const always = dispatch(onDemand, {
       kind: "presence",
@@ -101,11 +82,8 @@ describe("Mini presentation", () => {
     expect(idle.event).toMatchObject({ kind: "hidden", reason: "idle" });
   });
 
-  test("a pending handoff and docked previews keep Mini resting through Workbench focus and idleness", () => {
-    const idle = dispatch(initialMiniPresentation("active"), {
-      kind: "presence",
-      update: { workbenchFocused: true },
-    });
+  test("a pending handoff and docked previews keep Mini resting through idleness", () => {
+    const idle = initialMiniPresentation("active");
     expect(idle.event.kind).toBe("hidden");
     const pending = dispatch(idle, {
       kind: "presence",
@@ -139,15 +117,23 @@ describe("Mini presentation", () => {
     ).toBe("hidden");
   });
 
-  test("a focused Mini keeps the keyboard through policy, activity, and Workbench changes", () => {
+  test("a focused Mini keeps the keyboard through policy and activity changes", () => {
     const focused = dispatch(initialMiniPresentation("always"), { kind: "focus" });
     const next = dispatch(focused, {
       kind: "presence",
-      update: { visibility: "active", coverage: notice, workbenchFocused: true },
+      update: { visibility: "active", coverage: notice },
     });
     expect(next.event).toBe(focused.event);
+    // Opening Nodex from Mini gives the keyboard to Nodex; Mini stays on screen beside it.
     expect(
-      dispatch(next, { kind: "open-settled", opened: true, hasKeyboard: false }).event,
+      dispatch(next, { kind: "open-settled", opened: true, hasKeyboard: false }).event.kind,
+    ).toBe("resting");
+    expect(
+      dispatch(dispatch(next, { kind: "presence", update: { coverage: EMPTY_MINI_COVERAGE } }), {
+        kind: "open-settled",
+        opened: true,
+        hasKeyboard: false,
+      }).event,
     ).toMatchObject({ kind: "hidden", reason: "finished" });
   });
 
@@ -158,7 +144,7 @@ describe("Mini presentation", () => {
     );
     const handingOff = dispatch(focused, {
       kind: "presence",
-      update: { workbenchFocused: true },
+      update: { visibility: "active" },
     });
     expect(dispatch(handingOff, { kind: "blur", dialogOpen: true })).toBe(handingOff);
     expect(

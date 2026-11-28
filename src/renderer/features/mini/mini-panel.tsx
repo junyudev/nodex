@@ -1,5 +1,5 @@
 import { useIntl } from "@/lib/i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckmarkIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import {
@@ -193,6 +193,8 @@ export function MiniPanel() {
   useMiniDockLayout(frameRef, presentation.kind !== "hidden", miniDockWidth(canDictate));
   const visibleCards = expanded ? cards : cards.slice(0, 1);
   const stacked = !expanded && cards.length > 1;
+  // Clearing never discards a chat Mini is still starting or could not start: those hold a message.
+  const clearable = cards.filter((card) => card.kind !== "starting");
   const bottom = vertical === "bottom";
   const halfDock = MINI_DOCK_HEIGHT / 2;
   const outerInset = bottom
@@ -317,6 +319,9 @@ export function MiniPanel() {
                     // Room for the plates, which peek out on the side away from the dock.
                     stacked && (bottom ? "mt-2.5" : "mb-2.5"),
                   )}
+                  // Each card sits above the one higher on screen, so a shadow, which falls
+                  // downward, lands beneath the next card rather than across it.
+                  style={{ zIndex: bottom ? visibleCards.length - index : index + 1 }}
                 >
                   {stacked ? (
                     <StackPlates depth={Math.min(cards.length - 1, STACK_DEPTH)} bottom={bottom} />
@@ -334,7 +339,9 @@ export function MiniPanel() {
                     onReply={(openReply) =>
                       openReply ? requestFocus({ kind: "reply", key: card.key }) : release()
                     }
-                    onOpen={() => openCard(card)}
+                    // A stack unfolds first, as a stack of notifications does; a card on its own
+                    // opens in Nodex.
+                    onOpen={() => (stacked ? setExpanded(true) : openCard(card))}
                     onDismiss={() => activity.dismiss(card)}
                     onRetryStart={() => activity.retryStart(card.sessionId ?? "")}
                     onTakeBackStart={() =>
@@ -355,28 +362,48 @@ export function MiniPanel() {
           </div>
         ) : null}
         {/* Outside the list, so it stays in reach however far the list is scrolled. */}
-        {showCards && cards.length > 1 ? (
-          <button
-            type="button"
-            data-mini-drawn
-            data-mini-content
-            className={cn(
-              CENTERED_ON_DOCK,
-              "cursor-interaction max-w-[calc(100%-32px)] shrink-0 rounded-full px-2.5 py-1 text-[11px] text-token-text-secondary hover:text-token-foreground",
-              MINI_SURFACE_CLASS,
-            )}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {expanded
-              ? intl.formatMessage({ id: "mini.stack.showLess", defaultMessage: "Show less" })
-              : intl.formatMessage(
-                  { id: "mini.stack.showAll", defaultMessage: "{count} more" },
-                  { count: cards.length - 1 },
-                )}
-          </button>
+        {showCards && expanded ? (
+          <div className={cn(CENTERED_ON_DOCK, "flex shrink-0 items-center gap-1.5")}>
+            <StackControl onClick={() => setExpanded(false)}>
+              {intl.formatMessage({ id: "mini.stack.showLess", defaultMessage: "Show less" })}
+            </StackControl>
+            {clearable.length > 0 ? (
+              <StackControl
+                onClick={() => {
+                  for (const card of clearable) activity.dismiss(card);
+                  setExpanded(false);
+                }}
+              >
+                {intl.formatMessage({ id: "mini.stack.clearAll", defaultMessage: "Clear all" })}
+              </StackControl>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>
+  );
+}
+
+function StackControl({
+  onClick,
+  children,
+}: {
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      data-mini-drawn
+      data-mini-content
+      className={cn(
+        "cursor-interaction rounded-full px-2.5 py-1 text-[11px] text-token-text-secondary hover:text-token-foreground",
+        MINI_SURFACE_CLASS,
+      )}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }
 

@@ -10,7 +10,7 @@ The editable settings tab covers Nodex-supported command ids only. Page editor `
 
 ## Open Mini
 
-**Shift+Alt+Space** (Shift+Option+Space on macOS) opens Mini over the current app on macOS and Windows. When a Nodex Workbench window has focus, it opens **Capture to Inbox** in that window. Edit or unassign the shortcut in **Settings → Keyboard shortcuts**. Mini uses a distinct chord from global dictation. See [Mini](product-specs/mini-behavior.md).
+**Shift+Alt+Space** (Shift+Option+Space on macOS) opens Mini over the current app on macOS and Windows. Edit or unassign the shortcut in **Settings → Keyboard shortcuts**. Mini uses a distinct chord from global dictation. See [Mini](product-specs/mini-behavior.md).
 
 ## Focus and Typing
 

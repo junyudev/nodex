@@ -14,7 +14,6 @@ import {
 interface MiniPresence {
   readonly visibility: MiniVisibility;
   readonly coverage: MiniCoverage;
-  readonly workbenchFocused: boolean;
   readonly previewsDocked: boolean;
   readonly previewDockRequested: boolean;
 }
@@ -40,7 +39,6 @@ export function initialMiniPresentation(
   return {
     visibility,
     coverage: EMPTY_MINI_COVERAGE,
-    workbenchFocused: false,
     previewsDocked: false,
     previewDockRequested: false,
     geometry: { anchor: DEFAULT_MINI_ANCHOR, dock: { x: 0, y: 0 } },
@@ -65,7 +63,7 @@ function settle(state: MiniPresentationState, reason: MiniHideReason): MiniPrese
   const shouldRest =
     state.visibility === "always" ||
     (state.visibility === "active" && !miniCoverageIsEmpty(state.coverage));
-  return shouldRest && !state.workbenchFocused ? show(state, "resting") : hide(state, reason);
+  return shouldRest ? show(state, "resting") : hide(state, reason);
 }
 
 export function transitionMiniPresentation(

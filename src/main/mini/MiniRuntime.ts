@@ -5,7 +5,6 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
-import { BrowserWindow } from "electron";
 import {
   EMPTY_MINI_COVERAGE,
   miniVisibility,
@@ -17,15 +16,9 @@ import type {
   CommandKeybindingRejection,
   CommandKeymapState,
 } from "../../shared/command-keybindings";
-import {
-  CAPTURE_TO_INBOX_COMMAND_ID,
-  EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL,
-  type WorkbenchCommandInvocation,
-} from "../../shared/workbench-commands";
 import { MainConfig } from "../app/MainConfig";
 import type { RemoteHostedPipHostLayout } from "../../shared/remote-hosted-pip";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
-import { safeSendToWindow } from "../ipc-safe-send";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import type { MiniPlacement } from "../settings/application-settings-persistence";
 import { loadNativeClipboardBridge } from "../platform/electron/native-clipboard";
@@ -154,11 +147,6 @@ export const live = (preloadPath: string) =>
         ),
         (controller) => Effect.sync(() => controller.dispose()),
       );
-      yield* windows.events.pipe(
-        Stream.filter(({ kind }) => kind === "focus-changed" || kind === "released"),
-        Stream.runForEach(() => Effect.sync(() => panel.syncWorkbenchFocus())),
-        Effect.forkScoped({ startImmediately: true }),
-      );
       yield* settings.miniVisibilityChanges.pipe(
         Stream.runForEach((visibility) =>
           Effect.sync(() => panel.apply({ kind: "presence", update: { visibility } })),
@@ -198,19 +186,7 @@ export const live = (preloadPath: string) =>
           ),
         );
       });
-      const pressed = (): void => {
-        const focused = BrowserWindow.getFocusedWindow();
-        if (focused && windows.has(focused.webContents.id)) {
-          safeSendToWindow(focused, EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL, [
-            {
-              commandId: CAPTURE_TO_INBOX_COMMAND_ID,
-              source: "keyboard_shortcut",
-            } satisfies WorkbenchCommandInvocation,
-          ]);
-          return;
-        }
-        panel.apply({ kind: "shortcut" });
-      };
+      const pressed = (): void => panel.apply({ kind: "shortcut" });
       // An isolated development instance can exercise the real handler without Accessibility
       // access to synthesize a system-wide keystroke.
       if (miniFocusProbe) {

@@ -106,7 +106,7 @@ export type MiniHideReason =
   | "blurred"
   /** The shortcut was pressed while Mini held the keyboard. */
   | "toggled"
-  /** Current activity, visibility settings, or Workbench focus keep a resting Mini off screen. */
+  /** Current activity or visibility settings keep a resting Mini off screen. */
   | "idle"
   /** Nodex opened what Mini pointed to, or the panel renderer was retired. */
   | "finished";
