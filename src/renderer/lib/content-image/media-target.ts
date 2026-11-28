@@ -65,10 +65,17 @@ export function conversationMediaMimeType(source: string): string | null {
   return mimeTypes.get(basename.slice(dot + 1).toLowerCase()) ?? null;
 }
 
-/** An HTTP locator remains an image even when its pathname has an audio/video extension. */
+/**
+ * A file plays by its name wherever it is written from: an absolute path, a `file:` URL or a path
+ * relative to the content's folder. A web locator remains an image even when its pathname has an
+ * audio/video extension.
+ */
 export function classifyConversationMedia(source: string): ConversationMediaKind {
-  if (!/^data:(?:audio|image|video)\//iu.test(source) && !isAbsoluteAppFilesystemPath(source))
-    return "image";
+  const namesFile =
+    isAbsoluteAppFilesystemPath(source) ||
+    /^file:/iu.test(source) ||
+    classifyImageSource(source).kind === "relative";
+  if (!/^data:(?:audio|image|video)\//iu.test(source) && !namesFile) return "image";
   const mime = conversationMediaMimeType(source);
   if (mime?.startsWith("audio/")) return "audio";
   if (mime?.startsWith("video/")) return "video";
@@ -127,8 +134,8 @@ export function resolveConversationMediaTarget(
       path.startsWith("/@fs")
     )
       return { kind: "blocked" };
-    const kind = classifyConversationMedia(authored.kind === "relative" ? path : source);
-    if (kind !== "image" && scope.hostId === "local")
+    // The authored locator decides what it plays as, so the target and the player always agree.
+    if (classifyConversationMedia(source) !== "image" && scope.hostId === "local")
       return { kind: "stream", hostId: "local", path, url: buildAppFilesystemUrl(path) };
     return { kind: "file", hostId: scope.hostId, path };
   } catch {
@@ -153,16 +160,46 @@ export function conversationMediaCachePolicy(kind: ConversationMediaKind) {
   return { staleTime: Number.POSITIVE_INFINITY, gcTime: kind === "image" ? 15_000 : 0 };
 }
 
+// Audio types whose registry entry lists a rarer extension first, or that the registry names twice.
+const AUDIO_EXTENSIONS: Readonly<Record<string, string>> = {
+  "audio/aac": "aac",
+  "audio/flac": "flac",
+  "audio/mp4": "m4a",
+  "audio/mpeg": "mp3",
+  "audio/ogg": "ogg",
+  "audio/opus": "opus",
+  "audio/wav": "wav",
+  "audio/wave": "wav",
+  "audio/webm": "webm",
+  "audio/x-flac": "flac",
+  "audio/x-m4a": "m4a",
+  "audio/x-wav": "wav",
+};
+
+/** The extension media of this type is named and saved with. */
+export function conversationMediaExtension(mimeType: string | null | undefined): string | null {
+  const type = mimeType?.split(";")[0]?.trim().toLowerCase();
+  if (!type) return null;
+  return AUDIO_EXTENSIONS[type] ?? type.split("/").at(-1)?.replace("svg+xml", "svg") ?? null;
+}
+
 export function conversationMediaFilename(source: string): string {
   const path = interpretConversationFilePath(source);
   if (path) return path.split(/[\\/]/u).at(-1) || "media";
   try {
     const url = new URL(source);
     if (url.protocol === "data:")
-      return `media.${conversationMediaMimeType(source)?.split("/").at(-1)?.replace("svg+xml", "svg") ?? "bin"}`;
+      return `media.${conversationMediaExtension(conversationMediaMimeType(source)) ?? "bin"}`;
     return decodeURIComponent(url.pathname.split("/").at(-1) || "image");
   } catch {
-    return "media";
+    // A path relative to the content's folder is named by its last segment.
+    const name = source.split(/[?#]/u, 1)[0]?.split(/[\\/]/u).at(-1);
+    if (!name) return "media";
+    try {
+      return decodeURIComponent(name);
+    } catch {
+      return name;
+    }
   }
 }
 

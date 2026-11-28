@@ -1,6 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { parseAgentHistoryImageSource } from "../../../shared/agent-history-images";
-import { parseAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
+import { parseToolResultAudioDataUrl } from "@nodex/agent-runtime/tool-result-audio";
+import {
+  isAgentRuntimeToolResultAttachmentId,
+  parseAgentRuntimeAttachmentSource,
+  type AgentRuntimeAttachmentReference,
+} from "../../../shared/agent-runtime-attachments";
 import { parseAssetSource } from "../../../shared/assets";
 import { readManagedImageDataUrl } from "../assets";
 import { queryKeys } from "../query-keys";
@@ -23,8 +28,46 @@ export function requiresContentImageRead(source: string): boolean {
 }
 
 /** A read stops when the content's owner no longer holds its source, before and after it runs. */
-function admit(scope: ContentImageScope): void {
-  if (!scope.isResourceCurrent()) throw new Error("The image's source has moved on");
+function admit(scope: ContentImageScope, kind: "image" | "audio"): void {
+  if (!scope.isResourceCurrent()) throw new Error(`The ${kind}'s source has moved on`);
+}
+
+function resolveRuntimeAttachment(
+  queryClient: QueryClient,
+  reference: AgentRuntimeAttachmentReference,
+  context: ContentImageScope,
+  force = false,
+): Promise<string> {
+  const resolve = context.resolveRuntimeAttachment;
+  if (!resolve) throw new Error("Conversation attachment is unavailable");
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.conversationImages.attachment(
+      context.hostId,
+      context.conversationId,
+      context.sourceIdentity,
+      reference,
+    ),
+    queryFn: () => resolve(reference),
+    retry: false,
+    staleTime: force ? 0 : Infinity,
+    gcTime: CONTENT_IMAGE_GC_TIME_MS,
+  });
+}
+
+/** Load the audio bytes for one authorized tool-result attachment. */
+export async function readContentAudio(
+  queryClient: QueryClient,
+  source: string,
+  scope: ContentImageScope,
+): Promise<string> {
+  admit(scope, "audio");
+  const reference = parseAgentRuntimeAttachmentSource(source);
+  if (!reference || !isAgentRuntimeToolResultAttachmentId(reference.attachmentId))
+    throw new Error("Invalid audio attachment source");
+  const url = await resolveRuntimeAttachment(queryClient, reference, scope);
+  admit(scope, "audio");
+  if (!parseToolResultAudioDataUrl(url)) throw new Error("Invalid audio attachment");
+  return url;
 }
 
 /**
@@ -37,9 +80,9 @@ export async function readContentImage(
   context: ContentImageScope,
   force = false,
 ): Promise<string> {
-  admit(context);
+  admit(context, "image");
   const image = await readAdmittedContentImage(queryClient, rawSource, context, force);
-  admit(context);
+  admit(context, "image");
   return image;
 }
 
@@ -53,22 +96,7 @@ async function readAdmittedContentImage(
   const runtime = parseAgentRuntimeAttachmentSource(source);
   const history = parseAgentHistoryImageSource(source);
   if (runtime) {
-    const resolve = context.resolveRuntimeAttachment;
-    if (!resolve) throw new Error("Image attachment is unavailable");
-    // A recorded attachment never changes, so a chat resolves it once while it holds the source,
-    // whether to a file here or to the picture's own bytes.
-    source = await queryClient.fetchQuery({
-      queryKey: queryKeys.conversationImages.attachment(
-        context.hostId,
-        context.conversationId,
-        context.sourceIdentity,
-        runtime,
-      ),
-      queryFn: () => resolve(runtime),
-      retry: false,
-      staleTime: force ? 0 : Infinity,
-      gcTime: CONTENT_IMAGE_GC_TIME_MS,
-    });
+    source = await resolveRuntimeAttachment(queryClient, runtime, context, force);
     const kind = classifyImageAssetSource(source).kind;
     if (kind !== "local" && !/^data:image\/(?:png|jpeg|gif|webp);base64,/iu.test(source))
       throw new Error("Invalid image attachment");

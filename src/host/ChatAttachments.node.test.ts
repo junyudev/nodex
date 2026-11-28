@@ -1,3 +1,4 @@
+import { MAX_TOOL_RESULT_AUDIO_BASE64_LENGTH } from "@nodex/agent-runtime/tool-result-audio";
 import { describe, expect } from "vite-plus/test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -57,6 +58,7 @@ describe("ChatAttachments", () => {
     const sessionReads: (string | null)[] = [];
     let itemVersion = 1;
     let inline = JPEG;
+    const inlineAttachments = new Map<string, string>();
     const runtimeReads: string[] = [];
     const attachments = yield* make.pipe(
       Effect.provide(testLayer()),
@@ -78,6 +80,8 @@ describe("ChatAttachments", () => {
             runtimeReads.push(attachmentId);
             if (attachmentId === "tool-result:0")
               return { dataUrl: `data:image/jpeg;base64,${inline.toString("base64")}` };
+            const dataUrl = inlineAttachments.get(attachmentId);
+            if (dataUrl) return { dataUrl };
             const file = files[attachmentId];
             return file ? { path: file.path, attachment: file } : null;
           }),
@@ -96,6 +100,7 @@ describe("ChatAttachments", () => {
       members,
       sessionReads,
       runtimeReads,
+      inlineAttachments,
       read,
       editInline: () => {
         itemVersion++;
@@ -209,6 +214,45 @@ describe("ChatAttachments", () => {
         mimeType: "image/png",
       });
       expect(test.runtimeReads).toEqual(["tool-result:0", "tool-result:0"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("serves allowed tool audio in pinned ranges and refuses other inline audio", () =>
+    Effect.gen(function* () {
+      const test = yield* fixture;
+      const attachmentId = "tool-result:1";
+      const wav = Buffer.from(
+        "UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQIAAAAAAA==",
+        "base64",
+      );
+      test.inlineAttachments.set(attachmentId, `data:audio/wav;base64,${wav.toString("base64")}`);
+      const first = yield* test.read({ attachmentId });
+      expect(first).toMatchObject({ mimeType: "audio/wav", totalBytes: wav.length, name: null });
+      const rest = yield* test.read({
+        attachmentId,
+        offset: 4,
+        length: 64,
+        version: first.version,
+      });
+      expect(
+        Buffer.concat([first, rest].map(({ base64 }) => Buffer.from(base64, "base64"))),
+      ).toEqual(wav);
+
+      const refused = [
+        ["tool-result:2", "data:audio/unknown;base64,AQID"],
+        ["tool-result:3", "data:audio/wav;base64,AA=B"],
+        [
+          "tool-result:4",
+          `data:audio/wav;base64,${"A".repeat(MAX_TOOL_RESULT_AUDIO_BASE64_LENGTH + 4)}`,
+        ],
+        ["other", "data:audio/wav;base64,AQID"],
+      ] as const;
+      for (const [id, dataUrl] of refused) {
+        test.inlineAttachments.set(id, dataUrl);
+        expect(yield* test.read({ attachmentId: id }).pipe(Effect.flip)).toMatchObject({
+          reason: "missing",
+        });
+      }
     }).pipe(Effect.scoped),
   );
 

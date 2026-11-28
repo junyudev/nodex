@@ -7,6 +7,7 @@ import {
 import { buildTextPreview, INLINE_TEXT_PREVIEW_MAX_CHARS } from "../../../../../lib/text-preview";
 import type { ToolComponentProps } from "./get-tool-component";
 import { ToolCallCodePanel } from "./tool-call-inspection";
+import { ToolResultAudio } from "./tool-result-audio";
 import { useToolCallOutputDetail } from "./use-tool-call-output-detail";
 
 function DetailCodePanel({ text, title }: { text: string; title: string }) {
@@ -61,7 +62,7 @@ export function DynamicToolDetails({ item }: { item: ToolComponentProps["item"] 
       content.type === "inputImage" ? null : (
         <Fragment key={index}>
           {content.type === "inputAudio" ? (
-            <audio src={content.audioUrl} controls preload="metadata" />
+            <ToolResultAudio url={content.audioUrl || null} source={content.source} />
           ) : (
             <DetailCodePanel text={formatToolOutputText(content.text)} title={outputTitle} />
           )}

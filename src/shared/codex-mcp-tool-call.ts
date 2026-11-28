@@ -146,6 +146,10 @@ export function normalizeCodexMcpToolCallContentBlock(
   }
 
   const annotations = normalizeAnnotations(record.annotations);
+  const runtimeSource =
+    typeof record.source === "string" && parseAgentRuntimeAttachmentSource(record.source)
+      ? { source: record.source }
+      : {};
   switch (record.type) {
     case "text":
       if (typeof record.text !== "string") return { type: "unknown", raw: value };
@@ -159,9 +163,7 @@ export function normalizeCodexMcpToolCallContentBlock(
         type: "image",
         data: record.data,
         mimeType: record.mimeType,
-        ...(typeof record.source === "string" && parseAgentRuntimeAttachmentSource(record.source)
-          ? { source: record.source }
-          : {}),
+        ...runtimeSource,
         annotations,
       };
 
@@ -173,6 +175,7 @@ export function normalizeCodexMcpToolCallContentBlock(
         type: "audio",
         data: record.data,
         mimeType: record.mimeType,
+        ...runtimeSource,
         annotations,
       };
 

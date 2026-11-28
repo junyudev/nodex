@@ -94,10 +94,11 @@ function containsMediaNode(node: ConversationRenderNode): boolean {
   return node.token.type === "image" || node.children.some(containsMediaNode);
 }
 
-function containsVideoNode(node: ConversationRenderNode): boolean {
+/** Audio and video players hold their own controls, so they never sit inside phrasing wrappers. */
+function containsPlayerNode(node: ConversationRenderNode): boolean {
   return (
-    (node.token.type === "image" && classifyConversationMedia(node.token.href) === "video") ||
-    node.children.some(containsVideoNode)
+    (node.token.type === "image" && classifyConversationMedia(node.token.href) !== "image") ||
+    node.children.some(containsPlayerNode)
   );
 }
 
@@ -140,7 +141,7 @@ function renderInlineMediaSiblings(
     );
   };
   for (const [index, node] of nodes.entries()) {
-    if (!containsVideoNode(node)) {
+    if (!containsPlayerNode(node)) {
       precedingText += node.token.raw;
       continue;
     }
@@ -303,7 +304,7 @@ function TokenNode({
       token.type === "em" ||
       token.type === "del" ||
       token.type === "link") &&
-    node.children.some(containsVideoNode)
+    node.children.some(containsPlayerNode)
   )
     return renderInlineMediaSiblings(
       node.children,

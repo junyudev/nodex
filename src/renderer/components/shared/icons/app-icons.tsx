@@ -3697,6 +3697,7 @@ export function ProjectMarkerIconSvg({ icon, ...props }: ProjectMarkerIconSvgPro
 
 export type FileTabIconName =
   | "artifactDocument"
+  | "audio"
   | "build"
   | "code"
   | "cplusplus"
@@ -3743,6 +3744,22 @@ interface FileTabIconDefinition {
 }
 
 const FILE_TAB_ICON_DEFINITIONS = {
+  audio: {
+    width: 20,
+    height: 20,
+    viewBox: "0 0 20 20",
+    fill: "none",
+    xmlns: "http://www.w3.org/2000/svg",
+    nodes: [
+      {
+        type: "path",
+        props: {
+          d: "M3.25 8.75a0.75 0.75 0 0 1 1.5 0v2.5a0.75 0.75 0 0 1 -1.5 0ZM6.25 5.75a0.75 0.75 0 0 1 1.5 0v8.5a0.75 0.75 0 0 1 -1.5 0ZM9.25 3.75a0.75 0.75 0 0 1 1.5 0v12.5a0.75 0.75 0 0 1 -1.5 0ZM12.25 6.75a0.75 0.75 0 0 1 1.5 0v6.5a0.75 0.75 0 0 1 -1.5 0ZM15.25 8.25a0.75 0.75 0 0 1 1.5 0v3.5a0.75 0.75 0 0 1 -1.5 0Z",
+          fill: "currentColor",
+        },
+      },
+    ],
+  },
   artifactDocument: {
     width: 24,
     height: 24,

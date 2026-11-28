@@ -16,7 +16,7 @@ export function buildRuntimeInstructions(runtime: {
     modelName && modelName !== model ? `${modelName} (model slug: ${model})` : model;
   const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${modelLabel}` : "";
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
-  return `<runtime_info>In case you're asked: you are running in Nodex through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>`;
+  return `<runtime_info>In case you're asked: you are running in Nodex through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images, videos and audio in your response using Markdown image syntax with absolute file paths, such as ![voice](/absolute/path/voice.wav); audio shows as a player.</runtime_info>`;
 }
 
 function toSingleLine(value: string): string {

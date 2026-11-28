@@ -1,0 +1,1 @@
+Audio a tool returns in an Agent chat now plays instead of filling the step with truncated text. Clips load when you open the step, including in Team Space chats, and one that is too large or in an unsupported format says **Audio unavailable**.

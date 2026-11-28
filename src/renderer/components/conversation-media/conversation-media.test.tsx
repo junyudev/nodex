@@ -1,4 +1,13 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  onTestFinished,
+  vi,
+} from "vite-plus/test";
 import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { flushSync } from "react-dom";
 import { TestQueryProvider, createTestQueryClient } from "@/test/query";
@@ -185,6 +194,16 @@ describe("ordinary conversation media", () => {
   });
 
   test("removes the audio options trigger when inline audio fails and has no source to copy", async () => {
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = vi.fn(() => "blob:voice-memo");
+        static revokeObjectURL = vi.fn();
+      },
+    );
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
     const view = render(
       mediaTree(null, <ConversationMedia src="data:audio/mpeg;base64,YQ==" alt="Voice memo" />),
     );
@@ -194,6 +213,7 @@ describe("ordinary conversation media", () => {
       await Promise.resolve();
     });
     expect(view.queryByRole("button", { name: "More options for Voice memo" })).toBeNull();
+    expect(view.getByText("Audio unavailable")).toBeTruthy();
   });
 
   test("retires same-URL audio and video decoders when their physical source authority changes", async () => {

@@ -11,7 +11,6 @@ import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contract
 import type {
   AgentMessageModeration,
   CommandAction,
-  DynamicToolCallOutputContentItem,
   UserInput,
 } from "@nodex/codex-app-server-protocol/v2";
 import type {
@@ -23,6 +22,7 @@ import type {
   CodexCanonicalItem,
   CodexConversationServerRequest,
   CodexDelegatedTaskStatus,
+  CodexDynamicToolOutputContent,
   CodexImportedMarkdownImage,
   CodexItemStatus,
   CodexConversationTurn,
@@ -35,12 +35,17 @@ import { projectCodexCanonicalTurnViews } from "../../../shared/codex-canonical-
 import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
 import {
   buildAgentRuntimeAttachmentSource,
-  buildAgentRuntimeToolResultImageSource,
+  buildAgentRuntimeToolResultSource,
   replyPictureAttachmentId,
 } from "../../../shared/agent-runtime-attachments";
 import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import { getDisplayCommand } from "../../../shared/codex-command-execution";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
+import {
+  isToolResultAudioBase64,
+  parseToolResultAudioDataUrl,
+  toolResultAudioMimeType,
+} from "@nodex/agent-runtime/tool-result-audio";
 import { providerFailureCause } from "@nodex/agent-runtime/failure-cause";
 import { localMarkdownImagePaths } from "@nodex/agent-runtime/markdown-images";
 import { isHostedChat } from "@/lib/hosted-chat";
@@ -177,17 +182,37 @@ function jsonValue(value: unknown): JsonValue {
 export const agentRuntimeItemVersion = (item: AgentTurnItem): string =>
   JSON.stringify([item.type, item.status, item.updatedAt]);
 
+function isDynamicAudioBlock(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "type" in value &&
+    (value.type === "audio" || value.type === "inputAudio")
+  );
+}
+
 /** Preserve typed media and the complete MCP result used by application-tool renderers. */
 function dynamicToolOutputContent(
   item: Extract<AgentTurnItem, { type: "dynamic_tool" }>,
-): DynamicToolCallOutputContentItem[] | null {
+): CodexDynamicToolOutputContent[] | null {
   const result = item.outputOmitted ? null : item.mcpToolCall?.result;
   const output = result?.content ?? item.output;
   if (output === undefined) return null;
-  const values = Array.isArray(output) ? output : [output];
-  const content = values.map((value, contentIndex): DynamicToolCallOutputContentItem => {
+  const envelope =
+    output !== null &&
+    typeof output === "object" &&
+    "content" in output &&
+    Array.isArray(output.content) &&
+    output.content.some(isDynamicAudioBlock)
+      ? {
+          content: output.content as unknown[],
+          structuredContent: "structuredContent" in output ? output.structuredContent : undefined,
+        }
+      : null;
+  const values = envelope?.content ?? (Array.isArray(output) ? output : [output]);
+  const content = values.map((value, contentIndex): CodexDynamicToolOutputContent => {
     const source = () =>
-      buildAgentRuntimeToolResultImageSource({
+      buildAgentRuntimeToolResultSource({
         sourceThreadId: item.threadId,
         itemId: item.id,
         contentIndex,
@@ -206,18 +231,23 @@ function dynamicToolOutputContent(
         type: "inputImage",
         imageUrl: typeof block.imageUrl === "string" ? block.imageUrl : source(),
       };
-    if (block.type === "inputAudio" && typeof block.audioUrl === "string")
-      return { type: "inputAudio", audioUrl: block.audioUrl };
-    if (
-      block.type === "audio" &&
-      typeof block.data === "string" &&
-      typeof block.mimeType === "string"
-    )
-      return { type: "inputAudio", audioUrl: `data:${block.mimeType};base64,${block.data}` };
+    if (block.type === "inputAudio") {
+      const audioUrl = typeof block.audioUrl === "string" ? block.audioUrl : "";
+      if (audioUrl && !/^data:/iu.test(audioUrl)) return { type: "inputAudio", audioUrl };
+      const available = block.attachmentAvailable === true || parseToolResultAudioDataUrl(audioUrl);
+      return { type: "inputAudio", audioUrl: "", ...(available ? { source: source() } : {}) };
+    }
+    if (block.type === "audio") {
+      const available =
+        block.attachmentAvailable === true ||
+        (toolResultAudioMimeType(block.mimeType) && isToolResultAudioBase64(block.data));
+      return { type: "inputAudio", audioUrl: "", ...(available ? { source: source() } : {}) };
+    }
     return { type: "inputText", text: JSON.stringify(jsonValue(value)) };
   });
-  if (result?.structuredContent == null) return content;
-  const text = JSON.stringify(result.structuredContent);
+  const structuredContent = result?.structuredContent ?? envelope?.structuredContent;
+  if (structuredContent == null) return content;
+  const text = JSON.stringify(structuredContent);
   return [
     { type: "inputText", text },
     ...content.filter((block) => block.type !== "inputText" || block.text !== text),
@@ -310,21 +340,25 @@ function projectRuntimeMcpToolCall(
       ? {
           content: call.result.content.map((content, contentIndex) => {
             const value = jsonValue(content);
-            if (
-              value === null ||
-              typeof value !== "object" ||
-              Array.isArray(value) ||
-              value.type !== "image"
-            )
-              return value;
-            return {
-              ...value,
-              data: "",
-              source: buildAgentRuntimeToolResultImageSource({
+            if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+            const source = () =>
+              buildAgentRuntimeToolResultSource({
                 sourceThreadId: item.threadId,
                 itemId: item.id,
                 contentIndex,
-              }),
+              });
+            if (value.type === "image") return { ...value, data: "", source: source() };
+            if (value.type !== "audio") return value;
+            const mimeType = toolResultAudioMimeType(value.mimeType);
+            const available =
+              value.attachmentAvailable === true ||
+              (mimeType && isToolResultAudioBase64(value.data));
+            return {
+              type: "audio",
+              data: "",
+              mimeType: mimeType ?? "",
+              ...(available ? { source: source() } : {}),
+              ...(value.annotations === undefined ? {} : { annotations: value.annotations }),
             };
           }),
           structuredContent: jsonValue(call.result.structuredContent),

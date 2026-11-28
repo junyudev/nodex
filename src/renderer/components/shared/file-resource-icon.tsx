@@ -16,6 +16,7 @@ const EXACT_ICON_KEY_BY_NAME: Readonly<Record<string, FileResourceIconKey>> = {
 };
 
 const ICON_KEY_BY_EXTENSION: Readonly<Record<string, FileResourceIconKey>> = {
+  aac: "audio",
   bash: "shell",
   bazel: "build",
   bmp: "image",
@@ -35,6 +36,7 @@ const ICON_KEY_BY_EXTENSION: Readonly<Record<string, FileResourceIconKey>> = {
   dotenv: "document",
   env: "document",
   fish: "shell",
+  flac: "audio",
   gif: "image",
   gitignore: "document",
   go: "code",
@@ -59,6 +61,7 @@ const ICON_KEY_BY_EXTENSION: Readonly<Record<string, FileResourceIconKey>> = {
   less: "css",
   lock: "document",
   m: "code",
+  m4a: "audio",
   makefile: "build",
   markdown: "document",
   md: "document",
@@ -69,7 +72,11 @@ const ICON_KEY_BY_EXTENSION: Readonly<Record<string, FileResourceIconKey>> = {
   mkd: "document",
   mm: "code",
   mjs: "javascript",
+  mp3: "audio",
   ninja: "build",
+  oga: "audio",
+  ogg: "audio",
+  opus: "audio",
   pdf: "pdf",
   php: "php",
   png: "image",
@@ -95,6 +102,7 @@ const ICON_KEY_BY_EXTENSION: Readonly<Record<string, FileResourceIconKey>> = {
   ts: "typescript",
   tsv: "spreadsheet",
   tsx: "react",
+  wav: "audio",
   webp: "image",
   xls: "spreadsheet",
   xlsm: "spreadsheet",
@@ -110,6 +118,7 @@ const ICON_KEY_BY_MIME_PREFIX: readonly {
   prefix: string;
   key: FileResourceIconKey;
 }[] = [
+  { prefix: "audio/", key: "audio" },
   { prefix: "image/", key: "image" },
   { prefix: "text/", key: "document" },
   { prefix: "application/pdf", key: "pdf" },
@@ -179,6 +188,7 @@ const COMPONENT_BY_ICON_KEY = Object.fromEntries(
   (
     Object.keys({
       artifactDocument: true,
+      audio: true,
       build: true,
       code: true,
       cplusplus: true,

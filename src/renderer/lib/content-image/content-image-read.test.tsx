@@ -8,7 +8,7 @@ import { queryKeys } from "../query-keys";
 import { installWindowApi } from "../../test/browser-globals";
 import { render } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
-import { CONTENT_IMAGE_GC_TIME_MS, readContentImage } from "./content-image-read";
+import { CONTENT_IMAGE_GC_TIME_MS, readContentAudio, readContentImage } from "./content-image-read";
 import {
   ContentImageScopeProvider,
   THIS_COMPUTER_IMAGE_SCOPE,
@@ -373,5 +373,46 @@ describe("conversation image reads", () => {
       path: "/managed/image.png",
     });
     view.unmount();
+  });
+});
+
+describe("tool-result audio reads", () => {
+  const reference = { sourceThreadId: "source", itemId: "item", attachmentId: "tool-result:1" };
+  const source = buildAgentRuntimeAttachmentSource(reference);
+
+  test("admits only scoped tool-result attachments with a supported audio data URL", async () => {
+    const audio = "data:audio/x-wav;base64,AQID";
+    const resolveRuntimeAttachment = vi.fn(async () => audio);
+    const scope = { ...context, resolveRuntimeAttachment };
+    const client = createClient();
+    await expect(
+      Promise.all([
+        readContentAudio(client, source, scope),
+        readContentAudio(client, source, scope),
+      ]),
+    ).resolves.toEqual([audio, audio]);
+    expect(resolveRuntimeAttachment).toHaveBeenCalledExactlyOnceWith(reference);
+    await expect(readContentImage(client, source, scope)).rejects.toThrow(
+      "Invalid image attachment",
+    );
+    await expect(
+      readContentAudio(client, source, { ...scope, isResourceCurrent: () => false }),
+    ).rejects.toThrow("The audio's source has moved on");
+
+    const invalid = [
+      "data:image/png;base64,AQID",
+      "data:audio/unknown;base64,AQID",
+      "data:audio/wav;base64,AA=B",
+      "/workspace/clip.wav",
+    ];
+    for (const [index, url] of invalid.entries()) {
+      await expect(
+        readContentAudio(client, source, {
+          ...scope,
+          sourceIdentity: `new-source-${index}`,
+          resolveRuntimeAttachment: async () => url,
+        }),
+      ).rejects.toThrow("Invalid audio attachment");
+    }
   });
 });

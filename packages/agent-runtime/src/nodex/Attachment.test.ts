@@ -19,7 +19,7 @@ import { MessageId } from "@nodex/runtime-contracts";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 
-it.live("resolves only a visible image's exact item and captured fork prefix across Projects", () =>
+it.live("reads visible attachments by item and captured fork prefix across Projects", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -74,6 +74,7 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
           },
         });
         const image = (persisted as AgentWire<PersistChatAttachmentsResult>).attachments[0]!;
+        const audio = "AAAB".repeat(100_000);
         // Storage boundary: controlled fork-cutoff and post-fork records exercise the real indexed read.
         yield* Effect.sync(() => {
           const db = openRuntimeDatabase(runtime.identity.databasePath);
@@ -96,6 +97,7 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
               ["item:text", "run:1", "assistant_message"],
               ["item:tool", "run:1", "dynamic_tool"],
               ["item:tool-late", "run:2", "dynamic_tool"],
+              ["item:dynamic-audio", "run:1", "dynamic_tool"],
               ["item:claude", "run:1", "dynamic_tool"],
             ] as const) {
               const payload = {
@@ -134,15 +136,27 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
                         arguments: {},
                         result: {
                           content: [
-                            { type: "text", text: "Screenshot" },
+                            { type: "text", text: "Screenshot and narration" },
                             { type: "image", mimeType: "image/png", data: "AQID" },
+                            { type: "audio", mimeType: "audio/wav", data: audio },
+                            { type: "audio", mimeType: "audio/wav", data: "AA=B" },
                           ],
                         },
                       },
                     }
                   : {}),
               };
-              let storedPayload: unknown = payload;
+              let storedPayload: unknown =
+                id === "item:dynamic-audio"
+                  ? {
+                      ...payload,
+                      mcpToolCall: undefined,
+                      output: [
+                        { type: "inputText", text: "Narration" },
+                        { type: "inputAudio", audioUrl: `data:audio/mp4;base64,${audio}` },
+                      ],
+                    }
+                  : payload;
               if (id === "item:claude" && type === "dynamic_tool") {
                 const png = Buffer.alloc(128, 7).toString("base64");
                 const output = {
@@ -152,12 +166,18 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
                       type: "image",
                       source: { type: "base64", media_type: "image/png", data: png },
                     },
-                    { type: "text", text: "[Image: source: /tmp/session/tool-results/first.png]" },
+                    {
+                      type: "text",
+                      text: "[Image: source: /tmp/session/tool-results/first.png]",
+                    },
                     {
                       type: "image",
                       source: { type: "base64", media_type: "image/jpeg", data: "BAUG" },
                     },
-                    { type: "text", text: "[Image: source: /tmp/session/tool-results/second.jpg]" },
+                    {
+                      type: "text",
+                      text: "[Image: source: /tmp/session/tool-results/second.jpg]",
+                    },
                     {
                       type: "image",
                       source: { type: "base64", media_type: "image/svg+xml", data: png },
@@ -295,13 +315,21 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
             "../../private",
           ).pipe(Effect.result))._tag,
         ).toBe("Failure");
+        const mcpAudio = { dataUrl: `data:audio/wav;base64,${audio}` };
+        expect(yield* query("thread:source", "item:tool", "tool-result:2")).toEqual(mcpAudio);
+        expect(yield* query("thread:fork", "item:tool", "tool-result:2")).toEqual(mcpAudio);
+        expect(yield* query("thread:foreign", "item:tool", "tool-result:2")).toBeNull();
+        expect(yield* query("thread:source", "item:tool", "tool-result:3")).toBeNull();
+        expect(yield* query("thread:source", "item:dynamic-audio", "tool-result:1")).toEqual({
+          dataUrl: `data:audio/mp4;base64,${audio}`,
+        });
         const toolImage = { dataUrl: "data:image/png;base64,AQID" };
         expect(yield* query("thread:source", "item:tool", "tool-result:1")).toEqual(toolImage);
         expect(yield* query("thread:fork", "item:tool", "tool-result:1")).toEqual(toolImage);
         expect(yield* query("thread:fork", "item:tool-late", "tool-result:1")).toBeNull();
         expect(yield* query("thread:foreign", "item:tool", "tool-result:1")).toBeNull();
         expect(yield* query("thread:source", "item:tool", "tool-result:0")).toBeNull();
-        expect(yield* query("thread:source", "item:tool", "tool-result:2")).toBeNull();
+        expect(yield* query("thread:source", "item:tool", "tool-result:4")).toBeNull();
         expect(
           yield* query("thread:fork", "item:tool", "tool-result:1", "thread:foreign"),
         ).toBeNull();

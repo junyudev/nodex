@@ -29,6 +29,7 @@
     "./native-history-items": "./src/nodex/NativeHistoryItems.ts",
     "./history-read": "./src/nodex/HistoryRead.ts",
     "./history-contracts": "./src/nodex/history-contracts.ts",
+    "./tool-result-audio": "./src/toolResultAudio.ts",
     "./image-mime": "./src/imageMime.ts",
     "./renderable-image": "./src/renderableImage.ts",
     "./markdown-images": "./src/nodex/MarkdownImages.ts",

@@ -11,7 +11,7 @@ const identity = (value: string) =>
   value.trim() === value &&
   !/[\u0000-\u001f]/u.test(value);
 
-/** An image descriptor addresses its recorded native item; it carries no bytes or inferred path. */
+/** An attachment descriptor addresses its recorded native item; it carries no bytes or inferred path. */
 export const buildAgentRuntimeAttachmentSource = (
   reference: AgentRuntimeAttachmentReference,
 ): string =>
@@ -38,8 +38,8 @@ export function parseAgentRuntimeAttachmentSource(
   }
 }
 
-/** The original result-content position is stable even when history omits the image bytes. */
-export const buildAgentRuntimeToolResultImageSource = (reference: {
+/** The original result-content position is stable even when history omits the media bytes. */
+export const buildAgentRuntimeToolResultSource = (reference: {
   readonly sourceThreadId: string;
   readonly itemId: string;
   readonly contentIndex: number;
@@ -49,6 +49,9 @@ export const buildAgentRuntimeToolResultImageSource = (reference: {
     itemId: reference.itemId,
     attachmentId: `tool-result:${reference.contentIndex}`,
   });
+
+export const isAgentRuntimeToolResultAttachmentId = (id: string): boolean =>
+  /^tool-result:(?:0|[1-9]\d*)$/u.test(id);
 
 const REPLY_PICTURE = "reply-picture:";
 

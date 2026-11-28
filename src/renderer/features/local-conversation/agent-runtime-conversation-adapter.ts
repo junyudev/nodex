@@ -2518,8 +2518,8 @@ export function useAgentRuntimeConversationAdapter(input: {
       if (!result)
         throw new Error(
           getIntl().formatMessage({
-            id: "conversation.agentRuntimeConversationAdapter.imageUnavailable",
-            defaultMessage: "Image unavailable",
+            id: "conversation.agentRuntimeConversationAdapter.attachmentUnavailable",
+            defaultMessage: "Attachment unavailable",
           }),
         );
       return "dataUrl" in result ? result.dataUrl : result.path;

@@ -4,6 +4,8 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
+  useEffectEvent,
   useId,
   useLayoutEffect,
   useMemo,
@@ -17,15 +19,23 @@ import type { Components } from "streamdown";
 import {
   CopyIcon,
   DownloadIcon,
+  FolderIcon,
   ImageIcon,
   LoadingIcon,
-  MoreActionsIcon,
-  PageMenuCopyLinkIcon,
-  PauseIcon,
-  PlayIcon,
 } from "@/components/shared/icons";
+import { EllipsisIcon } from "@/components/shared/icons/customize-action-icons";
+import { MediaPauseIcon, MediaPlayIcon } from "@/components/shared/icons/file-viewer-icons";
+import { ColorfulFileResourceIcon } from "@/components/shared/file-resource-icon";
+import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownRadioGroup,
+  NodexDropdownRadioItem,
+  NodexDropdownSectionLabel,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
 import {
   createConversationImageActions,
   type ConversationImageAction,
@@ -37,7 +47,9 @@ import {
   conversationMediaBadge,
   conversationMediaCachePolicy,
   conversationMediaDataUrl,
+  conversationMediaExtension,
   conversationMediaFilename,
+  conversationMediaMimeType,
   resolveConversationMediaTarget,
   type ContentImageScope,
   type ConversationMediaKind,
@@ -49,12 +61,23 @@ import type { ConversationVideoSizing } from "@/components/conversation-media/co
 import { APP_FILESYSTEM_ORIGIN } from "../../../shared/app-protocol";
 import { saveWorkspaceFileCopy } from "@/lib/workspace-file-operations";
 import {
+  MEDIA_PLAYBACK_RATES,
+  MediaControlButton,
+  MediaTimeline,
+} from "@/components/conversation-media/conversation-media-controls";
+import {
+  bindMediaDataSource,
+  claimMediaPlayback,
   displayTime,
+  releaseMediaPlayback,
   safeDuration,
-  seekMedia,
+  setMediaPlaybackRate,
 } from "@/components/conversation-media/conversation-media-playback";
 import { writeTextToClipboard } from "@/lib/clipboard";
-import { openExternalUrl } from "@/lib/file-system-operations";
+import { openExternalUrl, openFileLink } from "@/lib/file-system-operations";
+import { toastFailure } from "@/lib/failure-toast";
+import { cn } from "@/lib/utils";
+import { getFileManagerRevealMessage } from "../../../shared/file-link-openers";
 import { workspaceFileBinaryQueryOptions } from "@/lib/query-options";
 
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor/view/image-preview-dialog";
@@ -353,6 +376,11 @@ export function ConversationMediaParagraph({
   );
 }
 
+/** A file this computer streams, which its file manager can show and its host can copy. */
+function localMediaPath(resource: ConversationMediaResource): string | null {
+  return resource.path && resource.url?.startsWith(APP_FILESYSTEM_ORIGIN) ? resource.path : null;
+}
+
 async function saveMedia(
   resource: ConversationMediaResource,
   url: string,
@@ -363,8 +391,9 @@ async function saveMedia(
 ) {
   if (!isCurrent() || signal.aborted) return;
   // A local stream is copied by the host, so large media never crosses the renderer.
-  if (resource.path && url.startsWith(APP_FILESYSTEM_ORIGIN)) {
-    await saveWorkspaceFileCopy({ hostId: "local", path: resource.path });
+  const localPath = localMediaPath(resource);
+  if (localPath) {
+    await saveWorkspaceFileCopy({ hostId: "local", path: localPath });
     return;
   }
   const data = await fetchImageSourceAsDataUrl(url, undefined, { signal, isCurrent, image });
@@ -551,7 +580,9 @@ function ConversationImage({
     },
     [identity],
   );
-  const download = useMediaDownload(resource, raw, image ?? undefined);
+  const download = useMediaDownload(resource, conversationMediaFilename(raw), {
+    image: image ?? undefined,
+  });
   const actionLifetime = useRef<{
     readonly identity: string;
     readonly controller: AbortController;
@@ -681,10 +712,10 @@ interface PendingDownload {
 }
 async function runMediaDownload(
   resource: ConversationMediaResource,
-  raw: string,
+  filename: string,
   pending: { current: PendingDownload | null },
   publish: (state: DownloadState | null) => void,
-  image?: HTMLImageElement,
+  options: MediaDownloadOptions,
 ) {
   if (!resource.url || !resource.isCurrent() || pending.current) return;
   const controller = new AbortController();
@@ -695,23 +726,30 @@ async function runMediaDownload(
     await saveMedia(
       resource,
       resource.url,
-      conversationMediaFilename(raw),
+      filename,
       resource.isCurrent,
       controller.signal,
-      image,
+      options.image,
     );
     if (resource.isCurrent() && !controller.signal.aborted) publish(null);
   } catch {
-    if (resource.isCurrent() && !controller.signal.aborted)
-      publish({ identity: resource.identity, pending: false, failed: true });
+    if (!resource.isCurrent() || controller.signal.aborted) return;
+    publish({ identity: resource.identity, pending: false, failed: true });
+    options.onFailed?.();
   } finally {
     if (pending.current === attempt) pending.current = null;
   }
 }
+interface MediaDownloadOptions {
+  readonly image?: HTMLImageElement;
+  /** Reports a failed save where the player shows failures, instead of its own status line. */
+  readonly onFailed?: () => void;
+}
+
 function useMediaDownload(
   resource: ConversationMediaResource,
-  raw: string,
-  image?: HTMLImageElement,
+  filename: string,
+  options: MediaDownloadOptions = {},
 ) {
   const pending = useRef<PendingDownload | null>(null);
   const [status, setStatus] = useState<DownloadState | null>(null);
@@ -724,7 +762,7 @@ function useMediaDownload(
     },
     [resource.identity],
   );
-  const save = () => runMediaDownload(resource, raw, pending, setStatus, image);
+  const save = () => runMediaDownload(resource, filename, pending, setStatus, options);
   const current = status?.identity === resource.identity ? status : null;
   return { save, current };
 }
@@ -775,96 +813,212 @@ function MediaDownloadButton({
   );
 }
 
+interface AudioPlayback {
+  readonly identity: string;
+  readonly playing: boolean;
+  readonly time: number;
+  readonly duration: number;
+  readonly rate: number;
+  readonly failed: boolean;
+}
+
+function samePlayback(left: AudioPlayback, right: AudioPlayback) {
+  return (
+    left.identity === right.identity &&
+    left.playing === right.playing &&
+    left.time === right.time &&
+    left.duration === right.duration &&
+    left.rate === right.rate &&
+    left.failed === right.failed
+  );
+}
+
+/** Audio named only by its type is saved under the name it shows, with that type's extension. */
+function savedAudioName(name: string, extension: string | null) {
+  const named = /\.[a-z0-9]+$/iu.test(name) || !extension ? name : `${name}.${extension}`;
+  return named.replace(/[<>:"/\\|?*]/gu, "_");
+}
+
+/**
+ * A playable audio file: what it is on one line, where it is in time on the next. Its decision,
+ * play, leads the trailing controls; everything else is in its menu.
+ */
 export function ConversationAudio({
   resource,
   raw,
   alt,
   title,
+  mimeType,
+  className,
 }: {
   resource: ConversationMediaResource;
   raw: string;
   alt: string;
   title?: string;
+  /** The type the source reported, for audio whose name carries none. */
+  mimeType?: string;
+  className?: string;
 }) {
   const intl = useIntl();
   const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
-  const [playback, setPlayback] = useState<{
-    identity: string;
-    playing: boolean;
-    time: number;
-    duration: number;
-    failed: boolean;
-  } | null>(null);
-  const current =
+  const [playback, setPlayback] = useState<AudioPlayback | null>(null);
+  const current: AudioPlayback =
     playback?.identity === resource.identity
       ? playback
-      : { playing: false, time: 0, duration: 0, failed: false };
+      : {
+          identity: resource.identity,
+          playing: false,
+          time: 0,
+          duration: 0,
+          rate: 1,
+          failed: false,
+        };
+  const carried = !raw || /^data:/iu.test(raw);
   const name =
     title ||
-    (raw.startsWith("data:")
+    (carried
       ? alt ||
         intl.formatMessage({ id: "components.conversationMedia.audio", defaultMessage: "Audio" })
       : conversationMediaFilename(raw));
+  const type = mimeType ?? conversationMediaMimeType(raw || (resource.url ?? ""));
+  const extension =
+    /\.([a-z0-9]+)$/iu.exec(name)?.[1]?.toLowerCase() ?? conversationMediaExtension(type);
   const ready = resource.status === "ready" && !current.failed;
-  const canCopySource = raw.length > 0 && !/^data:/iu.test(raw);
-  const sourceIsLink = /^https?:/iu.test(raw);
-  const format = /\.([a-z0-9]+)$/iu.exec(name)?.[1]?.toUpperCase();
-  const { save, current: download } = useMediaDownload(resource, raw);
+  const copyPath = resource.path ?? (carried ? null : raw);
+  const revealPath = localMediaPath(resource);
+  const { save, current: download } = useMediaDownload(resource, savedAudioName(name, extension), {
+    onFailed: () =>
+      toastFailure(
+        intl.formatMessage({
+          id: "components.conversationMedia.saveAudioError",
+          defaultMessage: "Couldn’t save audio",
+        }),
+      ),
+  });
   useLayoutEffect(
     () => () => {
       if (!audio) return;
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
+      releaseMediaPlayback(audio);
     },
     [audio],
   );
-  const update = (patch: Partial<typeof current>) =>
-    setPlayback((previous) => ({
-      ...(previous?.identity === resource.identity
-        ? previous
-        : { playing: false, time: 0, duration: 0, failed: false }),
-      ...patch,
-      identity: resource.identity,
-    }));
-  const toggle = async () => {
-    if (!audio || !ready || !resource.isCurrent()) return;
-    if (!audio.paused) {
-      audio.pause();
-      return;
-    }
+  // Native media repeats events whose values have not changed; those keep the same state.
+  const update = (patch: Partial<Omit<AudioPlayback, "identity">>) =>
+    setPlayback((previous) => {
+      const base = previous?.identity === resource.identity ? previous : current;
+      const next: AudioPlayback = { ...base, ...patch, identity: resource.identity };
+      return previous && samePlayback(previous, next) ? previous : next;
+    });
+  const sourceFailed = useEffectEvent(() => update({ failed: true }));
+  const sourceIsCurrent = useEffectEvent(resource.isCurrent);
+  useEffect(() => {
+    // Carried bytes play from a decoder-owned Blob, so a long clip never sits in the DOM as text.
+    if (!audio || !resource.url || !sourceIsCurrent() || !/^data:/iu.test(resource.url)) return;
+    return bindMediaDataSource(audio, resource.url, sourceFailed);
+  }, [audio, resource.url]);
+  const play = async (element: HTMLMediaElement) => {
     try {
-      await audio.play();
+      await element.play();
     } catch {
       if (resource.isCurrent()) update({ playing: false });
     }
   };
+  const toggle = () => {
+    if (!audio || !ready || !resource.isCurrent()) return;
+    if (audio.paused) void play(audio);
+    else audio.pause();
+  };
+  const playbackLabel = intl.formatMessage(
+    {
+      id: "components.conversationMedia.playback",
+      defaultMessage: "{action, select, pause {Pause {name}} other {Play {name}}}",
+    },
+    { action: current.playing ? "pause" : "play", name },
+  );
+  const menu = [
+    copyPath ? (
+      <NodexDropdownItem
+        key="copy"
+        leftSlot={<CopyIcon />}
+        onSelect={() => {
+          if (resource.isCurrent()) void writeTextToClipboard(copyPath);
+        }}
+      >
+        {intl.formatMessage({
+          id: "components.conversationMedia.copyPath",
+          defaultMessage: "Copy path",
+        })}
+      </NodexDropdownItem>
+    ) : null,
+    revealPath ? (
+      <NodexDropdownItem
+        key="reveal"
+        leftSlot={<FolderIcon />}
+        onSelect={() => {
+          if (!resource.isCurrent()) return;
+          void openFileLink({ path: revealPath }, "fileManager").then((opened) => {
+            if (!opened && resource.isCurrent())
+              toastFailure(
+                intl.formatMessage({
+                  id: "components.conversationMedia.revealAudioFailed",
+                  defaultMessage: "Couldn’t reveal audio",
+                }),
+              );
+          });
+        }}
+      >
+        {intl.formatMessage(getFileManagerRevealMessage(navigator.platform))}
+      </NodexDropdownItem>
+    ) : null,
+    ready ? (
+      <NodexDropdownItem
+        key="save"
+        leftSlot={<DownloadIcon />}
+        disabled={download?.pending}
+        onSelect={() => {
+          void save();
+        }}
+      >
+        {intl.formatMessage({
+          id: "components.conversationMedia.saveCopy",
+          defaultMessage: "Save a copy",
+        })}
+      </NodexDropdownItem>
+    ) : null,
+  ].filter(Boolean);
   return (
-    <span
-      className="my-3 inline-flex w-full max-w-lg flex-col overflow-hidden rounded-lg border border-token-border"
+    <div
+      className={cn(
+        "my-3 flex w-full max-w-lg min-w-0 flex-col overflow-hidden rounded-lg border-[0.5px] border-token-border",
+        className,
+      )}
       data-content-search-skip="true"
     >
-      <span className="flex items-center gap-3 px-3 py-2">
-        <span className="min-w-0 flex-1">
+      <div className="flex min-w-0 items-center gap-3 p-3">
+        <ColorfulFileResourceIcon path={name} mimeType={type} className="size-5 shrink-0" />
+        <div className="flex min-w-0 flex-1 flex-col">
           <NodexTooltip tooltipContent={name}>
-            <span className="block truncate font-medium">{name}</span>
+            <span className="truncate font-medium text-token-foreground">{name}</span>
           </NodexTooltip>
           <span
-            className="block text-xs text-token-description-foreground"
+            className="truncate text-sm text-token-description-foreground"
             role={ready ? undefined : "status"}
           >
             {ready
-              ? format
+              ? extension
                 ? intl.formatMessage(
                     {
                       id: "components.conversationMedia.audioFormat",
                       defaultMessage: "{format} audio",
                     },
-                    { format },
+                    { format: extension.toUpperCase() },
                   )
                 : intl.formatMessage({
-                    id: "components.conversationMedia.audioType",
-                    defaultMessage: "audio",
+                    id: "components.conversationMedia.audio",
+                    defaultMessage: "Audio",
                   })
               : resource.status === "loading"
                 ? intl.formatMessage({
@@ -876,108 +1030,93 @@ export function ConversationAudio({
                     defaultMessage: "Audio unavailable",
                   })}
           </span>
-        </span>
-        {ready ? (
-          <button
-            type="button"
-            aria-label={intl.formatMessage(
-              {
-                id: "components.conversationMedia.playback",
-                defaultMessage: "{action, select, pause {Pause {name}} other {Play {name}}}",
-              },
-              { action: current.playing ? "pause" : "play", name },
-            )}
-            onClick={() => {
-              void toggle();
-            }}
-            className="rounded-md p-1.5"
-          >
-            {current.playing ? <PauseIcon className="icon-sm" /> : <PlayIcon className="icon-sm" />}
-          </button>
+        </div>
+        {resource.status === "loading" ? (
+          <LoadingIcon className="icon-sm shrink-0 animate-spin text-token-description-foreground" />
         ) : null}
-        {canCopySource || ready ? (
+        {ready ? (
+          <NodexTooltip tooltipContent={playbackLabel}>
+            <button
+              type="button"
+              aria-label={playbackLabel}
+              onClick={toggle}
+              className={cn(
+                NODEX_BUTTON_COLOR_CLASS.secondary,
+                "flex size-8 shrink-0 cursor-interaction items-center justify-center rounded-full outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border",
+              )}
+            >
+              {current.playing ? <MediaPauseIcon /> : <MediaPlayIcon />}
+            </button>
+          </NodexTooltip>
+        ) : null}
+        {menu.length > 0 ? (
           <NodexDropdownMenu
             align="end"
             contentWidth="xs"
             triggerButton={
-              <button
-                type="button"
-                aria-label={intl.formatMessage(
+              <MediaControlButton
+                label={intl.formatMessage(
                   {
                     id: "components.conversationMedia.moreOptions",
                     defaultMessage: "More options for {name}",
                   },
                   { name },
                 )}
-                className="rounded-md p-1.5"
               >
-                <MoreActionsIcon className="icon-sm" />
-              </button>
+                <EllipsisIcon />
+              </MediaControlButton>
             }
           >
-            {canCopySource ? (
-              <NodexDropdownItem
-                leftSlot={sourceIsLink ? <PageMenuCopyLinkIcon /> : <CopyIcon />}
-                onSelect={() => {
-                  if (resource.isCurrent()) void writeTextToClipboard(raw);
-                }}
-              >
-                {sourceIsLink
-                  ? intl.formatMessage({
-                      id: "lib.pageCopyModel.copyDeeplink",
-                      defaultMessage: "Copy link",
-                    })
-                  : intl.formatMessage({
-                      id: "components.conversationMedia.copyPath",
-                      defaultMessage: "Copy path",
-                    })}
-              </NodexDropdownItem>
-            ) : null}
+            {menu}
             {ready ? (
-              <NodexDropdownItem
-                leftSlot={<DownloadIcon />}
-                disabled={download?.pending}
-                onSelect={() => {
-                  void save();
-                }}
-              >
-                {intl.formatMessage({
-                  id: "components.conversationMedia.saveCopy",
-                  defaultMessage: "Save a copy",
-                })}
-              </NodexDropdownItem>
+              <>
+                <NodexDropdownSeparator />
+                <NodexDropdownSectionLabel>
+                  {intl.formatMessage({
+                    id: "components.conversationVideoPlayer.speed",
+                    defaultMessage: "Playback speed",
+                  })}
+                </NodexDropdownSectionLabel>
+                <NodexDropdownRadioGroup
+                  value={String(current.rate)}
+                  onValueChange={(rate) => {
+                    if (audio && resource.isCurrent()) setMediaPlaybackRate(audio, Number(rate));
+                  }}
+                >
+                  {MEDIA_PLAYBACK_RATES.map((rate) => (
+                    <NodexDropdownRadioItem key={rate} value={String(rate)}>
+                      {rate}×
+                    </NodexDropdownRadioItem>
+                  ))}
+                </NodexDropdownRadioGroup>
+              </>
             ) : null}
           </NodexDropdownMenu>
         ) : null}
-      </span>
+      </div>
       {ready ? (
         <>
-          <span className="flex items-center gap-2 border-t border-token-border px-3 py-2">
-            <input
-              type="range"
-              aria-label={intl.formatMessage(
+          <div className="flex min-w-0 items-center gap-3 border-t-[0.5px] border-token-border px-3 py-1">
+            <MediaTimeline
+              element={audio}
+              isCurrent={resource.isCurrent}
+              label={intl.formatMessage(
                 { id: "components.conversationMedia.seek", defaultMessage: "Seek in {name}" },
                 { name },
               )}
-              min={0}
-              max={current.duration || 1}
-              step={0.1}
-              value={Math.min(current.time, current.duration || 1)}
-              disabled={current.duration <= 0}
-              className="h-5 min-w-0 flex-1"
-              onChange={(event) => {
-                if (!audio || !resource.isCurrent()) return;
-                update({ time: seekMedia(audio, event.currentTarget.valueAsNumber) });
-              }}
+              time={current.time}
+              duration={current.duration}
+              onTimeChange={(time) => update({ time })}
+              resume={(element) => void play(element)}
             />
-            <span className="shrink-0 text-xs tabular-nums">
+            <span className="shrink-0 text-xs whitespace-nowrap semantic-text-secondary tabular-nums">
               {displayTime(current.time)} / {displayTime(current.duration)}
             </span>
-          </span>
+          </div>
           <audio
             ref={setAudio}
             hidden
-            src={resource.url ?? undefined}
+            src={/^data:/iu.test(resource.url ?? "") ? undefined : (resource.url ?? undefined)}
             aria-label={
               alt ||
               intl.formatMessage({
@@ -985,28 +1124,69 @@ export function ConversationAudio({
                 defaultMessage: "Audio",
               })
             }
-            controls
             preload="metadata"
             onDurationChange={(event) =>
               update({ duration: safeDuration(event.currentTarget.duration) })
             }
             onTimeUpdate={(event) => update({ time: event.currentTarget.currentTime })}
-            onPlay={() => update({ playing: true })}
+            onPlay={(event) => {
+              claimMediaPlayback(event.currentTarget);
+              update({ playing: true });
+            }}
             onPause={() => update({ playing: false })}
             onEnded={() => update({ playing: false })}
+            onRateChange={(event) => update({ rate: event.currentTarget.playbackRate })}
             onError={() => update({ failed: true })}
           />
         </>
       ) : null}
-      {download?.failed ? (
-        <span role="status">
-          {intl.formatMessage({
-            id: "components.conversationMedia.saveAudioError",
-            defaultMessage: "Couldn’t save audio",
-          })}
-        </span>
-      ) : null}
-    </span>
+    </div>
+  );
+}
+
+/**
+ * Audio whose bytes come with the content that shows it, such as a tool's result, rather than a
+ * file the content names. The player keeps the bytes only while it stays mounted.
+ */
+export function ConversationCarriedAudio({
+  url,
+  status = url ? "ready" : "error",
+  mimeType,
+  label,
+  className,
+}: {
+  readonly url: string | null;
+  readonly status?: ConversationMediaResource["status"];
+  readonly mimeType?: string;
+  readonly label?: string;
+  readonly className?: string;
+}) {
+  const identity = useId();
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const resource: ConversationMediaResource = {
+    // The bytes' length and tail tell clips apart without comparing whole payloads on each render.
+    identity: `${identity}:${status}:${url ? `${url.length}:${url.slice(-48)}` : ""}`,
+    status,
+    url,
+    path: null,
+    isCurrent: () => mounted.current,
+    canMount: () => true,
+  };
+  return (
+    <ConversationAudio
+      key={resource.identity}
+      resource={resource}
+      raw={url ?? ""}
+      alt={label ?? ""}
+      mimeType={mimeType}
+      className={className}
+    />
   );
 }
 
@@ -1026,7 +1206,7 @@ export function ConversationVideo({
   readonly allowWide?: boolean;
 }) {
   const intl = useIntl();
-  const { save, current: download } = useMediaDownload(resource, raw);
+  const { save, current: download } = useMediaDownload(resource, conversationMediaFilename(raw));
   const fallback = (
     <MediaUnavailable
       resource={resource}

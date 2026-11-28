@@ -30,6 +30,16 @@ up to the single-response budget of 15 MiB. Event observations carry
 wire-projected updates, so large tool output is fetched on demand. File changes keep each file's
 diff and measured line counts on the wire; a diff past the per-item budget is withheld whole. There is no
 public full-transcript snapshot operation.
+
+Tool-result pictures and typed audio are read through `thread.attachment` at
+`tool-result:<contentIndex>`. The timeline withholds the output body. Bounded detail
+keeps the original audio position with empty `data` or `audioUrl` and includes
+`attachmentAvailable: true` only when the attachment can be served. Supported
+audio types are WAV, x-WAV, MPEG, MP4, AAC, x-M4A, Ogg, Opus, FLAC, and WebM.
+An audio attachment carries at most 14 MiB of base64 (10.5 MiB decoded), leaving
+space for its response envelope in the 16 MiB Runtime frame. Full-item reads
+remain subject to their separate aggregate budget.
+
 `thread.read` and `thread.authority` expose control metadata without hydrating history.
 Authority includes the Thread's resolved execution directory, branch and workspace path.
 `tasks.overview` pages active and completed task metadata independently, starting with four active
