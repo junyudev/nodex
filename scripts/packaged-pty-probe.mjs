@@ -1,7 +1,7 @@
 // Node-only so release tools can probe the exact installed runtime without a loader.
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sentinelExitCode = 73;
@@ -55,6 +55,8 @@ try {
 
 /** Reject an absent or incomplete receipt before emitting a distribution bundle. */
 export function assertPackagedPtyReceipt(receipt) {
+  // Release assembly validates Windows receipts on a POSIX runner.
+  const path = receipt?.platform === "win32" ? win32 : posix;
   if (
     !receipt ||
     receipt.schemaVersion !== 1 ||
@@ -66,9 +68,9 @@ export function assertPackagedPtyReceipt(receipt) {
     !Number.isSafeInteger(receipt.ptyPid) ||
     receipt.ptyPid <= 0 ||
     typeof receipt.nodeExecutable !== "string" ||
-    !isAbsolute(receipt.nodeExecutable) ||
+    !path.isAbsolute(receipt.nodeExecutable) ||
     typeof receipt.addonPath !== "string" ||
-    !isAbsolute(receipt.addonPath) ||
+    !path.isAbsolute(receipt.addonPath) ||
     !["darwin", "win32", "linux"].includes(receipt.platform) ||
     !["arm64", "x64"].includes(receipt.architecture)
   )

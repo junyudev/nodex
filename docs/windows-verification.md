@@ -4,11 +4,11 @@ Nodex ships for Windows 11 on x64 and also builds natively on arm64 for developm
 and verification. Windows evidence comes from three layers. Each layer proves what
 the cheaper layer cannot; none substitutes for another.
 
-| Layer       | Environment                                               | Proves                                                                                                                                |
-| ----------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Automated   | GitHub `windows-latest` (x64), `windows-11-arm` on demand | Native builds, Rust and application suites, packaging and closure, silent install, packaged Core and Agent Runtime startup, uninstall |
-| Interactive | Windows 11 arm64 virtual machine on an Apple silicon Mac  | Windows semantics under a standard user: UI, input, shell integration, installer and upgrade flows                                    |
-| Acceptance  | Physical x64 Windows 11 PC                                | GPU rendering, representative performance, power and session lifecycle, physical peripherals                                          |
+| Layer       | Environment                                               | Proves                                                                                                                                                      |
+| ----------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Automated   | GitHub `windows-latest` (x64), `windows-11-arm` on demand | Native builds, Rust and application suites, packaging and closure, silent install, packaged Core and Agent Runtime startup, Component activation, uninstall |
+| Interactive | Windows 11 arm64 virtual machine on an Apple silicon Mac  | Windows semantics under a standard user: UI, input, shell integration, installer and upgrade flows                                                          |
+| Acceptance  | Physical x64 Windows 11 PC                                | GPU rendering, representative performance, power and session lifecycle, physical peripherals                                                                |
 
 The automated layer is defined in [`.github/workflows/windows.yml`](../.github/workflows/windows.yml)
 and runs the full `unit`, `core-client`, `main`, `renderer`, and `integration` suites.
@@ -31,11 +31,11 @@ assets, the staged Electron test and the installed-app probe verify the sealed
 closure with the production verifier and load the matching Sharp addon with
 the vendor Node. Each starts the actual vendor REPL
 through the Nodex launcher, negotiates MCP, lists tools, calls `js`, and checks
-that the launcher and observed job processes exit. The installed receipt records
-the number of verified vendor signatures and closed processes. A candidate
-without a download URL reports `skipped: candidate assets` in the job summary.
-A null Windows asset entry reports that no conformance-tested runtime is available.
-Neither case exercises the vendor runtime.
+that the launcher and observed job processes exit. The installed-app probe also checks the packaging boundary and waits for Codex,
+Claude Code and Desktop Tools to activate from the exact published pins in a
+disposable Profile. Its receipt records the roots, vendor signature count and
+closed process count. The staged development check can skip candidates without
+a public URL. Installed distribution requires all three published archives.
 
 Before publishing a Windows archive or admitting a new app-server pair, run
 the same staged vendor check on a native x64 Windows worker with the approved

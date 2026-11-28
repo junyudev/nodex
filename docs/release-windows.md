@@ -115,71 +115,43 @@ verification evidence when using this option.
 
 ## Runtime closure
 
-The Windows payload contains native Core and CLI executables, the locked official
-Codex app-server package, separately locked Node, the standalone Agent Runtime,
-official Agent Skills, and third-party notices. Published Desktop Tool assets
-add a Browser Use and Computer Use closure outside ASAR.
-The Windows package omits macOS bridges and helpers, Sparkle, native PiP, and the
-Python workspace runtime.
+The Windows installer contains native Core and CLI executables, NSIS maintenance,
+standalone Node and ripgrep, the Agent Runtime and its stock-Node PTY, the shared Claude
+Agent SDK, official Agent Skills, and third-party notices. The Codex Component uses the
+installer's `third-party/codex/{LICENSE,NOTICE}` and retail `vcruntime140.dll` in
+`resources/codex-crt`.
+Windows supports Browser Use and Computer Use through Desktop Tools. Document Tools
+are available on Apple silicon.
 
-The Desktop Tool lock pins the Windows archive. Windows staging
-downloads a published asset and stages its exact closure. A null asset entry or
-an unpublished candidate (`url: null`) leaves the closure out and removes any
-previously staged copy. The installer still works and Desktop Tools report
-unavailable. The installed-app probe reports `skipped: no published runtime`. A failed published download or an incomplete closure fails the build. For local candidate inspection,
-`materialize-browser-runtime.ts --target-platform win32 --target-arch x64`
-accepts `--archive` or a digest-addressed `--cache`.
+Desktop Tools installs at startup. Codex and Claude Code install on first use. Both Windows
+CPUs download their own pinned archives into the Profile's `components/` directory.
+Official distribution checks each public download independently of local caches. The
+Desktop Tools closure retains its vendor bytes and signatures. Main verifies the native
+Windows trust boundary, manifest, PE machine, signer and issuer, and the tested app-server
+pair before activation. Ordinary development builds stage the runtimes for the target.
 
-Electron-builder copies the matching stage to `resources/browser-runtime`
-outside ASAR. Nodex keeps the locked vendor PEs byte-for-byte and preserves
-their embedded signatures. Resource editing applies to the Nodex executable.
-After-pack and installed verification check the exact manifest allowlist,
-sizes, hashes, PE machines, and import closure. Distribution provenance records
-the selected archive and manifest digests. The installed native probe checks
-NTFS ownership and reparse points, publisher and issuer policy, the exact
-primary app-server pair, and a real REPL MCP session through the job launcher.
+The separately locked Node executable and its license ship under `resources/node-runtime`.
+The standalone Agent Runtime and app tools entrypoints live outside ASAR. Stock Node loads
+the detached N-API PTY build. Electron uses its own rebuild. Main loads the shared SDK to
+discover Claude providers and read history. Configured Agent executables remain authoritative.
 
-The closure excludes the upstream MSIX container and package registration,
-aliases, updater, foreign-CPU fallback prebuilds, and unrelated app assets.
-Computer Use keeps each signed, app-local DLL beside the helper that imports
-it, including the Swift helper's retail CRT. The build worker never adds or
-substitutes DLLs in the sealed Desktop Tool tree.
-
-Codex archive hashes, file inventories, entrypoint hashes and canonical runtime
-metadata digests are pinned for Windows x64 and arm64. Node's executable
-hash/size and license hash are pinned in `node-runtime.lock.json`. node-pty's
-matching N-API prebuild is copied to a private output and loaded by staged Node;
-the root dependency remains Electron's own rebuild. Only each runtime's required
-`build/Release` closure ships; fallback prebuilds, PTY debug symbols and application
-source maps are excluded.
-
-Windows and macOS ship one SDK and one native executable for the Claude provider
-under `agent-runtime/node_modules` in the application resources. Stock-Node
-entrypoints are `agent-runtime/entry.mjs` and `app-tools/server.mjs`. The
-`extraResources` configuration places both outside ASAR and its unpacked companion.
-Main loads the bundled SDK by its module URL for discovery and isolated history
-workers. Source development and tests use the installed SDK. Configured Agent
-executables remain authoritative.
-
-The after-pack hook compares the complete standalone dependency tree byte-for-byte,
-requires Electron's rebuilt PTY helpers, and rejects a second Claude executable
-(including inside ASAR), an extra SDK/platform package, redundant PTY prebuilds,
-debug symbols or application source maps. It also scans every PE image in the
-complete unpacked payload, including renamed images, for CPU identity and
-ordinary and delay-load dependencies. A foreign CPU or unresolved dependency
-fails before an installer is emitted. The installed-app
-probe repeats the same static inspection and spawns a PTY under installed
-`resources/node-runtime/node.exe`, loading the detached Agent Runtime addon by
-absolute path with the production default ConPTY backend. The probe requires a
-unique output marker and exact sentinel exit code within a bounded deadline.
-Distribution assembly requires its receipt before emitting the architecture bundle.
+After packaging and after installation, verification rejects any Codex, native Claude Code
+or Desktop Tools payload in the resources, ASAR or its unpacked companion. It also checks
+the shared runtime dependencies, PTY helpers and clean-machine PE closure. The installed-app
+probe creates a disposable Profile, records first use for Codex and Claude Code, and waits
+for the app to activate every Component from its exact published pin. The probe checks the
+Profile receipts and runs Codex and Claude Code from those roots. It verifies the sealed
+Desktop Tools closure, loads Sharp with its Node, and runs a vendor REPL MCP session through
+the Windows job launcher. It also spawns a PTY using the installed standalone Node and
+checks for a unique marker and exact exit code. The architecture bundle requires these
+receipts and the probe's startup, shutdown, upgrade and uninstall evidence.
 
 Manual architecture checks are available independently:
 
 ```powershell
-vp run verify:runtime:win .generated/codex-runtime x64
+vp run verify:runtime:win .generated/codex-runtime/bin x64
 vp run verify:runtime:win .generated/node-runtime/win32-x64 x64
-vp run verify:runtime:win dist/win-unpacked x64
+vp run verify:runtime:win dist/win-unpacked x64 --packaged
 ```
 
 NSIS's bootstrap is an installer launcher; its own machine type is distinct from
@@ -211,8 +183,7 @@ runner is insufficient. OpenConsole's inbox dependencies include IME/Uniscribe,
 Direct2D and `d3dcompiler_47.dll`, and [Windows ICU](https://learn.microsoft.com/en-us/windows/win32/intl/international-components-for-unicode--icu-)
 (`icu.dll`, present since Windows 10 1903). The pinned terminal payload is scanned
 recursively in unit tests, including its nested OpenConsole helper.
-The installed native Claude SDK is also checked before packaging; its `WSOCK32.dll`
-delay import uses the inbox [Winsock compatibility layer](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsaisblocking).
+The native Claude Code executable uses the inbox [Winsock compatibility layer](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsaisblocking).
 Node-gyp's `node.exe` delay import in `.node` addons binds the already-loaded
 matching-CPU Node/Electron host. The locked Desktop Tool `native/windows-account.node`
 also has a reviewed Electron delay-load host binding for `chrome.dll`.
@@ -223,10 +194,10 @@ with `vswhere`, selects the newest retail `VC/Redist/MSVC/<version>/<arch>/Micro
 and copies only missing reviewed VC runtime imports beside their consumers,
 including transitive runtime dependencies. It never copies from System32 or PATH,
 rewrites vendor images, installs a machine-wide prerequisite, or includes debug
-runtimes. Architecture is checked before copying. Codex staging supplements its
-locked upstream inventory after computing the canonical metadata, so upstream
-hashes remain unchanged; supplemental files are regenerated on restaging. The
-after-pack hook also closes Electron's third-party payload before the final scan.
+runtimes. Architecture is checked before copying. The after-pack hook also stocks
+`resources/codex-crt` and closes Electron's third-party payload before the final scan.
+The Codex Component verifies its official metadata and entrypoint before adding
+the required CRTs beside the consumers.
 Microsoft's license notice is included in `THIRD_PARTY_NOTICES.txt`. App-local
 runtime security updates are delivered through new Nodex builds.
 
@@ -349,12 +320,13 @@ runtime identities. Windows SmartScreen may warn on first download.
 
 Official assets use the source version:
 
-| Asset                  | Name                                             |
-| ---------------------- | ------------------------------------------------ |
-| Installer              | `Nodex-<displayVersion>-windows-x64.exe`         |
-| Stable alias           | `Nodex-latest-windows-x64.exe`                   |
-| Signed appcast         | `Nodex-<displayVersion>-appcast-windows-x64.xml` |
-| Closed update manifest | `Nodex-<displayVersion>-update-windows-x64.json` |
+| Asset                  | Name                                                 |
+| ---------------------- | ---------------------------------------------------- |
+| Installer              | `Nodex-<displayVersion>-windows-x64.exe`             |
+| Stable alias           | `Nodex-latest-windows-x64.exe`                       |
+| Signed appcast         | `Nodex-<displayVersion>-appcast-windows-x64.xml`     |
+| Component manifest     | `Nodex-<displayVersion>-components-windows-x64.json` |
+| Closed update manifest | `Nodex-<displayVersion>-update-windows-x64.json`     |
 
 The stable alias has exactly the same bytes as the versioned installer. Nightly
 prereleases contain versioned assets only and never change GitHub Latest. The
@@ -364,9 +336,9 @@ verification; they are not public asset names.
 The source certificate binds the exact Git commit/tree before an official build.
 The architecture manifest binds that Build Identity, clean prepared generation,
 packaged app version, official Skills identity, runtime lock digests, native runner
-versions, installer hash and package provenance. The Windows provenance includes
+versions, installer and Component manifest hashes, and package provenance. The Windows provenance includes
 all unpacked payload file hashes and the successful installed-app probe receipt.
-A missing installer or failed probe blocks the complete release.
+A missing installer or manifest, unavailable public Component archive, or failed probe blocks the complete release.
 
 A direct job bound to `sparkle-feed-finalization` signs the installer with the
 existing Sparkle `sign_update` tool and `SPARKLE_ED25519_PRIVATE_KEY`. It produces
@@ -437,7 +409,10 @@ Downloads stream with backpressure into the selected Profile's
 `updates/windows-x64/prepared-<uuid>.exe.download`, bounded by the appcast's
 exact byte count and a 1 GiB ceiling. Main verifies the exact bytes with Node
 Ed25519 against the same pinned Sparkle key before renaming to `.exe` and
-reporting readiness. Ed25519 is not a streaming prehash signature: Node's final
+reporting readiness. The ready event includes the verified immutable installer URL.
+Nodex uses that URL to look for the matching Windows x64 Component manifest and may
+prepare new versions of Components already installed in the Profile while the update
+waits to install. Ed25519 is not a streaming prehash signature: Node's final
 verification uses one bounded in-memory installer buffer. It repeats verification
 before installer handoff. Failed or cancelled downloads are removed; startup
 removes owned stale `.download` and prepared `.exe` files, and never restores

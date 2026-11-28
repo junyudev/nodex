@@ -5,6 +5,7 @@ import { join, relative } from "node:path";
 import { assertPackagedAgentRuntimeNative } from "./agent-runtime-native-inventory.mjs";
 import { assertPackagedAppArchive, readAppArchiveFilePaths } from "./packaged-app-archive.mjs";
 
+import { assertWindowsCodexCrt } from "./windows-codex-crt.mjs";
 import { assertRipgrepRuntimePayload } from "./ripgrep-runtime-payload.mjs";
 
 /** Detached stock-Node entrypoints must match the exact prepared output. */
@@ -50,80 +51,74 @@ export function assertMacDesktopToolsDetached(resourcesPath) {
 }
 
 const codexPackagePath =
-  /(?:^|\/)(?:bin\/codex(?:-code-mode-host|-exec-server)?(?:\.exe)?|codex-path|codex-resources|codex-package\.json|agent-runtime\.json)(?:\/|$)/iu;
+  /(?:^|\/)(?:bin\/codex(?:-[^/]+)?(?:\.exe)?|codex-path|codex-resources|codex-package\.json|agent-runtime\.json)(?:\/|$)/iu;
+const claudePackagePath =
+  /(?:^|\/)(?:@anthropic-ai\/claude-agent-sdk-[^/]+|claude(?:\.exe)?)(?:\/|$)/iu;
+const windowsDesktopToolsPath = /(?:^|\/)browser-runtime(?:\/|$)/iu;
 
-export function assertMacCodexDetached(resourcesPath) {
-  const physical = readdirSync(resourcesPath, { recursive: true, withFileTypes: true }).map(
-    (entry) => relative(resourcesPath, join(entry.parentPath, entry.name)).split("\\").join("/"),
-  );
-  const archived = readAppArchiveFilePaths(join(resourcesPath, "app.asar")).find((file) =>
-    codexPackagePath.test(file),
-  );
+const resourcePathFor = (resourcesPath, entry) =>
+  relative(resourcesPath, join(entry.parentPath, entry.name)).split("\\").join("/");
+const resourcesInventory = (resourcesPath) =>
+  readdirSync(resourcesPath, { recursive: true, withFileTypes: true });
+
+function assertComponentDetached(physical, archived, pattern, name, platform) {
+  const archivePath = archived.find((file) => pattern.test(file));
   const bundled =
-    physical.find((file) => codexPackagePath.test(file)) ??
-    (archived ? `app.asar/${archived}` : undefined);
-  if (bundled) throw new Error(`macOS app must install Codex as a Component; found: ${bundled}`);
+    physical.find((file) => pattern.test(file)) ??
+    (archivePath ? `app.asar/${archivePath}` : undefined);
+  if (bundled)
+    throw new Error(`${platform} app must install ${name} as a Component; found: ${bundled}`);
 }
 
-/** Reject duplicate SDKs, foreign platform packages and redundant native/debug payload. */
+export function assertMacCodexDetached(resourcesPath) {
+  assertComponentDetached(
+    resourcesInventory(resourcesPath).map((entry) => resourcePathFor(resourcesPath, entry)),
+    readAppArchiveFilePaths(join(resourcesPath, "app.asar")),
+    codexPackagePath,
+    "Codex",
+    "macOS",
+  );
+}
+
+/** Check the packaged boundary, including ASAR and its unpacked companion. */
 export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sourceRoot }) {
-  if (platform === "darwin") {
-    assertMacDesktopToolsDetached(resourcesPath);
-    assertMacCodexDetached(resourcesPath);
-  }
   assertDetachedRuntimeResources(resourcesPath);
   const dependencyRoot = "agent-runtime/node_modules";
-  const platformPackage = `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
-  const executable = `${dependencyRoot}/${platformPackage}/${platform === "win32" ? "claude.exe" : "claude"}`;
-  const expected = executable;
-  const physical = readdirSync(resourcesPath, { recursive: true, withFileTypes: true })
-    .filter((entry) => !entry.isDirectory())
-    .map((entry) =>
-      relative(resourcesPath, join(entry.parentPath, entry.name)).split("\\").join("/"),
-    );
+  const inventory = resourcesInventory(resourcesPath);
+  const physical = inventory.map((entry) => resourcePathFor(resourcesPath, entry));
   const archived = readAppArchiveFilePaths(join(resourcesPath, "app.asar"));
-  const claudeExecutables = [
-    ...physical.filter((file) => /(?:^|\/)claude(?:\.exe)?$/iu.test(file)),
-    ...archived
-      .filter((file) => /(?:^|\/)claude(?:\.exe)?$/iu.test(file))
-      .map((file) => `app.asar/${file}`),
-  ];
-  const claudeIsComponent = platform === "darwin";
-  if (claudeIsComponent && claudeExecutables.length > 0)
-    throw new Error(
-      `macOS app must install Claude Code as a Component; found: ${claudeExecutables.join(", ")}`,
+  const platformName = platform === "win32" ? "Windows" : "macOS";
+  assertComponentDetached(physical, archived, codexPackagePath, "Codex", platformName);
+  assertComponentDetached(physical, archived, claudePackagePath, "Claude Code", platformName);
+  if (platform === "win32") {
+    assertComponentDetached(
+      physical,
+      archived,
+      windowsDesktopToolsPath,
+      "Desktop Tools",
+      platformName,
     );
-  if (!claudeIsComponent) {
-    // The standalone dependency is copied with extraResources, outside the ASAR file table.
-    if (claudeExecutables.length !== 1 || claudeExecutables[0] !== expected)
-      throw new Error(
-        `Desktop must ship exactly one Claude executable at ${expected}; found: ${claudeExecutables.join(", ")}`,
-      );
-    if (!lstatSync(join(resourcesPath, expected)).isFile())
-      throw new Error("Packaged Claude executable must be a regular file");
+    assertWindowsCodexCrt(resourcesPath);
+    for (const notice of ["LICENSE", "NOTICE"]) {
+      const stat = lstatSync(join(resourcesPath, "third-party/codex", notice));
+      if (!stat.isFile() || stat.size === 0) throw new Error(`Packaged Codex ${notice} is missing`);
+    }
+  } else {
+    assertMacDesktopToolsDetached(resourcesPath);
   }
 
-  const unpacked = physical
+  const files = inventory
+    .filter((entry) => !entry.isDirectory())
+    .map((entry) => resourcePathFor(resourcesPath, entry));
+  const unpacked = files
     .filter((file) => file.startsWith("app.asar.unpacked/"))
     .map((file) => file.slice("app.asar.unpacked/".length));
   for (const file of [
     ...unpacked,
     ...archived,
-    ...physical.filter(
-      (file) => file.startsWith("agent-runtime/") || file.startsWith("app-tools/"),
-    ),
+    ...files.filter((file) => file.startsWith("agent-runtime/") || file.startsWith("app-tools/")),
   ]) {
     const ptyBuildPath = /(?:^|\/)node_modules\/node-pty\/build\/(.*)/u.exec(file)?.[1];
-    const platformMatch = /(?:^|\/)node_modules\/(@anthropic-ai\/claude-agent-sdk-[^/]+)\//u.exec(
-      file,
-    );
-    if (
-      platformMatch &&
-      (claudeIsComponent ||
-        !file.startsWith(`${dependencyRoot}/`) ||
-        platformMatch[1] !== platformPackage)
-    )
-      throw new Error(`Unexpected Claude platform package: ${file}`);
     if (
       /(?:^|\/)node_modules\/@anthropic-ai\/claude-agent-sdk\//u.test(file) &&
       !file.startsWith(`${dependencyRoot}/`)
@@ -153,5 +148,4 @@ export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sou
       sourceRoot: join(sourceRoot, "out", dependencyRoot),
       packagedRoot: join(resourcesPath, dependencyRoot),
     });
-  return claudeIsComponent ? null : join(resourcesPath, expected);
 }

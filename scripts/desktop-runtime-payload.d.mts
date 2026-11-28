@@ -7,7 +7,4 @@ interface DesktopRuntimePayloadInput {
   readonly arch: string;
   readonly sourceRoot?: string;
 }
-export function assertDesktopRuntimePayload(
-  input: DesktopRuntimePayloadInput & { platform: "win32" },
-): string;
-export function assertDesktopRuntimePayload(input: DesktopRuntimePayloadInput): string | null;
+export function assertDesktopRuntimePayload(input: DesktopRuntimePayloadInput): void;

@@ -19,12 +19,19 @@ import {
   resolveBrowserRuntimeReleaseLockPath,
 } from "../browser-runtime-release-lock";
 import { BrowserUseThreadConfigBuilder } from "../../src/main/codex/browser-use-thread-config";
-import { resolveCodexRuntime } from "../../src/main/codex/codex-runtime";
+import {
+  pinnedCodexAppServerIdentity,
+  resolveCodexRuntime,
+} from "../../src/main/codex/codex-runtime";
+import { resolveBrowserRuntimeBundle } from "../../src/main/codex/browser-runtime-bundle";
 import {
   windowsDesktopToolCodexHome,
   windowsReplSystemEnvironment,
 } from "../../src/main/codex/desktop-tool-environment";
-import { makeWindowsBrowserRuntimeVerifier } from "../../src/main/platform/node/WindowsBrowserRuntimeVerifier";
+import {
+  makeWindowsBrowserRuntimeVerifier,
+  probeWindowsBrowserTransport,
+} from "../../src/main/platform/node/WindowsBrowserRuntimeVerifier";
 import {
   makeWindowsDesktopTools,
   type WindowsProcessIdentity,
@@ -58,23 +65,49 @@ export function windowsDesktopToolConformanceCandidate(
 export async function probeWindowsDesktopTools(options: {
   readonly location:
     | { readonly isPackaged: true; readonly resourcesPath: string }
-    | { readonly isPackaged: false; readonly projectRootPath: string };
+    | { readonly isPackaged: false; readonly projectRootPath: string }
+    | { readonly componentRoot: string; readonly manifestSha256: string };
   readonly boundary: string;
   readonly launcher: string;
   readonly conformanceCandidatePair?: TestedBrowserAppServerPair;
 }) {
   if (process.platform !== "win32") throw new Error("Desktop Tool conformance requires Windows");
   const native = makeWindowsDesktopTools(options.launcher);
-  const verifier = makeWindowsBrowserRuntimeVerifier(native, options.boundary, Effect.runPromise);
+  const location = options.location;
+  const verifier = makeWindowsBrowserRuntimeVerifier(
+    native,
+    options.boundary,
+    Effect.runPromise,
+    "componentRoot" in location ? "component-store" : "installation",
+  );
   const signal = AbortSignal.timeout(180_000);
-  const { browserRuntime } = await resolveCodexRuntime({
-    ...options.location,
-    platform: process.platform,
-    architecture: process.arch,
-    windowsBrowserRuntimeVerifier: verifier,
-    conformanceCandidatePair: options.conformanceCandidatePair,
-    signal,
-  });
+  // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- The installed-app CLI also owns this standalone native runtime.
+  const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect, { signal });
+  const browserRuntime =
+    "componentRoot" in location
+      ? await resolveBrowserRuntimeBundle({
+          runtimeRoot: location.componentRoot,
+          expectedManifestSha256: location.manifestSha256,
+          appServerIdentity: pinnedCodexAppServerIdentity(process.platform, process.arch)!,
+          windowsVerifier: verifier,
+          verifyWindowsTransport: async () => {
+            await run(probeWindowsBrowserTransport(native, process.pid));
+          },
+          testedPairs: options.conformanceCandidatePair
+            ? [options.conformanceCandidatePair]
+            : undefined,
+          signal,
+        })
+      : (
+          await resolveCodexRuntime({
+            ...location,
+            platform: process.platform,
+            architecture: process.arch,
+            windowsBrowserRuntimeVerifier: verifier,
+            conformanceCandidatePair: options.conformanceCandidatePair,
+            signal,
+          })
+        ).browserRuntime;
   if (browserRuntime.status !== "available") throw new Error(browserRuntime.message);
   if (browserRuntime.bundle.manifest.targetPlatform !== "win32")
     throw new Error("Desktop Tool conformance resolved a foreign closure");
@@ -119,8 +152,6 @@ export async function probeWindowsDesktopTools(options: {
     };
     const transport = new StdioClientTransport(server);
     const client = new Client({ name: "Nodex native conformance", version: "1" });
-    // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- The installed-app CLI also owns this standalone native runtime.
-    const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect, { signal });
     const request = { signal, timeout: 30_000 };
     const marker = "NODEX_WINDOWS_REPL_CONFORMANCE";
     const expectedRepl = normalize(browserRuntime.bundle.paths.nodeRepl).toLowerCase();
@@ -146,7 +177,7 @@ export async function probeWindowsDesktopTools(options: {
       const launcher = await run(native.processIdentity(transport.pid));
       const descendants = await run(native.descendants(launcher));
       if (!descendants.some(({ imagePath }) => normalize(imagePath).toLowerCase() === expectedRepl))
-        throw new Error("The packaged vendor REPL was not observed in the launcher job");
+        throw new Error("The vendor REPL was not observed in the launcher job");
       processes = [launcher, ...descendants];
     } finally {
       await client.close();
@@ -166,6 +197,7 @@ export async function probeWindowsDesktopTools(options: {
     }
     return {
       status: "passed" as const,
+      rootPath,
       signedImages: Object.keys(manifest.trust.pe).length,
       processesClosed: processes.length,
     };

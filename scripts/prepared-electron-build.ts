@@ -532,12 +532,12 @@ function runProductionBuild(): void {
     process.env.NODEX_AGENT_SKILLS_REQUIRE_PREGENERATED === "1"
       ? "agent-skills:verify"
       : "agent-skills:generate";
-  for (const script of [
-    "stage:codex-runtime:cached",
-    agentSkillsCommand,
-    "build-resources:prepare",
-    "sync:icons",
-  ]) {
+  if (process.platform === "win32") {
+    runVitePlus(["exec", "tsx", "scripts/desktop-build.ts", "stage-node"], { cwd: repositoryRoot });
+  } else {
+    runVitePlus(["run", "stage:codex-runtime:cached"], { cwd: repositoryRoot });
+  }
+  for (const script of [agentSkillsCommand, "build-resources:prepare", "sync:icons"]) {
     runVitePlus(["run", script], {
       cwd: repositoryRoot,
     });

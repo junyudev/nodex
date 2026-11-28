@@ -40,25 +40,13 @@ describe("electron-builder runtime resources", () => {
     const config = load(fs.readFileSync(configPath, "utf8")) as ElectronBuilderConfig;
 
     expect(config.afterPack).toBe("scripts/restore-packaged-runtime-closure.mjs");
-    const codexPackage = {
-      from: ".generated/codex-runtime/agent-runtime",
-      to: ".",
-      filter: ["**/*", "!browser-runtime{,/**/*}"],
-    };
-    expect(config.extraResources).not.toContainEqual(codexPackage);
-    expect(config.mac?.extraResources).not.toContainEqual(codexPackage);
-    expect(config.win?.extraResources).toContainEqual(codexPackage);
-    expect(config.mac?.extraResources).toContainEqual({
-      from: "resources/third-party/codex",
-      to: "third-party/codex",
-      filter: ["LICENSE", "NOTICE"],
-    });
-    const desktopTools = {
-      from: ".generated/codex-runtime/agent-runtime/browser-runtime",
-      to: "browser-runtime",
-      filter: ["**/*"],
-    };
-    expect(config.mac?.extraResources).not.toContainEqual(desktopTools);
+    for (const platform of [config.mac, config.win]) {
+      expect(platform?.extraResources).toContainEqual({
+        from: "resources/third-party/codex",
+        to: "third-party/codex",
+        filter: ["LICENSE", "NOTICE"],
+      });
+    }
     expect(config.mac?.extraResources).toContainEqual({
       from: ".generated/node-runtime/darwin-arm64",
       to: "node-runtime",
@@ -75,8 +63,6 @@ describe("electron-builder runtime resources", () => {
       filter: ["rg.exe", "LICENSE", "vcruntime140*.dll"],
     });
     expect(config.mac?.binaries).toContain("Contents/Resources/ripgrep-runtime/rg");
-    expect(config.win?.extraResources).toContainEqual(desktopTools);
-    expect(config.linux?.extraResources ?? []).not.toContainEqual(desktopTools);
     expect(config.extraResources).toContainEqual({
       from: ".generated/official-agent-skills",
       to: "agent-skills",
