@@ -1,5 +1,4 @@
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -168,7 +167,7 @@ export const live: Layer.Layer<
         { concurrency: "unbounded" },
       );
       const failures = results.flatMap(({ exit, label }) =>
-        Exit.isFailure(exit) ? [{ label, error: Cause.pretty(exit.cause) }] : [],
+        Exit.isFailure(exit) ? [{ label, error: exit.cause }] : [],
       );
       if (failures.length === 0) return;
       yield* Effect.logWarning("Project runtime cleanup completed with failures").pipe(

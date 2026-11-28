@@ -2515,9 +2515,8 @@ export class BrowserState {
           ),
         );
         if (fetched._tag === "Failure") {
-          const message = Cause.pretty(fetched.cause);
-          this.logger.warn("Failed to attach Browser image", { ...identity, error: message });
-          return { ok: false as const, message };
+          this.logger.warn("Failed to attach Browser image", { ...identity, cause: fetched.cause });
+          return { ok: false as const, message: Cause.pretty(fetched.cause) };
         }
         if (
           contents.isDestroyed() ||
@@ -2643,7 +2642,7 @@ export class BrowserState {
             }
             this.logger.warn("Browser navigate failed", {
               ...browserIdentity(tab),
-              message,
+              cause,
             });
             this.updateTab(key, {
               isLoading: false,

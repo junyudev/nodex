@@ -1,5 +1,4 @@
 import type * as FileSystem from "effect/FileSystem";
-import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -314,7 +313,7 @@ export const make = (
                 Effect.flatMap((source) => source.resumeAfterRestore(id)),
                 Effect.catchCause((cause) =>
                   Effect.logWarning("Couldn't resume the chat after restoring its worktree").pipe(
-                    Effect.annotateLogs({ threadId: id, cause: Cause.pretty(cause) }),
+                    Effect.annotateLogs({ threadId: id, cause }),
                   ),
                 ),
               );

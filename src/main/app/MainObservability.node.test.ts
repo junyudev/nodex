@@ -12,6 +12,7 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { afterEach, vi } from "vite-plus/test";
 import type { DiagnosticsSettings } from "../../shared/types";
+import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
 import { initializeMainSentry, resetMainSentryForTests } from "../observability/sentry-main";
 import {
   MainFatalIncidentStore,
@@ -185,4 +186,39 @@ it.live("normal shutdown does not create a fatal incident", () =>
     assert.isNull(result);
     assert.deepEqual(reports, []);
   }),
+);
+
+it.live("records positional and annotated Effect causes through the backend serializer", () =>
+  Effect.gen(function* () {
+    const entries: BackendLogEntry[] = [];
+    yield* Effect.acquireRelease(
+      Effect.sync(() => subscribeToBackendLogs((entry) => entries.push(entry))),
+      (unsubscribe) => Effect.sync(unsubscribe),
+    );
+    const cause = Cause.fail({ message: "Connection rejected", token: "private-token" });
+    yield* Effect.logError("Request failed", cause);
+    yield* Effect.logError("Retry failed").pipe(Effect.annotateLogs({ cause }));
+
+    const expected = {
+      reasons: [{ _tag: "Fail", error: { message: "Connection rejected", token: "[REDACTED]" } }],
+    };
+    assert.deepEqual(entries.find((entry) => entry.msg === "Request failed")?.cause, expected);
+    assert.deepEqual(entries.find((entry) => entry.msg === "Retry failed")?.annotations, {
+      cause: expected,
+    });
+  }).pipe(
+    Effect.provide(
+      layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            configLayer(),
+            cleanupLayer,
+            Layer.succeed(MainFatalIncidentStore, {
+              write: () => Effect.succeed("/incident.json"),
+            }),
+          ),
+        ),
+      ),
+    ),
+  ),
 );

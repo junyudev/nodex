@@ -2,6 +2,10 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 
 const ORIGINAL_ENV = {
   NODEX_HOME: process.env.NODEX_HOME,
@@ -19,12 +23,12 @@ const ORIGINAL_ENV = {
   NODEX_INTERNAL_APP_PACKAGED: process.env.NODEX_INTERNAL_APP_PACKAGED,
 };
 
-async function importLoggerModule() {
+async function importLoggerModule(environmentOverrides: NodeJS.ProcessEnv = {}) {
   vi.resetModules();
   const loggerModule = await import("./logger");
   loggerModule.configureBackendLogger({
     cwd: process.cwd(),
-    environment: { ...process.env },
+    environment: { ...process.env, ...environmentOverrides },
     nodexHome: process.env.NODEX_HOME?.trim() || path.join(process.cwd(), ".nodex-test"),
   });
   return loggerModule;
@@ -228,6 +232,51 @@ describe("backend logger", () => {
       }
     });
   });
+
+  it.live("writes Effect failure reasons with bounded and redacted details", () =>
+    Effect.gen(function* () {
+      const message = "Invalid GUID format - GUID must be a string";
+      const failure = new Error(message, {
+        cause: { authorization: "Bearer private-token", detail: "x".repeat(3_000) },
+      });
+      const exit = yield* Effect.exit(Effect.fail(failure));
+      if (!Exit.isFailure(exit)) throw new Error("Expected an Effect failure");
+      const cause = Cause.combine(exit.cause, Cause.die("cleanup failed"));
+
+      yield* Effect.promise(() =>
+        withTempLoggerEnv(async () => {
+          const loggerModule = await importLoggerModule({ NODEX_LOG_MAX_STRING_LENGTH: "80" });
+          try {
+            const logger = loggerModule.getLogger({ component: "windows-tray" });
+            logger.error("Could not create the notification-area icon", { cause });
+            await loggerModule.shutdownBackendLogger();
+
+            const logDir = loggerModule.getBackendLogDirectory();
+            const [file] = fs.readdirSync(logDir);
+            const raw = fs.readFileSync(path.join(logDir, file), "utf8");
+            const entry = JSON.parse(raw);
+            expect(entry.cause).toEqual({
+              reasons: [
+                {
+                  _tag: "Fail",
+                  error: {
+                    name: "Error",
+                    message,
+                    stack: expect.stringContaining(message),
+                    cause: { authorization: "[REDACTED]", detail: `${"x".repeat(79)}…` },
+                  },
+                },
+                { _tag: "Die", defect: "cleanup failed" },
+              ],
+            });
+            expect(raw).not.toContain("private-token");
+          } finally {
+            await loggerModule.resetBackendLoggerForTests();
+          }
+        }),
+      );
+    }),
+  );
 
   test("truncates oversized string payloads", async () => {
     await withTempLoggerEnv(async () => {
