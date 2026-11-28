@@ -1,5 +1,11 @@
 import type { Rectangle } from "electron";
-import { DEFAULT_MINI_ANCHOR, type MiniAnchor, type MiniContentLayout } from "../../shared/mini";
+import {
+  DEFAULT_MINI_ANCHOR,
+  MINI_DOCK_HEIGHT,
+  type MiniAnchor,
+  type MiniContentLayout,
+  type MiniPoint,
+} from "../../shared/mini";
 import {
   REMOTE_HOSTED_PIP_MINI_HOST_ID,
   type RemoteHostedPipAnchor,
@@ -7,51 +13,74 @@ import {
   type RemoteHostedPipHostLayout,
 } from "../../shared/remote-hosted-pip";
 
-export const MINI_WINDOW_SIZE = { width: 600, height: 720 } as const;
-const margin = 12;
+export const MINI_WINDOW_WIDTH = 600;
+const dockMargin = 12;
 
-export function miniBounds(workArea: Rectangle, anchor: MiniAnchor): Rectangle {
-  const insetX = Math.min(margin, Math.floor((workArea.width - 1) / 2));
-  const insetY = Math.min(margin, Math.floor((workArea.height - 1) / 2));
-  const width = Math.min(MINI_WINDOW_SIZE.width, workArea.width - 2 * insetX);
-  const height = Math.min(MINI_WINDOW_SIZE.height, workArea.height - 2 * insetY);
-  const x = {
+function dockLimits(workArea: Rectangle, dockWidth: number) {
+  const insetX = Math.min(dockMargin + dockWidth / 2, workArea.width / 2);
+  const insetY = Math.min(dockMargin + MINI_DOCK_HEIGHT / 2, workArea.height / 2);
+  return {
     left: workArea.x + insetX,
-    center: workArea.x + Math.round((workArea.width - width) / 2),
-    right: workArea.x + workArea.width - insetX - width,
-  }[anchor.horizontal];
-  const y =
-    anchor.vertical === "top"
-      ? workArea.y + insetY
-      : workArea.y + workArea.height - insetY - height;
-  return { x, y, width, height };
+    right: workArea.x + workArea.width - insetX,
+    top: workArea.y + insetY,
+    bottom: workArea.y + workArea.height - insetY,
+  };
 }
 
-const anchors = (["bottom", "top"] as const).flatMap((vertical) =>
-  (["center", "left", "right"] as const).map((horizontal) => ({ vertical, horizontal })),
-);
-
-/** Pick the placement nearest to the dropped window's center, keeping the current edge on ties. */
-export function nearestMiniAnchor(
-  workArea: Rectangle,
-  dropped: Rectangle,
-  current = DEFAULT_MINI_ANCHOR,
-): MiniAnchor {
-  const distance = (anchor: MiniAnchor): number => {
-    const bounds = miniBounds(workArea, anchor);
-    const dx = bounds.x + bounds.width / 2 - (dropped.x + dropped.width / 2);
-    const dy = bounds.y + bounds.height / 2 - (dropped.y + dropped.height / 2);
-    return dx * dx + dy * dy;
+export function clampMiniDock(workArea: Rectangle, dock: MiniPoint, dockWidth: number): MiniPoint {
+  const { left, right, top, bottom } = dockLimits(workArea, dockWidth);
+  return {
+    x: Math.min(right, Math.max(left, dock.x)),
+    y: Math.min(bottom, Math.max(top, dock.y)),
   };
-  let nearest = current;
-  let best = distance(current);
-  for (const candidate of anchors) {
-    const delta = distance(candidate);
-    if (delta >= best) continue;
-    nearest = candidate;
-    best = delta;
-  }
-  return nearest;
+}
+
+/** The dock's work-area half controls stack growth, and its third controls preview docking. */
+export function miniAnchorForDock(workArea: Rectangle, dock: MiniPoint): MiniAnchor {
+  const fractionX = (dock.x - workArea.x) / workArea.width;
+  return {
+    horizontal: fractionX < 1 / 3 ? "left" : fractionX < 2 / 3 ? "center" : "right",
+    vertical: dock.y < workArea.y + workArea.height / 2 ? "top" : "bottom",
+  };
+}
+
+export function miniDockAtAnchor(
+  workArea: Rectangle,
+  dockWidth: number,
+  anchor = DEFAULT_MINI_ANCHOR,
+): MiniPoint {
+  const edges = dockLimits(workArea, dockWidth);
+  return {
+    x: anchor.horizontal === "center" ? workArea.x + workArea.width / 2 : edges[anchor.horizontal],
+    y: edges[anchor.vertical],
+  };
+}
+
+/** Option-drop uses the six regions of the work area to select a corner or edge. */
+export function snapMiniDock(workArea: Rectangle, dock: MiniPoint, dockWidth: number): MiniPoint {
+  return miniDockAtAnchor(workArea, dockWidth, miniAnchorForDock(workArea, dock));
+}
+
+export function miniWindowBounds(
+  display: { readonly bounds: Rectangle; readonly workArea: Rectangle },
+  dock: MiniPoint,
+): Rectangle {
+  const { bounds, workArea } = display;
+  const width = Math.min(MINI_WINDOW_WIDTH, bounds.width);
+  return {
+    x: Math.min(
+      bounds.x + bounds.width - width,
+      Math.max(bounds.x, Math.round(dock.x - width / 2)),
+    ),
+    y: workArea.y,
+    width,
+    height: workArea.height,
+  };
+}
+
+/** Use the origin of the viewport or work area to translate a screen point into its coordinates. */
+export function miniRelativeDock(dock: MiniPoint, origin: MiniPoint): MiniPoint {
+  return { x: dock.x - origin.x, y: dock.y - origin.y };
 }
 
 const previewGap = 8;

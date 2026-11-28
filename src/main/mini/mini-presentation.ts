@@ -4,7 +4,7 @@ import {
   miniVisibility,
   EMPTY_MINI_COVERAGE,
   miniCoverageIsEmpty,
-  type MiniAnchor,
+  type MiniGeometry,
   type MiniCoverage,
   type MiniHideReason,
   type MiniPresentationEvent,
@@ -20,13 +20,13 @@ interface MiniPresence {
 }
 
 export interface MiniPresentationState extends MiniPresence {
-  readonly anchor: MiniAnchor;
+  readonly geometry: MiniGeometry;
   readonly event: MiniPresentationEvent;
 }
 
 export type MiniPresentationAction =
   | { readonly kind: "presence"; readonly update: Partial<MiniPresence> }
-  | { readonly kind: "anchor"; readonly anchor: MiniAnchor }
+  | { readonly kind: "geometry"; readonly geometry: MiniGeometry }
   | { readonly kind: "shortcut" }
   | { readonly kind: "focus" }
   | { readonly kind: "release"; readonly generation: number }
@@ -43,18 +43,14 @@ export function initialMiniPresentation(
     workbenchFocused: false,
     previewsDocked: false,
     previewDockRequested: false,
-    anchor: DEFAULT_MINI_ANCHOR,
+    geometry: { anchor: DEFAULT_MINI_ANCHOR, dock: { x: 0, y: 0 } },
     event: { kind: "hidden", generation: 0, reason: "idle" },
   };
 }
 
-function show(
-  state: MiniPresentationState,
-  kind: "focused" | "resting",
-  anchor = state.anchor,
-): MiniPresentationState {
-  if (kind === state.event.kind && anchor === state.anchor) return state;
-  return { ...state, anchor, event: { kind, generation: state.event.generation + 1, anchor } };
+function show(state: MiniPresentationState, kind: "focused" | "resting"): MiniPresentationState {
+  if (kind === state.event.kind) return state;
+  return { ...state, event: { kind, generation: state.event.generation + 1, ...state.geometry } };
 }
 
 function hide(state: MiniPresentationState, reason: MiniHideReason): MiniPresentationState {
@@ -99,16 +95,18 @@ export function transitionMiniPresentation(
       }
       return next.event.kind === "focused" ? next : settle(next, "idle");
     }
-    case "anchor": {
-      const { anchor } = action;
+    case "geometry": {
+      const { geometry } = action;
+      const previous = state.geometry;
       if (
-        anchor.vertical === state.anchor.vertical &&
-        anchor.horizontal === state.anchor.horizontal
+        geometry.dock.x === previous.dock.x &&
+        geometry.dock.y === previous.dock.y &&
+        geometry.anchor.vertical === previous.anchor.vertical &&
+        geometry.anchor.horizontal === previous.anchor.horizontal
       )
         return state;
-      return state.event.kind === "hidden"
-        ? { ...state, anchor }
-        : show(state, state.event.kind, anchor);
+      const event = state.event.kind === "hidden" ? state.event : { ...state.event, ...geometry };
+      return { ...state, geometry, event };
     }
     case "renderer-lost":
       return hide({ ...state, coverage: EMPTY_MINI_COVERAGE }, "finished");

@@ -1,10 +1,18 @@
 import { describe, expect, test } from "vitest";
-import { DEFAULT_MINI_ANCHOR, EMPTY_MINI_COVERAGE, MINI_VISIBILITIES } from "../../shared/mini";
 import {
-  miniBounds,
+  DEFAULT_MINI_ANCHOR,
+  EMPTY_MINI_COVERAGE,
+  miniDockWidth,
+  MINI_VISIBILITIES,
+} from "../../shared/mini";
+import {
+  clampMiniDock,
+  miniAnchorForDock,
+  miniDockAtAnchor,
   miniPreviewHostLayout,
-  MINI_WINDOW_SIZE,
-  nearestMiniAnchor,
+  miniRelativeDock,
+  miniWindowBounds,
+  snapMiniDock,
 } from "./mini-geometry";
 import {
   initialMiniPresentation,
@@ -42,6 +50,7 @@ describe("Mini presentation", () => {
           kind: "focused",
           generation: initial.event.generation + 1,
           anchor: DEFAULT_MINI_ANCHOR,
+          dock: { x: 0, y: 0 },
         });
         expect(dispatch(focused, { kind: "blur", dialogOpen: true })).toBe(focused);
         const release = dispatch(focused, {
@@ -58,7 +67,9 @@ describe("Mini presentation", () => {
           expect(event).toEqual({
             kind: expected,
             generation: focused.event.generation + 1,
-            ...(expected === "hidden" ? { reason } : { anchor: DEFAULT_MINI_ANCHOR }),
+            ...(expected === "hidden"
+              ? { reason }
+              : { anchor: DEFAULT_MINI_ANCHOR, dock: { x: 0, y: 0 } }),
           });
         }
       }
@@ -155,23 +166,25 @@ describe("Mini presentation", () => {
     ).toMatchObject({ kind: "hidden", reason: "blurred" });
   });
 
-  test("a delayed release cannot affect a newer focus or an updated anchor", () => {
+  test("movement preserves the current focus generation and its ability to release", () => {
     const first = dispatch(initialMiniPresentation(), { kind: "shortcut" });
     const closed = dispatch(first, { kind: "shortcut" });
     const next = dispatch(closed, { kind: "shortcut" });
     expect(dispatch(next, { kind: "release", generation: first.event.generation })).toBe(next);
-    const anchor = { vertical: "top", horizontal: "right" } as const;
-    const moved = dispatch(next, { kind: "anchor", anchor });
+    const geometry = {
+      anchor: { vertical: "top", horizontal: "right" },
+      dock: { x: 400, y: 80 },
+    } as const;
+    const moved = dispatch(next, { kind: "geometry", geometry });
     expect(moved.event).toEqual({
       kind: "focused",
-      generation: next.event.generation + 1,
-      anchor,
+      generation: next.event.generation,
+      ...geometry,
     });
-    expect(dispatch(moved, { kind: "release", generation: next.event.generation })).toBe(moved);
-    const released = dispatch(moved, { kind: "release", generation: moved.event.generation });
-    const reopened = dispatch(released, { kind: "focus" });
-    expect(reopened.event).toMatchObject({ kind: "focused", anchor });
-    expect(dispatch(reopened, { kind: "anchor", anchor: { ...anchor } })).toBe(reopened);
+    expect(dispatch(moved, { kind: "geometry", geometry: { ...geometry } })).toBe(moved);
+    const released = dispatch(moved, { kind: "release", generation: next.event.generation });
+    expect(released.event.kind).toBe("hidden");
+    expect(dispatch(released, { kind: "focus" }).event).toMatchObject(geometry);
   });
 
   test("renderer loss clears its activity before a replacement is ready", () => {
@@ -188,40 +201,56 @@ describe("Mini presentation", () => {
 
 describe("Mini placement", () => {
   const workArea = { x: -1600, y: 32, width: 1600, height: 940 };
+  const display = { workArea, bounds: { x: -1600, y: 0, width: 1600, height: 1000 } };
+  const dockWidth = miniDockWidth(true);
 
-  test("anchors the window to the display work area in DIP", () => {
-    expect(miniBounds(workArea, DEFAULT_MINI_ANCHOR)).toEqual({
-      x: -1100,
-      y: 240,
-      ...MINI_WINDOW_SIZE,
-    });
-    expect(miniBounds(workArea, { vertical: "top", horizontal: "right" })).toEqual({
-      x: -612,
-      y: 44,
-      ...MINI_WINDOW_SIZE,
-    });
+  test("starts at bottom center, with the dock 12 DIP above the work area's edge", () => {
+    const dock = miniDockAtAnchor(workArea, dockWidth);
+    expect(dock).toEqual({ x: -800, y: 940 });
+    expect(miniWindowBounds(display, dock)).toEqual({ x: -1100, y: 32, width: 600, height: 940 });
   });
 
-  test("clamps an undersized display and preserves the current anchor on ties", () => {
-    const small = { x: 10, y: 32, width: 500, height: 700 };
-    const right = { vertical: "top", horizontal: "right" } as const;
-    const clamped = miniBounds(small, right);
-    expect(clamped).toEqual({ x: 22, y: 44, width: 476, height: 676 });
-    expect(nearestMiniAnchor(small, clamped, right)).toEqual(right);
+  test("preserves a free position and flips growth direction without moving the window vertically", () => {
+    const topDock = { x: -1228.5, y: 501 };
+    const bottomDock = { ...topDock, y: 502 };
+    expect(clampMiniDock(workArea, topDock, dockWidth)).toEqual(topDock);
+    expect(clampMiniDock(workArea, bottomDock, dockWidth)).toEqual(bottomDock);
+    expect(miniAnchorForDock(workArea, topDock)).toEqual({ vertical: "top", horizontal: "left" });
+    expect(miniAnchorForDock(workArea, bottomDock)).toEqual({
+      vertical: "bottom",
+      horizontal: "left",
+    });
+    const bounds = miniWindowBounds(display, topDock);
+    expect(miniWindowBounds(display, bottomDock)).toEqual(bounds);
+    expect(miniRelativeDock(topDock, bounds)).toEqual({ x: 299.5, y: 469 });
+    expect(miniRelativeDock(bottomDock, bounds)).toEqual({ x: 299.5, y: 470 });
+  });
+
+  test("reclamps a saved point after the work area shrinks, keeping the window on its display", () => {
+    const smaller = { x: 40, y: 28, width: 460, height: 680 };
+    const dock = clampMiniDock(smaller, { x: 500, y: 900 }, dockWidth);
+    expect(dock).toEqual({ x: 430.5, y: 676 });
+    const bounds = miniWindowBounds(
+      {
+        workArea: smaller,
+        bounds: { x: 0, y: 0, width: 500, height: 720 },
+      },
+      dock,
+    );
+    expect(bounds).toEqual({ x: 0, y: 28, width: 500, height: 680 });
+    expect(miniRelativeDock(dock, bounds)).toEqual({ x: 430.5, y: 648 });
+    expect(miniRelativeDock(dock, smaller)).toEqual({ x: 390.5, y: 648 });
   });
 
   test.each([
-    ["top", "left", -1600, 28],
-    ["top", "center", -1130, 30],
-    ["top", "right", -570, 50],
-    ["bottom", "left", -1550, 270],
-    ["bottom", "center", -1050, 210],
-    ["bottom", "right", -620, 300],
-  ] as const)("snaps a drop near %s %s", (vertical, horizontal, x, y) => {
-    expect(nearestMiniAnchor(workArea, { x, y, ...MINI_WINDOW_SIZE })).toEqual({
-      vertical,
-      horizontal,
-    });
+    [-1400, 300, -1530.5, 64],
+    [-800, 300, -800, 64],
+    [-300, 300, -69.5, 64],
+    [-1400, 700, -1530.5, 940],
+    [-800, 700, -800, 940],
+    [-300, 700, -69.5, 940],
+  ])("snaps Option-drops in each of the six regions (%i, %i)", (x, y, snappedX, snappedY) => {
+    expect(snapMiniDock(workArea, { x, y }, dockWidth)).toEqual({ x: snappedX, y: snappedY });
   });
 });
 

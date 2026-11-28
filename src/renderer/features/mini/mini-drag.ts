@@ -10,7 +10,7 @@ const KEEPS_PRESS =
 /**
  * Mini moves when held anywhere it draws and dragged, as a picture-in-picture window does: a
  * press that stays put is still a click, one that travels moves Mini and its click is dropped.
- * Main follows the pointer and settles Mini at the nearest placement on release.
+ * Main follows the pointer and snaps only if Option is held on release.
  */
 export function startMiniDrag(event: ReactPointerEvent<HTMLElement>, drawn: string): void {
   if (event.button !== 0 || !event.isPrimary) return;
@@ -33,7 +33,7 @@ export function startMiniDrag(event: ReactPointerEvent<HTMLElement>, drawn: stri
     window.removeEventListener("pointerup", release, true);
     window.removeEventListener("pointercancel", release, true);
     if (!moving) return;
-    miniHost.drag({ phase: "end" });
+    miniHost.drag({ phase: "end", snap: next.type === "pointerup" && next.altKey });
     // The release that ends a move is not a click on whatever it ends over.
     const swallow = (click: MouseEvent) => {
       click.preventDefault();

@@ -95,15 +95,15 @@ system notification already shown, and chat snooze notifications follow their us
   focused. A resting Mini steps aside while a Workbench window is focused and
   returns according to the same settings. Opening a Page, Inbox, or chat from Mini brings the personal
   Workbench forward.
-- Mini sits a short distance from the edge of its display's work area. Its
-  first placement is bottom center. Holding anywhere on Mini outside a text
-  field and dragging moves it with the pointer, onto any display; a press that
-  travels less than a few pixels stays a click, and the click that ends a move
-  is dropped. On release Mini settles at the nearest top or bottom left, center,
-  or right position on the display it mostly occupies. Nodex remembers the anchor for each display and uses an available
-  display if the last one disappears. The panel stays within the work area when
-  display geometry changes. The pointer reaches the app beneath transparent
-  areas outside Mini's content.
+- Mini first appears at bottom center. Drag it anywhere in the work area, including onto
+  another display. A press that travels less than a few pixels stays a click. Hold Option
+  (⌥) on macOS or Alt on Windows when releasing to snap to a corner or the center of the
+  top or bottom edge. Cards and the composer grow away from the nearer top or bottom edge
+  as Mini moves.
+- Nodex remembers the dock's position for each display. If the last display is unavailable,
+  Mini uses an available display's saved position or falls back to the last position. The dock
+  stays inside the work area when display geometry changes. The pointer reaches the app
+  beneath transparent areas outside Mini's content.
 - Mini stays outside Window Session restoration. If its renderer stops
   unexpectedly, Main prepares a fresh panel for an enabled Mini.
 

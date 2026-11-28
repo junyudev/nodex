@@ -12,16 +12,17 @@ const BASE = "[data-mini-base]";
 /** An element's box within the window; a card scrolled out of the list counts only as shown. */
 const rectOf = (element: Element): MiniRect | null => {
   const box = element.getBoundingClientRect();
-  const left = Math.max(0, box.left);
-  const top = Math.max(0, box.top);
-  const right = Math.min(window.innerWidth, box.right);
-  const bottom = Math.min(window.innerHeight, box.bottom);
+  const viewport = element.closest("[data-mini-card-scroll]")?.getBoundingClientRect();
+  const left = Math.max(0, box.left, viewport?.left ?? 0);
+  const top = Math.max(0, box.top, viewport?.top ?? 0);
+  const right = Math.min(window.innerWidth, box.right, viewport?.right ?? window.innerWidth);
+  const bottom = Math.min(window.innerHeight, box.bottom, viewport?.bottom ?? window.innerHeight);
   return right > left && bottom > top
     ? {
-        x: Math.round(left),
-        y: Math.round(top),
-        width: Math.ceil(right - left),
-        height: Math.ceil(bottom - top),
+        x: Math.floor(left),
+        y: Math.floor(top),
+        width: Math.ceil(right) - Math.floor(left),
+        height: Math.ceil(bottom) - Math.floor(top),
       }
     : null;
 };
@@ -52,22 +53,31 @@ export function measureMiniContent(frame: Element): MiniContentLayout | null {
  * Tells Main where Mini's content sits while it is on screen, so the live previews docked beside
  * it line up with its dock and move with it; nothing while it is hidden.
  */
-export function useMiniDockLayout(frame: RefObject<HTMLElement | null>, onScreen: boolean): void {
+export function useMiniDockLayout(
+  frame: RefObject<HTMLElement | null>,
+  onScreen: boolean,
+  dockWidth: number,
+): void {
   useEffect(() => {
     const element = frame.current;
     if (!element || !onScreen) {
-      miniHost.layout(null);
+      miniHost.layout(null, dockWidth);
       return;
     }
     let request: number | null = null;
     let reported = "";
     const report = () => {
       request = null;
+      const base = element.querySelector(BASE);
+      const height = `${base?.getBoundingClientRect().height ?? 0}px`;
+      if (element.style.getPropertyValue("--mini-base-height") !== height) {
+        element.style.setProperty("--mini-base-height", height);
+      }
       const layout = measureMiniContent(element);
       const serialized = JSON.stringify(layout);
       if (serialized === reported) return;
       reported = serialized;
-      miniHost.layout(layout);
+      miniHost.layout(layout, dockWidth);
     };
     const schedule = () => {
       if (request === null) request = window.requestAnimationFrame(report);
@@ -82,16 +92,21 @@ export function useMiniDockLayout(frame: RefObject<HTMLElement | null>, onScreen
       observe();
       schedule();
     });
+    const geometry = new MutationObserver(schedule);
     observe();
     mutation.observe(element, { childList: true, subtree: true });
+    geometry.observe(element, { attributeFilter: ["style"] });
     element.addEventListener("transitionend", schedule);
+    element.addEventListener("scroll", schedule, true);
     schedule();
     return () => {
       if (request !== null) window.cancelAnimationFrame(request);
       resize.disconnect();
       mutation.disconnect();
+      geometry.disconnect();
       element.removeEventListener("transitionend", schedule);
-      miniHost.layout(null);
+      element.removeEventListener("scroll", schedule, true);
+      miniHost.layout(null, dockWidth);
     };
-  }, [frame, onScreen]);
+  }, [frame, onScreen, dockWidth]);
 }

@@ -22,7 +22,11 @@ import { live as liveCodexVisualizationStateIpc } from "./CodexVisualizationStat
 import { live as localStateIpcLive } from "./ApplicationLocalStateIpc";
 import { PageFileHtmlRuntime } from "../../host-runtime/PageFileHtmlRuntime";
 import { live as livePageFileHtmlIpc } from "./PageFileHtmlIpc";
-import type { MiniContentLayout, MiniPreviewVisibility } from "../../../shared/mini";
+import {
+  miniDockWidth,
+  type MiniContentLayout,
+  type MiniPreviewVisibility,
+} from "../../../shared/mini";
 import { MiniCompanion } from "../../mini/MiniCompanion";
 import { MiniRuntime } from "../../mini/MiniRuntime";
 import type { MiniWindowController } from "../../mini/mini-window-controller";
@@ -296,19 +300,24 @@ it.effect("only the owned Mini document can submit bounded layout and preview vi
       }) as unknown as IpcMainInvokeEvent;
     const report = handlers.get("mini:layout")!;
     const setVisibility = handlers.get("mini:preview-visibility")!;
-    const base = { x: 100, y: 600, width: 120, height: 45 };
-    const layout = { content: { ...base, y: 500, height: 145 }, base };
+    const base = { x: 100, y: 1400, width: 120, height: 45 };
+    const layout = { content: { ...base, y: 500, height: 945 }, base };
+    const dockWidth = miniDockWidth(false);
 
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(report(event(41), layout))));
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(report(event(42, { ...frame }), layout))));
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(report(event(41), layout, dockWidth))));
+    assert.isTrue(
+      Exit.isFailure(yield* Effect.exit(report(event(42, { ...frame }), layout, dockWidth))),
+    );
     for (const badBase of [
       { ...base, x: Infinity },
-      { ...base, y: 100_000 },
+      { ...base, y: -1 },
       { ...base, width: 0 },
-      { ...base, height: 721 },
+      { ...base, height: Infinity },
     ]) {
       assert.isTrue(
-        Exit.isFailure(yield* Effect.exit(report(event(42), { ...layout, base: badBase }))),
+        Exit.isFailure(
+          yield* Effect.exit(report(event(42), { ...layout, base: badBase }, dockWidth)),
+        ),
       );
     }
     assert.isTrue(Exit.isFailure(yield* Effect.exit(setVisibility(event(41), "chat", "hidden"))));
@@ -316,8 +325,8 @@ it.effect("only the owned Mini document can submit bounded layout and preview vi
     assert.isEmpty(layouts);
     assert.isEmpty(choices);
 
-    yield* report(event(42), layout);
-    yield* report(event(42), null);
+    yield* report(event(42), layout, dockWidth);
+    yield* report(event(42), null, dockWidth);
     yield* setVisibility(event(42), "chat", "hidden");
     assert.deepEqual(layouts, [layout, null]);
     assert.deepEqual(choices, [["chat", "hidden"]]);

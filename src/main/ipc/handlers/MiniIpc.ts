@@ -4,7 +4,8 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import { InboxScopeSchema } from "../../../shared/schemas/inbox-scope";
-import { MINI_WINDOW_SIZE } from "../../mini/mini-geometry";
+import { miniDockWidth } from "../../../shared/mini";
+import { MINI_WINDOW_WIDTH } from "../../mini/mini-geometry";
 import { RemoteHostedPipRuntime } from "../../host-runtime/RemoteHostedPipRuntime";
 import { MiniCompanion } from "../../mini/MiniCompanion";
 import { MiniRuntime } from "../../mini/MiniRuntime";
@@ -28,24 +29,19 @@ const Coverage = z.strictObject({
 });
 const Generation = z.number().int().nonnegative();
 const ScreenCoordinate = z.number().finite();
-// Reports use panel-local CSS pixels. Allow clipped content while bounding the native geometry.
-const LayoutCoordinate = (extent: number) =>
-  z
-    .number()
-    .finite()
-    .min(-extent)
-    .max(2 * extent);
+// The controller also checks the rectangles against the live panel's client area.
 const LayoutRect = z.strictObject({
-  x: LayoutCoordinate(MINI_WINDOW_SIZE.width),
-  y: LayoutCoordinate(MINI_WINDOW_SIZE.height),
-  width: z.number().finite().positive().max(MINI_WINDOW_SIZE.width),
-  height: z.number().finite().positive().max(MINI_WINDOW_SIZE.height),
+  x: z.number().finite().min(0).max(MINI_WINDOW_WIDTH),
+  y: z.number().finite().nonnegative(),
+  width: z.number().finite().positive().max(MINI_WINDOW_WIDTH),
+  height: z.number().finite().positive(),
 });
+const DockWidth = z.literal([miniDockWidth(false), miniDockWidth(true)]);
 const Layout = z.strictObject({ content: LayoutRect, base: LayoutRect }).nullable();
 const PreviewVisibility = z.enum(["shown", "hidden"]);
 const Drag = z.discriminatedUnion("phase", [
   z.strictObject({ phase: z.literal("start"), x: ScreenCoordinate, y: ScreenCoordinate }),
-  z.strictObject({ phase: z.literal("end") }),
+  z.strictObject({ phase: z.literal("end"), snap: z.boolean() }),
 ]);
 const Open = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inbox"), scope: InboxScopeSchema }),
@@ -94,8 +90,10 @@ export const live = Layer.effectDiscard(
         panel.ready();
       }).pipe(Effect.andThen(companion.ready(event.sender))),
     );
-    yield* ipc.handleControl("mini:layout", (event, input) =>
-      run(event, "layout", (panel) => panel.reportLayout(Layout.parse(input))),
+    yield* ipc.handleControl("mini:layout", (event, input, dockWidth) =>
+      run(event, "layout", (panel) =>
+        panel.reportLayout(Layout.parse(input), DockWidth.parse(dockWidth)),
+      ),
     );
     yield* ipc.handleControl("mini:preview-visibility", (event, sessionId, visibility) =>
       run(event, "preview-visibility", () =>
@@ -109,7 +107,7 @@ export const live = Layer.effectDiscard(
       run(event, "drag", (panel) => {
         const drag = Drag.parse(input);
         if (drag.phase === "start") panel.beginDrag({ x: drag.x, y: drag.y });
-        else panel.endDrag();
+        else panel.endDrag(drag.snap);
       }),
     );
     yield* ipc.handleControl("mini:activity", (event, input) =>

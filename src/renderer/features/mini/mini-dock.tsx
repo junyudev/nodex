@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { DictationMicrophoneIcon, NewChatIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { MINI_DOCK_HEIGHT, miniDockWidth } from "../../../shared/mini";
 import { MINI_SURFACE_CLASS } from "./mini-card";
 import type { MiniStatus } from "./mini-model";
 
@@ -70,7 +71,8 @@ export function MiniDock({
       data-mini-dock
       data-mini-content
       data-mini-base
-      className={cn("flex h-10 items-center gap-0.5 rounded-full px-1", MINI_SURFACE_CLASS)}
+      className={cn("flex items-center gap-0.5 rounded-full px-1", MINI_SURFACE_CLASS)}
+      style={{ height: MINI_DOCK_HEIGHT, width: miniDockWidth(canDictate) }}
     >
       {cardCount > 0 ? (
         <DockButton
