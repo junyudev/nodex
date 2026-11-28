@@ -76,7 +76,8 @@ apply to both cards, and the name and the style are remembered.
   is hidden.
 
 Both state the period, name the agents whose history they counted (Claude Code, Codex), carry a QR
-code and `nodex.jyu.app`, and show the strongest non-zero numbers. Dark cards glow on a night sky;
+code and `nodex.jyu.app`, and show the strongest non-zero numbers. Under the closing question each
+shows `npx nodex-card` set as code, the one command a viewer types to make their own. Dark cards glow on a night sky;
 light ones are drawn on paper.
 A fixed mark (`1B Club`, `10B Club`, `100B Club`, `1T Club`) and an archetype read from the numbers
 give them something to wear; neither compares anyone with anyone.
@@ -87,7 +88,7 @@ if the person types one. Cost can be hidden.
 The card on the page is the export: one image, drawn on the device at 2160×2700. Hovering a card
 offers `Copy image`, which puts it on the clipboard, `Save PNG`, which asks where to put it, and
 `Post on X`, which copies it and opens a compose window with the numbers as text (the cost too
-when the card shows it), ready to paste.
+when the card shows it) and the same command, ready to paste.
 Nothing is uploaded unless the person posts it.
 
 The same cards, drawn by the same code, come from the terminal too: [`npx nodex-card`](nodex-card-cli.md)

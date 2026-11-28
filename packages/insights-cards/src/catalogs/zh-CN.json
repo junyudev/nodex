@@ -23,7 +23,7 @@
   "insights.insightsCards.periodQuarter": "过去 90 天",
   "insights.insightsCards.periodWeek": "过去 7 天",
   "insights.insightsCards.periodYear": "过去 12 个月",
-  "insights.insightsCards.post": "{summary}。你的使用情况如何？{url}",
+  "insights.insightsCards.post": "{summary}。你的使用情况如何？{command} · {url}",
   "insights.insightsCards.postLead": "我的智能体使用了 {tokens} 个 token",
   "insights.insightsCards.postLeadCost": "我的智能体使用了 {tokens} 个 token，按 API 标价约 {cost}",
   "insights.insightsCards.processedTokens": "已处理 token",

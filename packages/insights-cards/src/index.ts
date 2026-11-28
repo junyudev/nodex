@@ -12,6 +12,7 @@ export {
   shareStats,
   SHARE_CARD_HEIGHT,
   SHARE_CARD_WIDTH,
+  SHARE_COMMAND,
   SHARE_URL,
   type ShareCardFonts,
   type ShareCardKind,

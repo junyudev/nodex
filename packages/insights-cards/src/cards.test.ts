@@ -84,6 +84,8 @@ describe("share cards", () => {
     const svg = renderShareCard(view(), options({ kind }), intl);
     expect(svg).toContain("100B");
     expect(svg).toContain("nodex.jyu.app");
+    // A viewer can make their own without installing anything.
+    expect(svg).toContain(">npx nodex-card</text>");
   });
 
   it.each(["skyline", "receipt"] as const)("%s can leave the money out", (kind) => {
@@ -202,14 +204,14 @@ describe("share cards", () => {
 
   it("words a post from the numbers and names the file after the day", () => {
     expect(shareMessage(view(), intl)).toBe(
-      "100B tokens with my agents. 19 agents at once. 3,416 messages sent. What's yours? nodex.jyu.app",
+      "100B tokens with my agents. 19 agents at once. 3,416 messages sent. What's yours? npx nodex-card · nodex.jyu.app",
     );
     expect(shareFileName(view(), "receipt")).toBe("nodex-receipt-2026-11-07.png");
   });
 
   it("puts the cost in a post only when the card shows it", () => {
     expect(shareMessage(view(), intl, { showCost: true })).toBe(
-      "100B tokens with my agents, ≈ $77,180 at API list price. 19 agents at once. 3,416 messages sent. What's yours? nodex.jyu.app",
+      "100B tokens with my agents, ≈ $77,180 at API list price. 19 agents at once. 3,416 messages sent. What's yours? npx nodex-card · nodex.jyu.app",
     );
     expect(shareMessage({ ...view(), costUsd: 0 }, intl, { showCost: true })).toBe(
       shareMessage(view(), intl),
