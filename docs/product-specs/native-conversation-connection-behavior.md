@@ -43,7 +43,10 @@ including when that folder is inside a Project source or in a linked worktree.
 
 Import creates a separate Nodex Session and Agent Runtime root Thread. It copies the source's
 complete supported visible history into the Runtime's history store and opens an ordinary chat
-with a composer and the source Agent selected. The existing model menu can change the Agent.
+with a composer and the source Agent selected. The copy starts on the source model if that Agent
+still offers it and it is on. Otherwise it starts on that Agent's default on model or its first on
+model. When every model for the signed-in Agent is off, import asks the person to turn one on in
+Settings > Agents. The model menu can change the Agent after import.
 The next message starts new work through the Runtime and its own native
 conversation. Earlier conversation context uses the same bounded portable handoff as changing
 Agent; hidden model state, prompt caches, active execution, queued work, pending approvals and

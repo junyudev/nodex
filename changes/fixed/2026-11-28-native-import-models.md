@@ -1,0 +1,1 @@
+Importing a native chat waits for the source Agent's models to load after sign-in. If the original model is off, the copy uses another model from the same Agent when one is on. If all its models are off, Import directs you to Settings > Agents to turn one on.
