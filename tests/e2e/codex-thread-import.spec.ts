@@ -77,6 +77,9 @@ const importedHistory = async (
 };
 
 const expectMissingImageRecords = async (page: Page, names: readonly string[]) => {
+  for (const toggle of await page.locator('[data-agent-body-toggle="true"]').all()) {
+    if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  }
   for (const toggle of await page.getByTestId("agent-activity-group-toggle").all()) {
     if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
   }
