@@ -1,3 +1,4 @@
+import type { AppComponentId } from "../../../shared/app-components";
 import { agentSettingsSections } from "../../../shared/agents/registry";
 import type { AgentProfileDefinition } from "../../../shared/agents/profile-definition";
 import { WINDOWS_TERMINAL_SHELL_LABEL_MESSAGES } from "../../../shared/terminal-shell-settings";
@@ -20,7 +21,9 @@ type SearchMessage =
     };
 
 interface SettingsSearchCatalogSection {
-  messages: readonly SearchMessage[] | (() => readonly SearchMessage[]);
+  messages:
+    | readonly SearchMessage[]
+    | ((offered: readonly AppComponentId[]) => readonly SearchMessage[]);
 }
 
 interface SettingsSearchCatalogPanel {
@@ -33,7 +36,7 @@ interface SettingsSearchCatalogPanel {
 interface SettingsSearchCatalogGroup {
   anchor?: string;
   /** A section some hosts never render; search skips it with every entry it holds. */
-  visibleWhen?: () => boolean;
+  visibleWhen?: (offered: readonly AppComponentId[]) => boolean;
   title: SearchMessage;
   description?: SearchMessage;
   entries?: readonly SettingsSearchCatalogEntry[];
@@ -41,7 +44,7 @@ interface SettingsSearchCatalogGroup {
 }
 
 interface SettingsSearchCatalogEntry {
-  visibleWhen?: () => boolean;
+  visibleWhen?: (offered: readonly AppComponentId[]) => boolean;
   label: SearchMessage;
   description?: SearchMessage;
   terms?: readonly SearchMessage[];
@@ -51,9 +54,40 @@ function entry(
   label: SearchMessage,
   description?: SearchMessage,
   terms: readonly SearchMessage[] = [],
-  visibleWhen?: () => boolean,
+  visibleWhen?: (offered: readonly AppComponentId[]) => boolean,
 ): SettingsSearchCatalogEntry {
   return { description, label, terms, visibleWhen };
+}
+
+/** One Add-ons entry per Component, each shown only when this build offers it. */
+function componentSearchEntries(): SettingsSearchCatalogEntry[] {
+  const common = ["storage", "disk space", "download", "install", "remove"];
+  const rows = {
+    "desktop-tools": [
+      settingsMessages.componentsDesktopTools,
+      settingsMessages.componentsDesktopToolsDescription,
+      ["uninstall", "runtime"],
+    ],
+    codex: [
+      settingsMessages.componentsCodex,
+      settingsMessages.componentsCodexDescription,
+      ["API key", "credits"],
+    ],
+    "claude-code": [
+      settingsMessages.componentsClaudeCode,
+      settingsMessages.componentsClaudeCodeDescription,
+      ["API key", "credits"],
+    ],
+    "document-tools": [
+      settingsMessages.componentsDocumentTools,
+      settingsMessages.componentsDocumentToolsDescription,
+      ["Python", "docx", "pptx", "xlsx"],
+    ],
+  } satisfies Record<AppComponentId, readonly [SearchMessage, SearchMessage, readonly string[]]>;
+  return (Object.keys(rows) as AppComponentId[]).map((id) => {
+    const [label, description, terms] = rows[id];
+    return entry(label, description, [...common, ...terms], (offered) => offered.includes(id));
+  });
 }
 
 function formatSearchMessage(value: SearchMessage, intl?: IntlShape): string {
@@ -106,23 +140,25 @@ function uniqueText(values: readonly unknown[]): string[] {
 }
 
 /** The groups whose sections this host renders, in page order. */
-export const visibleSettingsSearchGroups = <Group extends SettingsSearchCatalogGroup>(panel: {
-  readonly groups: readonly Group[];
-}): readonly Group[] => panel.groups.filter((group) => group.visibleWhen?.() !== false);
+export const visibleSettingsSearchGroups = <Group extends SettingsSearchCatalogGroup>(
+  panel: { readonly groups: readonly Group[] },
+  offered: readonly AppComponentId[] = [],
+): readonly Group[] => panel.groups.filter((group) => group.visibleWhen?.(offered) !== false);
 
 function materializePanelSearchMessages(
   panel: SettingsSearchCatalogPanel,
+  offered: readonly AppComponentId[] = [],
 ): readonly SearchMessage[] {
   return [
     panel.title,
     ...(panel.subtitle ? [panel.subtitle] : []),
     ...(panel.messages ?? []),
-    ...visibleSettingsSearchGroups(panel).flatMap((group) => [
+    ...visibleSettingsSearchGroups(panel, offered).flatMap((group) => [
       group.title,
       ...(group.description ? [group.description] : []),
       ...(group.messages ?? []),
       ...(group.entries ?? []).flatMap((setting) => {
-        if (setting.visibleWhen?.() === false) return [];
+        if (setting.visibleWhen?.(offered) === false) return [];
         return [
           setting.label,
           ...(setting.description ? [setting.description] : []),
@@ -554,6 +590,11 @@ export const settingsMessages = defineMessages({
   componentsDesktopToolsDescription: {
     id: "appComponents.desktopTools.description",
     defaultMessage: "Browser, Chrome and Computer Use for Agents.",
+  },
+  componentsCodex: { id: "appComponents.codex.name", defaultMessage: "Codex" },
+  componentsCodexDescription: {
+    id: "appComponents.codex.description",
+    defaultMessage: "Runs Codex with your ChatGPT account, an API key or Nodex credits.",
   },
   componentsClaudeCode: { id: "appComponents.claudeCode.name", defaultMessage: "Claude Code" },
   componentsClaudeCodeDescription: {
@@ -1852,34 +1893,8 @@ export const SETTINGS_SEARCH_PANELS = {
       {
         anchor: "components",
         title: settingsMessages.componentsComponents,
-        visibleWhen: () => readSettingsHostPresentation().components,
-        entries: [
-          entry(
-            settingsMessages.componentsDesktopTools,
-            settingsMessages.componentsDesktopToolsDescription,
-            ["storage", "disk space", "download", "install", "remove", "uninstall", "runtime"],
-          ),
-          entry(
-            settingsMessages.componentsClaudeCode,
-            settingsMessages.componentsClaudeCodeDescription,
-            ["storage", "disk space", "download", "install", "remove", "API key", "credits"],
-          ),
-          entry(
-            settingsMessages.componentsDocumentTools,
-            settingsMessages.componentsDocumentToolsDescription,
-            [
-              "storage",
-              "disk space",
-              "download",
-              "install",
-              "remove",
-              "Python",
-              "docx",
-              "pptx",
-              "xlsx",
-            ],
-          ),
-        ],
+        visibleWhen: (offered) => offered.length > 0,
+        entries: [...componentSearchEntries()],
       },
       {
         anchor: "app-server-diagnostics",
@@ -2655,6 +2670,7 @@ export function settingsSearchAnchor(
   sectionId: string,
   query: string | undefined,
   intl = getIntl(),
+  offered: readonly AppComponentId[] = [],
 ): string | null {
   const panel: SettingsSearchCatalogPanel | undefined =
     SETTINGS_SEARCH_PANELS[sectionId as keyof typeof SETTINGS_SEARCH_PANELS];
@@ -2665,13 +2681,13 @@ export function settingsSearchAnchor(
     )
   )
     return null;
-  const groups = visibleSettingsSearchGroups(panel);
+  const groups = visibleSettingsSearchGroups(panel, offered);
   const targets = groups.map((group, index) => ({
     sectionId: String(index),
     panelLabel: formatSearchMessage(group.title, intl),
     messageTexts: [
       ...indexSearchMessages(
-        materializePanelSearchMessages({ title: group.title, groups: [group] }),
+        materializePanelSearchMessages({ title: group.title, groups: [group] }, offered),
         intl,
       ).keys(),
     ],
@@ -2698,7 +2714,8 @@ const SETTINGS_SEARCH_CATALOG = {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.remote),
   },
   "general-settings": {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["general-settings"]),
+    messages: (offered: readonly AppComponentId[]) =>
+      materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["general-settings"], offered),
   },
   appearance: {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.appearance),
@@ -2815,10 +2832,15 @@ const SETTINGS_SEARCH_CATALOG = {
   },
 } satisfies Record<string, SettingsSearchCatalogSection>;
 
-function sectionSearchMessages(sectionId: string): readonly SearchMessage[] {
+function sectionSearchMessages(
+  sectionId: string,
+  offered: readonly AppComponentId[] = [],
+): readonly SearchMessage[] {
   const section: SettingsSearchCatalogSection | undefined =
     SETTINGS_SEARCH_CATALOG[sectionId as keyof typeof SETTINGS_SEARCH_CATALOG];
-  return typeof section?.messages === "function" ? section.messages() : (section?.messages ?? []);
+  return typeof section?.messages === "function"
+    ? section.messages(offered)
+    : (section?.messages ?? []);
 }
 
 /** The command palette also uses these source strings as search keywords. */
@@ -2829,6 +2851,10 @@ export function settingsSearchSourceMessages(sectionId: string): readonly string
 }
 
 /** Pair each matching text with the label to display, in the active app language. */
-export function settingsSearchIndex(sectionId: string, intl: IntlShape) {
-  return indexSearchMessages(sectionSearchMessages(sectionId), intl);
+export function settingsSearchIndex(
+  sectionId: string,
+  intl: IntlShape,
+  offered?: readonly AppComponentId[],
+) {
+  return indexSearchMessages(sectionSearchMessages(sectionId, offered), intl);
 }

@@ -1,8 +1,8 @@
 import claudeCodeLock from "../../../../resources/agent-runtime/claude-code.lock.json";
-import type { AppComponentDefinition } from "../AppComponentCatalog";
+import type { AppComponentDefinition, AppComponentTargetKey } from "../AppComponentCatalog";
 
-export function claudeCodeDefinition() {
-  const asset = claudeCodeLock.assets["darwin-arm64"];
+export function claudeCodeDefinition(target: AppComponentTargetKey) {
+  const asset = claudeCodeLock.assets[target];
   return {
     id: "claude-code",
     unpackedBytes: asset.unpackedSize,

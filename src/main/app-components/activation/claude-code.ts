@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import { MainConfig } from "../../app/MainConfig";
@@ -8,15 +9,18 @@ import type {
   AppComponentActivationResult,
 } from "../AppComponentActivation";
 import { appComponentDefinition, appComponentHome } from "../AppComponentCatalog";
-import { appComponentRoot } from "../AppComponentStore";
+import { appComponentRoot, verifyAppComponentDirectory } from "../AppComponentStore";
 
 export const claudeCodeActivator = Effect.gen(function* () {
   const config = yield* MainConfig;
   const definition = appComponentDefinition(config, "claude-code");
+  const home = appComponentHome(config);
   return yield* makeClaudeCodeActivator(
     definition
       ? {
-          root: appComponentRoot(appComponentHome(config), definition),
+          root: appComponentRoot(home, definition),
+          verifyDirectory: (directory) =>
+            verifyAppComponentDirectory({ home, target: config }, directory),
           payload: definition.payload,
         }
       : null,
@@ -24,7 +28,11 @@ export const claudeCodeActivator = Effect.gen(function* () {
 });
 
 export const makeClaudeCodeActivator = Effect.fnUntraced(function* (
-  component: { readonly root: string; readonly payload: AppComponentPayload } | null,
+  component: {
+    readonly root: string;
+    readonly payload: AppComponentPayload;
+    readonly verifyDirectory?: (directory: string) => Promise<void>;
+  } | null,
 ) {
   const active = yield* Ref.make(false);
   return {
@@ -37,7 +45,10 @@ export const makeClaudeCodeActivator = Effect.fnUntraced(function* (
         } as const;
       }
       const { root, payload } = component;
-      return yield* Effect.tryPromise((signal) => admitClaudeCode(root, payload, signal)).pipe(
+      return yield* Effect.tryPromise(async (signal) => {
+        await component.verifyDirectory?.(dirname(join(root, payload.executable.path)));
+        await admitClaudeCode(root, payload, signal);
+      }).pipe(
         Effect.andThen(Ref.set(active, true)),
         Effect.match({
           onSuccess: (): AppComponentActivationResult => ({ status: "active" }),

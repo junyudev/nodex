@@ -40,6 +40,7 @@ describe.skipIf(process.platform === "win32")("materializeBrowserRuntime", () =>
     const sharedAsset = {
       archiveSha256: archive.archiveSha256,
       archiveSize: archive.archiveSize,
+      unpackedSize: archive.unpackedSize,
       assetName: archive.assetName,
       manifestSha256: archive.manifestSha256,
       runtimeVersions,

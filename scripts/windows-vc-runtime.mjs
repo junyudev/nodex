@@ -1,26 +1,9 @@
 // Export changes must be paired with windows-vc-runtime.d.mts.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import {
-  assertPeArchitecture,
-  isWindowsSystemDll,
-  listWindowsPeImages,
-  readPeImports,
-} from "./windows-pe.mjs";
-
-// Retail redistributables only; never debug runtimes, MFC, or arbitrary host DLLs.
-const runtimeDlls = new Set([
-  "vcruntime140.dll",
-  "vcruntime140_1.dll",
-  "vcruntime140_threads.dll",
-  "msvcp140.dll",
-  "msvcp140_1.dll",
-  "msvcp140_2.dll",
-  "msvcp140_atomic_wait.dll",
-  "msvcp140_codecvt_ids.dll",
-  "concrt140.dll",
-]);
+import { listWindowsPeImages } from "./windows-pe.mjs";
+import { planWindowsVcRuntime } from "../src/main/platform/node/windows-vc-runtime-files.mjs";
 
 /** Locate the newest installed MSVC retail CRT for the package's CPU via vswhere. */
 export function resolveWindowsVcRuntimeDirectory(arch) {
@@ -53,53 +36,16 @@ export function resolveWindowsVcRuntimeDirectory(arch) {
   throw new Error(`No retail MSVC ${arch} CRT under ${root}; install the matching C++ build tools`);
 }
 
-/** Supplement immutable vendor images without rewriting their bytes or locked metadata.
- * Only missing retail CRT imports are copied, recursively, beside the consumer.
- * The complete PE verifier remains the authority for all other dependencies.
- */
+/** Supplement immutable vendor images without changing their locked metadata. */
 export function stageWindowsVcRuntime(root, arch, options = {}) {
-  let sourceDirectory;
-  const copied = [];
+  let sourceDirectory = options.redistDirectory;
   const sealedRoot = options.desktopToolsRoot && path.resolve(options.desktopToolsRoot);
-  const pending = listWindowsPeImages(root)
-    .map((file) => path.resolve(root, file))
-    .filter((file) => !sealedRoot || !file.startsWith(sealedRoot + path.sep));
-  const seen = new Set();
-  while (pending.length) {
-    const file = pending.shift();
-    if (seen.has(file)) continue;
-    seen.add(file);
-    assertPeArchitecture(file, arch);
-    const directory = path.dirname(file);
-    const siblings = new Set(readdirSync(directory).map((name) => name.toLowerCase()));
-    for (const { name } of readPeImports(file)) {
-      const normalized = name.toLowerCase();
-      if (isWindowsSystemDll(name) || siblings.has(normalized) || !runtimeDlls.has(normalized))
-        continue;
-      // Nodex owns these binaries: they must use static CRT, never a packaged workaround.
-      if (
-        /^nodex-core\.exe$/iu.test(path.basename(file)) ||
-        (/^nodex\.exe$/iu.test(path.basename(file)) &&
-          path.basename(directory).toLowerCase() === "bin")
-      )
-        throw new Error(`Nodex native image must use static CRT: ${file} imports ${name}`);
-      sourceDirectory ??= options.redistDirectory ?? resolveWindowsVcRuntimeDirectory(arch);
-      const sourceName = readdirSync(sourceDirectory).find(
-        (entry) => entry.toLowerCase() === normalized,
-      );
-      if (!sourceName)
-        throw new Error(`MSVC ${arch} redistributable is missing ${name}: ${sourceDirectory}`);
-      const source = path.join(sourceDirectory, sourceName);
-      const stat = lstatSync(source);
-      if (!stat.isFile() || stat.isSymbolicLink())
-        throw new Error(`MSVC redistributable must be a regular file: ${source}`);
-      assertPeArchitecture(source, arch);
-      const destination = path.join(directory, normalized);
-      copyFileSync(source, destination);
-      siblings.add(normalized);
-      copied.push(path.relative(root, destination).split(path.sep).join("/"));
-      pending.push(destination);
-    }
-  }
-  return copied;
+  const files = listWindowsPeImages(root).filter(
+    (file) => !sealedRoot || !path.resolve(root, file).startsWith(sealedRoot + path.sep),
+  );
+  const copies = planWindowsVcRuntime(root, arch, files, () => [
+    (sourceDirectory ??= resolveWindowsVcRuntimeDirectory(arch)),
+  ]);
+  for (const { source, destination } of copies) copyFileSync(source, path.join(root, destination));
+  return copies.map(({ destination }) => destination);
 }

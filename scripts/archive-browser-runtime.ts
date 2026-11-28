@@ -17,6 +17,7 @@ type ArchiveBrowserRuntimeOptions = {
 export type BrowserRuntimeArchiveMetadata = {
   archiveSha256: string;
   archiveSize: number;
+  unpackedSize: number;
   assetName: string;
   manifestSha256: string;
   targetArch: "arm64" | "x64";
@@ -51,6 +52,9 @@ export function archiveBrowserRuntime(
   return {
     archiveSha256: readBrowserRuntimeFileSha256(outputPath),
     archiveSize: archiveStats.size,
+    unpackedSize:
+      lstatSync(path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME)).size +
+      manifest.artifacts.reduce((total, { size }) => total + size, 0),
     assetName: path.basename(outputPath),
     manifestSha256: readBrowserRuntimeFileSha256(
       path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME),

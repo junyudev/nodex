@@ -1,3 +1,4 @@
+import { useOfferedAppComponentIds } from "@/features/app-components/use-app-components";
 import { settingsSearchIndex } from "./workbench-settings-search-catalog";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { createCommandKeymapState } from "../../../shared/command-keybindings";
@@ -112,6 +113,7 @@ export function CommandPalette({
   onOpenSettingsSection,
 }: CommandPaletteProps) {
   const intl = useIntl();
+  const offeredComponents = useOfferedAppComponentIds(open && onOpenSettingsSection !== undefined);
   const isMac = isMacPlatform();
   const theme = useCommandPaletteTheme();
   const [mode, setMode] = useState<CommandMenuMode>(initialMode);
@@ -187,7 +189,7 @@ export function CommandPalette({
               "settings",
               String(section.labelMessage.defaultMessage),
               ...section.searchMessages,
-              ...settingsSearchIndex(section.id, intl).keys(),
+              ...settingsSearchIndex(section.id, intl, offeredComponents).keys(),
             ],
             group: "Settings",
             priority: 700,
@@ -237,7 +239,7 @@ export function CommandPalette({
     }
     if (spaceCommands?.execute(item.id)) return;
     if (item.id.startsWith("settings:")) {
-      const target = resolveSettingsCommandTarget(item.id, query);
+      const target = resolveSettingsCommandTarget(item.id, query, offeredComponents);
       if (target) onOpenSettingsSection?.(target.sectionId, target.anchor);
       return;
     }

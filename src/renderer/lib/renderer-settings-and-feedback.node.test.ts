@@ -1,3 +1,8 @@
+import {
+  settingsSearchIndex,
+  settingsSearchAnchor,
+} from "../components/workbench/workbench-settings-search-catalog";
+import { getIntl } from "./i18n";
 import { describe, expect, test } from "vite-plus/test";
 import { normalizeEnvironmentAwareAppResourceSource } from "./app-resource-source";
 import type { BackupJobStatus } from "../../shared/types";
@@ -182,7 +187,6 @@ describe("settings host presentation", () => {
       browserProfileImport: false,
       browserControl: false,
       appUpdates: false,
-      components: false,
       launchAtLogin: false,
       mini: false,
     });
@@ -195,7 +199,6 @@ describe("settings host presentation", () => {
       browserProfileImport: true,
       browserControl: true,
       appUpdates: true,
-      components: true,
       launchAtLogin: true,
       mini: true,
     });
@@ -208,9 +211,24 @@ describe("settings host presentation", () => {
       browserProfileImport: false,
       browserControl: true,
       appUpdates: true,
-      components: false,
       launchAtLogin: true,
       mini: true,
     });
   });
+});
+
+test("Settings search uses the offered Components and their Add-ons anchor", () => {
+  const intl = getIntl();
+  const index = (offered?: Parameters<typeof settingsSearchIndex>[2]) =>
+    settingsSearchIndex("general-settings", intl, offered);
+  const windows = ["desktop-tools", "codex", "claude-code"] as const;
+  expect(index().has("Add-ons")).toBe(false);
+  expect(index(windows).has("Add-ons")).toBe(true);
+  expect(index(windows).has("Claude Code")).toBe(true);
+  expect(index(windows).has("Document Tools")).toBe(false);
+  expect(index([...windows, "document-tools"]).has("Document Tools")).toBe(true);
+  expect(settingsSearchAnchor("general-settings", "Desktop Tools", intl, windows)).toBe(
+    "components",
+  );
+  expect(settingsSearchAnchor("general-settings", "Desktop Tools", intl)).toBeNull();
 });

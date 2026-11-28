@@ -30,6 +30,7 @@ function makeLock(): Record<string, unknown> {
   const asset = {
     archiveSha256: HASH,
     archiveSize: 123,
+    unpackedSize: 456,
     assetName: "nodex-browser-runtime-26.727.40816-darwin-arm64.tar.gz",
     manifestSha256: HASH,
     runtimeVersions: {

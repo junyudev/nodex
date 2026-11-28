@@ -1,10 +1,10 @@
 import codexLock from "../../../../resources/agent-runtime/codex-app-server.lock.json";
-import type { AppComponentDefinition } from "../AppComponentCatalog";
+import type { AppComponentDefinition, AppComponentTargetKey } from "../AppComponentCatalog";
 
 export const codexSeedArtifactSizes = codexLock.builds["darwin-arm64"].artifactSizes;
 
-export function codexDefinition() {
-  const asset = codexLock.builds["darwin-arm64"];
+export function codexDefinition(target: AppComponentTargetKey) {
+  const asset = codexLock.builds[target];
   return {
     id: "codex",
     install: "on-first-use",

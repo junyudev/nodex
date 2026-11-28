@@ -1,9 +1,10 @@
 # Browser runtime release
 
 Nodex selects Desktop Tools through
-`browser-runtime.lock.json`. Each target pins an immutable archive by byte size
-and SHA-256, plus the manifest digest, source desktop build, Browser plugin
-version and component versions. When Windows uses a separately published
+`browser-runtime.lock.json`. Each target pins an immutable archive by download
+size and SHA-256 and records its unpacked size, manifest digest, source desktop
+build, Browser plugin version and component versions. When Windows uses a
+separately published
 closure, `windowsRelease` identifies the release and source build for both
 Windows archives. Local Windows candidates have a null URL and
 can be materialized from a local archive for worker verification. A null Windows
@@ -16,11 +17,10 @@ conformance-tested app-server/Browser artifact identity committed in
 `src/shared/browser-app-server-compatibility.mjs`; any untested combination
 fails closed.
 
-The macOS app downloads the exact published arm64 archive as a Component
-into `<Profile>/components/desktop-tools/<archiveSha256>/browser-runtime`.
-The download verifies the locked archive and manifest before the installation
-becomes available. Windows installers include their target's verified closure.
-Development builds use the staged closure beside the checkout.
+The desktop app downloads its target's published archive as a Component into
+`<Profile>/components/desktop-tools/<archiveSha256>/browser-runtime`. Nodex verifies
+the locked archive and manifest before the installation becomes available.
+Development builds ordinarily use the staged closure beside the checkout.
 
 Manifest producers, runtime decoders, and Windows packaging restoration share
 the schema authority in `src/shared/browser-runtime-schema.mjs`. The sealed

@@ -185,7 +185,9 @@ export function parseCodexAppServerReleaseLock(value) {
           "assetName",
           ...(isDesktopBuild ? ["entrypointSha256", "runtimeMetadataSha256"] : []),
           ...(isWindowsBuild ? ["requiredArtifacts"] : []),
-          ...(key === "darwin-arm64" && "unpackedSize" in entry ? ["unpackedSize"] : []),
+          ...(isWindowsBuild || (key === "darwin-arm64" && "unpackedSize" in entry)
+            ? ["unpackedSize"]
+            : []),
           ...(key === "darwin-arm64" && "artifactSizes" in entry ? ["artifactSizes"] : []),
           "targetTriple",
           "url",

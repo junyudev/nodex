@@ -15,6 +15,12 @@ import { afterEach, expect, test } from "vite-plus/test";
 import { stageCodexRuntime, stageCodexRuntimeCandidate } from "./stage-codex-runtime";
 import { createAgentRuntimeRelockCandidate } from "./relock-agent-runtime";
 
+import { writeAppComponentReceipt } from "../src/main/app-components/AppComponentStore";
+import { verifyCodexPackage } from "../src/main/codex/codex-runtime";
+import {
+  codexCrtDirectories,
+  stageCodexPackage,
+} from "../src/main/platform/node/stage-codex-package";
 import { windowsPeFixture } from "./testing/windows-pe-fixture";
 
 const roots: string[] = [];
@@ -93,6 +99,52 @@ test.each(["x64", "arm64"] as const)(
   },
 );
 
+test.each(["x64", "arm64"] as const)(
+  "admits the %s Codex Component with only the app-local CRT its verified images need",
+  async (arch) => {
+    const input = fixture(arch);
+    const entrypoint = join(input.source, "bin/codex.exe");
+    const machine = arch === "x64" ? 0x8664 : 0xaa64;
+    writeFileSync(entrypoint, windowsPeFixture(machine, ["VCRUNTIME140.dll"]));
+    const { metadata, metadataSha256 } = await stageCodexRuntimeCandidate(input.options);
+    const pin = { metadataSha256, entrypointSha256: metadata.releaseAsset.entrypointSha256 };
+    const runtime = join(input.root, "component");
+    cpSync(input.source, runtime, { recursive: true });
+    const resourcesPath = join(input.root, "resources");
+    const redist = join(resourcesPath, "codex-crt");
+    const crtDirectories = codexCrtDirectories({ isPackaged: true, resourcesPath });
+    mkdirSync(redist);
+    writeFileSync(join(redist, "vcruntime140.dll"), nativeImage(arch));
+    const crt = join(runtime, "bin/vcruntime140.dll");
+    const signal = new AbortController().signal;
+    const notices = join(input.root, "resources/third-party/codex");
+    const size = await stageCodexPackage(
+      runtime,
+      notices,
+      pin,
+      signal,
+      `win32-${arch}`,
+      crtDirectories,
+    );
+    await writeAppComponentReceipt(runtime, size);
+    expect(readFileSync(crt)).toEqual(nativeImage(arch));
+    const verify = () =>
+      verifyCodexPackage(
+        {
+          rootPath: runtime,
+          source: "component",
+          missingBinaryMessage: "Codex is not installed.",
+          pin,
+          crtDirectories,
+        },
+        { platform: "win32", architecture: arch },
+      );
+    await expect(verify()).resolves.toMatchObject({ binaryPath: join(runtime, "bin/codex.exe") });
+    writeFileSync(crt, windowsPeFixture(machine, ["unexpected.dll"]));
+    await expect(verify()).rejects.toThrow("invalid Windows runtime library");
+  },
+);
+
 test("rejects a foreign native image before publishing the runtime", async () => {
   const input = fixture("arm64");
   writeFileSync(join(input.source, "codex-path/rg.exe"), nativeImage("x64"));
@@ -166,6 +218,10 @@ test("relocks both Windows archives independently and retains the macOS pin", as
     const input = inputs[index]!;
     const staged = await stageCodexRuntime({ ...input.options, lockPath: first.lockPath });
     expect(staged.targetArch).toBe(arch);
+    const unpackedSize = staged.artifacts
+      .filter(({ path }) => !path.startsWith("third-party/"))
+      .reduce((total, { size }) => total + size, 0);
+    expect(candidate.builds[`win32-${arch}`].unpackedSize).toBe(unpackedSize);
     expect(staged.packageManifest.execServer).toBe("bin/codex-exec-server.exe");
     expect(candidate.builds[`win32-${arch}`].entrypointSha256).toBe(
       createHash("sha256").update(nativeImage(arch)).digest("hex"),

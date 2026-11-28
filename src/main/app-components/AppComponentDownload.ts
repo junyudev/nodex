@@ -114,7 +114,7 @@ export async function downloadComponentArchive(input: {
       const flags =
         constants.O_WRONLY |
         constants.O_CREAT |
-        constants.O_NOFOLLOW |
+        (process.platform === "win32" ? 0 : constants.O_NOFOLLOW) |
         (received ? constants.O_APPEND : constants.O_TRUNC);
       const output = await open(file, flags, 0o600);
       await pipeline(

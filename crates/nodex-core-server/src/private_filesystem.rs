@@ -8,10 +8,27 @@ use serde::Deserialize;
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum Request {
+    Paths(Paths),
+    #[cfg(windows)]
+    Directory(Directory),
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Request {
+struct Paths {
     verify: bool,
     entries: Vec<Entry>,
+}
+
+#[cfg(windows)]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct Directory {
+    directory: PathBuf,
+    boundary: PathBuf,
+    verify_descendant: bool,
 }
 
 #[derive(Deserialize)]
@@ -34,6 +51,24 @@ pub fn run(input: impl Read) -> io::Result<()> {
     }
     let request: Request =
         serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
+    #[cfg(not(windows))]
+    let Request::Paths(request) = request;
+    #[cfg(windows)]
+    let request = match request {
+        Request::Paths(request) => request,
+        Request::Directory(request) => {
+            for path in [&request.directory, &request.boundary] {
+                if !path.is_absolute() || private_fs::has_traversal(path) {
+                    return Err(invalid("Directory boundary requires absolute native paths"));
+                }
+            }
+            return if request.verify_descendant {
+                private_fs::verify_boundary_directories(&request.boundary, &request.directory)
+            } else {
+                private_fs::ensure_directory_boundary(&request.boundary, &request.directory)
+            };
+        }
+    };
     if request.entries.is_empty() || request.entries.len() > 64 {
         return Err(invalid(
             "Private filesystem request requires 1 to 64 entries",

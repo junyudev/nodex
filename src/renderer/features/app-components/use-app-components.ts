@@ -1,7 +1,8 @@
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { getIntl } from "@/lib/i18n";
-import type { AppComponentId } from "../../../shared/app-components";
+import { isRemoteSpace } from "@/lib/renderer-space";
+import { APP_COMPONENT_IDS, type AppComponentId } from "../../../shared/app-components";
 import { appComponentsRuntime } from "../../lib/app-components-runtime";
 import { providerComponentReadiness } from "./provider-component-setup";
 import { APP_COMPONENT_NAMES } from "./app-component-status-view";
@@ -12,6 +13,30 @@ const appComponentsOwner = createAppComponentsOwner(appComponentsRuntime);
 export function useAppComponents(owner: AppComponentsOwner = appComponentsOwner) {
   const state = useSyncExternalStore(owner.subscribe, owner.getSnapshot);
   return { state, setEnabled: owner.setEnabled, request: owner.request, retry: owner.retry };
+}
+
+const offeredAppComponents = () =>
+  appComponentsOwner
+    .getSnapshot()
+    ?.components.map(({ id }) => id)
+    .join(",") ?? "";
+
+const emptyOffer = {
+  subscribe: () => () => undefined,
+  read: () => "",
+};
+
+/** Search follows the Add-ons rows without rerendering on download progress. */
+export function useOfferedAppComponentIds(enabled = true): readonly AppComponentId[] {
+  const searchLocalSettings = enabled && !isRemoteSpace();
+  const offered = useSyncExternalStore(
+    searchLocalSettings ? appComponentsOwner.subscribe : emptyOffer.subscribe,
+    searchLocalSettings ? offeredAppComponents : emptyOffer.read,
+  );
+  return useMemo(() => {
+    const ids = new Set(offered.split(","));
+    return APP_COMPONENT_IDS.filter((id) => ids.has(id));
+  }, [offered]);
 }
 
 export function useAppComponent(id: AppComponentId) {

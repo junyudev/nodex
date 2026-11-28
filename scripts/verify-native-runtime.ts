@@ -1392,7 +1392,12 @@ const launchAppSmoke = async (
   const runId = randomUUID();
   mkdirSync(environment.TMPDIR!, { mode: 0o700 });
   mkdirSync(nodexHome, { mode: 0o700 });
-  if (verifyCodexInstall) await setAppComponentWanted(nodexHome, "codex", true);
+  if (verifyCodexInstall)
+    await setAppComponentWanted(
+      { home: nodexHome, target: { platform: "darwin", arch: "arm64", isPackaged: true } },
+      "codex",
+      true,
+    );
   const lease = acquireIsolatedRunLease({ nodexHome, runId, supervisorPid: process.pid });
   const child = spawn(executable, [`--user-data-dir=${userData}`], {
     cwd: directory,
@@ -1418,7 +1423,7 @@ const launchAppSmoke = async (
       await waitForPackagedComponent(child, nodexHome, {
         name: "Codex",
         manifest: join(
-          appComponentRoot(nodexHome, codexDefinition()),
+          appComponentRoot(nodexHome, codexDefinition("darwin-arm64")),
           AGENT_RUNTIME_METADATA_FILENAME,
         ),
         activated: (line) =>

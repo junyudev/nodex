@@ -31,7 +31,6 @@ import {
   appComponentCatalog,
   appComponentHome,
   type AppComponentDefinition,
-  type AppComponentTarget,
 } from "./AppComponentCatalog";
 import { AppComponentInstallError, type ComponentFetch } from "./AppComponentDownload";
 import {
@@ -43,6 +42,7 @@ import {
 } from "./AppComponentPrefetch";
 import {
   appComponentRoot,
+  type AppComponentStoreInput,
   hasAppComponentWanted,
   installedAppComponentBytes,
   removeAppComponentFiles,
@@ -94,12 +94,22 @@ const store = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch:
 
 /** Reconcile the startup settings snapshot before resolving any published component. */
 export const reconcileDisabledAppComponents = Effect.fnUntraced(function* (
-  input: AppComponentTarget & { readonly nodexHome: string },
+  input: AppComponentStoreInput["target"] & { readonly nodexHome: string },
   disabled: readonly AppComponentId[],
 ) {
   yield* Effect.forEach(
     appComponentCatalog(input).filter(({ id }) => disabled.includes(id)),
-    ({ id }) => store(() => setAppComponentTombstone(appComponentHome(input), id, true)),
+    ({ id }) =>
+      store(() =>
+        setAppComponentTombstone({ home: appComponentHome(input), target: input }, id, true),
+      ).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("Could not apply the Component removal preference", {
+            component: id,
+            cause,
+          }),
+        ),
+      ),
     { discard: true },
   );
 });
@@ -129,6 +139,7 @@ export const make = Effect.gen(function* () {
   const catalog = appComponentCatalog(config);
   if (catalog.length === 0) return noComponents;
   const home = appComponentHome(config);
+  const componentStore = { home, target: config };
   const settings = yield* ApplicationSettings;
   const activation = yield* AppComponentActivation;
   const { fetch } = yield* AppComponentFetch;
@@ -157,34 +168,35 @@ export const make = Effect.gen(function* () {
     });
   const updateInstallation = (id: AppComponentId, installation: AppComponentInstallation) =>
     publish(id, { installation });
+  // The row shows only a reason; the log keeps the underlying failure for diagnostics.
   const logFailure = (
     id: AppComponentId,
     reason: AppComponentFailureReason,
     retryAt: number | null,
+    error: Error,
   ) =>
     Effect.logWarning("Component installation failed").pipe(
-      Effect.annotateLogs({ component: id, reason, retryAt }),
+      Effect.annotateLogs({ component: id, reason, retryAt, error: error.cause ?? error }),
     );
 
   const download = Effect.fnUntraced(function* (definition: AppComponentDefinition) {
     const { id, archive } = definition;
     // Progress is a latest-wins signal: a slow reader skips stale byte counts, never the newest.
     const events = yield* Queue.sliding<AppComponentInstallation, Done>(16);
-    const resolvedShell =
-      id === "codex" && shell && !isolated ? yield* shell.load : config.environment;
+    const seedCodex = id === "codex" && config.platform === "darwin";
+    const resolvedShell = seedCodex && shell && !isolated ? yield* shell.load : config.environment;
     const operation = installComponent({
-      home,
+      ...componentStore,
       definition,
       fetch,
-      codexSeedSearch:
-        id === "codex"
-          ? {
-              home: config.homeDirectory,
-              artifactSizes: codexSeedArtifactSizes,
-              searchPath: [resolvedShell.PATH, config.environmentPath].filter(Boolean).join(":"),
-              isolated,
-            }
-          : undefined,
+      codexSeedSearch: seedCodex
+        ? {
+            home: config.homeDirectory,
+            artifactSizes: codexSeedArtifactSizes,
+            searchPath: [resolvedShell.PATH, config.environmentPath].filter(Boolean).join(":"),
+            isolated,
+          }
+        : undefined,
       codexNoticesDirectory: config.isPackaged
         ? join(config.resourcesPath, "third-party", "codex")
         : join(config.projectRootPath, "resources", "third-party", "codex"),
@@ -222,7 +234,7 @@ export const make = Effect.gen(function* () {
           ? { status: "active" as const }
           : yield* activation.activate(id);
         if (result.status === "rejected") {
-          yield* store(() => removeAppComponentFiles(home, definition, false));
+          yield* store(() => removeAppComponentFiles(componentStore, definition, false));
           return result;
         }
         yield* updateInstallation(id, { status: "installed", installedBytes });
@@ -234,10 +246,13 @@ export const make = Effect.gen(function* () {
   const attempt = Effect.fn("AppComponents.install")(function* (
     definition: AppComponentDefinition,
   ) {
-    const existingBytes = yield* store(() => installedAppComponentBytes(home, definition));
+    const existingBytes = yield* store(() =>
+      installedAppComponentBytes(componentStore, definition),
+    );
     if (existingBytes !== null && (yield* admit(definition, existingBytes)).status === "active")
       return;
-    if (existingBytes === null) yield* store(() => removeAppComponentRoot(home, definition));
+    if (existingBytes === null)
+      yield* store(() => removeAppComponentRoot(componentStore, definition));
     // Files found on disk that this build refused are gone; a clean download replaces them.
     const result = yield* admit(definition, yield* download(definition));
     if (result.status === "rejected")
@@ -264,7 +279,7 @@ export const make = Effect.gen(function* () {
       }
       const retryAt = delay === null ? null : (yield* Clock.currentTimeMillis) + delay;
       yield* updateInstallation(id, { status: "failed", reason, message: error.message, retryAt });
-      yield* logFailure(id, reason, retryAt);
+      yield* logFailure(id, reason, retryAt, error);
       if (delay === null) return;
       yield* Effect.sleep(delay);
       yield* updateInstallation(id, queued);
@@ -282,7 +297,7 @@ export const make = Effect.gen(function* () {
       reason: "unknown",
       message: error.message,
       retryAt: null,
-    }).pipe(Effect.andThen(logFailure(id, "unknown", null)));
+    }).pipe(Effect.andThen(logFailure(id, "unknown", null, error)));
 
   const queue = Effect.fnUntraced(function* (definition: AppComponentDefinition) {
     yield* updateInstallation(definition.id, queued);
@@ -291,7 +306,7 @@ export const make = Effect.gen(function* () {
 
   const markWanted = (definition: AppComponentDefinition) =>
     definition.install === "on-first-use"
-      ? store(() => setAppComponentWanted(home, definition.id, true))
+      ? store(() => setAppComponentWanted(componentStore, definition.id, true))
       : Effect.void;
 
   const disable = Effect.fnUntraced(function* (
@@ -300,7 +315,8 @@ export const make = Effect.gen(function* () {
   ) {
     const { id } = definition;
     // Write the marker first so a shutdown between the preference write and removal is safe.
-    const mark = (pending: boolean) => store(() => setAppComponentTombstone(home, id, pending));
+    const mark = (pending: boolean) =>
+      store(() => setAppComponentTombstone(componentStore, id, pending));
     yield* mark(true);
     if (persist) {
       yield* changePreference({ id, enabled: false }).pipe(
@@ -312,16 +328,20 @@ export const make = Effect.gen(function* () {
     }
     yield* FiberMap.remove(tasks, id);
     const active = yield* activation.isActive(id);
-    const bytes = active ? yield* store(() => installedAppComponentBytes(home, definition)) : null;
-    yield* store(() => setAppComponentWanted(home, id, false));
-    yield* store(() => removeAppComponentFiles(home, definition, active));
-    yield* Effect.logInfo(active ? "Component removal scheduled" : "Component removed").pipe(
-      Effect.annotateLogs({ component: id }),
-    );
+    const bytes = yield* store(() => installedAppComponentBytes(componentStore, definition));
+    yield* store(() => setAppComponentWanted(componentStore, id, false));
+    const removed = yield* store(() => removeAppComponentFiles(componentStore, definition, active));
+    const pendingBytes = removed ? null : bytes;
+    yield* Effect.logInfo(
+      pendingBytes !== null ? "Component removal scheduled" : "Component removed",
+    ).pipe(Effect.annotateLogs({ component: id }));
     return yield* publish(id, {
       enabled: false,
-      removalPending: bytes !== null,
-      installation: bytes === null ? notInstalled : { status: "installed", installedBytes: bytes },
+      removalPending: pendingBytes !== null,
+      installation:
+        pendingBytes === null
+          ? notInstalled
+          : { status: "installed", installedBytes: pendingBytes },
     });
   });
 
@@ -337,7 +357,7 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (disabled.includes(definition.id) || !(yield* activation.isActive(definition.id)))
           return null;
-        return yield* store(() => installedAppComponentBytes(home, definition)).pipe(
+        return yield* store(() => installedAppComponentBytes(componentStore, definition)).pipe(
           Effect.orElseSucceed(() => null),
         );
       }),
@@ -365,7 +385,7 @@ export const make = Effect.gen(function* () {
       const { id } = definition;
       yield* Effect.gen(function* () {
         if (disabled.includes(id)) return yield* disable(definition, false);
-        yield* store(() => setAppComponentTombstone(home, id, false));
+        yield* store(() => setAppComponentTombstone(componentStore, id, false));
         if (definition.install === "on-first-use") {
           if (id === "codex" && preferences.success.codexExecutable?.activeExecutable) return;
           const wanted = yield* store(() => hasAppComponentWanted(home, id));
@@ -426,7 +446,7 @@ export const make = Effect.gen(function* () {
   });
 
   const prefetch = yield* makeAppComponentPrefetch({
-    store: { home, target: config },
+    store: componentStore,
     appBuildVersion: config.appBuildVersion,
     catalog,
     fetch,
@@ -458,7 +478,7 @@ export const make = Effect.gen(function* () {
         return disabled;
       }
       yield* changePreference(input);
-      yield* store(() => setAppComponentTombstone(home, input.id, false));
+      yield* store(() => setAppComponentTombstone(componentStore, input.id, false));
       if (component.removalPending && (yield* activation.isActive(input.id))) {
         yield* markWanted(definition);
         return yield* publish(input.id, { enabled: true, removalPending: false });

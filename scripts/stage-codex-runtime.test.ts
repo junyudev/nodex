@@ -144,6 +144,7 @@ function fixture(
           "codex-resources/codex-command-runner.exe",
           "codex-resources/codex-windows-sandbox-setup.exe",
         ],
+        unpackedSize: 1,
       };
     return archive;
   };
