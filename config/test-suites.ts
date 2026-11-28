@@ -96,6 +96,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "packages/mobile-protocol/src/**/*.test.ts",
       "packages/push-relay/src/**/*.test.ts",
       "packages/nodex-app-tools-mcp/src/**/*.test.ts",
+      "packages/insights-cards/src/**/*.test.ts",
     ],
     exclude: [
       YJS_YRS_TEST,

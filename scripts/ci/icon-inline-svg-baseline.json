@@ -44,10 +44,6 @@
       "count": 1,
       "reason": "The mascot is a product illustration owned by the Avatar overlay, not a reusable control icon."
     },
-    "src/renderer/features/insights/insights-cards.ts": {
-      "count": 2,
-      "reason": "Share cards are self-contained SVG documents rendered to an image, so the whole picture stays in one file that a canvas can draw; they are not reusable control icons."
-    },
     "src/renderer/features/insights/insights-charts.tsx": {
       "count": 3,
       "reason": "Insights charts draw data-driven marks whose geometry encodes usage over time; they are not reusable control icons."
