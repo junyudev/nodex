@@ -1,0 +1,76 @@
+name: Publish nodex-card
+
+# npm trusts this workflow, by file name, to publish nodex-card through OIDC: there is no npm
+# token to leak and no 2FA prompt. A version lands on npm only from protected main after its Main CI
+# passes, and only once; merging a version bump in packages/nodex-card/package.json publishes it.
+
+on:
+  workflow_run:
+    workflows: [Main CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full protected-main commit to publish from; its Main CI must have passed
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-nodex-card
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/verify-protected-main-source
+        with:
+          source_sha: ${{ env.SOURCE_SHA }}
+
+      - name: Find an unpublished version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./packages/nodex-card/package.json").version')"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          if npm view "nodex-card@${version}" version >/dev/null 2>&1; then
+            echo "nodex-card@${version} is already on npm; nothing to publish."
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - if: steps.version.outputs.publish == 'true'
+        uses: ./.github/actions/setup-vite-plus
+
+      - if: steps.version.outputs.publish == 'true'
+        run: vp install --frozen-lockfile
+
+      - if: steps.version.outputs.publish == 'true'
+        run: vp run --filter nodex-card build
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - if: steps.version.outputs.publish == 'true'
+        name: Publish with provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes npm@11.20.0 publish packages/nodex-card/dist --access public --provenance
+          echo "Published nodex-card@${{ steps.version.outputs.version }} from ${SOURCE_SHA}."
