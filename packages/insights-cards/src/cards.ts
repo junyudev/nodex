@@ -16,28 +16,103 @@ export const SHARE_URL = "nodex.jyu.app";
 /** What someone who sees a card types to make their own, without installing anything. */
 export const SHARE_COMMAND = "npx nodex-card";
 
-/** Geist Mono and its fallbacks advance every character by six tenths of the font size. */
-const MONO_ADVANCE = 0.6;
+const WIDE_CHARACTER =
+  /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u;
+
+/** East Asian characters take a full em in a CJK font and two columns in a terminal. */
+export const isWideCharacter = (character: string) =>
+  WIDE_CHARACTER.test(character) || (character.codePointAt(0) ?? 0) >= 0x20000;
 
 /**
- * The command set as code: a quiet chip a viewer reads as something to type, with the address
- * after it. Returns the markup and where the address starts.
+ * Geist Sans advances for printable ASCII in thousandths of an em, measured from
+ * `fonts/geist-sans.woff2`; kerning makes a real run about one percent narrower. Geist Mono and
+ * its fallbacks advance every character by six tenths of an em.
  */
+const SANS_ADVANCES = [
+  250, 213, 346, 478, 629, 802, 620, 178, 274, 274, 430, 558, 201, 419, 201, 480, 663, 384, 619,
+  613, 615, 626, 593, 524, 604, 593, 297, 297, 544, 540, 544, 559, 906, 668, 680, 703, 694, 603,
+  590, 700, 713, 270, 597, 640, 580, 877, 743, 739, 650, 733, 672, 640, 552, 689, 667, 945, 606,
+  576, 544, 347, 455, 347, 426, 557, 248, 551, 595, 546, 595, 561, 395, 594, 581, 244, 260, 590,
+  267, 877, 581, 573, 595, 595, 379, 520, 392, 575, 536, 819, 585, 537, 537, 389, 264, 389, 523,
+] as const;
+const MONO_ADVANCE = 600;
+
+/** How wide card text draws, so a chip can sit inside a sentence. */
+function textWidth(text: string, size: number, family: "sans" | "mono"): number {
+  let units = 0;
+  for (const character of text) {
+    if (isWideCharacter(character)) units += 1000;
+    else if (family === "mono") units += MONO_ADVANCE;
+    else units += SANS_ADVANCES[(character.codePointAt(0) ?? 0) - 32] ?? MONO_ADVANCE;
+  }
+  return (units * size) / 1000;
+}
+
+/** The command set as code: a quiet chip a viewer reads as something to type. */
 function commandChip(
   x: number,
   baseline: number,
   size: number,
   colors: { readonly chip: string; readonly ink: string },
 ) {
-  const padding = Math.round(size * 0.5);
-  const width = Math.round(SHARE_COMMAND.length * size * MONO_ADVANCE + padding * 2);
-  const height = Math.round(size * 1.55);
-  const top = Math.round(baseline - size * 1.08);
+  const padding = size * 0.5;
+  const width = (SHARE_COMMAND.length * size * MONO_ADVANCE) / 1000 + padding * 2;
   return {
-    markup: `<rect x="${x}" y="${top}" width="${width}" height="${height}" rx="${Math.round(size * 0.36)}" fill="${colors.chip}"/><text x="${x + padding}" y="${baseline}" font-family="${MONO}" font-size="${size}" font-weight="500" fill="${colors.ink}">${SHARE_COMMAND}</text>`,
+    markup: `<rect x="${x.toFixed(1)}" y="${(baseline - size * 1.08).toFixed(1)}" width="${width.toFixed(1)}" height="${(size * 1.55).toFixed(1)}" rx="${(size * 0.36).toFixed(1)}" fill="${colors.chip}"/><text x="${(x + padding).toFixed(1)}" y="${baseline}" font-family="${MONO}" font-size="${size}" font-weight="500" fill="${colors.ink}">${SHARE_COMMAND}</text>`,
     end: x + width,
   };
 }
+
+const COMMAND_SLOT = "\u0001";
+const URL_SLOT = "\u0002";
+
+/**
+ * A line telling a viewer how to make their own card: the command set as code and the address in
+ * ink, inside a sentence formatted with COMMAND_SLOT and URL_SLOT. Words before the command are
+ * measured so its chip lands in place; everything after flows from the chip's end.
+ */
+function invitation(
+  sentence: string,
+  at: {
+    readonly x: number;
+    readonly baseline: number;
+    readonly size: number;
+    readonly family: "sans" | "mono";
+  },
+  colors: { readonly chip: string; readonly words: string; readonly ink: string },
+): string {
+  const parts = sentence.split(/(\u0001|\u0002)/u).filter((part) => part !== "");
+  const line = (x: number, runs: readonly string[]) =>
+    runs.length === 0
+      ? ""
+      : `<text x="${x.toFixed(1)}" y="${at.baseline}" font-family="${at.family === "sans" ? SANS : MONO}" font-size="${at.size}" fill="${colors.words}" xml:space="preserve">${runs
+          .map((run) =>
+            run === URL_SLOT
+              ? `<tspan font-family="${MONO}" fill="${colors.ink}">${SHARE_URL}</tspan>`
+              : escapeXml(run),
+          )
+          .join("")}</text>`;
+  const commandAt = parts.indexOf(COMMAND_SLOT);
+  if (commandAt < 0) return line(at.x, parts);
+  const before = parts.slice(0, commandAt);
+  const chipX =
+    at.x +
+    before.reduce(
+      (width, run) =>
+        width +
+        (run === URL_SLOT
+          ? textWidth(SHARE_URL, at.size, "mono")
+          : textWidth(run, at.size, at.family)),
+      0,
+    );
+  const chip = commandChip(chipX, at.baseline, at.size, colors);
+  return line(at.x, before) + chip.markup + line(chip.end, parts.slice(commandAt + 1));
+}
+
+const INVITATION: MessageDescriptor = defineMessage({
+  id: "insights.insightsCards.invitation",
+  defaultMessage: "Run {command} in a terminal, or visit {url}",
+});
 
 export type ShareCardTheme = "dark" | "light";
 
@@ -501,7 +576,6 @@ function renderSkyline<RichText>(
     ),
   );
   const periodLabel = sharePeriodLabel(view, intl);
-  const command = commandChip(64, 1278, 23, palette);
   const question = intl.formatMessage(
     PERIOD_QUESTIONS[view.period === "range" ? "all" : view.period],
     view.period === "year" ? { year: periodLabel } : undefined,
@@ -537,7 +611,11 @@ ${sources
   .join(
     "",
   )}<text x="64" y="1234" font-family="${SANS}" font-size="33" font-weight="600" letter-spacing="-.5" fill="${palette.ink}">${escapeXml(question)}</text>
-${command.markup}<text x="${command.end + 18}" y="1278" font-family="${MONO}" font-size="23" fill="${palette.muted}">${SHARE_URL}</text>
+${invitation(
+  intl.formatMessage(INVITATION, { command: COMMAND_SLOT, url: URL_SLOT }),
+  { x: 64, baseline: 1280, size: 21, family: "sans" },
+  { chip: palette.chip, words: palette.muted, ink: palette.ink },
+)}
 ${palette.qr.edge === null ? `<rect x="896" y="1180" width="120" height="120" rx="12" fill="${palette.qr.plate}"/>` : `<rect x="896.5" y="1180.5" width="119" height="119" rx="12" fill="${palette.qr.plate}" stroke="${palette.qr.edge}"/>`}${qrCode(906, 1190, 100, palette.qr.ink)}
 </svg>`;
 }
@@ -873,6 +951,7 @@ function renderReceipt<RichText>(
       { weight: 700 },
     ),
   );
+  const qrTop = y - 21;
   advance(28);
   rows.push(
     text(
@@ -884,10 +963,32 @@ function renderReceipt<RichText>(
       { fill: dim, size: 17 },
     ),
   );
+  // The receipt is narrow, so its invitation takes two lines.
+  const receiptInvitation = (message: MessageDescriptor) =>
+    invitation(
+      intl.formatMessage(message, { command: COMMAND_SLOT, url: URL_SLOT }),
+      { x: left, baseline: y, size: 17, family: "mono" },
+      { chip: "#17171a12", words: dim, ink },
+    );
   advance(30);
-  const command = commandChip(left, y, 17, { chip: "#17171a12", ink });
-  rows.push(command.markup, text(SHARE_URL, command.end + 12, { fill: dim, size: 17 }));
-  rows.push(qrCode(right - 86, y - 79, 86, ink));
+  rows.push(
+    receiptInvitation(
+      defineMessage({
+        id: "insights.insightsCards.receiptRun",
+        defaultMessage: "RUN {command} IN A TERMINAL",
+      }),
+    ),
+  );
+  advance(26);
+  rows.push(
+    receiptInvitation(
+      defineMessage({
+        id: "insights.insightsCards.receiptVisit",
+        defaultMessage: "OR VISIT {url}",
+      }),
+    ),
+  );
+  rows.push(qrCode(right - 86, qrTop, 86, ink));
   advance(36);
 
   const height = y;

@@ -2,6 +2,7 @@ import type { IntlShape } from "@formatjs/intl";
 import {
   agentArchetype,
   compactNumber,
+  isWideCharacter,
   receiptCost,
   shareModelRows,
   sharePeriodLabel,
@@ -31,14 +32,11 @@ const BARS = "▁▂▃▄▅▆▇█";
 const paint = (enabled: boolean) => (code: string, text: string) =>
   enabled && text !== "" ? `\u001b[${code}m${text}\u001b[0m` : text;
 
-const WIDE =
-  /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u;
-
 /** Columns a string takes in a terminal: wide East Asian characters take two. */
 export function columns(text: string): number {
   let width = 0;
   for (const character of text.replace(/\u001b\[[0-9;]*m/g, "")) {
-    width += WIDE.test(character) || (character.codePointAt(0) ?? 0) >= 0x20000 ? 2 : 1;
+    width += isWideCharacter(character) ? 2 : 1;
   }
   return width;
 }

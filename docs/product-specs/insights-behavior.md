@@ -77,7 +77,8 @@ apply to both cards, and the name and the style are remembered.
 
 Both state the period, name the agents whose history they counted (Claude Code, Codex), carry a QR
 code and `nodex.jyu.app`, and show the strongest non-zero numbers. Under the closing question each
-shows `npx nodex-card` set as code, the one command a viewer types to make their own. Dark cards glow on a night sky;
+tells a viewer how to make their own in one plain sentence: run `npx nodex-card`, set as code, in a
+terminal, or visit `nodex.jyu.app`. Dark cards glow on a night sky;
 light ones are drawn on paper.
 A fixed mark (`1B Club`, `10B Club`, `100B Club`, `1T Club`) and an archetype read from the numbers
 give them something to wear; neither compares anyone with anyone.

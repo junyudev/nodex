@@ -3,6 +3,7 @@ export { agentArchetype, tokenClub } from "./card-profile";
 export {
   nodexMark,
   receiptCost,
+  isWideCharacter,
   renderShareCard,
   shareFileName,
   shareMessage,
