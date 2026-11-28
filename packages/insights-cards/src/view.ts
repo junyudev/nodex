@@ -1,5 +1,5 @@
 /**
- * What a share card draws. Insights projects one from its own ledger; nodex-insights projects one
+ * What a share card draws. Insights projects one from its own ledger; nodex-card projects one
  * from ccusage. A card is a pure function of this view, so whoever produces it gets the same picture.
  */
 

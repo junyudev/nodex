@@ -1,13 +1,13 @@
-# Nodex Insights
+# nodex-card
 
 Turn your local AI coding agent usage into two shareable cards, Skyline and Receipt. Copy an image, save a PNG, or open an X post and paste in your card. The cards are the ones [Nodex](https://nodex.jyu.app), the cross-agent workspace and notebook, draws in its Insights.
 
 Requires Node.js 20 or later.
 
 ```sh
-npx nodex-insights
-npx nodex-insights --year 2025 --no-cost
-npx nodex-insights --since 2026-09-01 --until 2026-11-30 --name "Alex"
+npx nodex-card
+npx nodex-card --year 2025 --no-cost
+npx nodex-card --since 2026-09-01 --until 2026-11-30 --name "Alex"
 ```
 
 By default, the cards cover January 1 through today in your system time zone. Choose an earlier calendar year with `--year`, or use a custom range with `--since` and `--until`. Both endpoints are inclusive.
@@ -31,4 +31,4 @@ npm may download the package the first time you run it. Once launched, the CLI r
 
 ## 中文
 
-运行 `npx nodex-insights`，即可把本机 AI 编程智能体的用量生成天际线和账单卡片。你可以复制图片、保存 PNG，或在 X 中发帖。预览页可以切换到中文。费用按 API 标价估算，可用 `--no-cost` 隐藏。使用记录在本机离线读取，只有发布时才会上传卡片。
+运行 `npx nodex-card`，即可把本机 AI 编程智能体的用量生成天际线和账单卡片。你可以复制图片、保存 PNG，或在 X 中发帖。预览页可以切换到中文。费用按 API 标价估算，可用 `--no-cost` 隐藏。使用记录在本机离线读取，只有发布时才会上传卡片。

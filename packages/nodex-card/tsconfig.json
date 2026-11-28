@@ -12,7 +12,7 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "incremental": true,
-    "tsBuildInfoFile": "../../.cache/typescript/nodex-insights.tsbuildinfo"
+    "tsBuildInfoFile": "../../.cache/typescript/nodex-card.tsbuildinfo"
   },
   "include": ["src", "scripts"]
 }

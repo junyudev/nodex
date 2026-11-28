@@ -135,7 +135,7 @@ async function publishedManifest(): Promise<string> {
   const manifest: Record<string, unknown> = Object.fromEntries(
     fields.filter((field) => source[field] !== undefined).map((field) => [field, source[field]]),
   );
-  manifest.bin = { "nodex-insights": "./cli.js" };
+  manifest.bin = { "nodex-card": "./cli.js" };
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
