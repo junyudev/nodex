@@ -1498,70 +1498,98 @@ export function acpToolCallFileChanges(content: unknown): Array<OrchestrationV2F
     const diff = unknownRecord(entry);
     if (diff?.type !== "diff") return [];
     const patch = unknownRecord(diff.patch);
-    if (patch?.format === "omitted" || patch?.format === "snippet")
+    if (patch?.format === "omitted")
       return typeof diff.path === "string"
         ? [{ operation: "modify", path: diff.path }]
         : diffChangeIdentities(diff);
     if (typeof patch?.text === "string") return acpV2FileChanges(diff, patch.text);
-    if (typeof diff.path !== "string" || typeof diff.newText !== "string")
-      return diffChangeIdentities(diff);
-    if (typeof diff.oldText !== "string")
-      return fileChangeDetail({ operation: "add", path: diff.path, diff: diff.newText }) ?? [];
-    const structured = structuredPatch(
-      diff.path,
-      diff.path,
-      diff.oldText,
-      diff.newText,
-      undefined,
-      undefined,
-      {
-        context: 3,
-        maxEditLength:
-          diff.oldText && diff.newText ? ACP_V1_DIFF_MAX_EDITS : Number.POSITIVE_INFINITY,
-      },
-    );
+    const v1 = acpV1Diff(diff);
+    if (v1 === undefined) return diffChangeIdentities(diff);
+    if (v1.oldText === undefined)
+      return fileChangeDetail({ operation: "add", path: v1.path, diff: v1.newText }) ?? [];
+    const structured = acpV1StructuredPatch(v1);
     if (structured?.hunks.length === 0) return [];
     return (
       fileChangeDetail({
         operation: "modify",
-        path: diff.path,
+        path: v1.path,
         ...(structured === undefined ? {} : { diff: unifiedHunksText(structured.hunks) }),
       }) ?? []
     );
   });
 }
 
+interface AcpV1Diff {
+  readonly path: string;
+  /** Absent for a new file. */
+  readonly oldText?: string;
+  readonly newText: string;
+}
+
+function acpV1Diff(diff: Record<string, unknown>): AcpV1Diff | undefined {
+  if (typeof diff.path !== "string" || typeof diff.newText !== "string") return undefined;
+  return typeof diff.oldText === "string"
+    ? { path: diff.path, oldText: diff.oldText, newText: diff.newText }
+    : { path: diff.path, newText: diff.newText };
+}
+
 // Bound diff search to protect the event loop; empty-sided diffs need no search.
 const ACP_V1_DIFF_MAX_EDITS = 1_000;
 
-/**
- * A `snippet` patch has no known location. Keep its recorded text, so no view numbers it
- * from line 1.
- */
-export function acpToolCallSnippetEdit(content: unknown) {
-  if (!Array.isArray(content)) return undefined;
-  const diffs = content.flatMap((entry) => {
-    const diff = unknownRecord(entry);
-    return diff?.type === "diff" ? [diff] : [];
-  });
-  const diff = diffs.length === 1 ? diffs[0] : undefined;
-  if (diff === undefined || unknownRecord(diff.patch)?.format !== "snippet") return undefined;
-  return typeof diff.oldText === "string" && typeof diff.newText === "string"
-    ? { oldStr: diff.oldText, newStr: diff.newText }
-    : undefined;
+/** A v1 diff's hunks, or undefined when the edit is too far-reaching to search. */
+function acpV1StructuredPatch(diff: AcpV1Diff) {
+  return structuredPatch(
+    diff.oldText === undefined ? "/dev/null" : diff.path,
+    diff.path,
+    diff.oldText ?? "",
+    diff.newText,
+    undefined,
+    undefined,
+    {
+      context: 3,
+      maxEditLength:
+        diff.oldText && diff.newText ? ACP_V1_DIFF_MAX_EDITS : Number.POSITIVE_INFINITY,
+    },
+  );
 }
 
 /**
- * No preview when a flavor marked a diff `omitted` (too large) or `snippet` (line unknown);
- * the checkpoint diff shows it.
+ * A v1 diff in a form a flavor that bounds tool payloads can keep whole instead of cutting its
+ * texts: a new file keeps its content, and an edit becomes the v2 diff of the patch its two texts
+ * describe. A file too large to diff, an edit too far-reaching to search, or a result longer than
+ * the patch limit keeps only its change.
  */
+export function compactAcpV1Diff(
+  diff: Record<string, unknown>,
+  limits: { readonly maxTextLength: number; readonly maxPatchLength: number },
+): EffectAcpSchema.ToolCallContent | undefined {
+  const v1 = acpV1Diff(diff);
+  if (v1 === undefined) return undefined;
+  if (v1.oldText === undefined)
+    return v1.newText.length > limits.maxPatchLength
+      ? { type: "diff", changes: [{ operation: "add", path: v1.path }] }
+      : { type: "diff", path: v1.path, newText: v1.newText };
+  const changes = [{ operation: "modify", path: v1.path }] as const;
+  const structured =
+    Math.max(v1.oldText.length, v1.newText.length) > limits.maxTextLength
+      ? undefined
+      : acpV1StructuredPatch(v1);
+  const text =
+    structured === undefined
+      ? undefined
+      : structured.hunks.length === 0
+        ? ""
+        : formatPatch(structured, FILE_HEADERS_ONLY);
+  return text === undefined || text.length > limits.maxPatchLength
+    ? { type: "diff", changes }
+    : { type: "diff", changes, patch: { format: "git_patch", text } };
+}
+
+/** No preview when a flavor marked a diff `omitted`; the checkpoint diff shows it. */
 function acpToolCallDiffUnpreviewable(content: unknown): boolean {
   return (
     Array.isArray(content) &&
-    content.some((entry) => {
-      const format = unknownRecord(unknownRecord(entry)?.patch)?.format;
-      return format === "omitted" || format === "snippet";
-    })
+    content.some((entry) => unknownRecord(unknownRecord(entry)?.patch)?.format === "omitted")
   );
 }
 
@@ -1595,25 +1623,19 @@ export function acpToolCallDiffPatch(content: unknown): string | undefined {
           },
         ];
       }
-      return [{ text: patch.text }];
+      if (patch.text.length === 0) return [];
+      // A patch without its own Git header takes one when a sibling has one.
+      return [
+        typeof change?.path === "string" && !/^diff --git /m.test(patch.text)
+          ? { text: patch.text, path: change.path }
+          : { text: patch.text },
+      ];
     }
-    if (typeof diff.path !== "string" || typeof diff.newText !== "string") return [];
-    const oldText = typeof diff.oldText === "string" ? diff.oldText : undefined;
-    const structured = structuredPatch(
-      oldText === undefined ? "/dev/null" : diff.path,
-      diff.path,
-      oldText ?? "",
-      diff.newText,
-      undefined,
-      undefined,
-      {
-        context: 3,
-        maxEditLength: oldText && diff.newText ? ACP_V1_DIFF_MAX_EDITS : Number.POSITIVE_INFINITY,
-      },
-    );
-    return structured === undefined || structured.hunks.length === 0
+    const v1 = acpV1Diff(diff);
+    const structured = v1 === undefined ? undefined : acpV1StructuredPatch(v1);
+    return v1 === undefined || structured === undefined || structured.hunks.length === 0
       ? []
-      : [{ text: formatPatch(structured, FILE_HEADERS_ONLY), path: diff.path }];
+      : [{ text: formatPatch(structured, FILE_HEADERS_ONLY), path: v1.path }];
   });
   // Diff parsers split at Git headers once one exists, so every section then needs its own.
   const hasGitHeader = patches.some(({ text }) => /^diff --git /m.test(text));
@@ -5287,10 +5309,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               case "edit":
               case "delete":
               case "move": {
-                const snippet = acpToolCallSnippetEdit(toolCall.data.content);
                 const unpreviewable = acpToolCallDiffUnpreviewable(toolCall.data.content);
                 const outputPatch =
-                  unpreviewable || snippet !== undefined || failureText !== undefined || outputText === undefined
+                  unpreviewable || failureText !== undefined || outputText === undefined
                     ? undefined
                     : fileChangeItemFields(fileChangesFromPatch(outputText, path));
                 turnItem = {
@@ -5299,9 +5320,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   fileName: path ?? toolCall.title ?? "File change",
                   ...(failureText !== undefined
                     ? { diffStr: failureText }
-                    : snippet ??
-                      outputPatch ??
-                      (unpreviewable || diffText === undefined ? {} : { diffStr: diffText })),
+                    : (outputPatch ??
+                      (unpreviewable || diffText === undefined ? {} : { diffStr: diffText }))),
                 };
                 break;
               }

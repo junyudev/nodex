@@ -12,14 +12,8 @@ import * as Schema from "effect/Schema";
 import type * as EffectAcpSchema from "effect-acp/compat";
 import * as AcpWireSchema from "effect-acp/schema-v1";
 
+import { compactAcpV1Diff } from "@nodex/provider-acp/server/adapter";
 import type { AcpToolCallState } from "@nodex/provider-acp/server/runtimeModel";
-
-import {
-  ANTIGRAVITY_EDIT_DIFF_OMITTED,
-  antigravityEditPatch,
-  isAntigravitySnippetPatch,
-  readAntigravityPreEditFile,
-} from "./AntigravityEditLocation.ts";
 
 const TOOL_TEXT_LIMIT = 8_000;
 const TOOL_TEXT_TRUNCATED = "[Earlier output truncated]\n\n";
@@ -227,12 +221,42 @@ interface ToolPayloadBudget {
   images?: number;
 }
 
+// Diffing runs synchronously, so a larger file keeps no preview. A longer patch would never
+// reach the transcript, and the tool state, its event and a history replay each hold it.
+const EDIT_DIFF_LIMITS = { maxTextLength: 1024 * 1024, maxPatchLength: 256 * 1024 };
+const decodeEditPatch = Schema.decodeUnknownOption(
+  Schema.Struct({
+    type: Schema.Literal("diff"),
+    changes: Schema.NonEmptyArray(
+      Schema.Struct({ operation: Schema.Literals(["add", "modify"]), path: Schema.String }),
+    ),
+    patch: Schema.optionalKey(
+      Schema.Struct({ format: Schema.Literal("git_patch"), text: Schema.String }),
+    ),
+  }),
+);
+
+/**
+ * Antigravity reports an applied edit as the file's full old and new text, which bounding would
+ * cut past diffing. Keep what they describe instead, whole through later updates: a new file's
+ * content, or an edit's patch.
+ */
+function antigravityEditDiff(
+  value: Readonly<Record<string, unknown>>,
+): EffectAcpSchema.ToolCallContent | undefined {
+  if (value.type !== "diff") return undefined;
+  return compactAcpV1Diff(value, EDIT_DIFF_LIMITS) ?? Option.getOrUndefined(decodeEditPatch(value));
+}
+
+/** `content` marks a tool's own content entries; everything below one belongs to a result. */
+type ToolValueScope = "state" | "content" | "result";
+
 function sanitizeToolValue(
   value: unknown,
   budget: ToolPayloadBudget,
   depth: number,
   field?: string,
-  imageScope?: "state" | "result",
+  scope?: ToolValueScope,
 ): unknown {
   if (depth > 12 || budget.nodes-- <= 0) {
     return undefined;
@@ -251,7 +275,7 @@ function sanitizeToolValue(
     const result: unknown[] = [];
     for (const entry of value) {
       if (budget.nodes <= 0) break;
-      const sanitized = sanitizeToolValue(entry, budget, depth + 1, undefined, imageScope);
+      const sanitized = sanitizeToolValue(entry, budget, depth + 1, undefined, scope);
       if (sanitized !== undefined) result.push(sanitized);
     }
     return result;
@@ -259,8 +283,10 @@ function sanitizeToolValue(
   if (!Predicate.isObject(value)) {
     return value;
   }
-  const image =
-    imageScope === "result" && (budget.images ?? 0) > 0 ? boundedToolOutputImage(value) : null;
+  const editDiff = scope === "content" ? antigravityEditDiff(value) : undefined;
+  if (editDiff !== undefined) return editDiff;
+  const inResult = scope === "result" || scope === "content";
+  const image = inResult && (budget.images ?? 0) > 0 ? boundedToolOutputImage(value) : null;
   const entries: Array<readonly [string, unknown]> = [];
   for (const [key, entry] of Object.entries(value)) {
     if (budget.nodes <= 0) break;
@@ -279,11 +305,12 @@ function sanitizeToolValue(
     ) {
       continue;
     }
-    const childScope =
-      imageScope === "result" ||
-      (imageScope === "state" && (key === "rawOutput" || key === "content"))
+    const childScope: ToolValueScope | undefined =
+      inResult || (scope === "state" && key === "rawOutput")
         ? "result"
-        : undefined;
+        : scope === "state" && key === "content"
+          ? "content"
+          : undefined;
     const sanitized = sanitizeToolValue(entry, budget, depth + 1, key, childScope);
     if (sanitized !== undefined) entries.push([key, sanitized]);
   }
@@ -383,8 +410,9 @@ export function normalizeAntigravitySessionUpdate(
   const update = notification.update;
   const contentBudget = { nodes: 512, text: 32_000, images: MAX_TOOL_OUTPUT_IMAGES };
   const sanitizeContent = (entry: unknown) =>
+    (Predicate.isObject(entry) ? antigravityEditDiff(entry) : undefined) ??
     Option.getOrUndefined(
-      decodeToolCallContent(sanitizeToolValue(entry, contentBudget, 0, undefined, "result")),
+      decodeToolCallContent(sanitizeToolValue(entry, contentBudget, 0, undefined, "content")),
     );
   if (update.sessionUpdate === "tool_call_content_chunk") {
     const content = sanitizeContent(update.content);
@@ -454,58 +482,7 @@ function localImagePath(imagePath: string | undefined): string | undefined {
   return /^[a-z][a-z\d+.-]*:/i.test(path) && !/^[a-z]:[\\/]/i.test(path) ? undefined : path;
 }
 
-function hasTruncatedText(value: unknown): boolean {
-  if (typeof value === "string") return value.startsWith(TOOL_TEXT_TRUNCATED);
-  return Predicate.isObject(value) && Object.values(value).some(hasTruncatedText);
-}
-
-/** The ACP adapter renders a diff's `patch.text` ahead of its bare old/new snippets. */
-function withAntigravityEditPatches(
-  content: ReadonlyArray<unknown>,
-  data: Record<string, unknown>,
-  readPreEditFile: ((path: string) => string | undefined) | undefined,
-) {
-  return content.map((entry) => {
-    if (!Predicate.isObject(entry) || entry.type !== "diff" || typeof entry.path !== "string")
-      return entry;
-    // Keep the first patch: once the edit runs, the file no longer holds the old text. A later
-    // update's shared text budget can cut or drop it, and a cut patch would misplace the hunk.
-    if (entry.patch !== undefined) {
-      const patch: unknown = entry.patch;
-      const cut =
-        Predicate.isObject(patch) &&
-        patch.format !== "omitted" &&
-        (typeof patch.text !== "string" || patch.text.startsWith(TOOL_TEXT_TRUNCATED));
-      return cut ? { ...entry, patch: { format: "omitted" } } : entry;
-    }
-    // Bounding keeps only the tail of long text, so a cut snippet cannot be located and a cut
-    // old or new text would render the cut as file content.
-    if ([data.rawInput, entry.oldText, entry.newText].some(hasTruncatedText))
-      return { ...entry, patch: { format: "omitted" } };
-    const text = antigravityEditPatch({
-      path: entry.path,
-      rawInput: data.rawInput,
-      locations: data.locations,
-      readPreEditFile,
-    });
-    // A truncated patch would no longer parse, and bare snippets would render at line 1.
-    if (
-      text === ANTIGRAVITY_EDIT_DIFF_OMITTED ||
-      (text !== undefined && text.length > TOOL_TEXT_LIMIT)
-    )
-      return { ...entry, patch: { format: "omitted" } };
-    if (text === undefined) return entry;
-    return {
-      ...entry,
-      patch: isAntigravitySnippetPatch(text) ? { format: "snippet", text } : { text },
-    };
-  });
-}
-
-export function normalizeAntigravityToolCall(
-  toolCall: AcpToolCallState,
-  readPreEditFile = readAntigravityPreEditFile,
-): AcpToolCallState {
+export function normalizeAntigravityToolCall(toolCall: AcpToolCallState): AcpToolCallState {
   const nativeData = normalizeAntigravityCommandData(toolCall.data, toolCall.kind);
   const input = Option.getOrUndefined(decodeNativeToolFields(nativeData.rawInput));
   const output = Option.getOrUndefined(decodeNativeToolFields(nativeData.rawOutput));
@@ -547,14 +524,9 @@ export function normalizeAntigravityToolCall(
   if (imagePath !== undefined) data.imagePath = imagePath;
   if (kind === "edit") {
     const content = Array.isArray(data.content) ? data.content : [];
-    // Full-access edits report only a path; without a hunk the checkpoint diff is the review.
-    data.content = content.some((entry) => Predicate.isObject(entry) && entry.type === "diff")
-      ? withAntigravityEditPatches(
-          content,
-          data,
-          toolCall.status === "pending" ? readPreEditFile : undefined,
-        )
-      : [...content, { type: "diff", patch: { format: "omitted" } }];
+    // An edit reports only its path until its completion carries the diff.
+    if (!content.some((entry) => Predicate.isObject(entry) && entry.type === "diff"))
+      data.content = [...content, { type: "diff", patch: { format: "omitted" } }];
   }
   if (kind === "execute") {
     data.item = {
