@@ -60,7 +60,19 @@
               "body": "Thanks for reporting this.",
               "createdAt": "2026-11-26T19:31:02Z",
               "lastEditedAt": null,
-              "url": "https://github.com/cli/cli/issues/15176#issuecomment-7201674978"
+              "url": "https://github.com/cli/cli/issues/15176#issuecomment-7201674978",
+              "viewerCanUpdate": true,
+              "viewerCanDelete": false,
+              "viewerCanReact": true,
+              "reactionGroups": [
+                {
+                  "content": "EYES",
+                  "viewerHasReacted": true,
+                  "reactors": {
+                    "totalCount": 1
+                  }
+                }
+              ]
             },
             {
               "__typename": "IssueComment",
@@ -75,10 +87,18 @@
               "body": "Hidden",
               "createdAt": "2026-11-26T19:31:02Z",
               "lastEditedAt": null,
-              "url": "https://github.com/cli/cli/issues/15176#issuecomment-7201674978"
+              "url": "https://github.com/cli/cli/issues/15176#issuecomment-7201674978",
+              "viewerCanUpdate": false,
+              "viewerCanDelete": false,
+              "viewerCanReact": false,
+              "reactionGroups": null
             }
           ]
-        }
+        },
+        "id": "I_nodex_fixture",
+        "viewerCanUpdate": false,
+        "viewerCanReact": true,
+        "reactionGroups": null
       }
     }
   }

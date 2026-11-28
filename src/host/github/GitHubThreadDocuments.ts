@@ -1,6 +1,7 @@
 import type { GitHubThreadRef } from "../../shared/github-thread";
 
 const variables = "$owner: String!, $repo: String!, $number: Int!";
+const reviewVariables = `${variables}, $login: String!`;
 const repository = "repository(owner: $owner, name: $repo)";
 const repositoryIdentity = "name owner { login }";
 
@@ -64,9 +65,13 @@ export function readGitHubThreadSummaries(refs: readonly GitHubThreadRef[]) {
 
 const actor = "login avatarUrl url __typename";
 const label = "name color description";
+const reactions =
+  "viewerCanReact reactionGroups { content viewerHasReacted reactors { totalCount } }";
+const pendingReviews = (fields: string) =>
+  `reviews(first: 1, author: $login, states: PENDING) { nodes { ${fields} } }`;
 const common = `
-  url title body createdAt updatedAt closedAt locked state
-  viewerCanClose viewerCanReopen
+  id url title body createdAt updatedAt closedAt locked state
+  viewerCanClose viewerCanReopen viewerCanUpdate ${reactions}
   author { ${actor} }
   labels(first: 100) { nodes { ${label} } }
   assignees(first: 100) { nodes { ${actor} } }
@@ -86,7 +91,10 @@ const commonTimelineTypes = `
 const event = `id createdAt actor { ${actor} }`;
 const commonTimeline = `
   __typename
-  ... on IssueComment { id author { ${actor} } isMinimized body createdAt lastEditedAt url }
+  ... on IssueComment {
+    id author { ${actor} } isMinimized body createdAt lastEditedAt url
+    viewerCanUpdate viewerCanDelete ${reactions}
+  }
   ... on ClosedEvent { ${event} stateReason }
   ... on ReopenedEvent { ${event} }
   ... on LabeledEvent { ${event} label { ${label} } }
@@ -129,13 +137,7 @@ const reviewer = `
 `;
 const prTimeline = `
   ... on PullRequestReview {
-    id author { ${actor} } isMinimized state body submittedAt url
-    comments(first: 100) {
-      nodes {
-        id author { ${actor} } isMinimized body createdAt url
-        path line startLine diffHunk outdated replyTo { id }
-      }
-    }
+    id author { ${actor} } isMinimized state body submittedAt url viewerCanUpdate ${reactions}
   }
   ... on PullRequestCommit {
     id
@@ -157,13 +159,13 @@ const prTimeline = `
 export const readGitHubPullRequest = (required: boolean) => {
   const requirement = required ? "isRequired(pullRequestNumber: $number)" : "";
   return `
-    query NodexPullRequest(${variables}) {
+    query NodexPullRequest(${reviewVariables}) {
       ${repository} {
         ${repositoryAccess}
         mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerDefaultMergeMethod
         pullRequest(number: $number) {
           ${common}
-          isDraft viewerCanUpdate
+          isDraft isInMergeQueue viewerCanEnableAutoMerge viewerCanDisableAutoMerge
           baseRefName headRefName headRefOid isCrossRepository headRepository { nameWithOwner }
           additions deletions changedFiles mergedAt mergedBy { ${actor} }
           mergeable mergeStateStatus reviewDecision
@@ -173,10 +175,21 @@ export const readGitHubPullRequest = (required: boolean) => {
           latestOpinionatedReviews(first: 100) {
             nodes { author { ${actor} } state isMinimized }
           }
+          ${pendingReviews("id body commit { oid } comments { totalCount }")}
           reviewThreads(first: 100) {
+            pageInfo { hasNextPage }
             nodes {
-              diffSide isOutdated isResolved
-              comments(first: 1) { nodes { id } }
+              id path subjectType line startLine originalLine originalStartLine
+              diffSide startDiffSide isOutdated isResolved
+              viewerCanReply viewerCanResolve viewerCanUnresolve
+              comments(first: 100) {
+                pageInfo { hasNextPage }
+                nodes {
+                  id databaseId author { ${actor} } body createdAt lastEditedAt url diffHunk state
+                  pullRequestReview { id }
+                  viewerCanUpdate viewerCanDelete ${reactions}
+                }
+              }
             }
           }
           commits(last: 1) {
@@ -219,4 +232,73 @@ export const setGitHubPullRequestDraft = (draft: boolean) => {
       change: ${field}(input: { pullRequestId: $id }) { pullRequest { url } }
     }
   `;
+};
+
+export const readGitHubReviewContext = (includeThread: boolean) => `
+  query NodexReviewContext(${reviewVariables}${includeThread ? ", $threadId: ID!" : ""}) {
+    ${repository} {
+      pullRequest(number: $number) {
+        id headRefOid
+        ${pendingReviews("id commit { oid }")}
+      }
+    }
+    ${includeThread ? "node(id: $threadId) { ... on PullRequestReviewThread { pullRequest { id } } }" : ""}
+  }
+`;
+
+export const readGitHubFileViews = `
+  query NodexFileViews(${variables}, $cursor: String) {
+    ${repository} {
+      pullRequest(number: $number) {
+        headRefOid baseRefOid
+        files(first: 100, after: $cursor) {
+          nodes { path viewerViewedState }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }
+  }
+`;
+
+function mutation(field: string, input: string, selection = "clientMutationId") {
+  return `
+    mutation NodexThreadMutation($input: ${input}!) {
+      change: ${field}(input: $input) { ${selection} }
+    }
+  `;
+}
+
+export const gitHubThreadMutations = {
+  editComment: {
+    issue_comment: mutation("updateIssueComment", "UpdateIssueCommentInput"),
+    review: mutation("updatePullRequestReview", "UpdatePullRequestReviewInput"),
+    review_comment: mutation(
+      "updatePullRequestReviewComment",
+      "UpdatePullRequestReviewCommentInput",
+    ),
+  },
+  deleteComment: {
+    issue_comment: mutation("deleteIssueComment", "DeleteIssueCommentInput"),
+    review_comment: mutation(
+      "deletePullRequestReviewComment",
+      "DeletePullRequestReviewCommentInput",
+    ),
+  },
+  addReaction: mutation("addReaction", "AddReactionInput"),
+  removeReaction: mutation("removeReaction", "RemoveReactionInput"),
+  startReview: mutation(
+    "addPullRequestReview",
+    "AddPullRequestReviewInput",
+    "pullRequestReview { id }",
+  ),
+  addThread: mutation("addPullRequestReviewThread", "AddPullRequestReviewThreadInput"),
+  reply: mutation("addPullRequestReviewThreadReply", "AddPullRequestReviewThreadReplyInput"),
+  resolve: mutation("resolveReviewThread", "ResolveReviewThreadInput"),
+  unresolve: mutation("unresolveReviewThread", "UnresolveReviewThreadInput"),
+  submitReview: mutation("submitPullRequestReview", "SubmitPullRequestReviewInput"),
+  discardReview: mutation("deletePullRequestReview", "DeletePullRequestReviewInput"),
+  enableAutoMerge: mutation("enablePullRequestAutoMerge", "EnablePullRequestAutoMergeInput"),
+  disableAutoMerge: mutation("disablePullRequestAutoMerge", "DisablePullRequestAutoMergeInput"),
+  markViewed: mutation("markFileAsViewed", "MarkFileAsViewedInput"),
+  unmarkViewed: mutation("unmarkFileAsViewed", "UnmarkFileAsViewedInput"),
 };

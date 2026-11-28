@@ -28,9 +28,7 @@ export function GitHubThreadComposer({
   onPosted,
 }: {
   readonly detail: GitHubThreadDetail;
-  readonly run: GitHubThreadCommandRunner & {
-    readonly post: (body: string) => Promise<boolean>;
-  };
+  readonly run: GitHubThreadCommandRunner;
   readonly onPosted?: () => void;
 }) {
   const intl = useIntl();
@@ -43,7 +41,9 @@ export function GitHubThreadComposer({
     event?.preventDefault();
     if (!canSend) return;
     setPosting(true);
-    const posted = await run.post(draft.trim()).finally(() => setPosting(false));
+    const posted = await run
+      .run({ type: "comment", body: draft.trim() })
+      .finally(() => setPosting(false));
     if (!posted) return;
     setDraft("");
     onPosted?.();
