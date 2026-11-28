@@ -7,6 +7,8 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import {
   appComponentManifestName,
   appComponentManifestSchema,
+  appComponentManifestTarget,
+  type AppComponentManifestTarget,
   appComponentReleaseVersion,
 } from "../../shared/app-component-manifest";
 import { appBuildOrdinal } from "../../shared/app-version";
@@ -27,6 +29,7 @@ import {
 
 type ReadyEvent = Extract<AppUpdaterEvent, { type: "update-ready" }>;
 export type AppComponentUpdate = {
+  readonly target: AppComponentManifestTarget;
   readonly version: string;
   readonly buildVersion: string;
   readonly manifestUrl: string;
@@ -36,7 +39,10 @@ export type AppComponentUpdate = {
 export function appComponentUpdate(
   event: ReadyEvent,
   channel: "stable" | "nightly",
+  hostTarget: string,
 ): AppComponentUpdate | null {
+  const target = appComponentManifestTarget.safeParse(hostTarget).data;
+  if (!target) return null;
   const { version, buildVersion, verifiedEnclosureUrl } = event;
   const ordinal = appBuildOrdinal(buildVersion);
   if (!verifiedEnclosureUrl || !appComponentReleaseVersion.safeParse(version).success || !ordinal)
@@ -58,16 +64,18 @@ export function appComponentUpdate(
   const channelTag =
     channel === "stable" ? stableTag : `${stableTag}-nightly.${nightlyDate}.${ordinal}`;
   if (tag !== channelTag || (channel === "nightly" && !/^\d{8}$/u.test(nightlyDate))) return null;
-  if (
-    asset !== `Nodex-${version}-arm64.tar.xz` &&
-    asset !== `Nodex-${version}-arm64.zip` &&
-    !(asset.startsWith("Nodex-") && asset.endsWith(`-to-${version}-arm64.delta`))
-  )
-    return null;
+  const matchesTarget =
+    target === "win32-x64"
+      ? asset === `Nodex-${version}-windows-x64.exe`
+      : asset === `Nodex-${version}-arm64.tar.xz` ||
+        asset === `Nodex-${version}-arm64.zip` ||
+        (asset.startsWith("Nodex-") && asset.endsWith(`-to-${version}-arm64.delta`));
+  if (!matchesTarget) return null;
   return {
+    target,
     version,
     buildVersion,
-    manifestUrl: new URL(appComponentManifestName(version), url).href,
+    manifestUrl: new URL(appComponentManifestName(version, target), url).href,
   };
 }
 
@@ -182,12 +190,11 @@ export const makeAppComponentPrefetch = Effect.fnUntraced(function* (input: {
           const component = (yield* input.read).components.find((entry) => entry.id === id);
           if (!component?.enabled || component.installation.status !== "installed") return;
           if (
-            (yield* Effect.tryPromise(() => installedAppComponentBytes(store.home, definition))) !==
-            null
+            (yield* Effect.tryPromise(() => installedAppComponentBytes(store, definition))) !== null
           )
             return;
           yield* installComponent({
-            home: store.home,
+            ...store,
             definition,
             fetch,
             onProgress: () => {},
@@ -231,6 +238,7 @@ export const makeAppComponentPrefetch = Effect.fnUntraced(function* (input: {
     );
     if (
       !manifest ||
+      manifest.target !== update.target ||
       manifest.version !== update.version ||
       manifest.buildVersion !== update.buildVersion
     ) {
@@ -275,7 +283,9 @@ export const makeAppComponentPrefetch = Effect.fnUntraced(function* (input: {
   yield* SubscriptionRef.changes(updates).pipe(
     Stream.changesWith(
       (left, right) =>
-        left?.manifestUrl === right?.manifestUrl && left?.buildVersion === right?.buildVersion,
+        left?.target === right?.target &&
+        left?.manifestUrl === right?.manifestUrl &&
+        left?.buildVersion === right?.buildVersion,
     ),
     Stream.switchMap((update) =>
       update === null

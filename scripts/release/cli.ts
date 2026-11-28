@@ -244,7 +244,7 @@ const main = async (): Promise<void> => {
     const architecture = required(flags, "arch");
     if (architecture !== "x64" && architecture !== "arm64")
       throw new Error("Windows --arch must be x64 or arm64.");
-    buildWindowsDistribution({
+    await buildWindowsDistribution({
       architecture,
       cwd: projectRoot,
       identityPath: required(flags, "identity"),

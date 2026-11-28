@@ -24,6 +24,7 @@ import {
   type UpdateFetch,
 } from "./windows-update-download";
 import type { AppUpdaterEvent } from "./app-updater";
+import { appComponentUpdate } from "./app-components/AppComponentPrefetch";
 import {
   createPackagedMacAppUpdaterPlatform,
   parseSparkleRuntimeConfig,
@@ -317,6 +318,42 @@ describe("windows-app-updater", () => {
         await h.lease.release();
       }
     });
+    test.each([
+      ["stable", "v0.2.3"],
+      ["nightly", "v0.2.3-nightly.20261111.102"],
+    ] as const)(
+      "offers the %s Component manifest from a verified installer",
+      async (channel, tag) => {
+        const enclosure = url.replace("/v0.2.3/", `/${tag}/`);
+        const h = platformHarness(
+          async (requestUrl) =>
+            new Response(
+              requestUrl.endsWith(".xml") ? feed(xmlItem().replace(url, enclosure)) : bytes,
+            ),
+        );
+        try {
+          h.lease.session.setChannel(channel);
+          h.lease.session.check("background");
+          await untilEvent(h.events, "update-ready");
+          const ready = h.events.find((event) => event.type === "update-ready")!;
+          expect(ready.verifiedEnclosureUrl).toBe(enclosure);
+          expect(appComponentUpdate(ready, channel, "win32-x64")).toEqual({
+            target: "win32-x64",
+            version: "0.2.3",
+            buildVersion: "1.1.2",
+            manifestUrl: enclosure.replace("windows-x64.exe", "components-windows-x64.json"),
+          });
+          expect(appComponentUpdate(ready, channel, "darwin-arm64")).toBeNull();
+          expect(appComponentUpdate(ready, channel, "win32-arm64")).toBeNull();
+          expect(
+            appComponentUpdate(ready, channel === "stable" ? "nightly" : "stable", "win32-x64"),
+          ).toBeNull();
+        } finally {
+          await h.lease.release();
+        }
+      },
+    );
+
     test("does not install during OS session end", async () => {
       const h = platformHarness();
       try {

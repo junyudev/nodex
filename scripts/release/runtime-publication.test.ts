@@ -16,7 +16,13 @@ import {
 import codexLock from "../../resources/agent-runtime/codex-app-server.lock.json";
 import { verifyMacCodexDownload, verifyMacDesktopToolsDownload } from "./distribution";
 import { appComponentCatalog } from "../../src/main/app-components/AppComponentCatalog";
-import { macComponentManifest } from "./components";
+import {
+  macComponentManifest,
+  readComponentManifest,
+  verifyWindowsComponentDownloads,
+  windowsComponentManifest,
+} from "./components";
+import { windowsComponentPins } from "./windows-components.fixture";
 import { execFileSync } from "node:child_process";
 import { generateHomebrewCask } from "./homebrew";
 
@@ -229,6 +235,7 @@ describe("Browser runtime publication", () => {
               assetName: arm64Archive.assetName,
               manifestSha256: arm64Archive.manifestSha256,
               runtimeVersions: arm64Manifest.runtimeVersions,
+              unpackedSize: arm64Archive.unpackedSize,
               url: `https://github.com/${repo}/releases/download/${tag}/${arm64Archive.assetName}`,
             },
           },
@@ -342,6 +349,7 @@ describe("macOS Components manifest", () => {
     const identity = { version: "0.2.2", buildVersion: "1.25.24" };
     expect(macComponentManifest(identity)).toEqual({
       schemaVersion: 1,
+      target: "darwin-arm64",
       ...identity,
       components: appComponentCatalog({ platform: "darwin", arch: "arm64", isPackaged: true }),
     });
@@ -359,6 +367,45 @@ describe("macOS Components manifest", () => {
         entrypointSha256: asset.entrypointSha256,
       },
     });
+  });
+});
+
+describe("Windows Components distribution", () => {
+  const identity = { version: "0.2.2", buildVersion: "1.25.24" };
+
+  test("matches the published pins and rejects a different target at the release boundary", () => {
+    const root = mkdtempSync(join(tmpdir(), "nodex-component-manifest-"));
+    try {
+      const file = join(root, "components.json");
+      const manifest = windowsComponentManifest(identity, windowsComponentPins);
+      writeFileSync(file, JSON.stringify(manifest));
+      expect(readComponentManifest(file, "win32-x64", identity)).toEqual({
+        schemaVersion: 1,
+        target: "win32-x64",
+        ...identity,
+        components: windowsComponentPins,
+      });
+      writeFileSync(file, JSON.stringify(macComponentManifest(identity)));
+      expect(() => readComponentManifest(file, "win32-x64", identity)).toThrow(
+        "does not match its architecture build",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("checks each public Windows archive and rejects a different published size", async () => {
+    const wrongSize = windowsComponentPins[2]!.archive.url;
+    const fetchAsset = vi.fn<typeof fetch>(
+      async (url) =>
+        new Response(null, { headers: { "content-length": url === wrongSize ? "99" : "100" } }),
+    );
+    await expect(verifyWindowsComponentDownloads(windowsComponentPins, fetchAsset)).rejects.toThrow(
+      "Published Windows claude-code archive has 99 bytes",
+    );
+    expect(fetchAsset.mock.calls.map(([url]) => url)).toEqual(
+      windowsComponentPins.map(({ archive }) => archive.url),
+    );
   });
 });
 

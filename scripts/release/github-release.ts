@@ -1,3 +1,4 @@
+import { readComponentManifest } from "./components";
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -210,6 +211,13 @@ export const releaseAssetPaths = (
     if (lstatSync(filePath).size !== artifact.bytes || sha256File(filePath) !== artifact.sha256) {
       throw new Error(`Release asset ${artifact.name} does not match release-bundle.json.`);
     }
+  }
+  for (const artifact of bundle.assets.filter(({ role }) => role === "components-manifest")) {
+    readComponentManifest(
+      join(root, artifact.name),
+      artifact.architecture === "arm64" ? "darwin-arm64" : "win32-x64",
+      bundle.releaseIdentity,
+    );
   }
   verifyChecksumAllowlist(resolvedBundle, bundle.assets);
   verifyWindowsReleaseAssets(bundle, root, windowsPublicKey);

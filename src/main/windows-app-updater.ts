@@ -124,7 +124,7 @@ export function createWindowsAppUpdaterPlatform(
                   return;
                 }
                 ready = { path: preparedPath, item };
-                emit({ type: "update-ready", ...item }, current);
+                emit({ type: "update-ready", ...item, verifiedEnclosureUrl: item.url }, current);
               })
               .catch((error: unknown) => {
                 if (generation !== current || released) return;
