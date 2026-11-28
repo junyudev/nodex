@@ -2,7 +2,14 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  parseImmutableReleaseDownloadUrl,
+  RELEASE_DOWNLOAD_ORIGIN,
+  releaseTagChannel,
+} from "../../src/shared/release-download";
+import type { ReleaseBucket } from "./r2";
 import { readPublishedReleaseIndex } from "./github-release";
+import { parseAppcastXml } from "./sparkle-appcast-contract";
 import { RELEASE_ARCHITECTURES } from "./targets";
 
 interface RemoteAsset {
@@ -21,7 +28,7 @@ interface RemoteRelease {
   readonly tag_name: string;
 }
 
-const NIGHTLY_TAG = /^v\d+\.\d+\.\d+-nightly\.\d{8}\.[1-9]\d*$/u;
+const NIGHTLY_PREFIX = "nightly/";
 const NIGHTLY_FEEDS = RELEASE_ARCHITECTURES.map(
   (architecture) => `https://nodex.jyu.app/updates/nightly/${architecture}/appcast.xml`,
 );
@@ -61,7 +68,7 @@ const publishedAtMs = (release: RemoteRelease): number => {
 };
 
 const isStrictNightly = (release: RemoteRelease): boolean =>
-  !release.draft && release.prerelease && NIGHTLY_TAG.test(release.tag_name);
+  !release.draft && release.prerelease && releaseTagChannel(release.tag_name) === "nightly";
 
 export interface NightlyRetentionPlan {
   readonly delete: readonly { readonly id: number; readonly tag: string }[];
@@ -76,12 +83,47 @@ export interface NightlyRetentionPlan {
 export function extractNightlyTagsFromAppcasts(appcasts: readonly string[]): ReadonlySet<string> {
   const tags = new Set<string>();
   for (const appcast of appcasts) {
-    for (const match of appcast.matchAll(/\/releases\/download\/([^/"'<>\s]+)\//gu)) {
-      const tag = decodeURIComponent(match[1]);
-      if (NIGHTLY_TAG.test(tag)) tags.add(tag);
+    const document = parseAppcastXml(appcast, "Nightly appcast");
+    for (const enclosure of Array.from(document.getElementsByTagName("enclosure"))) {
+      const url = parseImmutableReleaseDownloadUrl(enclosure.getAttribute("url") ?? "");
+      if (url?.channel === "nightly") tags.add(url.tag);
     }
   }
   return tags;
+}
+
+/** The tag's mainline ordinal gives the same build order regardless of backfill order. */
+const nightlyOrdinal = (tag: string): bigint => BigInt(tag.slice(tag.lastIndexOf(".") + 1));
+
+export function planR2NightlyRetention(
+  keys: readonly string[],
+  protectedTags: ReadonlySet<string>,
+  keepCount = 3,
+) {
+  if (!Number.isSafeInteger(keepCount) || keepCount < 1)
+    throw new Error("R2 keep count must be positive.");
+  const byTag = new Map<string, string[]>();
+  for (const key of keys) {
+    const asset = parseImmutableReleaseDownloadUrl(`${RELEASE_DOWNLOAD_ORIGIN}/${key}`);
+    if (asset?.channel !== "nightly") continue;
+    const assets = byTag.get(asset.tag);
+    if (assets) assets.push(key);
+    else byTag.set(asset.tag, [key]);
+  }
+  const tags = [...byTag.keys()].sort((left, right) => {
+    const order = nightlyOrdinal(right) - nightlyOrdinal(left);
+    return order > 0n ? 1 : order < 0n ? -1 : left.localeCompare(right);
+  });
+  const keep = tags.slice(0, keepCount);
+  const candidates = tags.slice(keepCount);
+  return {
+    keep,
+    keepCount,
+    protected: candidates.filter((tag) => protectedTags.has(tag)),
+    delete: candidates
+      .filter((tag) => !protectedTags.has(tag))
+      .map((tag) => ({ tag, keys: byTag.get(tag)! })),
+  };
 }
 
 export function planNightlyRetention(
@@ -187,25 +229,32 @@ const verifyReleaseBundleIndex = (repo: string, release: RemoteRelease): boolean
   }
 };
 
-export function runNightlyRetention(options: {
+export async function runNightlyRetention(options: {
+  readonly bucket: ReleaseBucket;
   readonly destructive: boolean;
   readonly keepCount: number;
   readonly minAgeDays: number;
   readonly repo: string;
-}): NightlyRetentionPlan {
+  readonly r2KeepCount: number;
+}) {
   const releases = (
     JSON.parse(
       gh(["api", `repos/${options.repo}/releases?per_page=100`, "--paginate", "--slurp"]),
     ) as RemoteRelease[][]
   ).flat();
   const nightlies = releases.filter(isStrictNightly);
-  if (nightlies.length === 0) {
-    return planNightlyRetention([], {
-      keepCount: options.keepCount,
-      minAgeDays: options.minAgeDays,
-    });
-  }
-  const protectedTags = extractNightlyTagsFromAppcasts(NIGHTLY_FEEDS.map(fetchText));
+  const r2Keys = await options.bucket.listKeys(NIGHTLY_PREFIX);
+  const protectedTags = new Set(
+    nightlies.length === 0 && r2Keys.length === 0
+      ? []
+      : NIGHTLY_FEEDS.flatMap((url) => {
+          const tags = extractNightlyTagsFromAppcasts([fetchText(url)]);
+          if (tags.size === 0)
+            throw new Error(`Nightly appcast has no recognized enclosures: ${url}`);
+          return [...tags];
+        }),
+  );
+  const r2 = planR2NightlyRetention(r2Keys, protectedTags, options.r2KeepCount);
   const preliminary = planNightlyRetention(releases, {
     keepCount: options.keepCount,
     minAgeDays: options.minAgeDays,
@@ -219,24 +268,31 @@ export function runNightlyRetention(options: {
       .filter((release) => verifyReleaseBundleIndex(options.repo, release))
       .map(({ tag_name }) => tag_name),
   );
-  const plan = planNightlyRetention(releases, {
+  const github = planNightlyRetention(releases, {
     keepCount: options.keepCount,
     minAgeDays: options.minAgeDays,
     protectedTags,
     verifiedTags,
   });
-  if (options.destructive) {
-    const failures: string[] = [];
-    for (const release of plan.delete) {
-      try {
-        gh(["api", "--method", "DELETE", `repos/${options.repo}/releases/${release.id}`]);
-      } catch {
-        failures.push(release.tag);
-      }
-    }
-    if (failures.length > 0) {
-      throw new Error(`Nightly retention failed to delete: ${failures.join(", ")}.`);
+  if (!options.destructive) return { github, r2 };
+
+  const failures: string[] = [];
+  for (const release of github.delete) {
+    try {
+      gh(["api", "--method", "DELETE", `repos/${options.repo}/releases/${release.id}`]);
+    } catch {
+      failures.push(`GitHub ${release.tag}`);
     }
   }
-  return plan;
+  for (const key of r2.delete.flatMap(({ keys }) => keys)) {
+    try {
+      await options.bucket.deleteObject(key);
+    } catch (error) {
+      failures.push(`R2 ${key} (${String(error)})`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(`Nightly retention failed to delete: ${failures.join(", ")}.`);
+  }
+  return { github, r2 };
 }

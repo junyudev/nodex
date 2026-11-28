@@ -1,5 +1,6 @@
 import changelog from "../../../../CHANGELOG.md?raw";
 import { parseChangelog } from "../../../../src/shared/changelog";
+import type { StableDownloadTarget } from "../../../../src/shared/release-download";
 
 const version = parseChangelog(changelog)[0]?.version;
 if (!version) throw new Error("The landing page requires a dated release in CHANGELOG.md.");
@@ -10,19 +11,18 @@ export const RELEASES_URL = `${GITHUB_URL}/releases`;
 export const CHANGELOG_URL = "/changelog/";
 export const BREW_COMMAND = "brew install --cask junyudev/tap/nodex";
 
-export type DownloadTarget = "macos" | "windows-x64" | "ios" | "android";
+export type DownloadTarget = StableDownloadTarget | "ios";
 
-const LATEST = `${RELEASES_URL}/latest/download`;
+const STABLE_DOWNLOADS = "https://nodex.jyu.app/dl";
 
 /**
- * Stable alias assets that every release carries for its newest build, and the public TestFlight
- * beta that receives each release's iPhone build.
+ * The current stable installers and the public TestFlight beta for iPhone.
  */
 export const DOWNLOADS: Readonly<Record<DownloadTarget, string>> = {
-  macos: `${LATEST}/Nodex-latest-arm64.dmg`,
-  "windows-x64": `${LATEST}/Nodex-latest-windows-x64.exe`,
+  macos: `${STABLE_DOWNLOADS}/macos`,
+  "windows-x64": `${STABLE_DOWNLOADS}/windows-x64`,
   ios: "https://testflight.apple.com/join/Yz8Kpcty",
-  android: `${LATEST}/Nodex-latest-android.apk`,
+  android: `${STABLE_DOWNLOADS}/android`,
 };
 
 /** Nodex Mobile's Google Play listing, offered beside the APK once it exists. */

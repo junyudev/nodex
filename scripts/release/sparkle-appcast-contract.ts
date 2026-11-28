@@ -1,4 +1,4 @@
-import { type Element, DOMParser } from "@xmldom/xmldom";
+import { type Document, type Element, DOMParser } from "@xmldom/xmldom";
 
 import type { SparkleArchitectureUpdateManifest, SparkleFileIdentity } from "./sparkle-manifest";
 import type { ReleaseArchitecture } from "./targets";
@@ -14,6 +14,19 @@ const enclosureMatches = (enclosure: Element, identity: SparkleFileIdentity): bo
   enclosure.getAttribute("length") === String(identity.bytes) &&
   enclosure.getAttributeNS(SPARKLE_NAMESPACE, "edSignature") === identity.edSignature;
 
+/** Parses an appcast and rejects any diagnostic, including errors the parser could recover from. */
+export function parseAppcastXml(xml: string, label: string): Document {
+  try {
+    return new DOMParser({
+      onError: (_level, message) => {
+        throw new Error(message);
+      },
+    }).parseFromString(xml, "application/xml");
+  } catch (error) {
+    throw new Error(`${label} is invalid XML.`, { cause: error });
+  }
+}
+
 export function verifySparkleAppcastContract(
   xml: string,
   manifest: Pick<SparkleArchitectureUpdateManifest, "full" | "deltas"> & {
@@ -21,10 +34,7 @@ export function verifySparkleAppcastContract(
     readonly target: { readonly version: string; readonly buildVersion: string };
   },
 ): void {
-  const document = new DOMParser().parseFromString(xml, "application/xml");
-  if (document.getElementsByTagName("parsererror").length > 0) {
-    throw new Error("Sparkle appcast contract requires valid XML.");
-  }
+  const document = parseAppcastXml(xml, "Sparkle appcast");
   const matchingItems: Element[] = [];
   const items = document.getElementsByTagName("item");
   for (let index = 0; index < items.length; index += 1) {

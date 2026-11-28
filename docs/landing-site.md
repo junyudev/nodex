@@ -1,18 +1,7 @@
 # Landing Site
 
-This document is the source of truth for the public Nodex landing site and its GitHub Pages deployment path.
-
-## Overview
-
-The landing site lives in `packages/landing`. Astro generates its static pages, with React islands for interactive content and Tailwind v4 for styling. It stays separate from the Electron renderer and its design-token stack.
-
-Why it is separate:
-
-- the site is published to `https://nodex.jyu.app`
-- it should stay fast and low-risk
-- it should not inherit desktop-app-only code, CSS, or runtime assumptions
-
-The source of truth stays in this repository. Published static output is pushed to the separate org-site repository `NodexApp/NodexApp.github.io`.
+Astro builds the public site at `https://nodex.jyu.app` from `packages/landing`.
+The site uses React islands and Tailwind and has its own styles and runtime.
 
 ## Local Commands
 
@@ -27,9 +16,9 @@ vp run --filter @nodex/landing test
 
 Astro owns the development server, production build, and preview server. The root
 commands delegate to the landing package through Vite+. Its Vite plugins use the
-workspace's Vite+ alias. The focused tests run an isolated production build and
-check the generated pages and public assets. They run from the repository root
-because the shared Vitest setup resolves generated Markdown assets from that directory.
+workspace's Vite+ alias. The landing tests run from the repository root because the shared Vitest setup
+resolves generated Markdown assets from that directory. The nightly landing
+build test checks the generated pages and public assets.
 The Astro configuration loads as native ESM, and Vite uses the landing package's
 explicit TypeScript configuration. Builds must not discover unrelated ancestor
 projects or depend on their installed frameworks, including in linked worktrees.
@@ -130,7 +119,8 @@ every quality.
 - `src/lib/social-cards.ts` for the social cards the site publishes
 - `src/changelog.ts` for the changelog page's view of `CHANGELOG.md` and `changes/`, read through `src/shared/changelog.ts`, and the entry helpers the page uses
 - `src/download-cta.ts` for copying the Homebrew install command
-- `public/` for copied brand assets, the committed social cards, and `.nojekyll`
+- `public/` for copied brand assets, social cards, and edge header and redirect rules
+- `worker/index.ts` and `wrangler.jsonc` for update feeds, installer redirects, and edge routing
 - `scripts/capture-demos.ts` for recording demos into README and social media
 - `dist/` for generated static output
 
@@ -145,82 +135,70 @@ of the original visit. With JavaScript
 disabled, the static language links work from the English default. Product demos follow the
 homepage language, including the replica UI and the scripted workspace content. Social card
 artwork, the changelog, and legal pages are in English.
-Download links point at the stable alias assets every GitHub Release carries: `Nodex-latest-arm64.dmg` for macOS and `Nodex-latest-windows-x64.exe` for Windows. The homepage's download action follows the visitor's platform. An inline script in `BaseLayout.astro` marks Windows visitors with `data-os="windows"`, and the `windows` Tailwind variant switches the action to the Windows installer and its SmartScreen note before first paint. Without the script, or on any other platform, the page offers macOS. The nav's Download goes to `/download/`, which lists every build without relying on JavaScript.
-The same page's `#mobile` card offers Nodex Mobile: the public TestFlight beta for iPhone and the `Nodex-latest-android.apk` alias every stable release carries, both in `DOWNLOADS` so their clicks count the same way. A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The homepage's mobile section and Link a device in Settings → Remote both point at this card rather than at a store.
+The homepage's download action follows the visitor's platform. An inline script
+in `BaseLayout.astro` marks Windows visitors with `data-os="windows"`, and the
+`windows` Tailwind variant switches the action to the Windows installer and
+its SmartScreen note before first paint. Without the script, or on any other
+platform, the page offers macOS. The nav's Download goes to `/download/`,
+which lists every build without relying on JavaScript. The page's `#mobile`
+card offers the public TestFlight beta for iPhone and the stable Android APK.
+A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The
+homepage's mobile section and Link a device in Settings → Remote both point
+at this card.
 Windows downloads appear only when the release the site describes carries Windows installers: `windowsDownloadsAvailable` in `src/lib/site.ts` compares the root app version with 0.5.0, the last stable release published without them. Once a later release is the oldest one the site can describe, that gate can be removed.
-The homepage release stamp is build-time data: the typed `VERSION_LABEL` constant imports the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
+The homepage release stamp shows the latest dated release in `CHANGELOG.md` at
+build time.
 The changelog page at `/changelog/` is also build-time data: it shows the changes not released yet from `changes/` first, as Unreleased and without a headline, then each published release from the root `CHANGELOG.md`, newest first, marks the newest as Latest, and lists every release in a rail that follows the reader. Kinds of change always read Added, Changed, Deprecated, Removed, Fixed, Security. The release in development and the latest release show all their additions and changes; every other list shows its first entries and opens the rest on request. Each entry leads with its first sentence, so write that sentence to stand on its own.
 
-## Publishing Topology
+## Publishing
 
-Builds happen in this repository. Deployment publishes the generated `packages/landing/dist/` output into the root of `NodexApp/NodexApp.github.io`.
+The `nodex-web` Worker owns the `nodex.jyu.app` custom domain. Cloudflare
+Workers Static Assets serves Astro's `dist/` output at the edge, including
+pages, fonts, media and the cross-origin `/changelog.json` feed. Directory
+pages use trailing slashes. Only content-hashed `/_astro/` assets are immutable.
 
-Repository roles:
+The Worker reads the `nodex-releases` R2 bucket for two route families.
 
-- `junyudev/nodex`: source code, build logic, CI, and documentation
-- `NodexApp/NodexApp.github.io`: published static artifact only
+- `/updates/{stable,nightly}/{arm64,windows-x64}/appcast.xml` serves the
+  exact stored appcast bytes at their existing URLs. Release workflows publish
+  the verified feeds at the matching object keys.
+- `/dl/{macos,windows-x64,android}` reads `latest/stable.json` and redirects
+  to the versioned installer on `dl.nodex.jyu.app`. Stable promotion writes
+  that pointer after the installers are available. GitHub Releases keeps the
+  release history.
 
-This split matters because the root org site URL `https://nodexapp.github.io` must be served by a repository named `NodexApp.github.io`.
+`.github/workflows/deploy-landing-site.yml` runs for landing-related pushes to
+`main` and on dispatch, including after a stable release. It builds from
+`main`, deploys with the landing package's pinned Wrangler, and compares the
+public changelog JSON with the build. The deploy job reads
+`CLOUDFLARE_LANDING_DEPLOY_TOKEN` from the protected `landing-production`
+environment.
 
-## GitHub Workflows
+The custom domain stays attached across deploys. Cloudflare will not attach a
+Worker custom domain over an ordinary DNS record, so recreating it, for
+example after a rollback to another host, means deleting the `nodex.jyu.app`
+record and attaching the domain to `nodex-web` with a DNS-capable token.
 
-The repository-wide `.github/workflows/ci.yml` validates the landing build on
-every PR and protected-main push as part of its always-run static contracts.
-There is no separate landing-only validation workflow or second required check.
+### Local Worker
 
-- `.github/workflows/deploy-landing-site.yml`
-  - runs on `main` changes affecting the landing implementation and on manual dispatch
-  - calls the shared exact-SHA deployment workflow
-- `.github/workflows/_deploy-landing-site.yml`
-  - builds the site from one protected-main commit
-  - always clones the fixed `NodexApp/NodexApp.github.io` target; callers cannot
-    override the destination
-  - ordinary deploys replace the built site while preserving the target
-    `updates/` tree
-  - only moves the pages forward: `.landing-source` at the target root records the
-    commit the pages were built from, and a deploy from an older commit, such as a
-    release promoted while newer site changes reached `main`, keeps those pages and
-    publishes only its update feed
-  - commits only when there is a diff
-  - is also called by release promotion after the immutable app Release is
-    verified; that mode projects the Release Bundle's exact signed macOS arm64
-    and Windows x64 appcast snapshots into their stable feed paths, rejects feed
-    rollback or same-version byte drift, and verifies the public bytes and
-    immutable enclosures after push
+Build the site, then start Wrangler with local bindings.
 
-## Required Secrets
+```bash
+vp run build:landing
+vp run --filter @nodex/landing dev:worker
+```
 
-The deploy workflow binds the `landing-production` environment, restricted to
-protected `main`. Its callers explicitly map this repository Action secret to
-the reusable deployment workflow:
+To exercise the dynamic routes, put a test appcast and a stable pointer into
+Wrangler's local bucket from the repository root. The pointer needs `version: 1`,
+a stable `tag`, and an `installers` map with filenames for `macos`,
+`windows-x64`, and `android`.
 
-- `NODEXAPP_GITHUB_IO_TOKEN`
-  - fine-grained GitHub token
-  - repository access: `NodexApp/NodexApp.github.io`
-  - permission: `Contents: Read and write`
-
-## Pages Configuration
-
-In `NodexApp/NodexApp.github.io`, configure GitHub Pages to publish from the default branch root.
-
-Each channel has one macOS arm64 feed and one Windows x64 feed:
-
-- `https://nodex.jyu.app/updates/stable/arm64/appcast.xml`
-- `https://nodex.jyu.app/updates/stable/windows-x64/appcast.xml`
-- `https://nodex.jyu.app/updates/nightly/arm64/appcast.xml`
-- `https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml`
-
-The Pages repository stores only the signed feed control plane. Full ZIPs,
-Windows installers and deltas remain immutable assets of the corresponding `junyudev/nodex` GitHub
-Release. Feed recovery replays a verified release snapshot; it does not
-regenerate or re-sign an existing release. Projection preflights all feeds before
-writing, refuses rollback and same-build byte drift, and verifies canonical public
-feed bytes plus immutable enclosure availability after push. Nightly promotion
-changes only `updates/nightly/`; ordinary landing deploys preserve all feeds.
-
-No SPA fallback is needed. `packages/landing/public/CNAME` is part of the
-production custom-domain contract and must remain in the generated Pages tree;
-`nodexapp.github.io` is only the underlying Pages host.
+```bash
+vp exec --filter @nodex/landing -- wrangler r2 object put \
+  nodex-releases/updates/stable/arm64/appcast.xml --local --file /path/to/appcast.xml
+vp exec --filter @nodex/landing -- wrangler r2 object put \
+  nodex-releases/latest/stable.json --local --file /path/to/stable.json
+```
 
 ## Content Notes
 

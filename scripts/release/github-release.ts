@@ -7,8 +7,11 @@ import { isDeepStrictEqual } from "node:util";
 import { verifyWindowsReleaseAssets } from "./windows-updates";
 import {
   parseReleaseBundleManifest,
+  parseReleaseDistributionBundle,
+  type ReleaseDistributionBundle,
   parseReleaseHistoryBundle,
   COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS,
+  RELEASE_BUNDLE_SCHEMA_VERSION,
 } from "./bundle";
 import { sha256File, type ReleaseIdentity } from "./model";
 
@@ -44,16 +47,6 @@ const assertRegularFile = (filePath: string): void => {
   if (!metadata.isFile() || metadata.isSymbolicLink()) {
     throw new Error(`Release asset must be a regular file: ${filePath}`);
   }
-};
-
-const readBundle = (bundlePath: string) => {
-  const resolvedBundle = resolve(bundlePath);
-  assertRegularFile(resolvedBundle);
-  return {
-    bundle: parseReleaseBundleManifest(JSON.parse(readFileSync(resolvedBundle, "utf8"))),
-    resolvedBundle,
-    root: dirname(resolvedBundle),
-  };
 };
 
 const verifyChecksumAllowlist = (
@@ -194,11 +187,15 @@ export async function verifyReleaseAttestation(repo: string, tag: string): Promi
   }
 }
 
-export const releaseAssetPaths = (
+const verifyReleaseAssets = (
   bundlePath: string,
+  parseBundle: (value: unknown) => ReleaseDistributionBundle,
   windowsPublicKey?: string,
-): readonly string[] => {
-  const { bundle, resolvedBundle, root } = readBundle(bundlePath);
+) => {
+  const resolvedBundle = resolve(bundlePath);
+  assertRegularFile(resolvedBundle);
+  const bundle = parseBundle(JSON.parse(readFileSync(resolvedBundle, "utf8")));
+  const root = dirname(resolvedBundle);
   const checksumPath = join(root, "SHA256SUMS");
   const paths = [
     ...bundle.assets.map((asset) => join(root, asset.name)),
@@ -212,7 +209,9 @@ export const releaseAssetPaths = (
       throw new Error(`Release asset ${artifact.name} does not match release-bundle.json.`);
     }
   }
-  for (const artifact of bundle.assets.filter(({ role }) => role === "components-manifest")) {
+  // Schema 8 Component manifests predate their target field; the digests above still bind them.
+  const manifests = bundle.schemaVersion === RELEASE_BUNDLE_SCHEMA_VERSION ? bundle.assets : [];
+  for (const artifact of manifests.filter(({ role }) => role === "components-manifest")) {
     readComponentManifest(
       join(root, artifact.name),
       artifact.architecture === "arm64" ? "darwin-arm64" : "win32-x64",
@@ -221,8 +220,19 @@ export const releaseAssetPaths = (
   }
   verifyChecksumAllowlist(resolvedBundle, bundle.assets);
   verifyWindowsReleaseAssets(bundle, root, windowsPublicKey);
-  return paths;
+  return { bundle, root, paths };
 };
+
+export const releaseAssetPaths = (
+  bundlePath: string,
+  windowsPublicKey?: string,
+): readonly string[] =>
+  verifyReleaseAssets(bundlePath, parseReleaseBundleManifest, windowsPublicKey).paths;
+
+/** Redistribute the public assets of a complete release, including schema 8 archives. */
+export function readReleaseDistributionBundle(bundlePath: string, windowsPublicKey?: string) {
+  return verifyReleaseAssets(bundlePath, parseReleaseDistributionBundle, windowsPublicKey);
+}
 
 const expectedLocalAssets = (bundlePath: string): ReadonlyMap<string, ReleaseAssetIdentity> =>
   new Map(

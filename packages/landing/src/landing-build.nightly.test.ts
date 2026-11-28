@@ -23,7 +23,6 @@ import {
 import { decodeChangelogFeed } from "../../../src/shared/changelog-feed";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
-import { ANDROID_LATEST_APK } from "../../../scripts/release/mobile";
 import { inlineHtml } from "./changelog";
 import { CAPTURE_DEMOS, captureDemoPath, type CaptureDemoId } from "./demos/capture-demos";
 import { GOOGLE_PLAY_URL, RELEASES_URL, windowsDownloadsAvailable } from "./lib/site";
@@ -237,25 +236,23 @@ test("the release stamp matches the latest dated changelog release", () => {
   );
 });
 
-const RELEASE_ALIASES = {
-  macos: "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg",
-  "windows-x64":
-    "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe",
+const DESKTOP_DOWNLOADS = {
+  macos: "https://nodex.jyu.app/dl/macos",
+  "windows-x64": "https://nodex.jyu.app/dl/windows-x64",
 } as const;
 
-// The APK alias is the one every stable Release Bundle must carry, so the link can never dangle.
 const MOBILE_LISTINGS = {
   ios: "https://testflight.apple.com/join/Yz8Kpcty",
-  android: `https://github.com/junyudev/nodex/releases/latest/download/${ANDROID_LATEST_APK}`,
+  android: "https://nodex.jyu.app/dl/android",
 } as const;
 
 test("downloads and the copy control use the public install contracts", () => {
   const { version } = JSON.parse(
     readFileSync(resolve(landingRoot, "../../package.json"), "utf8"),
   ) as { version: string };
-  const desktop = windowsDownloadsAvailable(version) ? Object.keys(RELEASE_ALIASES) : ["macos"];
+  const desktop = windowsDownloadsAvailable(version) ? Object.keys(DESKTOP_DOWNLOADS) : ["macos"];
   const links = {
-    ...RELEASE_ALIASES,
+    ...DESKTOP_DOWNLOADS,
     ...MOBILE_LISTINGS,
     ...(GOOGLE_PLAY_URL ? { "google-play": GOOGLE_PLAY_URL } : {}),
   };
@@ -446,12 +443,9 @@ test("the published changelog JSON uses the same headlines and anchors as the pa
   );
 });
 
-test("the build preserves the custom domain and public asset bytes", () => {
-  expect(readFileSync(join(outputDir, "CNAME"), "utf8").trim()).toBe("nodex.jyu.app");
-
+test("the build preserves public asset bytes", () => {
   for (const asset of [
-    "CNAME",
-    ".nojekyll",
+    "_headers",
     "robots.txt",
     ...Object.values(SOCIAL_CARDS).map((card) => card.file),
     "favicon.png",

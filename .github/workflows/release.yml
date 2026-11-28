@@ -162,7 +162,6 @@ jobs:
       tag: ${{ needs.resolve.outputs.tag }}
     secrets:
       homebrew_github_token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-      landing_github_token: ${{ secrets.NODEXAPP_GITHUB_IO_TOKEN }}
       skills_github_token: ${{ secrets.NODEX_SKILLS_GITHUB_TOKEN }}
 
   testflight:

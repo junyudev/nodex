@@ -208,5 +208,3 @@ jobs:
       source_sha: ${{ needs.resolve.outputs.source_sha }}
       tag: ${{ needs.resolve.outputs.tag }}
       version: ${{ needs.resolve.outputs.version }}
-    secrets:
-      landing_github_token: ${{ secrets.NODEXAPP_GITHUB_IO_TOKEN }}

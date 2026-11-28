@@ -11,12 +11,41 @@ import {
 import type { UnknownRecord } from "./github-workflow-files";
 
 const secretReferencePattern = /secrets\.([A-Za-z_][A-Za-z0-9_]*)/gu;
-const environmentSecretContracts = new Map<string, ReadonlySet<string>>([
-  ["sparkle-feed-finalization", new Set(["SPARKLE_ED25519_PRIVATE_KEY"])],
-  ["release-publish", new Set(["NODEX_RELEASE_TAG_TOKEN"])],
+/**
+ * Secrets bound to a protected environment. Only a job that declares the environment resolves
+ * them, and no workflow passes them through `workflow_call` secrets. Signing and tagging keys also
+ * stay out of reusable workflows, so only top-level release jobs hold them; the release bucket
+ * credentials belong to the publication job inside the reusable promotion workflows.
+ */
+const environmentSecretContracts = new Map<
+  string,
+  { readonly secrets: ReadonlySet<string>; readonly inReusableWorkflows: boolean }
+>([
+  [
+    "sparkle-feed-finalization",
+    { secrets: new Set(["SPARKLE_ED25519_PRIVATE_KEY"]), inReusableWorkflows: false },
+  ],
+  [
+    "release-publish",
+    { secrets: new Set(["NODEX_RELEASE_TAG_TOKEN"]), inReusableWorkflows: false },
+  ],
+  [
+    "release-r2-publish",
+    {
+      secrets: new Set([
+        "CLOUDFLARE_R2_RELEASES_ACCESS_KEY_ID",
+        "CLOUDFLARE_R2_RELEASES_SECRET_ACCESS_KEY",
+      ]),
+      inReusableWorkflows: true,
+    },
+  ],
+  [
+    "landing-production",
+    { secrets: new Set(["CLOUDFLARE_LANDING_DEPLOY_TOKEN"]), inReusableWorkflows: false },
+  ],
 ]);
 const environmentSecretNames = new Set(
-  [...environmentSecretContracts.values()].flatMap((names) => [...names]),
+  [...environmentSecretContracts.values()].flatMap(({ secrets }) => [...secrets]),
 );
 const permissionLevels = new Map([
   ["none", 0],
@@ -137,6 +166,14 @@ const resolveLocalWorkflow = (callerPath: string, uses: string): string => {
 export const verifyDeclaredReferences = (filePath: string, workflow: UnknownRecord): void => {
   const declared = workflowCallSecrets(workflow);
   const reusable = isReusableWorkflow(workflow);
+  const declaredEnvironmentSecrets = Object.keys(declared)
+    .filter((name) => environmentSecretNames.has(name))
+    .sort();
+  if (declaredEnvironmentSecrets.length > 0) {
+    throw new Error(
+      `${path.relative(repositoryRoot, filePath)} declares protected environment secrets as workflow-call secrets: ${declaredEnvironmentSecrets.join(", ")}`,
+    );
+  }
   const jobs = requireRecord(workflow.jobs, `${path.relative(repositoryRoot, filePath)}.jobs`);
   const workflowWithoutJobs = { ...workflow };
   delete workflowWithoutJobs.jobs;
@@ -161,10 +198,16 @@ export const verifyDeclaredReferences = (filePath: string, workflow: UnknownReco
   }
   for (const [jobName, rawJob] of Object.entries(jobs)) {
     const job = requireRecord(rawJob, `${jobName} job`);
-    const allowed = environmentSecretContracts.get(environmentName(job) ?? "") ?? new Set<string>();
+    const contract = environmentSecretContracts.get(environmentName(job) ?? "");
+    const allowed = contract?.secrets ?? new Set<string>();
     const references = [...referencedSecrets(job)];
     const reusableEnvironmentSecrets = references
-      .filter((name) => reusable && environmentSecretNames.has(name))
+      .filter(
+        (name) =>
+          reusable &&
+          environmentSecretNames.has(name) &&
+          !(contract?.inReusableWorkflows && allowed.has(name)),
+      )
       .sort();
     if (reusableEnvironmentSecrets.length > 0) {
       throw new Error(
@@ -247,7 +290,9 @@ export const verifyCall = (
           job.secrets,
           `${path.relative(repositoryRoot, callerPath)}:${jobName}.secrets`,
         );
-  const transportedEnvironmentSecrets = Object.keys(provided)
+  const transportedEnvironmentSecrets = [
+    ...new Set([...Object.keys(provided), ...referencedSecrets(provided)]),
+  ]
     .filter((name) => environmentSecretNames.has(name))
     .sort();
   if (transportedEnvironmentSecrets.length > 0) {

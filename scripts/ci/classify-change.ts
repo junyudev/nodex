@@ -497,10 +497,12 @@ const sourcePlan = (
     staticGroups.add("repository-contracts");
   }
   if (paths.some(isGeneratedResourcePath)) staticGroups.add("generated");
+  if (paths.some(isLandingPath)) staticGroups.add("landing");
   if (paths.some(isJavaScriptDependencyPath)) staticGroups.add("dependency-security");
   if (
     paths.some(
       (path) =>
+        isGitHubPath(path) ||
         isSharedConfigPath(path) ||
         path.startsWith("scripts/testing/") ||
         /\.(?:test|integration)\.[cm]?[jt]sx?$/u.test(path),
@@ -539,7 +541,7 @@ const classifyOtherPaths = (
     return createPlan({
       landingOnly: true,
       staticGroups: [
-        ...(paths.some((path) => /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path))
+        ...(paths.some((path) => isGitHubPath(path) || /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path))
           ? ["ci-contracts" as const]
           : []),
         "landing",

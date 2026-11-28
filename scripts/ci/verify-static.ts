@@ -169,6 +169,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "generated build resources and notices/legal",
   },
   {
+    command: ["run", "--filter", "@nodex/landing", "typecheck:worker"],
+    group: "landing",
+    id: "landing-worker-typecheck",
+    name: "landing Worker typecheck",
+  },
+  {
     command: ["run", "build:landing"],
     group: "landing",
     id: "landing-build",

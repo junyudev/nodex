@@ -1,19 +1,10 @@
 import { generateKeyPairSync, sign } from "node:crypto";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
-import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
+import { basename, join } from "node:path";
+import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 import { assembleReleaseBundle, parseReleaseBundleManifest } from "./bundle";
 import { releaseAssetPaths } from "./github-release";
-import { projectReleaseAppcasts, verifyPublishedAppcasts } from "./pages";
 import { sha256File } from "./model";
 import { parseWindowsArchitectureUpdateManifest } from "./windows-updates";
 import { fixtureIdentity, makeReleaseFixture } from "./windows-release.fixture";
@@ -24,7 +15,6 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "nodex-windows-release-"));
 });
 afterEach(() => {
-  vi.unstubAllGlobals();
   rmSync(root, { recursive: true, force: true });
 });
 const read = (file: string) => JSON.parse(readFileSync(file, "utf8"));
@@ -32,7 +22,7 @@ const write = (file: string, value: unknown) => writeFileSync(file, JSON.stringi
 
 test.each(["stable", "nightly"] as const)(
   "%s bundles include the signed Windows x64 installer and isolated feeds",
-  async (channel) => {
+  (channel) => {
     const inputs = makeReleaseFixture(root, channel);
     const identity = fixtureIdentity(channel);
     const output = join(root, "bundle");
@@ -59,40 +49,6 @@ test.each(["stable", "nightly"] as const)(
       basename(path),
     );
     for (const asset of installerAssets) expect(assetNames).toContain(asset.name);
-    const site = join(root, "site");
-    const otherChannel = channel === "stable" ? "nightly" : "stable";
-    const preserved = join(site, `updates/${otherChannel}/windows-x64/appcast.xml`);
-    mkdirSync(dirname(preserved), { recursive: true });
-    writeFileSync(preserved, "other-channel");
-    const projection = projectReleaseAppcasts({
-      bundlePath,
-      siteDirectory: site,
-      existingSiteDirectory: site,
-      windowsPublicKey: inputs.windowsPublicKey,
-    });
-    expect(projection.feeds.map(({ path }) => path).sort()).toEqual(
-      RELEASE_ARCHITECTURES.map((arch) => `updates/${channel}/${arch}/appcast.xml`).sort(),
-    );
-    for (const feed of projection.feeds)
-      expect(sha256File(join(site, feed.path))).toBe(feed.sha256);
-    expect(readFileSync(preserved, "utf8")).toBe("other-channel");
-    // An idempotent retry still verifies the public canonical feed and every enclosure.
-    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "HEAD") return new Response(null, { status: 200 });
-      const arch = RELEASE_ARCHITECTURES.find((arch) =>
-        new URL(url).pathname.endsWith(`/${arch}/appcast.xml`),
-      );
-      return new Response(
-        readFileSync(join(output, `Nodex-${identity.version}-appcast-${arch}.xml`), "utf8"),
-      );
-    });
-    vi.stubGlobal("fetch", fetch);
-    await verifyPublishedAppcasts({
-      bundlePath,
-      windowsPublicKey: inputs.windowsPublicKey,
-      attempts: 1,
-    });
-    expect(fetch.mock.calls.filter(([, init]) => init?.method === "HEAD")).toHaveLength(2);
   },
 );
 
@@ -152,31 +108,6 @@ test("rejects signatures from another key and content tampering even when hashes
   expect(() =>
     assembleReleaseBundle({ ...inputs, outputDirectory: join(root, "bad-feed") }),
   ).toThrow("Invalid Ed25519 signature");
-});
-
-test("preflights every feed before projecting, rejecting rollback and same-build byte drift", () => {
-  const inputs = makeReleaseFixture(root);
-  const output = join(root, "bundle");
-  assembleReleaseBundle({ ...inputs, outputDirectory: output });
-  const bundlePath = join(output, "release-bundle.json");
-  for (const buildVersion of ["2.0.0", "1.0.1"]) {
-    const site = join(root, buildVersion);
-    const feed = join(site, "updates/stable/windows-x64/appcast.xml");
-    mkdirSync(dirname(feed), { recursive: true });
-    writeFileSync(
-      feed,
-      `<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><item><sparkle:version>${buildVersion}</sparkle:version></item></channel></rss>`,
-    );
-    expect(() =>
-      projectReleaseAppcasts({
-        bundlePath,
-        existingSiteDirectory: site,
-        siteDirectory: site,
-        windowsPublicKey: inputs.windowsPublicKey,
-      }),
-    ).toThrow(buildVersion === "2.0.0" ? "cannot move" : "different bytes");
-    expect(existsSync(join(site, "updates/stable/arm64/appcast.xml"))).toBe(false);
-  }
 });
 
 test("bundle admission requires every Windows asset and byte-identical stable aliases", () => {

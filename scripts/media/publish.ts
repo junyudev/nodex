@@ -2,15 +2,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { AwsClient } from "aws4fetch";
+import type { AwsClient } from "aws4fetch";
 import { readUnreleasedChangesWithMedia } from "../../src/shared/change-media";
 import { mediaDescriptionFile, mediaKey, mediaUrl } from "../../src/shared/release-media";
 import { readChangeFilesAtRef } from "../release/changelog";
+import { createR2Client, r2BucketUrl } from "../release/r2-client";
 import { encodeMedia } from "./encode";
 import { isMediaPublished, referencedMediaFiles } from "./public";
 import { readMediaFile, resolveMediaStore } from "./store";
 
-const bucket = "https://3651f9ccc104912e0f466f6bb13ce230.r2.cloudflarestorage.com/nodex-media";
+const bucket = r2BucketUrl("nodex-media");
 const cacheControl = "public, max-age=31536000, immutable";
 
 interface MediaObject {
@@ -25,13 +26,8 @@ type PublishResult = { readonly file: string } & (
   | { readonly status: "missing" | "failed"; readonly error: string }
 );
 
-function mediaClient(): AwsClient {
-  const { R2_ACCESS_KEY_ID: accessKeyId, R2_SECRET_ACCESS_KEY: secretAccessKey } = process.env;
-  if (!accessKeyId || !secretAccessKey) {
-    throw new Error("Use cloudflare.r2_media with notes.local/secrets/use.py to publish media.");
-  }
-  return new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: "auto" });
-}
+const mediaClient = () =>
+  createR2Client("Use cloudflare.r2_media with notes.local/secrets/use.py to publish media.");
 
 async function putMediaObject(
   client: AwsClient,

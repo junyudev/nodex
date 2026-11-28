@@ -443,9 +443,7 @@ describe("Homebrew cask", () => {
       { input: cask, encoding: "utf8" },
     );
     expect(JSON.parse(result)).toEqual({
-      downloads: [
-        "https://github.com/junyudev/nodex/releases/download/v0.3.0/Nodex-latest-arm64.dmg",
-      ],
+      downloads: ["https://dl.nodex.jyu.app/releases/v0.3.0/Nodex-0.3.0-arm64.dmg"],
       requirements: { arch: "arm64", macos: "sequoia" },
     });
   });
@@ -456,11 +454,10 @@ describe("Homebrew cask", () => {
       version: "0.2.0",
     });
     expect(cask).toContain('version "0.2.0"');
-    expect(cask).toContain("/releases/download/v#{version}/Nodex-latest-arm64.dmg");
+    expect(cask).toContain("/releases/v#{version}/Nodex-#{version}-arm64.dmg");
     expect(cask).toContain("strategy :github_latest");
     expect(cask).toContain('homepage "https://nodex.jyu.app/"');
     expect(cask).toContain('url "https://github.com/junyudev/nodex"');
-    expect(cask).not.toContain("Nodex-#{version}-arm64.dmg");
     expect(cask).not.toContain('depends_on macos: ">= :sequoia"');
   });
 

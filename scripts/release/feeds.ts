@@ -1,28 +1,21 @@
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { setTimeout as wait } from "node:timers/promises";
 import path from "node:path";
 
-import { DOMParser } from "@xmldom/xmldom";
-
-import { parseReleaseBundleManifest } from "./bundle";
-import { releaseAssetPaths } from "./github-release";
+import { releaseDownloadUrl, STABLE_DOWNLOAD_TARGETS } from "../../src/shared/release-download";
+import { readReleaseDistributionBundle } from "./github-release";
 import { compareBuildVersions, normalizeAppleBuildVersion, sha256File } from "./model";
-import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
-import { RELEASE_ARCHITECTURES, type ReleaseArchitecture } from "./targets";
+import { parseAppcastXml, verifySparkleAppcastContract } from "./sparkle-appcast-contract";
+import { RELEASE_ARCHITECTURES } from "./targets";
 import { parseWindowsArchitectureUpdateManifest } from "./windows-updates";
-import { readConfiguredPublicKey } from "./signing";
+import { sha256Bytes, type ReleaseBucket } from "./r2";
+import { stableReleasePointer } from "./r2-publication";
 import { parseSparkleArchitectureUpdateManifest } from "./sparkle-manifest";
-
-const wait = async (milliseconds: number): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
-};
 
 const SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle";
 
-export function latestVersionInAppcast(xml: string): string {
-  const document = new DOMParser().parseFromString(xml, "application/xml");
-  if (document.getElementsByTagName("parsererror").length > 0) {
-    throw new Error("Existing Sparkle appcast is invalid XML.");
-  }
+function latestVersionInAppcast(xml: string): string {
+  const document = parseAppcastXml(xml, "Existing Sparkle appcast");
   const items = document.getElementsByTagName("item");
   let latest: string | null = null;
   for (let index = 0; index < items.length; index += 1) {
@@ -39,35 +32,25 @@ export function latestVersionInAppcast(xml: string): string {
   return latest;
 }
 
-const assertProjectionDoesNotMoveFeedBackwards = (options: {
+const assertFeedDoesNotMoveBackwards = (options: {
   readonly candidateSha256: string;
   readonly candidateBuildVersion: string;
-  readonly existingPath: string;
+  readonly existingBytes: Uint8Array;
 }): void => {
-  if (!existsSync(options.existingPath)) return;
-  const metadata = lstatSync(options.existingPath);
-  if (!metadata.isFile() || metadata.isSymbolicLink()) {
-    throw new Error(`Existing Sparkle feed must be a regular file: ${options.existingPath}`);
-  }
-  const existingVersion = latestVersionInAppcast(readFileSync(options.existingPath, "utf8"));
+  const existingVersion = latestVersionInAppcast(new TextDecoder().decode(options.existingBytes));
   const order = compareBuildVersions(options.candidateBuildVersion, existingVersion);
   if (order < 0) {
     throw new Error(
-      `Sparkle feed projection cannot move build ${existingVersion} back to ${options.candidateBuildVersion}.`,
+      `Sparkle feed cannot move build ${existingVersion} back to ${options.candidateBuildVersion}.`,
     );
   }
-  if (order === 0 && sha256File(options.existingPath) !== options.candidateSha256) {
+  if (order === 0 && sha256Bytes(options.existingBytes) !== options.candidateSha256) {
     throw new Error(`Sparkle feed ${existingVersion} already exists with different bytes.`);
   }
 };
 
-const readBundleInputs = (bundlePath: string, windowsPublicKey = readConfiguredPublicKey()) => {
-  const resolvedBundle = path.resolve(bundlePath);
-  const root = path.dirname(resolvedBundle);
-  releaseAssetPaths(resolvedBundle, windowsPublicKey);
-  const bundle = parseReleaseBundleManifest(
-    JSON.parse(readFileSync(resolvedBundle, "utf8")) as unknown,
-  );
+const readBundleInputs = (bundlePath: string, windowsPublicKey?: string) => {
+  const { bundle, root } = readReleaseDistributionBundle(bundlePath, windowsPublicKey);
   const updates = RELEASE_ARCHITECTURES.map((architecture) => {
     const name = `Nodex-${bundle.version}-update-${architecture}.json`;
     const updatePath = path.join(root, name);
@@ -119,65 +102,57 @@ const readBundleInputs = (bundlePath: string, windowsPublicKey = readConfiguredP
       throw new Error(`${architecture} update manifest is not bound by the Release Bundle.`);
     }
     const appcastPath = path.join(root, update.appcast.name);
-    if (sha256File(appcastPath) !== update.appcast.sha256) {
+    const bytes = readFileSync(appcastPath);
+    if (sha256Bytes(bytes) !== update.appcast.sha256) {
       throw new Error(`${architecture} appcast snapshot does not match its update manifest.`);
     }
-    verifySparkleAppcastContract(readFileSync(appcastPath, "utf8"), update);
+    verifySparkleAppcastContract(bytes.toString("utf8"), update);
 
-    return { appcastPath, architecture, update };
+    return { bytes, architecture, update };
   });
   return { bundle, updates };
 };
 
-export function projectReleaseAppcasts(options: {
+export async function publishAppcastsToR2(options: {
+  readonly bucket: ReleaseBucket;
   readonly bundlePath: string;
-  readonly existingSiteDirectory?: string;
   readonly windowsPublicKey?: string;
-  readonly siteDirectory: string;
-}): {
-  readonly bundleSha256: string;
-  readonly feeds: readonly {
-    readonly architecture: ReleaseArchitecture;
-    readonly path: string;
-    readonly sha256: string;
-  }[];
-  readonly tag: string;
-} {
+}) {
   const { bundle, updates } = readBundleInputs(options.bundlePath, options.windowsPublicKey);
-  const site = path.resolve(options.siteDirectory);
-  for (const { update } of updates) {
-    if (options.existingSiteDirectory) {
-      assertProjectionDoesNotMoveFeedBackwards({
-        candidateSha256: update.appcast.sha256,
-        candidateBuildVersion: update.target.buildVersion,
-        existingPath: path.join(
-          path.resolve(options.existingSiteDirectory),
-          ...update.appcast.feedPath.split("/"),
-        ),
-      });
-    }
-  }
-  for (const { appcastPath, update } of updates) {
-    const destination = path.join(site, ...update.appcast.feedPath.split("/"));
-    mkdirSync(path.dirname(destination), { recursive: true });
-    copyFileSync(appcastPath, destination);
-    if (sha256File(destination) !== update.appcast.sha256) {
-      throw new Error(`Projected ${update.architecture} appcast changed bytes.`);
-    }
+  const feeds = await Promise.all(
+    updates.map(async ({ bytes, architecture, update }) => {
+      const { feedPath, sha256 } = update.appcast;
+      const existing = await options.bucket.getMutable(feedPath);
+      if (existing) {
+        assertFeedDoesNotMoveBackwards({
+          candidateSha256: sha256,
+          candidateBuildVersion: update.target.buildVersion,
+          existingBytes: existing.bytes,
+        });
+      }
+      return { bytes, existing, architecture, path: feedPath, sha256 };
+    }),
+  );
+  // Validate all the existing feeds before updating any architecture.
+  for (const { bytes, existing, path } of feeds) {
+    await options.bucket.putMutable(path, bytes, "application/xml", existing);
   }
   return {
-    bundleSha256: sha256File(path.resolve(options.bundlePath)),
-    feeds: updates.map(({ architecture, update }) => ({
-      architecture,
-      path: update.appcast.feedPath,
-      sha256: update.appcast.sha256,
-    })),
     tag: bundle.tag,
+    feeds: feeds.map(({ architecture, path, sha256 }) => ({ architecture, path, sha256 })),
   };
 }
 
-const verifyEnclosure = async (url: string, bytes: number): Promise<void> => {
-  const response = await fetch(url, { method: "HEAD", redirect: "follow" });
+const verifyEnclosure = async (
+  fetchRequest: typeof fetch,
+  url: string,
+  bytes: number,
+): Promise<void> => {
+  const response = await fetchRequest(url, {
+    method: "HEAD",
+    redirect: "follow",
+    signal: AbortSignal.timeout(30_000),
+  });
   if (!response.ok) throw new Error(`Sparkle enclosure returned HTTP ${response.status}: ${url}`);
   const contentLength = response.headers.get("content-length");
   if (contentLength && Number(contentLength) !== bytes) {
@@ -185,21 +160,46 @@ const verifyEnclosure = async (url: string, bytes: number): Promise<void> => {
   }
 };
 
-const fetchSha256 = async (url: string): Promise<string> => {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`Sparkle appcast returned HTTP ${response.status}: ${url}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Buffer.from(digest).toString("hex");
+const fetchSha256 = async (fetchRequest: typeof fetch, url: string): Promise<string> => {
+  const response = await fetchRequest(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`Sparkle appcast returned HTTP ${response.status}: ${url}`);
+  }
+  return sha256Bytes(new Uint8Array(await response.arrayBuffer()));
+};
+
+const verifyStableRedirect = async (
+  fetchRequest: typeof fetch,
+  target: string,
+  expected: string,
+): Promise<void> => {
+  const response = await fetchRequest(`https://nodex.jyu.app/dl/${target}`, {
+    method: "HEAD",
+    redirect: "manual",
+    signal: AbortSignal.timeout(30_000),
+  });
+  const location = response.headers.get("location");
+  if (response.status !== 302 || location !== expected) {
+    throw new Error(
+      `Stable ${target} download expected HTTP 302 to ${expected}; received HTTP ${response.status} to ${location ?? "no location"}.`,
+    );
+  }
 };
 
 export async function verifyPublishedAppcasts(options: {
   readonly attempts?: number;
   readonly bundlePath: string;
   readonly delayMs?: number;
+  readonly fetchRequest?: typeof fetch;
   readonly windowsPublicKey?: string;
 }): Promise<void> {
   const { bundle, updates } = readBundleInputs(options.bundlePath, options.windowsPublicKey);
+  const fetchRequest = options.fetchRequest ?? fetch;
+  const pointer = bundle.releaseIdentity.channel === "stable" ? stableReleasePointer(bundle) : null;
   const attempts = options.attempts ?? 12;
   const delayMs = options.delayMs ?? 10_000;
   let lastError: unknown = null;
@@ -208,17 +208,30 @@ export async function verifyPublishedAppcasts(options: {
       for (const { architecture, update } of updates) {
         const feedUrl = `https://nodex.jyu.app/${update.appcast.feedPath}`;
         const cacheBustedSha256 = await fetchSha256(
+          fetchRequest,
           `${feedUrl}?release=${encodeURIComponent(bundle.tag)}&attempt=${attempt}`,
         );
-        const canonicalSha256 = await fetchSha256(feedUrl);
+        const canonicalSha256 = await fetchSha256(fetchRequest, feedUrl);
         if (
           cacheBustedSha256 !== update.appcast.sha256 ||
           canonicalSha256 !== update.appcast.sha256
         ) {
           throw new Error(`${architecture} published appcast does not match the Release Bundle.`);
         }
-        await verifyEnclosure(update.full.url, update.full.bytes);
-        for (const delta of update.deltas) await verifyEnclosure(delta.url, delta.bytes);
+        await verifyEnclosure(fetchRequest, update.full.url, update.full.bytes);
+        for (const delta of update.deltas)
+          await verifyEnclosure(fetchRequest, delta.url, delta.bytes);
+      }
+      if (pointer) {
+        await Promise.all(
+          STABLE_DOWNLOAD_TARGETS.map((target) =>
+            verifyStableRedirect(
+              fetchRequest,
+              target,
+              releaseDownloadUrl(pointer.tag, pointer.installers[target]),
+            ),
+          ),
+        );
       }
       return;
     } catch (error) {
@@ -226,7 +239,8 @@ export async function verifyPublishedAppcasts(options: {
       if (attempt < attempts) await wait(delayMs);
     }
   }
-  throw new Error("Published Sparkle appcasts did not converge before the verification deadline.", {
-    cause: lastError,
-  });
+  throw new Error(
+    `Published update feeds and downloads did not converge: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+    { cause: lastError },
+  );
 }

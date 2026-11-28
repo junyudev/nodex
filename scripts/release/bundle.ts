@@ -124,6 +124,11 @@ export interface ReleaseBundleMobileBuild {
   readonly artifact: MobileArtifact;
 }
 
+/** Published bundles with the current set of distribution targets and enclosure format. */
+export type ReleaseDistributionBundle = Omit<ReleaseBundleManifest, "schemaVersion"> & {
+  readonly schemaVersion: 8 | typeof RELEASE_BUNDLE_SCHEMA_VERSION;
+};
+
 export interface ReleaseBundleManifest {
   readonly agentSkills: AgentSkillsIdentity;
   readonly architectures: Readonly<
@@ -363,19 +368,32 @@ const parseMobileBuilds = (
 
 /** Read published history back to the last macOS-only bundle format. */
 export function parseReleaseHistoryBundle(value: unknown): ReleaseHistoryBundle {
-  return parseBundleManifest(value, true);
+  return parseBundleManifest(value, "history");
 }
 
 export function parseReleaseBundleManifest(value: unknown): ReleaseBundleManifest {
-  return parseBundleManifest(value, false) as ReleaseBundleManifest;
+  return parseBundleManifest(value, "current") as ReleaseBundleManifest;
 }
 
-function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHistoryBundle {
+export function parseReleaseDistributionBundle(value: unknown): ReleaseDistributionBundle {
+  return parseBundleManifest(value, "distribution") as ReleaseDistributionBundle;
+}
+
+function parseBundleManifest(
+  value: unknown,
+  mode: "current" | "distribution" | "history",
+): ReleaseHistoryBundle {
+  const allowHistory = mode === "history";
   if (!isRecord(value)) throw new Error("Release Bundle manifest is invalid.");
   const candidate = value as Partial<ReleaseHistoryBundle>;
   const macOnlyHistory = allowHistory && candidate.schemaVersion === 3;
   const current = candidate.schemaVersion === RELEASE_BUNDLE_SCHEMA_VERSION;
   const x64Only = current || candidate.schemaVersion === 8;
+  const supported = allowHistory
+    ? RELEASE_HISTORY_SCHEMA_VERSIONS.includes(candidate.schemaVersion as number)
+    : mode === "distribution"
+      ? x64Only
+      : current;
   const hasCertifiedMobile =
     x64Only || candidate.schemaVersion === 7 || candidate.schemaVersion === 6;
   const hasMacComponentManifest = x64Only || candidate.schemaVersion === 7;
@@ -387,9 +405,7 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
       : LEGACY_RELEASE_ARCHITECTURES;
   const windowsArchitectures = architectures.filter((architecture) => architecture !== "arm64");
   if (
-    !(allowHistory ? RELEASE_HISTORY_SCHEMA_VERSIONS : [RELEASE_BUNDLE_SCHEMA_VERSION]).includes(
-      candidate.schemaVersion as number,
-    ) ||
+    !supported ||
     hasMobile !== (candidate.mobile !== undefined) ||
     typeof candidate.version !== "string" ||
     typeof candidate.tag !== "string" ||

@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
@@ -23,7 +23,6 @@ import { readPublishedReleaseIndex, releaseAssetPaths } from "./github-release";
 import { buildIdentityOf, sha256File } from "./model";
 import { appComponentManifestName } from "../../src/shared/app-component-manifest";
 import { macComponentManifest } from "./components";
-import { projectReleaseAppcasts } from "./pages";
 import {
   NODEX_MACOS_TEAM_IDENTIFIER,
   type SparkleArchitectureUpdateManifest,
@@ -40,12 +39,6 @@ const PREVIOUS_VERSION = "0.2.1";
 const BUILD_VERSION = "1.0.1";
 const SOURCE_SHA = "1".repeat(40);
 const SIGNATURE = `${"A".repeat(86)}==`;
-
-const appcastFor = (version: string): string => `<?xml version="1.0"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-  <channel><item><sparkle:version>${version}</sparkle:version><sparkle:shortVersionString>${version}</sparkle:shortVersionString></item></channel>
-</rss>
-`;
 
 const makeArchitecture = (architecture: MacArchitecture, sourceSha = SOURCE_SHA): string => {
   const root = join(fixture, `architecture-${architecture}`);
@@ -252,31 +245,6 @@ test("assembles the complete macOS and Windows signed release closure", () => {
   expect(
     releaseAssetPaths(join(output, "release-bundle.json"), windows.windowsPublicKey),
   ).toHaveLength(bundle.assets.length + 2);
-  const site = join(fixture, "site");
-  const currentSite = join(fixture, "current-site");
-  for (const architecture of ["arm64"] as const) {
-    const feed = join(currentSite, `updates/stable/${architecture}/appcast.xml`);
-    mkdirSync(dirname(feed), { recursive: true });
-    writeFileSync(feed, appcastFor("0.2.0"));
-  }
-  projectReleaseAppcasts({
-    windowsPublicKey: windows.windowsPublicKey,
-    bundlePath: join(output, "release-bundle.json"),
-    existingSiteDirectory: currentSite,
-    siteDirectory: site,
-  });
-  expect(readFileSync(join(site, "updates/stable/arm64/appcast.xml"), "utf8")).toBe(
-    readFileSync(join(output, `Nodex-${VERSION}-appcast-arm64.xml`), "utf8"),
-  );
-  writeFileSync(join(currentSite, "updates/stable/arm64/appcast.xml"), appcastFor("2.0.0"));
-  expect(() =>
-    projectReleaseAppcasts({
-      windowsPublicKey: windows.windowsPublicKey,
-      bundlePath: join(output, "release-bundle.json"),
-      existingSiteDirectory: currentSite,
-      siteDirectory: join(fixture, "rollback-site"),
-    }),
-  ).toThrow("cannot move");
   appendFileSync(join(output, "Nodex-latest-arm64.dmg"), "tampered");
   expect(() =>
     releaseAssetPaths(join(output, "release-bundle.json"), windows.windowsPublicKey),

@@ -73,6 +73,17 @@ describe("CI change classification", () => {
     });
   });
 
+  test("checks the landing Worker and its deployment in the landing CI lanes", () => {
+    const paths = ["packages/landing/worker/index.ts", ".github/workflows/deploy-landing-site.yml"];
+    expect(classifyChangedPaths(paths)).toMatchObject({
+      appTestSuites: ["unit", "renderer"],
+      landingOnly: true,
+      relatedPaths: paths,
+      staticGroups: ["source-ownership", "ci-contracts", "tooling-contracts", "landing"],
+      testMode: "related",
+    });
+  });
+
   test("requires source ownership for every TypeScript extension and project configuration", () => {
     for (const path of [
       "src/renderer/components/new.tsx",

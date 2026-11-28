@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nodex-web",
+  "account_id": "3651f9ccc104912e0f466f6bb13ce230",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-28",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "nodex.jyu.app", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none",
+    "run_worker_first": ["/updates/*", "/dl/*"],
+  },
+  "r2_buckets": [{ "binding": "RELEASES_BUCKET", "bucket_name": "nodex-releases" }],
+  "observability": {
+    "logs": { "enabled": true },
+  },
+}
