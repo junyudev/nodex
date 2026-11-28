@@ -86,6 +86,15 @@ const controllersByStore = new WeakMap<
 const transportByStore = new WeakMap<MaitaiStore, PersistedAtomTransport>();
 const controllersForTests = new Set<PersistedController<unknown>>();
 
+/**
+ * Declares the one definition that owns a storage key; declaring the key again throws.
+ *
+ * Development hot reload evaluates an edited module again, together with every module between it
+ * and the nearest reload boundary, so their declarations run twice. In development a repeat with
+ * the same label and policies therefore returns the existing definition, so each store's state
+ * and pending writes carry over, and adopts the edited default and codec. A production build
+ * evaluates each module once.
+ */
 export function persistedAtom<Value>(
   options: PersistedAtomOptions<Value>,
 ): PersistedAtomDefinition<Value> {
@@ -93,11 +102,7 @@ export function persistedAtom<Value>(
   const storageKey = options.storageKey.trim();
   if (!debugLabel) throw new Error("Persisted atom requires a debugLabel");
   if (!storageKey) throw new Error("Persisted atom requires a storageKey");
-  const existing = definitionsByKey.get(storageKey);
-  if (existing) {
-    throw new Error(`Duplicate persisted atom storage key: ${storageKey}`);
-  }
-  const definition = Object.freeze({
+  const definition: PersistedAtomDefinition<Value> = {
     debugLabel,
     storageKey,
     defaultValue: options.defaultValue,
@@ -107,9 +112,34 @@ export function persistedAtom<Value>(
     writeFailure: options.writeFailure ?? "retain-and-error",
     decode: options.decode,
     encode: options.encode ?? ((value: Value) => value),
-  }) satisfies PersistedAtomDefinition<Value>;
-  definitionsByKey.set(storageKey, definition as PersistedAtomDefinition<unknown>);
-  return definition;
+  };
+  const existing = definitionsByKey.get(storageKey) as PersistedAtomDefinition<Value> | undefined;
+  if (!existing) {
+    definitionsByKey.set(storageKey, definition as PersistedAtomDefinition<unknown>);
+    return definition;
+  }
+  if (!import.meta.env.DEV || existing.debugLabel !== debugLabel) {
+    throw new Error(`Duplicate persisted atom storage key: ${storageKey}`);
+  }
+  if (!samePolicies(existing, definition)) {
+    throw new Error(
+      `Persisted atom ${debugLabel} changed its policies; reload the window to apply them`,
+    );
+  }
+  const { defaultValue, decode, encode } = definition;
+  return Object.assign(existing, { defaultValue, decode, encode });
+}
+
+function samePolicies<Value>(
+  left: PersistedAtomDefinition<Value>,
+  right: PersistedAtomDefinition<Value>,
+): boolean {
+  return (
+    left.hydration === right.hydration &&
+    left.synchronization === right.synchronization &&
+    left.optimistic === right.optimistic &&
+    left.writeFailure === right.writeFailure
+  );
 }
 
 export function setMaitaiPersistenceTransport(
