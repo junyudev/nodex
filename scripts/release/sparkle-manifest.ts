@@ -1,6 +1,7 @@
 import { isSparkleHistoryArchiveName, sparkleFullArchiveName } from "./sparkle-archive";
 import { basename } from "node:path";
 
+import { githubReleaseDownloadUrl, releaseDownloadUrl } from "../../src/shared/release-download";
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import {
   compareBuildVersions,
@@ -99,16 +100,10 @@ const requireSignature = (value: unknown, label: string): string => {
 
 const immutableReleaseUrl = (value: unknown, tag: string, name: string): string => {
   if (typeof value !== "string") throw new Error("Sparkle asset URL must be a string.");
-  const parsed = new URL(value);
-  const expectedPath = `/junyudev/nodex/releases/download/${tag}/${encodeURIComponent(name)}`;
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.hostname !== "github.com" ||
-    parsed.pathname !== expectedPath
-  ) {
+  if (value !== githubReleaseDownloadUrl(tag, name) && value !== releaseDownloadUrl(tag, name)) {
     throw new Error(`Sparkle asset URL must use the immutable ${tag} release path.`);
   }
-  return parsed.toString();
+  return value;
 };
 
 export const parseSparkleFileIdentity = (

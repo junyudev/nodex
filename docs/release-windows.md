@@ -401,7 +401,8 @@ policy on Windows and macOS. Windows uses Electron `net` for system proxy
 support. Feed requests and every redirect require HTTPS. The Sparkle-format
 RSS appcast is limited to 1 MiB and 100 direct items; DTDs, entity declarations,
 malformed XML and conflicting build identities are rejected. Windows full
-installers must use immutable Nodex GitHub Release asset URLs named
+installers must use canonical immutable release asset URLs, on GitHub Releases or
+`dl.nodex.jyu.app`, named
 `Nodex-<displayVersion>-windows-x64.exe`. Only the newest matching CPU with a
 strictly greater numeric Release Identity build tuple is eligible.
 

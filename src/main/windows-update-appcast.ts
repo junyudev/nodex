@@ -1,5 +1,6 @@
 import { DOMParser, type Element } from "@xmldom/xmldom";
 import { APP_UPDATE_BUILD_VERSION_PATTERN } from "../shared/app-version";
+import { parseImmutableReleaseDownloadUrl } from "../shared/release-download";
 import { compareAppBuildVersions } from "./app-update-trust";
 
 export const MAX_APPCAST_BYTES = 1024 * 1024;
@@ -57,20 +58,13 @@ export function selectWindowsUpdate(
         !entry.hasAttributeNS(SPARKLE_NS, "deltaFrom"),
     );
     for (const enclosure of enclosures) {
-      const url = new URL(enclosure.getAttribute("url") ?? "");
+      const enclosureUrl = enclosure.getAttribute("url") ?? "";
+      const url = new URL(enclosureUrl);
       // The architecture-specific immutable asset name supplies the CPU identity.
       if (!url.pathname.endsWith(`-windows-${architecture}.exe`)) continue;
-      if (
-        url.protocol !== "https:" ||
-        url.hostname !== "github.com" ||
-        url.port ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash ||
-        !/^\/junyudev\/nodex\/releases\/download\/[^/]+\/Nodex-[^/]+$/u.test(url.pathname)
-      ) {
-        throw new Error("Windows update must use an immutable Nodex GitHub Release URL.");
+      const download = parseImmutableReleaseDownloadUrl(enclosureUrl);
+      if (!download?.assetName.startsWith("Nodex-")) {
+        throw new Error("Windows update must use an immutable Nodex release download URL.");
       }
       const buildVersion =
         text(item, "version", SPARKLE_NS) ?? enclosure.getAttributeNS(SPARKLE_NS, "version");
@@ -94,7 +88,7 @@ export function selectWindowsUpdate(
       ) {
         throw new Error("Windows update enclosure identity is invalid.");
       }
-      if (url.pathname.split("/").at(-1) !== `Nodex-${version}-windows-${architecture}.exe`)
+      if (download.assetName !== `Nodex-${version}-windows-${architecture}.exe`)
         throw new Error("Windows update enclosure filename does not match its display version.");
       if (compareAppBuildVersions(buildVersion, runningBuildVersion) <= 0) continue;
       const candidate: WindowsUpdateItem = {

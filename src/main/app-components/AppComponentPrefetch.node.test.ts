@@ -17,12 +17,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { afterEach, expect, vi } from "vite-plus/test";
+import { afterEach, expect, test, vi } from "vite-plus/test";
 import {
   APP_COMPONENT_MANIFEST_MAX_BYTES,
   appComponentManifestSchema,
   type AppComponentManifestTarget,
 } from "../../shared/app-component-manifest";
+import { releaseDownloadUrl } from "../../shared/release-download";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
 import { writeDocumentToolsFixture } from "../platform/node/document-tools-test-fixture";
 import {
@@ -32,6 +33,7 @@ import {
 import { AppComponentActivation } from "./AppComponentActivation";
 import { appComponentCatalog, type AppComponentDefinition } from "./AppComponentCatalog";
 import { fetchComponentManifest, type ComponentFetch } from "./AppComponentDownload";
+import { appComponentUpdate } from "./AppComponentPrefetch";
 import {
   appComponentRoot,
   installAppComponent,
@@ -52,6 +54,35 @@ async function prepareAppComponentStore(
 }
 
 afterEach(() => vi.mocked(appComponentCatalog).mockReset());
+
+const readyUpdate = { type: "update-ready", version: "0.2.2", buildVersion: "1.25.24" } as const;
+const nightlyTag = "v0.2.2-nightly.20261111.2524";
+const macArchive = "Nodex-0.2.2-arm64.tar.xz";
+
+test.each([
+  ["stable", "v0.2.2", macArchive],
+  ["nightly", nightlyTag, "Nodex-1.25.23-to-0.2.2-arm64.delta"],
+] as const)(
+  "uses the %s Component manifest beside the release bucket enclosure",
+  (channel, tag, asset) => {
+    const update = appComponentUpdate(
+      { ...readyUpdate, verifiedEnclosureUrl: releaseDownloadUrl(tag, asset) },
+      channel,
+      "darwin-arm64",
+    );
+    expect(update?.manifestUrl).toBe(releaseDownloadUrl(tag, "Nodex-0.2.2-components-arm64.json"));
+  },
+);
+
+test.each([
+  ["another version", releaseDownloadUrl("v0.2.3-nightly.20261111.2524", macArchive)],
+  ["another ordinal", releaseDownloadUrl("v0.2.2-nightly.20261111.2525", macArchive)],
+  ["another platform", releaseDownloadUrl(nightlyTag, "Nodex-0.2.2-windows-x64.exe")],
+])("skips Component prefetch for a verified enclosure with %s", (_reason, verifiedEnclosureUrl) => {
+  expect(
+    appComponentUpdate({ ...readyUpdate, verifiedEnclosureUrl }, "nightly", "darwin-arm64"),
+  ).toBeNull();
+});
 
 interface PrefetchTestTarget {
   platform: string;

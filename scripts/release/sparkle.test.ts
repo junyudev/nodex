@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { load as parse } from "js-yaml";
+import { githubReleaseDownloadUrl, releaseDownloadUrl } from "../../src/shared/release-download";
 import {
   fetchSparkleHistory,
   isEligibleSparkleHistoryRelease,
@@ -320,18 +321,34 @@ const manifest = () => ({
 });
 
 describe("Sparkle architecture update manifest", () => {
-  test("accepts a closed immutable release identity", () => {
-    expect(parseSparkleArchitectureUpdateManifest(manifest())).toMatchObject({
+  test.each([
+    ["GitHub Releases", githubReleaseDownloadUrl],
+    ["the release bucket", releaseDownloadUrl],
+  ] as const)("accepts an immutable release identity on %s", (_host, assetUrl) => {
+    const candidate = manifest();
+    candidate.full.url = assetUrl(candidate.tag, candidate.full.name);
+    const delta = candidate.deltas[0]!;
+    delta.url = assetUrl(candidate.tag, delta.name);
+    expect(parseSparkleArchitectureUpdateManifest(candidate)).toMatchObject({
       architecture: "arm64",
+      full: { url: candidate.full.url },
+      deltas: [{ url: delta.url }],
       tag: `v${VERSION}`,
       target: { version: VERSION },
     });
   });
 
-  test("rejects mutable or cross-architecture enclosure URLs", () => {
+  test("rejects enclosure URLs outside the exact tag and asset identity", () => {
     const candidate = manifest();
-    candidate.full.url = `https://github.com/junyudev/nodex/releases/latest/download/${candidate.full.name}`;
-    expect(() => parseSparkleArchitectureUpdateManifest(candidate)).toThrow("immutable");
+    for (const url of [
+      `https://github.com/junyudev/nodex/releases/latest/download/${candidate.full.name}`,
+      releaseDownloadUrl("v0.2.3", candidate.full.name),
+      releaseDownloadUrl(candidate.tag, candidate.full.name.replace("arm64", "x64")),
+      `${releaseDownloadUrl(candidate.tag, candidate.full.name)}?`,
+    ]) {
+      candidate.full.url = url;
+      expect(() => parseSparkleArchitectureUpdateManifest(candidate)).toThrow("immutable");
+    }
   });
 
   test("rejects deltas that do not terminate at the target build", () => {
@@ -355,11 +372,11 @@ test("accepts a nightly feed identity and rejects a stable feed path", () => {
   nightly.appcast.name = `Nodex-${nightly.target.version}-appcast-arm64.xml`;
   nightly.appcast.feedPath = "updates/nightly/arm64/appcast.xml";
   nightly.full.name = `Nodex-${nightly.target.version}-arm64.tar.xz`;
-  nightly.full.url = `https://github.com/junyudev/nodex/releases/download/${nightly.tag}/${nightly.full.name}`;
+  nightly.full.url = releaseDownloadUrl(nightly.tag, nightly.full.name);
   nightly.deltas[0]!.toBuildVersion = "1.8.42";
   nightly.deltas[0]!.toVersion = nightly.target.version;
   nightly.deltas[0]!.name = `Nodex-0.2.1-to-${nightly.target.version}-arm64.delta`;
-  nightly.deltas[0]!.url = `https://github.com/junyudev/nodex/releases/download/${nightly.tag}/${nightly.deltas[0]!.name}`;
+  nightly.deltas[0]!.url = releaseDownloadUrl(nightly.tag, nightly.deltas[0]!.name);
   nightly.deltas[0]!.toVersion = nightly.target.version;
 
   expect(parseSparkleArchitectureUpdateManifest(nightly)).toMatchObject({
