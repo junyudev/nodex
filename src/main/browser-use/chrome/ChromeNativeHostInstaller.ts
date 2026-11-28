@@ -380,6 +380,13 @@ function registryEntryConflicts(
 ): boolean {
   if (!isRecord(existing)) return false;
   if (existing.entryId === replacement.entryId) return true;
+  if (
+    windows &&
+    replacement.nativeHostNames.some((host) =>
+      isWindowsProfileHost(existing, replacement.paths.codexHome, host),
+    )
+  )
+    return true;
   const sameProfile =
     !windows &&
     isRecord(existing.paths) &&
@@ -396,6 +403,16 @@ function registryEntryConflicts(
   return (
     extensionIds.some((extensionId) => replacement.extensionIds.includes(extensionId)) &&
     nativeHostNames.some((hostName) => replacement.nativeHostNames.includes(hostName))
+  );
+}
+
+function isWindowsProfileHost(entry: unknown, runtimeStateHome: string, host: string): boolean {
+  if (!isRecord(entry) || !isRecord(entry.paths) || typeof entry.paths.codexHome !== "string")
+    return false;
+  return (
+    path.win32.normalize(entry.paths.codexHome).toLowerCase() ===
+      path.win32.normalize(runtimeStateHome).toLowerCase() &&
+    stringArray(entry.nativeHostNames)?.includes(host) === true
   );
 }
 
@@ -483,15 +500,9 @@ export async function removeWindowsChromeNativeHostResources(
   host: string,
 ): Promise<void> {
   const registry = await readNativeHostRegistry(registryPath, true);
-  const home = path.win32.normalize(runtimeStateHome).toLowerCase();
-  const entries = registry.entries.filter((entry) => {
-    if (!isRecord(entry) || !isRecord(entry.paths) || typeof entry.paths.codexHome !== "string")
-      return true;
-    return (
-      path.win32.normalize(entry.paths.codexHome).toLowerCase() !== home ||
-      !stringArray(entry.nativeHostNames)?.includes(host)
-    );
-  });
+  const entries = registry.entries.filter(
+    (entry) => !isWindowsProfileHost(entry, runtimeStateHome, host),
+  );
   if (entries.length === registry.entries.length) return;
   await writeJsonAtomically(registryPath, { ...registry, entries }, 0o600, true);
 }

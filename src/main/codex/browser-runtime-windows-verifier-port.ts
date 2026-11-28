@@ -13,7 +13,7 @@ export type VerifiedAuthenticodeSigner = {
 export interface WindowsBrowserRuntimeVerifierPort {
   /**
    * Open without following reparse points. Check the closure root, its path
-   * from the installation boundary, and all descendants (including directories
+   * from the installation or Component store boundary, and all descendants (including directories
    * and the manifest). Reject foreign owners and write access granted to
    * untrusted principals. Use the effective user and trusted system owners.
    */

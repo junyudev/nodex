@@ -131,7 +131,8 @@ Installed Components live in the Profile, under `components/`, one directory per
 version. A directory there is always complete: an install unpacks beside it and appears in one
 step. Backups and Space data do not include them. On Windows, the store uses a private directory
 in the Profile on a local volume. If the location cannot protect the store, Components stay
-unavailable and the rest of Nodex remains usable.
+unavailable and the rest of Nodex remains usable. Nodex checks this before it downloads anything, and
+the row says that the Profile's folder isn't private.
 
 A Space host started with `nodex serve` installs Codex and Claude Code on first use on the
 same platforms as the app, plus Document Tools on Apple silicon. It keeps its own Component

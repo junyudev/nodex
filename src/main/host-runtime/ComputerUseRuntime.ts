@@ -678,10 +678,12 @@ const makeWindows = (options: ComputerUseRuntimeOptions, host: WindowsComputerUs
             "ensure-ready.closed",
             new Error("Computer Use runtime is closed"),
           );
-        if (!enabled) return disabled;
+        const runtime = options.browserRuntime;
+        if (!enabled && (runtime.status !== "unavailable" || runtime.reason !== "not-installed"))
+          return disabled;
         if (result?.status === "available" && listener?.isListening()) return result;
         yield* stop;
-        startup = resolveWindowsComputerUse(options.browserRuntime, host);
+        startup = resolveWindowsComputerUse(runtime, host);
         if (startup.status === "unavailable") return startup;
         yield* Effect.tryPromise({
           try: () =>

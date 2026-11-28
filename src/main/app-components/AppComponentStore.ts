@@ -94,7 +94,16 @@ export async function ensureAppComponentStoreBoundary(
   const core = windowsStoreCore(input);
   if (!core) return;
   const profile = input.target.headless ? path.resolve(input.home, "../..") : input.home;
-  await ensurePrivateDirectoryBoundary(core, profile, appComponentStoreRoot(input.home));
+  await ensurePrivateDirectoryBoundary(core, profile, appComponentStoreRoot(input.home)).catch(
+    (cause: unknown) => {
+      input.signal?.throwIfAborted();
+      throw new AppComponentInstallError(
+        "location",
+        "Other accounts can change this Profile's folder, so Nodex can't keep Components private there.",
+        { cause },
+      );
+    },
+  );
   input.signal?.throwIfAborted();
 }
 

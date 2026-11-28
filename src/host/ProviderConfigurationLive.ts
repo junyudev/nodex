@@ -11,7 +11,10 @@ import {
   makeWindowsDesktopTools,
   type WindowsProcessIdentity,
 } from "../main/platform/node/WindowsDesktopTools";
-import { makeWindowsBrowserRuntimeVerifier } from "../main/platform/node/WindowsBrowserRuntimeVerifier";
+import {
+  makeWindowsBrowserRuntimeVerifier,
+  probeWindowsBrowserTransport,
+} from "../main/platform/node/WindowsBrowserRuntimeVerifier";
 import { getLogger } from "../main/logging/logger";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
@@ -25,7 +28,10 @@ import { MainConfig } from "../main/app/MainConfig";
 import { MainApplicationError } from "../main/app/MainExit";
 import { ApplicationSettings } from "../main/settings/ApplicationSettings";
 import { appComponentHome } from "../main/app-components/AppComponentCatalog";
-import { prepareAppComponentStore } from "../main/app-components/AppComponentStore";
+import {
+  appComponentStoreRoot,
+  prepareAppComponentStoreSweep,
+} from "../main/app-components/AppComponentStore";
 import { reconcileDisabledAppComponents } from "../main/app-components/AppComponents";
 import { codexPackageLocation, resolveDesktopToolsEffect } from "../main/codex/codex-runtime";
 import {
@@ -69,28 +75,34 @@ export const platform: Layer.Layer<
           }),
       ),
     );
-    yield* reconcileDisabledAppComponents(config, snapshot.disabledAppComponents).pipe(
-      Effect.mapError(
-        (cause) =>
-          new MainApplicationError({
-            phase: "startup",
-            operation: "reconcile-component-preferences",
-            cause,
-          }),
+    const componentStore = { home: appComponentHome(config), target: config };
+    const sweepComponents = yield* reconcileDisabledAppComponents(
+      config,
+      snapshot.disabledAppComponents,
+    ).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          try: (signal) =>
+            prepareAppComponentStoreSweep({
+              ...componentStore,
+              appBuildVersion: config.appBuildVersion,
+              signal,
+            }),
+          catch: (cause) =>
+            new MainApplicationError({
+              phase: "startup",
+              operation: "prepare-component-store",
+              cause,
+            }),
+        }),
+      ),
+      Effect.catch((cause) =>
+        Effect.logWarning("Component store preparation failed", { cause }).pipe(
+          Effect.as(undefined),
+        ),
       ),
     );
-    if (config.headless) {
-      yield* Effect.tryPromise({
-        try: (signal) =>
-          prepareAppComponentStore({ home: appComponentHome(config), target: config, signal }),
-        catch: (cause) =>
-          new MainApplicationError({
-            phase: "startup",
-            operation: "prepare-component-store",
-            cause,
-          }),
-      });
-    }
+    if (sweepComponents) yield* Effect.promise(sweepComponents).pipe(Effect.forkScoped);
     const scenarioRuntimeProjectRoot = scenarioAgentRuntimeProjectRoot(config);
     const runNative = yield* FiberSet.makeRuntimePromise();
     const windows =
@@ -118,6 +130,12 @@ export const platform: Layer.Layer<
                       ),
                   runNative,
                 ),
+                componentVerifier: makeWindowsBrowserRuntimeVerifier(
+                  native,
+                  appComponentStoreRoot(appComponentHome(config)),
+                  runNative,
+                  "component-store",
+                ),
               };
             },
             catch: (cause) =>
@@ -140,24 +158,20 @@ export const platform: Layer.Layer<
       platform: config.platform,
       architecture: config.arch,
       isPackaged: config.isPackaged,
+      headless: config.headless,
       nodexHome: config.headless ? undefined : config.nodexHome,
       appBuildVersion: config.appBuildVersion,
       environment: config.environment,
       projectRootPath: scenarioRuntimeProjectRoot || config.projectRootPath,
       resourcesPath: config.resourcesPath,
       windowsBrowserRuntimeVerifier: windows?.verifier,
+      windowsComponentBrowserRuntimeVerifier: windows?.componentVerifier,
       deferWindowsBrowserRuntime: windows
         ? {
-            verifyTransport: async (signal: AbortSignal) => {
+            verifyTransport: async (signal?: AbortSignal) => {
               await mkdir(windowsDesktopToolCodexHome(runtimeStateHome), { recursive: true });
-              return runNative(
-                Effect.scoped(
-                  Effect.gen(function* () {
-                    const host = yield* windows.native.processIdentity(process.pid);
-                    yield* windows.native.listenPipe("nodex-desktop-tools-probe");
-                    hostIdentity = host;
-                  }),
-                ),
+              hostIdentity = await runNative(
+                probeWindowsBrowserTransport(windows.native, process.pid),
                 { signal },
               );
             },
@@ -269,12 +283,13 @@ export const platform: Layer.Layer<
       ordinaryPackageAfterStartupCheck,
       usesExternalExecutable: Boolean(activeExecutable),
       windowsDesktopTools:
-        windows && verification
+        windows && activation
           ? {
               coreExecutable: windows.coreExecutable,
               native: windows.native,
               hostIdentity: () => hostIdentity,
-              ready: Fiber.join(verification),
+              // Component users can inspect missing readiness while an install is pending.
+              ready: verification ? Fiber.join(verification) : Effect.void,
             }
           : undefined,
       accountPresent: Effect.try(() => hasCodexAccountFile(accountHome)).pipe(

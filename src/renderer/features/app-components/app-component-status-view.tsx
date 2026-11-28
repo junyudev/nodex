@@ -21,6 +21,10 @@ const failures = defineMessages({
     id: "appComponents.failure.diskSpace",
     defaultMessage: "Not enough free space.",
   },
+  location: {
+    id: "appComponents.failure.location",
+    defaultMessage: "This Profile’s folder isn’t private.",
+  },
   rejected: {
     id: "appComponents.failure.rejected",
     defaultMessage: "This version of Nodex couldn’t use the download.",

@@ -19,6 +19,7 @@ import {
 import { ComputerUseRuntime, type ComputerUseRuntimeResult } from "./ComputerUseRuntime";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { MainConfig } from "../app/MainConfig";
+import { CodexPlatform } from "../../host/ProviderPlatform";
 import { DesktopToolRuntime } from "./DesktopToolRuntime";
 import { RemoteHostedPipRuntime } from "./RemoteHostedPipRuntime";
 
@@ -441,7 +442,12 @@ const make = (
 export const live: Layer.Layer<
   ComputerUseSettingsRuntime,
   never,
-  ComputerUseRuntime | CodexGateway | DesktopToolRuntime | MainConfig | RemoteHostedPipRuntime
+  | ComputerUseRuntime
+  | CodexGateway
+  | CodexPlatform
+  | DesktopToolRuntime
+  | MainConfig
+  | RemoteHostedPipRuntime
 > = Layer.effect(
   ComputerUseSettingsRuntime,
   Effect.gen(function* () {
@@ -453,6 +459,7 @@ export const live: Layer.Layer<
     );
     if (windows) {
       const gateway = yield* CodexGateway;
+      const codex = yield* CodexPlatform;
       // Read the versioned raw user layer. The normalized config can omit fields
       // introduced or retired independently of the active helper build.
       const userConfig = gateway.requestLocal("config/read", { includeLayers: true }).pipe(
@@ -466,13 +473,18 @@ export const live: Layer.Layer<
             windows
               .setEnabled(enabled)
               .pipe(Effect.mapError((cause) => settingsError("windows-enabled", cause))),
-          readApprovedApps: userConfig.pipe(
-            Effect.map((layer) =>
-              windowsApprovalEntries(layer?.config)
-                .filter(([, approved]) => approved)
-                .map(([id]) => id),
-            ),
-          ),
+          readApprovedApps: Effect.suspend(() => {
+            // Opening this page is not a request to install Codex.
+            if (!codex.usesExternalExecutable && codex.package.current.status !== "available")
+              return Effect.succeed([]);
+            return userConfig.pipe(
+              Effect.map((layer) =>
+                windowsApprovalEntries(layer?.config)
+                  .filter(([, approved]) => approved)
+                  .map(([id]) => id),
+              ),
+            );
+          }),
           revoke: (id) =>
             Effect.gen(function* () {
               const layer = yield* userConfig;

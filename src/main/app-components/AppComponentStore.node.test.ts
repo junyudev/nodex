@@ -465,6 +465,25 @@ describe("AppComponentStore", () => {
   );
 
   test.skipIf(process.platform !== "win32")(
+    "refuses a Profile folder other accounts can change before it downloads",
+    async () => {
+      const testTarget = winTarget(process.arch);
+      const home = await tempDir();
+      // Grant the local Users group modify rights, as an unprotected drive or shared folder does.
+      execFileSync(path.join(process.env.SystemRoot!, "System32", "icacls.exe"), [
+        home,
+        "/grant",
+        "*S-1-5-32-545:(OI)(CI)M",
+      ]);
+      const fetch = vi.fn<ComponentFetch>(() => Promise.reject(new Error("Unexpected download")));
+      await expect(
+        install(home, fixtureDefinition(Buffer.from("archive")), fetch, testTarget),
+      ).rejects.toMatchObject({ reason: "location" });
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  test.skipIf(process.platform !== "win32")(
     "reclaims another Component when an old installed file is held without delete sharing",
     async () => {
       const home = await tempDir();

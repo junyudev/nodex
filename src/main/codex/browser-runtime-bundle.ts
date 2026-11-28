@@ -81,6 +81,7 @@ type ResolveBrowserRuntimeBundleOptions = {
   targetPlatform?: NodeJS.Platform;
   testedPairs?: readonly TestedBrowserAppServerPair[];
   windowsVerifier?: WindowsBrowserRuntimeVerifierPort;
+  verifyWindowsTransport?: (signal?: AbortSignal) => Promise<void>;
 };
 
 export type BrowserRuntimePlatformArtifactVerifier = (input: {
@@ -371,6 +372,17 @@ export async function resolveBrowserRuntimeBundle(
     }
   }
 
+  if (manifest.targetPlatform === "win32" && options.verifyWindowsTransport) {
+    try {
+      await options.verifyWindowsTransport(options.signal);
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      return unavailable(
+        "platform-verification-failed",
+        `Windows Desktop Tools could not initialize: ${String(error)}`,
+      );
+    }
+  }
   options.signal?.throwIfAborted();
   const resolve = (relativePath: string): string => resolveRelativePath(rootPath, relativePath);
   const chrome = manifest.capabilities.browserUse.backends.chrome;

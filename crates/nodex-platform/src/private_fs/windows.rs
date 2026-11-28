@@ -348,7 +348,10 @@ pub fn ensure_directory_boundary(profile: &Path, directory: &Path) -> io::Result
             }
             trusted_directory(&path)?;
             entry_metadata(&path, EntryKind::Directory)?;
-            return validate_directory_boundary(&open_metadata(&path)?);
+            validate_directory_boundary(&open_metadata(&path)?)?;
+            // Admit the store under the same rule its executables are verified against, from the
+            // volume root, so an unprotectable location is refused before anything downloads.
+            return crate::desktop_tools::verify_store_boundary(&path);
         }
         if let Err(error) = create_dir(&path) {
             if error.kind() != io::ErrorKind::AlreadyExists {

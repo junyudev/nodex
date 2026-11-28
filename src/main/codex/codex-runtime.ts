@@ -29,17 +29,19 @@ import {
 } from "./browser-runtime-bundle";
 import { createBrowserRuntimePlatformArtifactVerifier } from "./browser-runtime-platform-verifier";
 import {
+  codexCrtDirectories,
   codexPackageFileMode,
+  windowsCodexCrtFiles,
   verifyCodexPackageMetadataPin,
   type CodexPackagePin,
 } from "../platform/node/stage-codex-package";
-import { inventoryRegularFiles } from "../platform/node/pinned-tar-archive";
+import { inventoryRegularFiles, sha256File } from "../platform/node/pinned-tar-archive";
 import { appComponentDefinition, appComponentHome } from "../app-components/AppComponentCatalog";
 import {
   appComponentRoot,
   hasAppComponentTombstone,
   installedAppComponentRoot,
-  prepareAppComponentStore,
+  verifyAppComponentDirectory,
 } from "../app-components/AppComponentStore";
 
 export type CodexRuntimeSource = "bundled" | "staged" | "component";
@@ -127,7 +129,7 @@ async function validateRuntimeSearchPaths(
 }
 
 interface DeferredWindowsBrowserRuntime {
-  readonly verifyTransport: (signal: AbortSignal) => Promise<void>;
+  readonly verifyTransport: (signal?: AbortSignal) => Promise<void>;
 }
 
 type ResolveCodexRuntimeOptions = {
@@ -138,6 +140,7 @@ type ResolveCodexRuntimeOptions = {
   architecture?: string;
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   windowsBrowserRuntimeVerifier?: WindowsBrowserRuntimeVerifierPort;
+  windowsComponentBrowserRuntimeVerifier?: WindowsBrowserRuntimeVerifierPort;
   signal?: AbortSignal;
   isPackaged: boolean;
   environment?: Readonly<Record<string, string | undefined>>;
@@ -210,28 +213,28 @@ export type CodexPackageLocation = {
   readonly source: CodexRuntimeSource;
   readonly missingBinaryMessage: string;
   readonly pin?: CodexPackagePin;
+  readonly crtDirectories?: readonly string[];
+  readonly verifyRoot?: (directory: string) => Promise<void>;
 };
 
 /** Choose the package source for this target and the selected Profile. */
 export function codexPackageLocation(options: ResolveCodexRuntimeOptions): CodexPackageLocation {
-  const definition = appComponentDefinition(
-    {
-      ...options,
-      platform: options.platform ?? "",
-      arch: options.architecture ?? "",
-    },
-    "codex",
-  );
+  const target = {
+    ...options,
+    platform: options.platform ?? "",
+    arch: options.architecture ?? "",
+  };
+  const definition = appComponentDefinition(target, "codex");
   if (definition?.payload.kind !== "codex") return localCodexPackageLocation(options);
   if (!options.nodexHome) throw new Error("Resolving the Codex Component requires a Profile.");
+  const home = appComponentHome({ ...options, nodexHome: options.nodexHome });
   return {
-    rootPath: appComponentRoot(
-      appComponentHome({ ...options, nodexHome: options.nodexHome }),
-      definition,
-    ),
+    rootPath: appComponentRoot(home, definition),
     source: "component",
     missingBinaryMessage: "Codex is not installed.",
     pin: definition.payload,
+    crtDirectories: codexCrtDirectories(options),
+    verifyRoot: (directory) => verifyAppComponentDirectory({ home, target }, directory),
   };
 }
 
@@ -249,6 +252,7 @@ export async function verifyCodexPackage(
     );
   if (location.pin && !(await fs.lstat(location.rootPath)).isDirectory())
     throw new Error("Installed Codex package root must be a directory.");
+  await location.verifyRoot?.(location.rootPath);
   const metadata = await parseBundledRuntimeMetadata(metadataPath);
   if (
     (input.platform !== undefined && metadata.targetPlatform !== input.platform) ||
@@ -257,6 +261,7 @@ export async function verifyCodexPackage(
     throw new Error("Agent runtime target does not match this host.");
   if (location.pin) {
     verifyCodexPackageMetadataPin(metadata, location.pin);
+    const windows = metadata.targetPlatform === "win32";
     const files = await inventoryRegularFiles(
       location.rootPath,
       input.signal,
@@ -268,20 +273,37 @@ export async function verifyCodexPackage(
     files.delete(".installed-size");
     if (
       !document ||
-      (document.mode & 0o7777) !== 0o644 ||
       !receipt ||
       receipt.size !== 8 ||
-      (receipt.mode & 0o7777) !== 0o600 ||
-      files.size !== metadata.artifacts.length ||
-      metadata.artifacts.some(({ path, executable }) => {
-        const file = files.get(path);
-        return !file || (file.mode & 0o7777) !== codexPackageFileMode(executable);
-      })
+      (!windows && ((document.mode & 0o7777) !== 0o644 || (receipt.mode & 0o7777) !== 0o600))
     ) {
-      throw new Error("Installed Codex package has an unexpected file or mode.");
+      throw new Error("Installed Codex package has an unexpected metadata file or receipt.");
     }
+    for (const { path, executable } of metadata.artifacts) {
+      const file = files.get(path);
+      if (!file || (!windows && (file.mode & 0o7777) !== codexPackageFileMode(executable))) {
+        throw new Error("Installed Codex package has an unexpected file or mode.");
+      }
+      files.delete(path);
+    }
+    await validateRuntimeArtifacts(location.rootPath, metadata, input.signal);
+    for (const { source, destination } of windowsCodexCrtFiles(
+      location.rootPath,
+      metadata,
+      location.crtDirectories ?? [],
+    )) {
+      if (
+        !files.delete(destination) ||
+        (await sha256File(path.join(location.rootPath, destination), input.signal)) !==
+          (await sha256File(source, input.signal))
+      ) {
+        throw new Error("Installed Codex package has an invalid Windows runtime library.");
+      }
+    }
+    if (files.size !== 0) throw new Error("Installed Codex package has unexpected files.");
+  } else {
+    await validateRuntimeArtifacts(location.rootPath, metadata, input.signal);
   }
-  await validateRuntimeArtifacts(location.rootPath, metadata, input.signal);
   await validateRuntimeSearchPaths(location.rootPath, metadata);
   input.signal?.throwIfAborted();
   const { pin: _, ...resolved } = location;
@@ -321,12 +343,15 @@ async function resolveDesktopTools(
   const loadBrowserRuntime = (
     runtimeRoot: string,
     signal?: AbortSignal,
-    expectedManifestSha256?: string,
+    source?: { readonly manifestSha256: string },
   ) =>
     resolveBrowserRuntimeBundle({
       signal,
-      expectedManifestSha256,
-      windowsVerifier: input.windowsBrowserRuntimeVerifier,
+      expectedManifestSha256: source?.manifestSha256,
+      windowsVerifier: source
+        ? input.windowsComponentBrowserRuntimeVerifier
+        : input.windowsBrowserRuntimeVerifier,
+      verifyWindowsTransport: input.deferWindowsBrowserRuntime?.verifyTransport,
       appServerIdentity,
       platformArtifactVerifier:
         input.browserRuntimePlatformArtifactVerifier ??
@@ -342,11 +367,13 @@ async function resolveDesktopTools(
     platform: appServerIdentity.targetPlatform,
     arch: appServerIdentity.targetArch,
     isPackaged: input.isPackaged,
+    headless: input.headless,
     environment: input.environment,
+    resourcesPath: input.resourcesPath,
+    projectRootPath: input.projectRootPath,
   };
   const component = appComponentDefinition(target, "desktop-tools");
-  const componentManifestSha256 =
-    component?.payload.kind === "desktop-tools" ? component.payload.manifestSha256 : undefined;
+  const componentPin = component?.payload.kind === "desktop-tools" ? component.payload : undefined;
   const store = input.nodexHome ? { home: input.nodexHome, target } : null;
   const notInstalled = {
     status: "unavailable",
@@ -354,34 +381,18 @@ async function resolveDesktopTools(
     message: "Install Desktop Tools to use Browser and Computer Use.",
   } as const;
   const loadComponent = async (signal?: AbortSignal): Promise<BrowserRuntimeAvailability> => {
-    if (!store) return notInstalled;
+    if (!store || !componentPin) return notInstalled;
     const root = await installedAppComponentRoot({ ...store, id: "desktop-tools", signal });
-    return root ? loadBrowserRuntime(root, signal, componentManifestSha256) : notInstalled;
+    return root ? loadBrowserRuntime(root, signal, componentPin) : notInstalled;
   };
-  if (component && store)
-    await prepareAppComponentStore({
-      ...store,
-      appBuildVersion: input.appBuildVersion,
-      signal: input.signal,
-    });
   const deferredWindows =
     appServerIdentity.targetPlatform === "win32" ? input.deferWindowsBrowserRuntime : undefined;
-  let browserRuntime: BrowserRuntimeAvailability = deferredWindows
-    ? {
-        status: "unavailable",
-        reason: "platform-verification-failed",
-        message: "Windows Desktop Tool verification is pending",
-      }
-    : component
-      ? await loadComponent(input.signal)
-      : await loadBrowserRuntime(input.runtimeRoot, input.signal);
-  const loadDeferredWindows = async (signal: AbortSignal): Promise<BrowserRuntimeAvailability> => {
+  const loadRuntimeRoot = async (signal?: AbortSignal): Promise<BrowserRuntimeAvailability> => {
     try {
-      const result = await loadBrowserRuntime(input.runtimeRoot, signal);
-      if (result.status === "available") await deferredWindows?.verifyTransport(signal);
-      return result;
+      return await loadBrowserRuntime(input.runtimeRoot, signal);
     } catch (error) {
-      signal.throwIfAborted();
+      if (!deferredWindows) throw error;
+      signal?.throwIfAborted();
       return {
         status: "unavailable",
         reason: "platform-verification-failed",
@@ -389,6 +400,17 @@ async function resolveDesktopTools(
       };
     }
   };
+  let browserRuntime: BrowserRuntimeAvailability = component
+    ? deferredWindows
+      ? notInstalled
+      : await loadComponent(input.signal)
+    : deferredWindows
+      ? {
+          status: "unavailable",
+          reason: "platform-verification-failed",
+          message: "Windows Desktop Tool verification is pending",
+        }
+      : await loadRuntimeRoot(input.signal);
   const available = Deferred.makeUnsafe<VerifiedBrowserRuntimeBundle>();
   if (browserRuntime.status === "available")
     Deferred.doneUnsafe(available, Effect.succeed(browserRuntime.bundle));
@@ -401,9 +423,9 @@ async function resolveDesktopTools(
             Effect.gen(function* () {
               if (browserRuntime.status === "available") return browserRuntime;
               const result = yield* runRuntimeResolution(
-                component ? loadComponent : loadDeferredWindows,
+                component ? loadComponent : loadRuntimeRoot,
               );
-              if (result.status === "available" || deferredWindows) browserRuntime = result;
+              if (result.status === "available" || !component) browserRuntime = result;
               if (result.status === "available")
                 Deferred.doneUnsafe(available, Effect.succeed(result.bundle));
               return result;

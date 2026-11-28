@@ -50,12 +50,16 @@ Packaging signs Nodex-owned artifacts, restores the entire vendor-signed Desktop
 Tool closure, refreshes the enclosing manifests, and reseals the outer app. It
 does not replace nested Desktop Tool signing identities with Nodex's team.
 
-Windows x64 and arm64 each have a sealed closure. Main verifies every
-manifest digest, rejects reparse points and untrusted owners or write grants,
-and requires embedded Authenticode signatures with a trusted code-signing
-chain, revocation evidence, and the manifest's subject and issuer. Windows
-verification runs in one bounded background task shared by Browser and
-Computer Use. Each backend becomes eligible after the native provider is ready.
+Windows x64 and arm64 each have a sealed closure. For the Desktop Tools
+Component, the Profile's Component store is the filesystem trust boundary. Main
+requires a protected, user-owned store and checks its NTFS ancestors for reparse
+points, untrusted owners and foreign replacement rights. It checks every path
+through and within the closure for reparse points, untrusted owners and foreign
+write grants. Main verifies the pinned manifest, complete inventory and PE
+machines, and requires embedded Authenticode signatures with a trusted
+code-signing chain, revocation evidence, and the manifest's subject and issuer.
+Windows verification runs in one bounded background task shared by Browser and
+Computer Use. Each backend becomes eligible after native transport verification.
 
 ### Windows Desktop Tool launch and Browser transport
 
@@ -79,6 +83,11 @@ reading requests, and requires ancestry through the owned launcher to this
 host. A separate development opt-in can admit a detached verified REPL.
 Discovery uses the active Session and Profile identity. Session and Turn
 authorization continue above the transport. Native PiP remains macOS-only.
+
+Windows Chrome registration follows the verified Desktop Tools pin. A new pin
+publishes updated native-host paths for the Profile. Turning Desktop Tools off
+retires its Chrome connection and restores only the registry values still owned
+by that installation and Profile.
 
 ### macOS requires a three-process signed REPL ancestry
 

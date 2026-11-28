@@ -135,6 +135,7 @@ export interface WindowsDesktopToolsService {
   ) => NativeEffect<Authenticode>;
   readonly inspectPath: (path: string) => NativeEffect<PathSecurity>;
   readonly inspectPaths: (paths: readonly string[]) => NativeEffect<readonly PathSecurity[]>;
+  readonly verifyStoreBoundary: (path: string) => NativeEffect<null>;
   readonly ancestors: (
     peer: WindowsProcessIdentity,
   ) => NativeEffect<readonly WindowsProcessIdentity[]>;
@@ -175,6 +176,7 @@ export const unsupportedWindowsDesktopTools: WindowsDesktopToolsService = {
   verifyAuthenticode: () => unsupported("verifyAuthenticode"),
   inspectPath: () => unsupported("inspectPath"),
   inspectPaths: () => unsupported("inspectPaths"),
+  verifyStoreBoundary: () => unsupported("verifyStoreBoundary"),
   ancestors: () => unsupported("ancestors"),
   listenPipe: () => unsupported("listenPipe"),
   connectPipe: () => unsupported("connectPipe"),
@@ -412,6 +414,7 @@ export function makeWindowsDesktopTools(coreExecutable: string): WindowsDesktopT
     inspectPath: (path) => once({ op: "inspectPath", path }, pathSecurity),
     inspectPaths: (paths) =>
       once({ op: "inspectPaths", paths }, z.array(pathSecurity).length(paths.length)),
+    verifyStoreBoundary: (path) => once({ op: "verifyStoreBoundary", path }, z.null()),
     ancestors: (peer) => once({ op: "ancestors", peer }, z.array(processIdentity)),
     listenPipe: (prefix) =>
       open({ op: "listenPipe", prefix }, z.string()).pipe(
