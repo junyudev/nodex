@@ -129,6 +129,8 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
       },
       plugins: createSentryPlugins(),
       build: {
+        // Bundle the card catalog so Main loads it like the App's other locale chunks.
+        externalizeDeps: { exclude: ["@nodex/insights-cards"] },
         ...buildOptimization,
         rollupOptions: {
           input: {

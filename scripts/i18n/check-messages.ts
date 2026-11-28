@@ -14,8 +14,14 @@ import { parse, TYPE, type MessageFormatElement } from "@formatjs/icu-messagefor
 import { parseSync } from "oxc-parser";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
-const SOURCE_ROOT = path.join(ROOT, "src");
-const CATALOG_PATHS = { "zh-CN": path.join(ROOT, "src/shared/i18n/catalogs/zh-CN.json") } as const;
+const LOCALE = "zh-CN";
+const SOURCE_CATALOGS = [
+  { source: "src", catalog: "src/shared/i18n/catalogs/zh-CN.json" },
+  {
+    source: "packages/insights-cards/src",
+    catalog: "packages/insights-cards/src/catalogs/zh-CN.json",
+  },
+] as const;
 
 export interface SourceMessage {
   readonly id: string;
@@ -216,12 +222,13 @@ function parseArgs(argv: readonly string[]) {
   return { scopes, catalogs, write, missing };
 }
 
-function main(): void {
-  const options = parseArgs(process.argv.slice(2));
-  const problems: Problem[] = [];
-  const byId = new Map<string, SourceMessage>();
-
-  for (const file of sourceFiles(SOURCE_ROOT)) {
+function collectMessages(
+  source: string,
+  byId: Map<string, SourceMessage>,
+  problems: Problem[],
+): ReadonlyMap<string, SourceMessage> {
+  const owned = new Map<string, SourceMessage>();
+  for (const file of sourceFiles(path.join(ROOT, source))) {
     const extracted = extractMessages(file, fs.readFileSync(file, "utf8"));
     problems.push(...extracted.problems);
     for (const message of extracted.messages) {
@@ -234,7 +241,17 @@ function main(): void {
         });
         continue;
       }
-      if (!existing) byId.set(message.id, message);
+      if (existing && !owned.has(message.id)) {
+        problems.push({
+          file: message.file,
+          line: message.line,
+          message: `id "${message.id}" already belongs to another catalog at ${existing.file}:${existing.line}`,
+        });
+        continue;
+      }
+      if (existing) continue;
+      byId.set(message.id, message);
+      owned.set(message.id, message);
       const parsed = parseIcu(message.defaultMessage);
       if (parsed instanceof Error) {
         problems.push({
@@ -245,26 +262,35 @@ function main(): void {
       }
     }
   }
+  return owned;
+}
+
+function main(): void {
+  const options = parseArgs(process.argv.slice(2));
+  const problems: Problem[] = [];
+  const byId = new Map<string, SourceMessage>();
+  const extra: Record<string, string> = {};
+  for (const file of options.catalogs) Object.assign(extra, readCatalog(file));
+  const untranslated: Record<string, string> = {};
 
   const inScope = (message: SourceMessage): boolean =>
     options.scopes.length === 0 ||
     options.scopes.some((scope) => path.join(ROOT, message.file).startsWith(scope));
 
-  for (const [locale, catalogPath] of Object.entries(CATALOG_PATHS)) {
+  for (const { source, catalog: catalogFile } of SOURCE_CATALOGS) {
+    const messages = collectMessages(source, byId, problems);
+    const catalogPath = path.join(ROOT, catalogFile);
     const catalog = readCatalog(catalogPath);
-    const merged: Record<string, string> = { ...catalog };
-    for (const extra of options.catalogs) Object.assign(merged, readCatalog(extra));
-    const untranslated: Record<string, string> = {};
 
-    for (const message of byId.values()) {
+    for (const message of messages.values()) {
       if (!inScope(message)) continue;
-      const translation = merged[message.id];
+      const translation = extra[message.id] ?? catalog[message.id];
       if (translation === undefined) {
         untranslated[message.id] = message.defaultMessage;
         problems.push({
           file: message.file,
           line: message.line,
-          message: `missing ${locale} translation for "${message.id}"`,
+          message: `missing ${LOCALE} translation for "${message.id}"`,
         });
         continue;
       }
@@ -274,7 +300,7 @@ function main(): void {
         problems.push({
           file: message.file,
           line: message.line,
-          message: `invalid ${locale} ICU for "${message.id}": ${target.message}`,
+          message: `invalid ${LOCALE} ICU for "${message.id}": ${target.message}`,
         });
         continue;
       }
@@ -285,13 +311,13 @@ function main(): void {
         problems.push({
           file: message.file,
           line: message.line,
-          message: `${locale} "${message.id}" uses {${actual}} but the source uses {${expected}}`,
+          message: `${LOCALE} "${message.id}" uses {${actual}} but the source uses {${expected}}`,
         });
       }
     }
 
     if (options.scopes.length === 0) {
-      const unused = Object.keys(catalog).filter((id) => !byId.has(id));
+      const unused = Object.keys(catalog).filter((id) => !messages.has(id));
       if (options.write) {
         for (const id of unused) delete catalog[id];
       } else {
@@ -299,7 +325,7 @@ function main(): void {
           problems.push({
             file: path.relative(ROOT, catalogPath),
             line: 1,
-            message: `unused ${locale} entry "${id}"`,
+            message: `unused ${LOCALE} entry "${id}"`,
           });
         }
       }
@@ -313,11 +339,12 @@ function main(): void {
         });
       }
     }
-
-    if (options.missing) process.stdout.write(`${JSON.stringify(untranslated, null, 2)}\n`);
   }
 
-  if (options.missing) return;
+  if (options.missing) {
+    process.stdout.write(`${JSON.stringify(untranslated, null, 2)}\n`);
+    return;
+  }
   for (const problem of problems)
     console.error(`${problem.file}:${problem.line}: ${problem.message}`);
   const scope =

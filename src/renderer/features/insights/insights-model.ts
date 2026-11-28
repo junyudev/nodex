@@ -1,13 +1,13 @@
 import { defineMessage, getIntl, type MessageDescriptor, type IntlShape } from "@/lib/i18n";
 import type { InsightsContentSnapshot, InsightsUsageSnapshot } from "../../../shared/insights";
-import { modelDisplayName } from "../../lib/codex-thread-settings";
 import {
   compactNumber,
-  insightHour,
-  modelFamily,
+  modelDisplayName,
+  shareCardCalendar,
   shortDay,
-  type ModelFamily,
-} from "./insights-format";
+  type ShareCardView,
+} from "@nodex/insights-cards";
+import { insightHour, modelFamily, type ModelFamily } from "./insights-format";
 
 export type InsightsPeriod = "7d" | "30d" | "90d" | "12m" | "all";
 
@@ -79,34 +79,19 @@ export interface InsightsHighlight {
   readonly detail: string;
 }
 
-export interface InsightsView {
+export interface InsightsView extends ShareCardView {
   readonly period: InsightsPeriod;
-  readonly firstDay: string;
-  readonly lastDay: string;
   readonly days: readonly InsightsDay[];
   readonly calendar: InsightsCalendar;
-  readonly tokens: number;
   readonly cachedTokens: number;
-  readonly cachedShare: number;
-  readonly costUsd: number;
   readonly cacheSavingsUsd: number;
   readonly unpricedModels: number;
   readonly requests: number;
-  readonly messages: number;
-  readonly conversations: number;
-  readonly activeDays: number;
-  readonly longestStreak: number;
   readonly biggestDay: InsightsDay | null;
   readonly models: readonly InsightsModelRow[];
-  readonly peakAgents: number;
   readonly peakAgentsDay: string | null;
   readonly agentTurns: number;
   readonly agentHours: number;
-  readonly hours: readonly number[];
-  /** Hour-by-day tokens for the last seven days, oldest first; each row has 24 values. */
-  readonly recentHours: readonly { readonly day: string; readonly hours: readonly number[] }[];
-  readonly pagesCreated: number;
-  readonly tasksDone: number;
   readonly pageTotal: number | null;
   readonly blockTotal: number | null;
   readonly taskTotal: number | null;
@@ -156,21 +141,6 @@ function firstDayOf(period: InsightsPeriod, today: string, earliest: string | nu
     case "all":
       return earliest !== null && earliest < today ? earliest : today;
   }
-}
-
-function buildCalendar(days: readonly InsightsDay[]): InsightsCalendar {
-  const weeks: (InsightsDay | null)[][] = [];
-  let week: (InsightsDay | null)[] = Array.from({ length: 7 }, () => null);
-  for (const entry of days) {
-    const weekday = new Date(dayToUtcMs(entry.day)).getUTCDay();
-    week[weekday] = entry;
-    if (weekday === 6) {
-      weeks.push(week);
-      week = Array.from({ length: 7 }, () => null);
-    }
-  }
-  if (week.some((cell) => cell !== null)) weeks.push(week);
-  return { weeks };
 }
 
 function buildHighlights(
@@ -414,7 +384,7 @@ export function projectInsights(
     firstDay,
     lastDay: today,
     days,
-    calendar: buildCalendar(days),
+    calendar: shareCardCalendar(days),
     tokens,
     cachedTokens,
     cachedShare,
@@ -494,75 +464,4 @@ export function tokenSeries(view: InsightsView, intl = getIntl()): readonly Insi
     week.other += entry.other;
   });
   return weeks;
-}
-
-const CLUB_TIERS = [
-  {
-    tokens: 1e12,
-    label: defineMessage({ id: "insights.insightsModel.clubTrillion", defaultMessage: "1T Club" }),
-  },
-  {
-    tokens: 100e9,
-    label: defineMessage({
-      id: "insights.insightsModel.clubHundredBillion",
-      defaultMessage: "100B Club",
-    }),
-  },
-  {
-    tokens: 10e9,
-    label: defineMessage({
-      id: "insights.insightsModel.clubTenBillion",
-      defaultMessage: "10B Club",
-    }),
-  },
-  {
-    tokens: 1e9,
-    label: defineMessage({ id: "insights.insightsModel.clubBillion", defaultMessage: "1B Club" }),
-  },
-] as const;
-
-/** A fixed mark anyone can verify from their own number; no one is ranked against anyone. */
-export function tokenClub(tokens: number): string | null {
-  const tier = CLUB_TIERS.find((tier) => tokens >= tier.tokens);
-  return tier ? getIntl().formatMessage(tier.label) : null;
-}
-
-/** What the numbers say about how someone works, strongest signal first. */
-export function agentArchetype(view: InsightsView): string {
-  const totalHours = view.hours.reduce((sum, value) => sum + value, 0);
-  const night =
-    totalHours === 0
-      ? 0
-      : view.hours.reduce((sum, value, hour) => sum + (hour >= 22 || hour < 5 ? value : 0), 0) /
-        totalHours;
-  if (view.peakAgents >= 10)
-    return getIntl().formatMessage({
-      id: "insights.insightsModel.orchestrator",
-      defaultMessage: "The Orchestrator",
-    });
-  if (night >= 0.45)
-    return getIntl().formatMessage({
-      id: "insights.insightsModel.nightShift",
-      defaultMessage: "The Night Shift",
-    });
-  if (view.messages > 0 && view.tokens / view.messages >= 5e6)
-    return getIntl().formatMessage({
-      id: "insights.insightsModel.delegator",
-      defaultMessage: "The Delegator",
-    });
-  if (view.longestStreak >= 30)
-    return getIntl().formatMessage({
-      id: "insights.insightsModel.dailyShipper",
-      defaultMessage: "The Daily Shipper",
-    });
-  if (view.models[0] !== undefined && view.models[0].share >= 0.85) {
-    return getIntl().formatMessage(
-      { id: "insights.insightsModel.loyalist", defaultMessage: "{model} Loyalist" },
-      { model: view.models[0].label },
-    );
-  }
-  return getIntl().formatMessage({
-    id: "insights.insightsModel.builder",
-    defaultMessage: "The Builder",
-  });
 }

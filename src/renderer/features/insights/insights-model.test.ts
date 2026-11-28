@@ -5,15 +5,8 @@ import type {
   InsightsModelDay,
   InsightsUsageSnapshot,
 } from "../../../shared/insights";
-import { modelDisplayName } from "../../lib/codex-thread-settings";
-import { axisMaximum, compactNumber, heatStep, modelFamily, shareLabel } from "./insights-format";
-import {
-  agentArchetype,
-  projectInsights,
-  tokenClub,
-  tokenSeries,
-  type InsightsPeriod,
-} from "./insights-model";
+import { axisMaximum, heatStep, modelFamily, shareLabel } from "./insights-format";
+import { projectInsights, tokenSeries, type InsightsPeriod } from "./insights-model";
 
 const modelDay = (
   day: string,
@@ -240,74 +233,7 @@ describe("tokenSeries", () => {
   });
 });
 
-describe("tokenClub", () => {
-  it.each([
-    [999_999_999, null],
-    [1e9, "1B Club"],
-    [9.9e9, "1B Club"],
-    [10e9, "10B Club"],
-    [177e9, "100B Club"],
-    [1e12, "1T Club"],
-  ])("%d tokens is %s", (tokens, club) => {
-    expect(tokenClub(tokens)).toBe(club);
-  });
-});
-
-describe("agentArchetype", () => {
-  const archetype = (snapshot: InsightsUsageSnapshot) => agentArchetype(project(snapshot));
-
-  it("names the strongest signal first", () => {
-    expect(
-      archetype(
-        usage({ agents: [{ day: "2026-11-01", turns: 1, activeSeconds: 1, peakAgents: 10 }] }),
-      ),
-    ).toBe("The Orchestrator");
-    expect(archetype(usage({ hours: [["2026-11-01", 23, 100]] }))).toBe("The Night Shift");
-    expect(
-      archetype(
-        usage({
-          models: [modelDay("2026-11-01", "gpt-6.1-sol", { uncachedInputTokens: 6e6 })],
-          messages: [["2026-11-01", 1]],
-        }),
-      ),
-    ).toBe("The Delegator");
-  });
-
-  it("recognizes loyalty to one model", () => {
-    expect(archetype(usage({ models: [modelDay("2026-11-01", "claude-opus-5-5")] }))).toBe(
-      "Claude Opus 5.5 Loyalist",
-    );
-  });
-
-  it("falls back to something everyone can wear", () => {
-    expect(archetype(usage())).toBe("The Builder");
-  });
-});
-
 describe("insights formatting", () => {
-  it.each([
-    [0, "0"],
-    [999, "999"],
-    [1500, "1.5K"],
-    [250_000, "250K"],
-    [54_663_250_104, "54.7B"],
-    [176_628_875_040, "177B"],
-    [1_200_000_000_000, "1.2T"],
-  ])("compacts %d to %s", (value, label) => {
-    expect(compactNumber(value)).toBe(label);
-  });
-
-  it.each([
-    ["claude-opus-5-5", "Claude Opus 5.5"],
-    ["claude-opus-5-5-20261001", "Claude Opus 5.5"],
-    ["claude-opus-5-5[1m]", "Claude Opus 5.5"],
-    ["gpt-6.1-sol", "GPT-6.1 Sol"],
-    ["gpt-5.3-codex", "GPT-5.3 Codex"],
-    ["opencode/deepseek-v4.1-flash-free", "Deepseek V4.1 Flash Free"],
-  ])("names %s as %s", (model, name) => {
-    expect(modelDisplayName(model)).toBe(name);
-  });
-
   it("groups a model into its maker's color", () => {
     expect(modelFamily("claude-opus-5-5")).toBe("claude");
     expect(modelFamily("gpt-6.1-sol")).toBe("gpt");

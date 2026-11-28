@@ -1,0 +1,21 @@
+{
+  "name": "@nodex/insights-cards",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Insights share cards, their numbers and their words, drawn the same in Nodex and nodex-insights",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./model-name": "./src/model-name.ts",
+    "./catalogs/zh-CN.json": "./src/catalogs/zh-CN.json",
+    "./fonts/*": "./fonts/*"
+  },
+  "scripts": {
+    "typecheck": "tsc-rs --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@formatjs/intl": "6.1.5",
+    "uqr": "0.1.3"
+  }
+}

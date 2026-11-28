@@ -17,7 +17,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SearchablePageLayout } from "@/components/ui/searchable-page-layout";
 
 import { ActivityHeatmap, FAMILY_COLORS, HourRhythm, TokenTimeline } from "./insights-charts";
-import { compactNumber, shareLabel, shortDay, wholeDollars, wholeNumber } from "./insights-format";
+import { compactNumber, shortDay, wholeDollars, wholeNumber } from "@nodex/insights-cards";
+import { shareLabel } from "./insights-format";
 import {
   INSIGHTS_PERIODS,
   localToday,

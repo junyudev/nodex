@@ -1,11 +1,14 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createIntl } from "@formatjs/intl";
+import { compactNumber } from "@nodex/insights-cards";
 import { expect, test, type Page } from "@playwright/test";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
-import { compactNumber } from "../../src/renderer/features/insights/insights-format";
 import { insightsTestRates, writeInsightsTranscripts } from "./support/insights-transcripts";
+
+const intl = createIntl({ locale: "en-US", defaultLocale: "en-US" });
 
 const pngSize = (bytes: Buffer) => ({
   signature: bytes.subarray(1, 4).toString("ascii"),
@@ -65,9 +68,12 @@ test("reads agent history into Insights and shares its cards", async ({}, testIn
         await test.step("history fills the page", async () => {
           await page.getByRole("button", { name: "Read my agent history", exact: true }).click();
           await tab(page, "Period", "All time").click();
-          await expect(stat(page, "Tokens processed")).toHaveText(compactNumber(totals.tokens), {
-            timeout: 120_000,
-          });
+          await expect(stat(page, "Tokens processed")).toHaveText(
+            compactNumber(totals.tokens, intl),
+            {
+              timeout: 120_000,
+            },
+          );
           await expect(stat(page, "Messages sent")).toHaveText(
             totals.messages.toLocaleString("en-US"),
           );
@@ -88,9 +94,9 @@ test("reads agent history into Insights and shares its cards", async ({}, testIn
           // A scenario Profile's Codex home is its own Agent home, so only Codex counts as Nodex's.
           const hero = stat(page, "Tokens processed");
           await tab(page, "Agents", "Nodex only").click();
-          await expect(hero).toHaveText(compactNumber(totals.codexTokens));
+          await expect(hero).toHaveText(compactNumber(totals.codexTokens, intl));
           await tab(page, "Agents", "All agents").click();
-          await expect(hero).toHaveText(compactNumber(totals.tokens));
+          await expect(hero).toHaveText(compactNumber(totals.tokens, intl));
         });
 
         await test.step("both cards are on the page, exported exactly as shown", async () => {

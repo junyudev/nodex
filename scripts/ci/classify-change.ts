@@ -66,6 +66,9 @@ const isRendererPath = (path: string): boolean =>
   path.startsWith("config/vitest.renderer") ||
   path.startsWith("config/vitest.browser");
 
+const isDisplayLanguagePath = (path: string): boolean =>
+  path.startsWith("packages/insights-cards/src/") || path.startsWith("scripts/i18n/");
+
 const isElectronMainPath = (path: string): boolean =>
   path.startsWith("src/main/") ||
   path.startsWith("src/host/") ||
@@ -486,7 +489,9 @@ const sourcePlan = (
   const protocol = paths.some(isProtocolPath);
   const appTestSuites = testSuitesForPaths(paths);
   const staticGroups = new Set<StaticGroup>(["types"]);
-  if (renderer || paths.some(isRendererCompilerCheckPath)) staticGroups.add("ui-contracts");
+  if (renderer || paths.some(isRendererCompilerCheckPath) || paths.some(isDisplayLanguagePath)) {
+    staticGroups.add("ui-contracts");
+  }
   if (paths.some(isProductionBundlePath)) staticGroups.add("startup-bundles");
   if (electronMain || protocol || paths.some(shouldCheckSearchKernelWasm)) {
     staticGroups.add("repository-contracts");

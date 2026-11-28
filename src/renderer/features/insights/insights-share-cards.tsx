@@ -6,15 +6,17 @@ import { NodexCompactFramedInput } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { darkAppearanceScope } from "@/lib/appearance-scope";
 
-import { loadShareCardFonts, renderCardPng, svgImageSource } from "./insights-card-export";
 import {
+  renderCardPng,
   renderShareCard,
   shareFileName,
   shareMessage,
+  svgImageSource,
   type ShareCardFonts,
   type ShareCardKind,
   type ShareCardOptions,
-} from "./insights-cards";
+} from "@nodex/insights-cards";
+import { loadShareCardFonts } from "./insights-card-fonts";
 import type { InsightsView } from "./insights-model";
 import {
   copyCardImage,
@@ -82,7 +84,7 @@ async function shareCard(
     );
     return;
   }
-  await openPostComposer(shareMessage(view));
+  await openPostComposer(shareMessage(view, intl));
   toast.info(
     intl.formatMessage({
       id: "insights.insightsShareCards.copiedForPost",
@@ -212,7 +214,9 @@ export function InsightsShareCards({ view }: { readonly view: InsightsView }) {
             key={kind}
             view={view}
             name={intl.formatMessage(cardName)}
-            svg={fonts === null ? null : renderShareCard(view, { kind, ...options }, fonts.value)}
+            svg={
+              fonts === null ? null : renderShareCard(view, { kind, ...options }, intl, fonts.value)
+            }
             disabled={busy || view.tokens === 0}
             onShare={(svg, action) => share(kind, svg, action)}
           />

@@ -13,7 +13,12 @@ export async function loadAppMessages(locale: AppLocale): Promise<AppMessages> {
   switch (locale) {
     case "en-US":
       return NO_MESSAGES;
-    case "zh-CN":
-      return (await import("./catalogs/zh-CN.json")).default;
+    case "zh-CN": {
+      const [app, cards] = await Promise.all([
+        import("./catalogs/zh-CN.json"),
+        import("@nodex/insights-cards/catalogs/zh-CN.json"),
+      ]);
+      return { ...app.default, ...cards.default };
+    }
   }
 }

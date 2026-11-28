@@ -1,15 +1,8 @@
 import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 
-import {
-  axisMaximum,
-  compactNumber,
-  heatStep,
-  insightHour,
-  monthName,
-  shortDay,
-  wholeNumber,
-} from "./insights-format";
+import { compactNumber, shortDay, wholeNumber } from "@nodex/insights-cards";
+import { axisMaximum, heatStep, insightHour, monthName } from "./insights-format";
 import type {
   InsightsCalendar,
   InsightsDay,
