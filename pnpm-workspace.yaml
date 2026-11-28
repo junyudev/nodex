@@ -123,6 +123,8 @@ allowBuilds:
   msgpackr-extract: false
   node-pty: true
   sharp: false
+  # `wrangler dev` runs the landing Worker in the local runtime; its install script checks the platform binary.
+  workerd: true
   unrs-resolver: false
   tsc-rs: true
 

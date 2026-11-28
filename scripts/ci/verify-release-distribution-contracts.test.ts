@@ -12,6 +12,9 @@ const workflows = () =>
       "release.yml",
       "nightly-release.yml",
       "release-rehearsal.yml",
+      "_promote-release.yml",
+      "_promote-nightly.yml",
+      "nightly-retention.yml",
     ].map((file) => [file, structuredClone(readWorkflow(path.join(workflowsDirectory, file)))]),
   );
 
@@ -202,4 +205,30 @@ test("rejects mobile builds outside their protected environment", () => {
     jobs: { ...jobs, ios: { ...requireRecord(jobs.ios, "iOS"), environment: undefined } },
   });
   expect(() => verifyReleaseDistributionWorkflows(files)).toThrow("mobile-distribution");
+});
+
+test("keeps public downloads ahead of Homebrew and serializes Nightly pruning with publication", () => {
+  const files = workflows();
+  const stable = requireRecord(files.get("_promote-release.yml"), "Stable promotion");
+  const jobs = requireRecord(stable.jobs, "Stable promotion jobs");
+  const homebrew = requireRecord(jobs.homebrew, "Homebrew");
+  files.set("_promote-release.yml", {
+    ...stable,
+    jobs: { ...jobs, homebrew: { ...homebrew, needs: "publish" } },
+  });
+  expect(() => verifyReleaseDistributionWorkflows(files)).toThrow(
+    "Homebrew publication must require publish, r2",
+  );
+
+  const retentionFiles = workflows();
+  const retention = requireRecord(retentionFiles.get("nightly-retention.yml"), "Nightly Retention");
+  const retentionJobs = requireRecord(retention.jobs, "Nightly Retention jobs");
+  const apply = requireRecord(retentionJobs.apply, "Nightly Retention apply");
+  retentionFiles.set("nightly-retention.yml", {
+    ...retention,
+    jobs: { ...retentionJobs, apply: { ...apply, concurrency: { group: "independent" } } },
+  });
+  expect(() => verifyReleaseDistributionWorkflows(retentionFiles)).toThrow(
+    "must serialize R2 changes within the nightly channel",
+  );
 });

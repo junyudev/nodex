@@ -62,6 +62,31 @@ test("allows the Sparkle signing key only in a direct protected environment job"
   ).toThrow("must not resolve protected environment secrets across a reusable workflow boundary");
 });
 
+test("resolves R2 secrets inside the called workflow's protected publication job", () => {
+  const filePath = path.resolve(".github/workflows/publish.yml");
+  const env = { R2_ACCESS_KEY_ID: "${{ secrets.CLOUDFLARE_R2_RELEASES_ACCESS_KEY_ID }}" };
+  const job = { environment: "release-r2-publish", steps: [{ env }] };
+  expect(() =>
+    verifyDeclaredReferences(filePath, reusableWorkflow({ publish: job })),
+  ).not.toThrow();
+  expect(() =>
+    verifyDeclaredReferences(
+      filePath,
+      reusableWorkflow({
+        publish: { ...job, environment: "landing-production" },
+      }),
+    ),
+  ).toThrow("must not resolve protected environment secrets");
+  expect(() =>
+    verifyDeclaredReferences(filePath, {
+      on: {
+        workflow_call: { secrets: { CLOUDFLARE_R2_RELEASES_ACCESS_KEY_ID: { required: true } } },
+      },
+      jobs: { publish: job },
+    }),
+  ).toThrow("declares protected environment secrets as workflow-call secrets");
+});
+
 test("rejects transporting a protected environment secret from a caller", () => {
   const callerPath = path.resolve(".github/workflows/caller.yml");
   const calledPath = path.resolve(".github/workflows/called.yml");
@@ -74,7 +99,7 @@ test("rejects transporting a protected environment secret from a caller", () => 
       {
         uses: "./.github/workflows/called.yml",
         secrets: {
-          SPARKLE_ED25519_PRIVATE_KEY: "${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}",
+          DECLARED_SECRET: "${{ secrets.CLOUDFLARE_R2_RELEASES_SECRET_ACCESS_KEY }}",
         },
       },
       new Map([[calledPath, calledWorkflow]]),

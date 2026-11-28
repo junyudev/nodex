@@ -41,7 +41,9 @@ import {
   verifyPromotedBundle,
 } from "./promotion";
 import { runSparkleFinalizeCli, runSparkleHistoryCli } from "./sparkle";
-import { projectReleaseAppcasts, verifyPublishedAppcasts } from "./pages";
+import { publishAppcastsToR2, verifyPublishedAppcasts } from "./feeds";
+import { openReleaseBucket } from "./r2";
+import { publishReleaseBundleToR2 } from "./r2-publication";
 import { runNightlyRetention } from "./retention";
 import { resolveNightlyRelease } from "./nightly";
 
@@ -207,10 +209,12 @@ const main = async (): Promise<void> => {
   if (command === "retain-nightlies") {
     writeJson(
       flags.get("output"),
-      runNightlyRetention({
+      await runNightlyRetention({
+        bucket: openReleaseBucket(),
         destructive: flags.get("destructive") === "true",
         keepCount: Number(flags.get("keep") ?? "20"),
         minAgeDays: Number(flags.get("min-age-days") ?? "14"),
+        r2KeepCount: Number(flags.get("r2-keep") ?? "3"),
         repo: required(flags, "repo"),
       }),
     );
@@ -318,18 +322,14 @@ const main = async (): Promise<void> => {
     runSparkleHistoryCli(flags);
     return;
   }
-  if (command === "project-pages") {
-    writeJson(
-      flags.get("output"),
-      projectReleaseAppcasts({
-        bundlePath: required(flags, "bundle"),
-        existingSiteDirectory: flags.get("existing-site-dir"),
-        siteDirectory: required(flags, "site-dir"),
-      }),
-    );
+  if (command === "publish-r2" || command === "publish-feeds") {
+    const bundlePath = required(flags, "bundle");
+    const bucket = openReleaseBucket();
+    const publish = command === "publish-r2" ? publishReleaseBundleToR2 : publishAppcastsToR2;
+    writeJson(flags.get("output"), await publish({ bundlePath, bucket }));
     return;
   }
-  if (command === "verify-pages") {
+  if (command === "verify-feeds") {
     await verifyPublishedAppcasts({ bundlePath: required(flags, "bundle") });
     return;
   }

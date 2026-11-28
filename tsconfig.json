@@ -15,6 +15,9 @@
       "path": "./packages/landing/tsconfig.json"
     },
     {
+      "path": "./packages/landing/tsconfig.worker.json"
+    },
+    {
       "path": "./packages/mobile/tsconfig.json"
     },
     {

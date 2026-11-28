@@ -92,6 +92,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "src/renderer/**/*.test.ts",
       "src/renderer/**/*.node.test.{ts,tsx}",
       "packages/landing/src/**/*.test.ts",
+      "packages/landing/worker/**/*.test.ts",
       "packages/mobile/src/**/*.test.ts",
       "packages/mobile-protocol/src/**/*.test.ts",
       "packages/push-relay/src/**/*.test.ts",

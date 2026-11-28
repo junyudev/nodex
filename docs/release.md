@@ -11,17 +11,18 @@ release's own copies.
 - **Nightly Release** runs every three hours and on manual dispatch. It selects
   the most recent successful Main CI push on protected `main` whose commit is
   reachable from current `main`. It certifies, builds, probes, finalizes and
-  publishes that commit as a GitHub prerelease and in the Nightly feeds.
+  publishes that commit as a GitHub prerelease, mirrors its assets to R2, and
+  publishes the Nightly feeds.
 - **Release** runs on dispatch from `main`. It verifies the selected Nightly and
   its retained artifacts before feed signing. It publishes GitHub Latest, the
-  Stable feeds, Agent Skills, Homebrew and TestFlight.
+  R2 downloads and Stable feeds, Agent Skills, Homebrew and TestFlight.
 - **Distribution Rehearsal** exercises the native builds and update finalizers
   from an exact protected-main SHA, with no publication or Sentry upload.
 
 Nightly retains the Build Identity, source certificate, architecture bundles,
 mobile builds and full Release Bundle for 14 days. Promote within that window.
 Published assets include versioned downloads, signed feeds, `release-identity.json`,
-`release-bundle.json` and `SHA256SUMS`. Stable also publishes the `latest` aliases.
+`release-bundle.json` and `SHA256SUMS`. Stable also publishes GitHub `latest` aliases.
 The private Bundle carries `release-notes.md` and the verified iOS payload in
 `testflight/`. The Windows x64 installer is built and probed on a native runner.
 See [Windows distribution](release-windows.md).
@@ -60,7 +61,8 @@ Release Bundle and `SHA256SUMS`. Stable promotion publishes the exact bytes from
 Windows arm64 builds provide native verification evidence only.
 
 When the platform updater verifies and prepares an update, Nodex looks for the matching
-manifest beside the macOS update archive or delta, or the Windows x64 installer on GitHub.
+manifest beside the macOS update archive or delta, or the Windows x64 installer, on the
+same host: GitHub Releases or `dl.nodex.jyu.app`.
 Stable uses `v<version>` and Nightly uses `v<version>-nightly.<source date>.<build ordinal>`.
 The installed app verifies prepared Components against its own catalog before using them. If the manifest is unavailable
 or invalid, or a Component could not be prepared, the updated app installs it normally.
@@ -225,20 +227,23 @@ selected in Settings.
 
 The repository must have these environments, restricted to protected `main`.
 They separate deployment policy and audit. Reusable workflows receive only the
-explicit repository-secret contract declared by their caller; protected
-environment secrets are resolved only by direct jobs.
+explicit repository-secret contract declared by their caller. Protected
+environment secrets are resolved only by a job that declares their environment
+and never cross a `workflow_call` boundary; signing and tagging keys stay in
+top-level jobs.
 
-| Environment                 | Authority                                                                        |
-| --------------------------- | -------------------------------------------------------------------------------- |
-| `release-source`            | Secret-free protected-main source and candidate verification                     |
-| `macos-distribution`        | Apple signing/notarization; Sentry upload from each official Nightly arm64 build |
-| `mobile-distribution`       | Sign the Android APK and the App Store iOS build                                 |
-| `testflight`                | Upload the certified iOS build and submit it to the public TestFlight beta       |
-| `sparkle-feed-finalization` | Sign macOS and Windows appcasts and enclosures after every native build passes   |
-| `release-publish`           | Job-scoped repository `contents: write` and the release tag credential           |
-| `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                               |
-| `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                                 |
-| `landing-production`        | Deploy `NodexApp/NodexApp.github.io`                                             |
+| Environment                 | Authority                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------- |
+| `release-source`            | Secret-free protected-main source and candidate verification                                |
+| `macos-distribution`        | Apple signing/notarization; Sentry upload from each official Nightly arm64 build            |
+| `mobile-distribution`       | Sign the Android APK and the App Store iOS build                                            |
+| `testflight`                | Upload the certified iOS build and submit it to the public TestFlight beta                  |
+| `sparkle-feed-finalization` | Sign macOS and Windows appcasts and enclosures after every native build passes              |
+| `release-publish`           | Job-scoped repository `contents: write` and the release tag credential                      |
+| `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                                          |
+| `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                                            |
+| `release-r2-publish`        | Publish release assets, feeds and the Stable download pointer, and prune Nightly R2 objects |
+| `landing-production`        | Deploy the production website Worker                                                        |
 
 Configure these repository Action secrets:
 
@@ -250,7 +255,6 @@ Configure these repository Action secrets:
 | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`                 | Release/source-map upload for the Nodex project                                                                                             |
 | `NODEX_SKILLS_GITHUB_TOKEN`                                         | Fine-grained Contents read/write on `NodexApp/skills` only                                                                                  |
 | `HOMEBREW_TAP_GITHUB_TOKEN`                                         | Fine-grained Contents read/write on `junyudev/homebrew-tap` only                                                                            |
-| `NODEXAPP_GITHUB_IO_TOKEN`                                          | Fine-grained Contents read/write on `NodexApp/NodexApp.github.io` only                                                                      |
 
 Configure `NODEX_RELEASE_TAG_TOKEN` as an environment secret on
 `release-publish`: a fine-grained token with Contents and Workflows read/write
@@ -267,16 +271,18 @@ reusable native-distribution and Bundle-assembly workflows never declare or
 receive the key. Repository guards reject reusable-workflow transport and any
 reference outside a direct protected finalizer.
 
-Each caller maps the repository secrets above to lowercase
-`workflow_call.secrets` aliases. Do
-not replace the mappings with broad `secrets: inherit`, and do not reference a
-repository secret from PR CI. The Sparkle key is the deliberate exception: it
-is resolved only by each top-level protected job and never crosses a reusable
-workflow boundary. The alias boundary for all other credentials avoids relying
-on implicit secret inheritance or same-name precedence inside nested reusable
-workflows. Record PAT expiry dates in release operations and rotate them before
-expiry. Remove duplicate credentials from the legacy `release` environment
-after rehearsal succeeds.
+Configure `CLOUDFLARE_R2_RELEASES_ACCESS_KEY_ID` and
+`CLOUDFLARE_R2_RELEASES_SECRET_ACCESS_KEY` as environment secrets on
+`release-r2-publish`, using an R2 Object Read & Write credential scoped to
+`nodex-releases`. The release and retention jobs resolve those secrets in the
+protected environment and expose them as `R2_ACCESS_KEY_ID` and
+`R2_SECRET_ACCESS_KEY` for the release commands. Configure
+`CLOUDFLARE_LANDING_DEPLOY_TOKEN` on `landing-production` for the website Worker
+deployment.
+
+Map repository secrets explicitly to lowercase `workflow_call.secrets` aliases.
+Jobs resolve environment secrets directly in their owning environment.
+Record PAT expiry dates and rotate them before expiry.
 
 The official Skills publisher authenticates Git through a GitHub-scoped Basic
 extra header and keeps credentials out of remote URLs. Historical mirror inventories
@@ -356,13 +362,23 @@ https://nodex.jyu.app/updates/nightly/arm64/appcast.xml
 https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml
 ```
 
-GitHub Release stores immutable macOS full-update archives, Windows installers,
-deltas, update manifests, and signed appcast snapshots. Stable releases are Latest.
-Nightly releases are prereleases and never update Homebrew or official Agent Skills.
-Stable site deploys replace only `updates/stable/`; Nightly publication stages
-and commits only `updates/nightly/`, so neither channel can delete the other.
-Every enclosure URL uses its exact tag; no feed
-uses `/latest/download`. The finalizer accepts history only from an immutable
+GitHub Releases is the archive of record for installers, update enclosures,
+manifests and signed appcast snapshots. Each verified release is also published
+to the `nodex-releases` R2 bucket and served by `dl.nodex.jyu.app`. Stable releases
+are Latest. Nightly releases are prereleases and leave Homebrew and official Agent
+Skills on Stable.
+
+| R2 key                                                           | Publication contract                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `releases/<stable-tag>/<asset>`, `nightly/<nightly-tag>/<asset>` | Immutable versioned release assets with a one-year cache lifetime. R2 verifies the digest at upload. On retry an existing object must match the expected size.                                                                                                                          |
+| `latest/stable.json`                                             | Points to the versioned macOS DMG, Windows x64 installer and Android APK after every asset is publicly readable. The website serves these through `/dl/macos`, `/dl/windows-x64` and `/dl/android`. The pointer may be rewritten at the same tag or advanced to a newer Stable version. |
+| `updates/<channel>/<arch>/appcast.xml`                           | The website serves the signed Bundle snapshot from this key. A channel can advance to a newer build or republish identical bytes for its current build.                                                                                                                                 |
+
+The R2 copy omits GitHub's duplicate `Nodex-latest-*` aliases. Stable and Nightly
+publication run in separate serialized queues. After publication, verification
+checks the canonical and cache-busted feed digests and the enclosure URLs, plus
+the Stable installer redirects. Each feed enclosure points to its exact GitHub
+Release tag. The finalizer accepts history only from an immutable
 Release in the same channel whose tag resolves to the Release Bundle source SHA. Before it signs a
 release, it proves the protected private key matches the reviewed public key
 and that the extracted App plist/runtime carry that key; the Apple silicon build
@@ -403,14 +419,16 @@ The job summary shows whether Cloudflare returned appcast traffic, observed zero
 alongside other host traffic, or left the result unavailable. See
 [Product Analytics Behavior](product-specs/product-analytics-behavior.md#website-and-distribution).
 
-`Nightly Retention` keeps the newest 20 published Nightly releases and every
-release younger than 14 days. It also protects every tag referenced by any
-live Nightly appcast and deletes only immutable releases whose downloaded
-Release Bundle index exactly matches the remote asset digests. A feed fetch or
-Bundle verification failure fails closed. Scheduled runs are dry-run only.
-Destructive mode is available only through manual dispatch and the protected
-`nightly-retention` environment. Deleting an immutable Nightly release is
-allowed after promotion because Stable owns its copies and its feeds and cask use the Stable tag.
+`Nightly Retention` keeps the newest 20 GitHub prereleases and every Nightly
+younger than 14 days. It deletes only immutable GitHub releases whose Bundle
+index matches the remote asset digests. In R2 it keeps the newest three Nightly
+builds by source ordinal. Both retain every tag referenced by a live Nightly
+appcast, including enclosures on either download host. If a live feed cannot
+be read or has no recognized enclosure, the run stops before deleting anything.
+
+Scheduled runs report a dry-run plan. Manual destructive runs use
+`release-r2-publish` and share the Nightly publication queue. Stable
+promotion keeps its own copy of the assets under the Stable tag.
 
 The key was created with the official tool under Keychain account `NodexApp`.
 These commands recover or inspect it without generating a second identity:
@@ -591,9 +609,9 @@ The hosted Apple silicon runner uses that source and the protected signing envir
 The native Windows x64 runner builds and probes the same certified identity. Both
 update finalizers and the complete Bundle assembly are required.
 Rehearsal also uses the protected Sparkle finalization environment, but it does
-not receive `contents: write`, Homebrew/landing credentials, or a Sentry upload
-token. It creates no tag, Release, tap commit, feed commit, or production
-telemetry release.
+not receive `contents: write`, Homebrew, release bucket or website credentials,
+or a Sentry upload token. It creates no tag, Release, tap commit, R2 object or
+production telemetry release; its outputs stay in the workflow artifacts.
 
 Download `nodex-release-bundle-<sha>` and inspect `release-bundle.json` and
 `SHA256SUMS`. A rehearsal is required after release workflow, native packaging,
@@ -654,8 +672,10 @@ any change file landed has nothing to release and is turned away.
 The protected finalizers sign the two Stable feeds, using previous Stable
 archives for compatible macOS deltas. The assembler uses the retained native
 and mobile builds. The publisher reuses or creates the annotated tag and
-publishes the immutable release as GitHub Latest. It verifies the public assets
-and projects the signed feeds, cask and Agent Skills. TestFlight receives the
+publishes the immutable release as GitHub Latest. It verifies and mirrors the
+public assets, then publishes and verifies the Stable feeds and download
+redirects. Homebrew uses the versioned DMG on the R2 download host. Agent Skills
+publish from the verified Bundle and TestFlight receives the
 retained iOS build. For internal testers, run the mobile package's
 `ios:testflight` command with the retained Nightly Bundle's
 `release-bundle.json` path. Use the same App Store Connect team credentials.
@@ -667,9 +687,8 @@ deletes the change files the release published; a change file edited on `main`
 after the source was cut stays for the next release, as does every change added
 since. The job advances the version sources by one patch, or keeps a higher
 version already chosen on `main`, and retries on a fresh parent if a push races.
-It dispatches **Deploy Landing Site** after the push. A pages-only deploy
-preserves both update subtrees. The download page displays the latest dated
-changelog release.
+It dispatches **Deploy Landing Site** after the push so the website shows
+the latest dated changelog release. Feed and static site publication run independently.
 
 ### Resume a release
 
@@ -687,6 +706,26 @@ gh workflow run deploy-landing-site.yml --repo junyudev/nodex --ref main
 An advance failure leaves the release available. For a failed Nightly, rerun the
 failed jobs in its original run so the certificate and retained artifacts stay
 associated with the producing run.
+
+### Recover public distribution from GitHub Releases
+
+Download the public assets of the current release into an empty directory.
+With the release bucket credentials exported as `R2_ACCESS_KEY_ID` and
+`R2_SECRET_ACCESS_KEY`, run these commands from the reviewed release tooling
+checkout in order:
+
+```bash
+gh release download <tag> --repo junyudev/nodex --dir <dir>
+vp run release:publish:r2 -- --bundle <dir>/release-bundle.json
+vp run release:publish:feeds -- --bundle <dir>/release-bundle.json
+vp run release:verify:feeds -- --bundle <dir>/release-bundle.json
+```
+
+The same commands resume a partial upload or backfill the current Stable and
+Nightly releases. An older Bundle can restore its immutable bytes, but its
+pointer or feed publication fails if a newer version or build is already live.
+For destructive Nightly retention run the protected workflow so it shares the
+same queue as Nightly publication.
 
 ## Desktop Tool runtime releases and Latest
 

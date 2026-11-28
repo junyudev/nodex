@@ -15,7 +15,16 @@ import {
   resolvePromotion,
 } from "./promotion";
 import { makeReleaseFixture } from "./windows-release.fixture";
-import { extractNightlyTagsFromAppcasts, planNightlyRetention } from "./retention";
+import {
+  githubReleaseDownloadUrl,
+  releaseDownloadUrl,
+  releaseObjectKey,
+} from "../../src/shared/release-download";
+import {
+  extractNightlyTagsFromAppcasts,
+  planNightlyRetention,
+  planR2NightlyRetention,
+} from "./retention";
 
 test("promotes the exact public binaries and private iOS build while replacing the feeds", () => {
   const root = mkdtempSync(join(tmpdir(), "nodex-promotion-"));
@@ -299,11 +308,47 @@ test("nightly retention requires age, verified immutable bytes, and no live feed
   expect(plan.delete).toEqual([{ id: 6, tag: deletable }]);
 });
 
-test("extracts only strict Nightly tags referenced by appcast enclosures", () => {
+test("protects Nightly enclosure tags on both download hosts and ignores other URLs", () => {
+  const githubTag = "v0.2.2-nightly.20260818.3";
+  const r2Tag = "v0.2.2-nightly.20260820.4";
+  const asset = "Nodex.tar.xz";
+  const urls = [
+    githubReleaseDownloadUrl(githubTag, asset),
+    releaseDownloadUrl(r2Tag, asset),
+    releaseDownloadUrl("v0.2.2", asset),
+    "https://github.com/other/nodex/releases/download/v0.2.2-nightly.20260818.1/Nodex.tar.xz",
+  ];
+  const enclosures = urls.map((url) => `<enclosure url="${url}"/>`).join("");
+  const unreferenced = releaseDownloadUrl("v0.2.2-nightly.20260818.2", asset);
   expect([
-    ...extractNightlyTagsFromAppcasts([
-      '<enclosure url="https://github.com/NodexApp/Nodex/releases/download/v0.2.2-nightly.20260818.3/Nodex.tar.xz"/>',
-      '<enclosure url="https://github.com/NodexApp/Nodex/releases/download/v0.2.2/Nodex.tar.xz"/>',
-    ]),
-  ]).toEqual(["v0.2.2-nightly.20260818.3"]);
+    ...extractNightlyTagsFromAppcasts([`<rss><link>${unreferenced}</link>${enclosures}</rss>`]),
+  ]).toEqual([githubTag, r2Tag]);
+  // A parser that recovers would drop the malformed enclosure and leave its tag unprotected.
+  const malformed = `<enclosure url="${releaseDownloadUrl(r2Tag, asset)}"/ x>`;
+  expect(() => extractNightlyTagsFromAppcasts([`<rss>${enclosures}${malformed}</rss>`])).toThrow(
+    "Nightly appcast is invalid XML.",
+  );
+});
+
+test("R2 retention keeps the three newest Nightly builds and every live feed target", () => {
+  const newest = "v0.2.3-nightly.20260820.11";
+  const second = "v0.2.2-nightly.20260818.10";
+  const third = "v0.2.2-nightly.20260818.9";
+  const protectedTag = "v0.2.2-nightly.20260815.8";
+  const old = "v0.2.2-nightly.20260812.7";
+  const keys = [third, protectedTag, old, second, newest].map((tag) =>
+    releaseObjectKey(tag, "Nodex.dmg"),
+  );
+  const oldArchive = releaseObjectKey(old, "Nodex.tar.xz");
+  expect(
+    planR2NightlyRetention(
+      [...keys, oldArchive, releaseObjectKey("v0.2.2", "Nodex.dmg"), "nightly/unknown/file"],
+      new Set([newest, protectedTag]),
+    ),
+  ).toEqual({
+    keep: [newest, second, third],
+    keepCount: 3,
+    protected: [protectedTag],
+    delete: [{ tag: old, keys: [releaseObjectKey(old, "Nodex.dmg"), oldArchive] }],
+  });
 });

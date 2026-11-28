@@ -45,14 +45,15 @@ personal Remote access intent.
 
 Nodex Account has its own production identity domain and user pool:
 
-| Domain                   | Purpose                                         |
-| ------------------------ | ----------------------------------------------- |
-| `nodex.jyu.app`          | Product website, downloads and update feeds     |
-| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management     |
-| `clerk.nodex.jyu.app`    | Clerk OAuth issuer and Frontend API             |
-| `api.nodex.jyu.app`      | Model access, supply status and Stripe Checkout |
-| `api.jyu.app`            | sub2api model gateway, prepaid wallet and usage |
-| `checkout.stripe.com`    | Stripe Checkout opened from in-app Top up       |
+| Domain                   | Purpose                                                      |
+| ------------------------ | ------------------------------------------------------------ |
+| `nodex.jyu.app`          | Product website, Stable installer redirects and update feeds |
+| `dl.nodex.jyu.app`       | Versioned Stable and Nightly release assets from R2          |
+| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management                  |
+| `clerk.nodex.jyu.app`    | Clerk OAuth issuer and Frontend API                          |
+| `api.nodex.jyu.app`      | Model access, supply status and Stripe Checkout              |
+| `api.jyu.app`            | sub2api model gateway, prepaid wallet and usage              |
+| `checkout.stripe.com`    | Stripe Checkout opened from in-app Top up                    |
 
 The account portal is not the OAuth issuer. Other products under `jyu.app`
 do not share Nodex identities or subscription access. Development and

@@ -14,6 +14,13 @@ const MOBILE_WORKFLOW = "./.github/workflows/_mobile-distribution.yml";
 /** Only a stable release opens a build to the public TestFlight beta. */
 const TESTFLIGHT_CALLERS = new Set(["release.yml"]);
 const RELEASE_CALLERS = ["release.yml", "nightly-release.yml", "release-rehearsal.yml"];
+const R2_WORKFLOWS = [
+  "_promote-release.yml",
+  "_promote-nightly.yml",
+  "nightly-retention.yml",
+] as const;
+const R2_COMMANDS = ["publish:r2", "publish:feeds", "verify:feeds"] as const;
+
 const names = (value: unknown): readonly string[] =>
   typeof value === "string"
     ? [value]
@@ -77,10 +84,138 @@ function verifyNightlySource(jobs: UnknownRecord): void {
   }
 }
 
+function verifyR2Job(job: UnknownRecord, command: string, label: string): string {
+  const steps = Array.isArray(job.steps) ? job.steps.filter(isRecord) : [];
+  const step = steps.find((step) => typeof step.run === "string" && step.run.includes(command));
+  const environment = step?.env;
+  if (
+    job.environment !== "release-r2-publish" ||
+    typeof step?.run !== "string" ||
+    !isRecord(environment) ||
+    environment.R2_ACCESS_KEY_ID !== "${{ secrets.CLOUDFLARE_R2_RELEASES_ACCESS_KEY_ID }}" ||
+    environment.R2_SECRET_ACCESS_KEY !== "${{ secrets.CLOUDFLARE_R2_RELEASES_SECRET_ACCESS_KEY }}"
+  ) {
+    throw new Error(
+      `${label} must resolve the R2 credentials in its protected release-r2-publish job.`,
+    );
+  }
+  return step.run;
+}
+
+function verifyR2Queue(job: UnknownRecord, channel: string, label: string): void {
+  const queue = requireRecord(job.concurrency, `${label} concurrency`);
+  if (
+    queue.group !== `release-r2-${channel}` ||
+    queue["cancel-in-progress"] !== false ||
+    queue.queue !== "max"
+  ) {
+    throw new Error(`${label} must serialize R2 changes within the ${channel} channel.`);
+  }
+}
+
+function verifyR2Distribution(workflows: ReadonlyMap<string, UnknownRecord>): void {
+  for (const [channel, filename, jobName, callerName] of [
+    ["stable", "_promote-release.yml", "r2", "release.yml"],
+    ["nightly", "_promote-nightly.yml", "feed", "nightly-release.yml"],
+  ] as const) {
+    const caller = requireRecord(workflows.get(callerName), callerName);
+    const promote = requireRecord(
+      requireRecord(caller.jobs, `${callerName} jobs`).promote,
+      `${callerName} promote`,
+    );
+    if (promote.uses !== `./.github/workflows/${filename}`) {
+      throw new Error(`${callerName} must use the ${channel} promotion workflow.`);
+    }
+    const workflow = requireRecord(workflows.get(filename), filename);
+    const jobs = requireRecord(workflow.jobs, `${channel} promotion jobs`);
+    const job = requireRecord(jobs[jobName], `${channel} R2 publication`);
+    const label = `${channel} R2 publication`;
+    assertNeeds(job, ["publish"], label);
+    const publish = verifyR2Job(job, "vp run release:publish:r2", label);
+    if (!publish.includes("vp run release:publish:feeds")) {
+      throw new Error(`${label} must publish assets and feeds with the R2 credentials.`);
+    }
+    verifyR2Queue(job, channel, label);
+
+    const commands = (Array.isArray(job.steps) ? job.steps.filter(isRecord) : [])
+      .map((step) => step.run)
+      .filter((run): run is string => typeof run === "string")
+      .join("\n");
+    const positions = R2_COMMANDS.map((command) =>
+      commands.indexOf(`vp run release:${command} -- --bundle`),
+    );
+    if (
+      positions.some(
+        (position, index) => position < 0 || (index > 0 && position <= positions[index - 1]),
+      )
+    ) {
+      throw new Error(
+        `${label} must publish the bundle, publish its feeds, then verify public distribution.`,
+      );
+    }
+    if (channel === "stable") {
+      assertNeeds(
+        requireRecord(jobs.homebrew, "Homebrew publication"),
+        ["publish", jobName],
+        "Homebrew publication",
+      );
+      const advance = requireRecord(
+        requireRecord(caller.jobs, "Stable jobs").advance,
+        "Stable advance",
+      );
+      const steps = Array.isArray(advance.steps) ? advance.steps.filter(isRecord) : [];
+      if (
+        !steps.some(
+          (step) =>
+            typeof step.run === "string" &&
+            step.run.includes("gh workflow run deploy-landing-site.yml"),
+        )
+      ) {
+        throw new Error("Stable advance must dispatch the landing site deployment.");
+      }
+    }
+  }
+
+  const rehearsal = requireRecord(workflows.get("release-rehearsal.yml"), "Distribution Rehearsal");
+  const rehearsalJobs = requireRecord(rehearsal.jobs, "Distribution Rehearsal jobs");
+  for (const job of Object.values(rehearsalJobs).filter(isRecord)) {
+    if (
+      job.environment === "release-r2-publish" ||
+      R2_WORKFLOWS.some((name) => job.uses === `./.github/workflows/${name}`)
+    ) {
+      throw new Error("Distribution Rehearsal must remain free of public distribution.");
+    }
+  }
+
+  const retention = requireRecord(workflows.get("nightly-retention.yml"), "Nightly Retention");
+  const jobs = requireRecord(retention.jobs, "Nightly Retention jobs");
+  for (const name of ["plan", "apply"]) {
+    const label = `Nightly Retention ${name}`;
+    const job = requireRecord(jobs[name], label);
+    const command = verifyR2Job(job, "vp run release:retain:nightlies", label);
+    if (name === "plan") {
+      if (!command.includes("--destructive false")) throw new Error(`${label} must be a dry run.`);
+      continue;
+    }
+    verifyR2Queue(job, "nightly", label);
+    if (
+      job.if !== "github.event_name == 'workflow_dispatch' && inputs.destructive == true" ||
+      !isRecord(job.permissions) ||
+      job.permissions.contents !== "write" ||
+      !command.includes("--destructive true")
+    ) {
+      throw new Error(
+        `${label} must delete only on manual dispatch with repository write permission.`,
+      );
+    }
+  }
+}
+
 /** Architecture completeness and the protected signing boundary are release admission contracts. */
 export function verifyReleaseDistributionWorkflows(
   workflows: ReadonlyMap<string, UnknownRecord>,
 ): void {
+  verifyR2Distribution(workflows);
   const windows = requireRecord(
     workflows.get("_windows-distribution.yml"),
     "Windows implementation",
@@ -221,12 +356,13 @@ export function verifyRepositoryReleaseDistribution(): void {
     "_mobile-distribution.yml",
     "windows.yml",
     ...RELEASE_CALLERS,
+    ...R2_WORKFLOWS,
   ];
   verifyReleaseDistributionWorkflows(
     new Map(files.map((file) => [file, readWorkflow(path.join(workflowsDirectory, file))])),
   );
   process.stdout.write(
-    "Verified complete native and mobile release distributions and protected finalizers.\n",
+    "Verified complete native and mobile distributions, protected finalizers and R2 publication.\n",
   );
 }
 

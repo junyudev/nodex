@@ -81,11 +81,23 @@ An automatic homepage language redirect counts only the destination page, which 
 the original visit. The site stores explicit language choices locally for navigation without
 including them in analytics.
 
-The daily `Distribution Metrics` workflow reports `distribution_downloads` (change in GitHub release
-downloads by channel, platform and kind) and `update_feed_requests` (appcast requests from
-Cloudflare). Downloads include CI and repeat fetches, so they bound installs from above.
-`installation_created` with `profile=new` is the install count. Website and distribution events use a
-stable ID, not a user ID, so they never count as active installations.
+The daily `Distribution Metrics` workflow reports `distribution_downloads` by release `tag`,
+`channel`, `platform`, `kind`, and `source`. `github` measures the change in GitHub Release asset
+counters since the previous snapshot. `cloudflare` measures requests for installers and update
+archives under `releases/<tag>/` and `nightly/<tag>/` on `dl.nodex.jyu.app` in the previous UTC day.
+The bucket's Windows EXE counts as an installer, including when the updater fetches it. On GitHub
+the installer alias and versioned update EXE retain their separate kinds.
+
+Cloudflare uses adaptively sampled counts of client GET requests with HTTP 200 to estimate
+whole-object downloads. HEAD probes, HTTP 206 ranges, and the website's `/dl/<target>` redirects are
+excluded. Resumed transfers made entirely of range requests are therefore omitted, and HTTP 200
+alone cannot confirm that a client received every byte. Download counts include CI and repeat
+fetches.
+
+`update_feed_requests` counts appcast requests on `nodex.jyu.app` in the same UTC window. The workflow
+records each completed Cloudflare window after delivery so same-day reruns skip it.
+`installation_created` with `profile=new` measures new installs. Website and distribution events
+use a stable ID and are excluded from active-installation counts.
 
 ## Reading the numbers
 

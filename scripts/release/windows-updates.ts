@@ -9,7 +9,7 @@ import {
   sha256File,
   type ReleaseIdentity,
 } from "./model";
-import { readArchitectureDirectory, type ReleaseBundleManifest } from "./bundle";
+import { readArchitectureDirectory, type ReleaseDistributionBundle } from "./bundle";
 import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
 import { parseSparkleFileIdentity, type SparkleFileIdentity } from "./sparkle-manifest";
 import {
@@ -254,7 +254,7 @@ export async function finalizeWindowsArchitectureUpdate(options: {
 
 /** Recovery and promotion admit the same signed Windows closure as initial assembly. */
 export function verifyWindowsReleaseAssets(
-  bundle: ReleaseBundleManifest,
+  bundle: ReleaseDistributionBundle,
   root: string,
   publicKey = readConfiguredPublicKey(),
 ): void {
