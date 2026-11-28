@@ -14,11 +14,15 @@ export const SHARE_CARD_WIDTH = 1080;
 export const SHARE_CARD_HEIGHT = 1350;
 export const SHARE_URL = "nodex.jyu.app";
 
+export type ShareCardTheme = "dark" | "light";
+
 export interface ShareCardOptions {
   readonly kind: ShareCardKind;
   readonly showCost: boolean;
   /** How the person wants to be named; nothing identifies them unless they type it. */
   readonly name: string;
+  /** Dark unless asked. */
+  readonly theme?: ShareCardTheme;
 }
 
 export interface ShareCardFonts {
@@ -103,7 +107,7 @@ const PERIOD_QUESTIONS: Readonly<Record<Exclude<ShareCardPeriod, "range">, Messa
 };
 
 /** The Nodex mark, drawn from the same geometry as the application icon. */
-function nodexMark(x: number, y: number, size: number, ink: string, paper: string) {
+export function nodexMark(x: number, y: number, size: number, ink: string, paper: string) {
   const scale = size / 800;
   return `<g transform="translate(${x} ${y}) scale(${scale})">
 <path fill-rule="evenodd" clip-rule="evenodd" d="M142.9 730.445L56.916 623.328C36.2282 597.558 25 565.865 25 533.248V145.375C25 96.5161 64.0898 55.9743 114.518 52.5313L513.303 25.3046C542.275 23.3266 571.07 31.0273 594.87 47.1176L734.98 141.848C760.063 158.805 775 186.525 775 216.107V657.08C775 704.895 736.565 744.483 687.19 747.523L244.583 774.768C205.183 777.193 167.1 760.593 142.9 730.445Z" fill="${ink}"/>
@@ -170,10 +174,59 @@ export function skylineGrid<RichText>(view: ShareCardView, intl: IntlShape<RichT
   };
 }
 
-const SKYLINE_RAMP = ["#27366f", "#34479c", "#4663cf", "#6f8bf2", "#b6c6ff"] as const;
-const SKYLINE_FRONT = ["#1c274f", "#26336f", "#3247a0", "#4a63c9", "#7e94ea"] as const;
-const SKYLINE_SHADE = ["#161e3e", "#1c2654", "#253478", "#364a98", "#5c6fb4"] as const;
-const SKYLINE_EMPTY = "#191920";
+type Ramp = readonly [string, string, string, string, string];
+
+interface SkylinePalette {
+  readonly paper: string;
+  readonly glow: { readonly color: string; readonly opacity: string };
+  readonly ember: { readonly color: string; readonly opacity: string };
+  readonly ink: string;
+  readonly muted: string;
+  readonly faint: string;
+  readonly accent: string;
+  readonly mark: { readonly ink: string; readonly paper: string };
+  /** Tower faces from the quietest day to the busiest: lit tops, fronts and shaded sides. */
+  readonly tops: Ramp;
+  readonly fronts: Ramp;
+  readonly sides: Ramp;
+  readonly empty: string;
+  readonly qr: { readonly plate: string; readonly edge: string | null; readonly ink: string };
+}
+
+const SKYLINE_PALETTES: Readonly<Record<ShareCardTheme, SkylinePalette>> = {
+  // Busier days glow brighter against the night.
+  dark: {
+    paper: "#08080a",
+    glow: { color: "#3b4cb0", opacity: ".34" },
+    ember: { color: "#d95926", opacity: ".14" },
+    ink: "#f5f5f4",
+    muted: "#a8a8ae",
+    faint: "#6f6f78",
+    accent: "#b6c6ff",
+    mark: { ink: "#ffffff", paper: "#262626" },
+    tops: ["#27366f", "#34479c", "#4663cf", "#6f8bf2", "#b6c6ff"],
+    fronts: ["#1c274f", "#26336f", "#3247a0", "#4a63c9", "#7e94ea"],
+    sides: ["#161e3e", "#1c2654", "#253478", "#364a98", "#5c6fb4"],
+    empty: "#191920",
+    qr: { plate: "#ffffff", edge: null, ink: "#08080a" },
+  },
+  // On paper, busier days are inked deeper.
+  light: {
+    paper: "#f4f3ee",
+    glow: { color: "#6b84f0", opacity: ".2" },
+    ember: { color: "#f08a4b", opacity: ".14" },
+    ink: "#131316",
+    muted: "#5b5b63",
+    faint: "#7a7a83",
+    accent: "#3a52c4",
+    mark: { ink: "#131316", paper: "#f4f3ee" },
+    tops: ["#dfe5fb", "#b9c6f6", "#8ea2ef", "#6f88e8", "#5770dc"],
+    fronts: ["#ccd5f5", "#a3b3ef", "#7489e3", "#4d68d6", "#3550bd"],
+    sides: ["#bcc6ec", "#8f9fe0", "#5f74d1", "#3c55c0", "#2a40a0"],
+    empty: "#e7e6e0",
+    qr: { plate: "#ffffff", edge: "#e2e0d8", ink: "#131316" },
+  },
+};
 
 const skylineStep = (value: number, max: number) =>
   value <= 0 || max <= 0 ? -1 : Math.min(4, Math.floor(Math.sqrt(value / max) * 5));
@@ -183,6 +236,7 @@ export function renderSkylineCity<RichText>(
   grid: SkylineGrid,
   area: { width: number; height: number },
   intl: IntlShape<RichText>,
+  palette: SkylinePalette = SKYLINE_PALETTES.dark,
 ) {
   const unitLimit = 62;
   const unit = Math.min(unitLimit, area.width / (grid.columns + 0.62 * grid.rows));
@@ -212,7 +266,7 @@ export function renderSkylineCity<RichText>(
   for (const cell of ordered) {
     const height = cell.value <= 0 ? 0 : Math.max(4, Math.sqrt(cell.value / max) * towerHeight);
     const step = skylineStep(cell.value, max);
-    const top = step < 0 ? SKYLINE_EMPTY : SKYLINE_RAMP[step]!;
+    const top = step < 0 ? palette.empty : palette.tops[step]!;
     const left = cell.column + inset;
     const right = cell.column + 1 - inset;
     const back = cell.row + inset;
@@ -225,7 +279,7 @@ export function renderSkylineCity<RichText>(
           point(right, front, 0),
           point(left, front, 0),
         ],
-        SKYLINE_FRONT[step]!,
+        palette.fronts[step]!,
       );
       city += polygon(
         [
@@ -234,7 +288,7 @@ export function renderSkylineCity<RichText>(
           point(right, front, 0),
           point(right, back, 0),
         ],
-        SKYLINE_SHADE[step]!,
+        palette.sides[step]!,
       );
     }
     city += polygon(
@@ -254,8 +308,8 @@ export function renderSkylineCity<RichText>(
   let annotation = "";
   if (peak !== null) {
     const end = peak.x > area.width * 0.72;
-    annotation = `<line x1="${peak.x.toFixed(1)}" y1="${(peak.y - 3).toFixed(1)}" x2="${peak.x.toFixed(1)}" y2="${(peak.y - 26).toFixed(1)}" stroke="#a8a8ae"/>
-<text x="${peak.x.toFixed(1)}" y="${(peak.y - 34).toFixed(1)}" fill="#f5f5f4" font-family="${SANS}" font-size="19" font-weight="600" paint-order="stroke" stroke="#08080a" stroke-width="6" stroke-linejoin="round" text-anchor="${end ? "end" : "middle"}">${escapeXml(intl.formatMessage({ id: "insights.insightsCards.peakAnnotation", defaultMessage: "{tokens} on {day}" }, { tokens: compactNumber(peak.value, intl), day: peak.label }))}</text>`;
+    annotation = `<line x1="${peak.x.toFixed(1)}" y1="${(peak.y - 3).toFixed(1)}" x2="${peak.x.toFixed(1)}" y2="${(peak.y - 26).toFixed(1)}" stroke="${palette.muted}"/>
+<text x="${peak.x.toFixed(1)}" y="${(peak.y - 34).toFixed(1)}" fill="${palette.ink}" font-family="${SANS}" font-size="19" font-weight="600" paint-order="stroke" stroke="${palette.paper}" stroke-width="6" stroke-linejoin="round" text-anchor="${end ? "end" : "middle"}">${escapeXml(intl.formatMessage({ id: "insights.insightsCards.peakAnnotation", defaultMessage: "{tokens} on {day}" }, { tokens: compactNumber(peak.value, intl), day: peak.label }))}</text>`;
   }
   return `${city}${annotation}`;
 }
@@ -358,6 +412,34 @@ export function shareStats<RichText>(
     .map(([, value, label]) => ({ value, label }));
 }
 
+const wrapNames = (names: readonly string[], limit: number) =>
+  names.reduce<string[]>((lines, name) => {
+    const last = lines.at(-1);
+    if (last !== undefined && `${last} · ${name}`.length <= limit) {
+      lines[lines.length - 1] = `${last} · ${name}`;
+    } else {
+      lines.push(name);
+    }
+    return lines;
+  }, []);
+
+/** The agents a card counted, in as many lines as it has room for; any left over are counted. */
+export function sourceLines(
+  names: readonly string[],
+  limit: number,
+  maxLines: number,
+): readonly string[] {
+  for (let shown = names.length; shown > 1; shown -= 1) {
+    const lines = wrapNames(names.slice(0, shown), limit);
+    const rest = names.length - shown;
+    if (rest > 0) lines[lines.length - 1] += ` +${rest}`;
+    if (lines.length <= maxLines && lines.every((line) => line.length <= limit)) return lines;
+  }
+  return names.length === 0
+    ? []
+    : [names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0]!];
+}
+
 function renderSkyline<RichText>(
   view: ShareCardView,
   options: ShareCardOptions,
@@ -377,7 +459,19 @@ function renderSkyline<RichText>(
   const club = tokenClub(view.tokens, intl);
   const name = options.name.trim();
   const stats = shareStats(view, intl);
-  const city = renderSkylineCity(skylineGrid(view, intl), { width: 1020, height: 640 }, intl);
+  const palette = SKYLINE_PALETTES[options.theme ?? "dark"];
+  const city = renderSkylineCity(
+    skylineGrid(view, intl),
+    { width: 1020, height: 640 },
+    intl,
+    palette,
+  );
+  const sources = sourceLines(view.sources ?? [], 64, 1).map((names) =>
+    intl.formatMessage(
+      { id: "insights.insightsCards.skylineAgents", defaultMessage: "Across {names}" },
+      { names },
+    ),
+  );
   const periodLabel = sharePeriodLabel(view, intl);
   const question = intl.formatMessage(
     PERIOD_QUESTIONS[view.period === "range" ? "all" : view.period],
@@ -385,34 +479,103 @@ function renderSkyline<RichText>(
   );
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SHARE_CARD_WIDTH}" height="${SHARE_CARD_HEIGHT}" viewBox="0 0 ${SHARE_CARD_WIDTH} ${SHARE_CARD_HEIGHT}">
 <defs>${fontStyle(fonts)}
-<radialGradient id="glow" cx="12%" cy="0%" r="75%"><stop offset="0%" stop-color="#3b4cb0" stop-opacity=".34"/><stop offset="100%" stop-color="#3b4cb0" stop-opacity="0"/></radialGradient>
-<radialGradient id="ember" cx="95%" cy="100%" r="55%"><stop offset="0%" stop-color="#d95926" stop-opacity=".14"/><stop offset="100%" stop-color="#d95926" stop-opacity="0"/></radialGradient>
+<radialGradient id="glow" cx="12%" cy="0%" r="75%"><stop offset="0%" stop-color="${palette.glow.color}" stop-opacity="${palette.glow.opacity}"/><stop offset="100%" stop-color="${palette.glow.color}" stop-opacity="0"/></radialGradient>
+<radialGradient id="ember" cx="95%" cy="100%" r="55%"><stop offset="0%" stop-color="${palette.ember.color}" stop-opacity="${palette.ember.opacity}"/><stop offset="100%" stop-color="${palette.ember.color}" stop-opacity="0"/></radialGradient>
 </defs>
-<rect width="100%" height="100%" fill="#08080a"/><rect width="100%" height="100%" fill="url(#glow)"/><rect width="100%" height="100%" fill="url(#ember)"/>
-${nodexMark(64, 56, 40, "#ffffff", "#262626")}
-<text x="114" y="85" font-family="${SANS}" font-size="27" font-weight="600" fill="#f5f5f4">Nodex${name ? `<tspan fill="#6f6f78" font-weight="400"> · ${escapeXml(name)}</tspan>` : ""}</text>
-<text x="1016" y="85" text-anchor="end" font-family="${SANS}" font-size="24" fill="#a8a8ae">${escapeXml(periodLabel)}</text>
-<text x="60" y="262" font-family="${SANS}" font-size="168" font-weight="600" letter-spacing="-8" fill="#f5f5f4">${compactNumber(view.tokens, intl)}</text>
-<text x="64" y="316" font-family="${SANS}" font-size="27" fill="#a8a8ae">${escapeXml(intl.formatMessage({ id: "insights.insightsCards.processedTokens", defaultMessage: "tokens processed" }) + cost)}</text>
-${club === null ? "" : `<text x="1016" y="316" text-anchor="end" font-family="${MONO}" font-size="21" font-weight="600" letter-spacing="1.5" fill="#b6c6ff">${escapeXml(club.toUpperCase())}</text>`}
-<text x="1016" y="262" text-anchor="end" font-family="${SANS}" font-size="30" font-weight="600" fill="#f5f5f4">${escapeXml(agentArchetype(view, intl))}</text>
+<rect width="100%" height="100%" fill="${palette.paper}"/><rect width="100%" height="100%" fill="url(#glow)"/><rect width="100%" height="100%" fill="url(#ember)"/>
+${nodexMark(64, 56, 40, palette.mark.ink, palette.mark.paper)}
+<text x="114" y="85" font-family="${SANS}" font-size="27" font-weight="600" fill="${palette.ink}">Nodex${name ? `<tspan fill="${palette.faint}" font-weight="400"> · ${escapeXml(name)}</tspan>` : ""}</text>
+<text x="1016" y="85" text-anchor="end" font-family="${SANS}" font-size="24" fill="${palette.muted}">${escapeXml(periodLabel)}</text>
+<text x="60" y="262" font-family="${SANS}" font-size="168" font-weight="600" letter-spacing="-8" fill="${palette.ink}">${compactNumber(view.tokens, intl)}</text>
+<text x="64" y="316" font-family="${SANS}" font-size="27" fill="${palette.muted}">${escapeXml(intl.formatMessage({ id: "insights.insightsCards.processedTokens", defaultMessage: "tokens processed" }) + cost)}</text>
+${club === null ? "" : `<text x="1016" y="316" text-anchor="end" font-family="${MONO}" font-size="21" font-weight="600" letter-spacing="1.5" fill="${palette.accent}">${escapeXml(club.toUpperCase())}</text>`}
+<text x="1016" y="262" text-anchor="end" font-family="${SANS}" font-size="30" font-weight="600" fill="${palette.ink}">${escapeXml(agentArchetype(view, intl))}</text>
 <g transform="translate(30 340)">${city}</g>
 ${stats
   .map((stat, index) => {
     const x = 64 + index * 244;
-    return `<text x="${x}" y="1072" font-family="${SANS}" font-size="56" font-weight="600" letter-spacing="-1.5" fill="#f5f5f4">${stat.value}</text>
-<text x="${x}" y="1110" font-family="${SANS}" font-size="21" fill="#6f6f78">${escapeXml(stat.label)}</text>`;
+    return `<text x="${x}" y="1072" font-family="${SANS}" font-size="56" font-weight="600" letter-spacing="-1.5" fill="${palette.ink}">${stat.value}</text>
+<text x="${x}" y="1110" font-family="${SANS}" font-size="21" fill="${palette.faint}">${escapeXml(stat.label)}</text>`;
   })
   .join("\n")}
-<text x="64" y="1234" font-family="${SANS}" font-size="33" font-weight="600" letter-spacing="-.5" fill="#f5f5f4">${escapeXml(question)}</text>
-<text x="64" y="1278" font-family="${MONO}" font-size="23" fill="#a8a8ae">${SHARE_URL}</text>
-<rect x="896" y="1180" width="120" height="120" rx="12" fill="#ffffff"/>${qrCode(906, 1190, 100, "#08080a")}
+${sources
+  .map(
+    (
+      line,
+    ) => `<text x="64" y="1160" font-family="${SANS}" font-size="21" fill="${palette.faint}">${escapeXml(line)}</text>
+`,
+  )
+  .join(
+    "",
+  )}<text x="64" y="1234" font-family="${SANS}" font-size="33" font-weight="600" letter-spacing="-.5" fill="${palette.ink}">${escapeXml(question)}</text>
+<text x="64" y="1278" font-family="${MONO}" font-size="23" fill="${palette.muted}">${SHARE_URL}</text>
+${palette.qr.edge === null ? `<rect x="896" y="1180" width="120" height="120" rx="12" fill="${palette.qr.plate}"/>` : `<rect x="896.5" y="1180.5" width="119" height="119" rx="12" fill="${palette.qr.plate}" stroke="${palette.qr.edge}"/>`}${qrCode(906, 1190, 100, palette.qr.ink)}
 </svg>`;
 }
 
+interface ReceiptStage {
+  readonly top: string;
+  readonly bottom: string;
+  readonly shadow: { readonly color: string; readonly opacity: string; readonly blur: number };
+  readonly paper: string;
+}
+
+/** The till roll is the same paper in either light; only the table it lies on changes. */
+const RECEIPT_STAGES: Readonly<Record<ShareCardTheme, ReceiptStage>> = {
+  dark: {
+    top: "#232a52",
+    bottom: "#08080a",
+    shadow: { color: "#000000", opacity: ".62", blur: 38 },
+    paper: "#f4f2ea",
+  },
+  light: {
+    top: "#e3e7f6",
+    bottom: "#cfd3df",
+    shadow: { color: "#1c2240", opacity: ".22", blur: 34 },
+    paper: "#fdfcf7",
+  },
+};
+
 const RECEIPT_WIDTH = 660;
 const RECEIPT_MODEL_ROWS = 5;
+
+export interface ShareModelRow {
+  readonly label: string;
+  readonly tokens: number;
+  readonly costUsd: number;
+}
+
+/** The models a Receipt itemizes: the busiest few by name, then the rest as one line. */
+export function shareModelRows<RichText>(
+  view: ShareCardView,
+  intl: IntlShape<RichText>,
+): readonly ShareModelRow[] {
+  const shown = view.models.slice(0, RECEIPT_MODEL_ROWS);
+  const rest = view.models.slice(RECEIPT_MODEL_ROWS);
+  return [
+    ...shown.map((model) => ({ label: model.label, tokens: model.tokens, costUsd: model.costUsd })),
+    ...(rest.length === 0
+      ? []
+      : [
+          {
+            label: intl.formatMessage(
+              {
+                id: "insights.insightsCards.otherModels",
+                defaultMessage: "{count, plural, one {# other model} other {# other models}}",
+              },
+              { count: rest.length },
+            ),
+            tokens: rest.reduce((sum, model) => sum + model.tokens, 0),
+            costUsd: rest.reduce((sum, model) => sum + model.costUsd, 0),
+          },
+        ]),
+  ];
+}
 const RECEIPT_MIN_COST = 1;
+
+/** A Receipt line's cost; under a dollar it would only round to a misleading figure. */
+export const receiptCost = <RichText>(costUsd: number, intl: IntlShape<RichText>) =>
+  costUsd >= RECEIPT_MIN_COST ? wholeDollars(costUsd, intl) : "—";
 
 const truncate = (value: string, limit: number) =>
   value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
@@ -427,6 +590,7 @@ function renderReceipt<RichText>(
   const right = RECEIPT_WIDTH - 44;
   const ink = "#17171a";
   const dim = "#6a6962";
+  const stage = RECEIPT_STAGES[options.theme ?? "dark"];
   const showCost = options.showCost && view.costUsd > 0;
   const rows: string[] = [];
   let y = 66;
@@ -457,7 +621,7 @@ function renderReceipt<RichText>(
     advance(14);
   };
 
-  rows.push(nodexMark(center - 25, y - 34, 50, ink, "#f4f2ea"));
+  rows.push(nodexMark(center - 25, y - 34, 50, ink, stage.paper));
   advance(52);
   rows.push(text("NODEX", center, { anchor: "middle", size: 34, weight: 700 }));
   advance(30);
@@ -492,6 +656,26 @@ function renderReceipt<RichText>(
       },
     ),
   );
+  const sources = view.sources ?? [];
+  sourceLines(
+    sources.map((source) => source.toUpperCase()),
+    48,
+    3,
+  ).forEach((names, index) => {
+    advance(26);
+    rows.push(
+      text(
+        index === 0
+          ? intl.formatMessage(
+              { id: "insights.insightsCards.receiptAgents", defaultMessage: "AGENTS: {names}" },
+              { names },
+            )
+          : names,
+        center,
+        { anchor: "middle", fill: dim, size: 18 },
+      ),
+    );
+  });
   const name = options.name.trim();
   if (name) {
     advance(26);
@@ -512,27 +696,7 @@ function renderReceipt<RichText>(
   }
   rule();
 
-  const shown = view.models.slice(0, RECEIPT_MODEL_ROWS);
-  const rest = view.models.slice(RECEIPT_MODEL_ROWS);
-  const modelRows = [
-    ...shown.map((model) => ({ label: model.label, tokens: model.tokens, costUsd: model.costUsd })),
-    ...(rest.length === 0
-      ? []
-      : [
-          {
-            label: intl.formatMessage(
-              {
-                id: "insights.insightsCards.otherModels",
-                defaultMessage: "{count, plural, one {# other model} other {# other models}}",
-              },
-              { count: rest.length },
-            ),
-            tokens: rest.reduce((sum, model) => sum + model.tokens, 0),
-            costUsd: rest.reduce((sum, model) => sum + model.costUsd, 0),
-          },
-        ]),
-  ];
-  for (const model of modelRows) {
+  for (const model of shareModelRows(view, intl)) {
     advance(30);
     rows.push(
       text(truncate(model.label, 24), left),
@@ -540,7 +704,7 @@ function renderReceipt<RichText>(
     );
     if (showCost) {
       rows.push(
-        text(model.costUsd >= RECEIPT_MIN_COST ? wholeDollars(model.costUsd, intl) : "—", right, {
+        text(receiptCost(model.costUsd, intl), right, {
           anchor: "end",
         }),
       );
@@ -566,14 +730,18 @@ function renderReceipt<RichText>(
       `-${wholeDollars(view.cacheSavingsUsd, intl)}`,
     );
   }
+  const total = intl.formatMessage({
+    id: "insights.insightsCards.total",
+    defaultMessage: "TOTAL",
+  });
+  // A bill leads with what it comes to; without a cost the Receipt totals tokens instead.
   if (showCost) {
-    advance(50);
-    line(
-      intl.formatMessage({ id: "insights.insightsCards.total", defaultMessage: "TOTAL" }),
-      wholeDollars(view.costUsd, intl),
-      { size: 36, weight: 700 },
+    advance(78);
+    rows.push(
+      text(total, left, { size: 30, weight: 700 }),
+      text(wholeDollars(view.costUsd, intl), right, { anchor: "end", size: 72, weight: 700 }),
     );
-    advance(28);
+    advance(34);
     rows.push(
       text(
         intl.formatMessage(
@@ -583,20 +751,13 @@ function renderReceipt<RichText>(
           },
           { tokens: compactNumber(view.tokens, intl) },
         ),
-        left,
-        {
-          size: 16,
-          fill: dim,
-        },
+        right,
+        { anchor: "end", size: 16, fill: dim },
       ),
     );
   } else {
     advance(50);
-    line(
-      intl.formatMessage({ id: "insights.insightsCards.total", defaultMessage: "TOTAL" }),
-      compactNumber(view.tokens, intl),
-      { size: 36, weight: 700 },
-    );
+    line(total, compactNumber(view.tokens, intl), { size: 36, weight: 700 });
     advance(28);
     rows.push(
       text(
@@ -712,12 +873,12 @@ function renderReceipt<RichText>(
   const offsetY = (SHARE_CARD_HEIGHT - (height + 10) * scale) / 2;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SHARE_CARD_WIDTH}" height="${SHARE_CARD_HEIGHT}" viewBox="0 0 ${SHARE_CARD_WIDTH} ${SHARE_CARD_HEIGHT}">
 <defs>${fontStyle(fonts)}
-<radialGradient id="stage" cx="50%" cy="0%" r="85%"><stop offset="0%" stop-color="#232a52"/><stop offset="100%" stop-color="#08080a"/></radialGradient>
-<filter id="lift" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="34" stdDeviation="38" flood-color="#000000" flood-opacity=".62"/></filter>
+<radialGradient id="stage" cx="50%" cy="0%" r="85%"><stop offset="0%" stop-color="${stage.top}"/><stop offset="100%" stop-color="${stage.bottom}"/></radialGradient>
+<filter id="lift" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="34" stdDeviation="${stage.shadow.blur}" flood-color="${stage.shadow.color}" flood-opacity="${stage.shadow.opacity}"/></filter>
 </defs>
 <rect width="100%" height="100%" fill="url(#stage)"/>
 <g transform="translate(${offsetX.toFixed(1)} ${offsetY.toFixed(1)}) rotate(-1.4 ${RECEIPT_WIDTH / 2} ${height / 2}) scale(${scale.toFixed(4)})">
-<path d="${edge}" fill="#f4f2ea" filter="url(#lift)"/>
+<path d="${edge}" fill="${stage.paper}" filter="url(#lift)"/>
 ${rows.join("\n")}
 </g>
 </svg>`;
@@ -734,15 +895,32 @@ export function renderShareCard<RichText>(
     : renderReceipt(view, options, intl, fonts);
 }
 
-/** The words that go with a posted card. */
-export function shareMessage<RichText>(view: ShareCardView, intl: IntlShape<RichText>): string {
+/** The words that go with a posted card; the cost joins them only when the card shows it. */
+export function shareMessage<RichText>(
+  view: ShareCardView,
+  intl: IntlShape<RichText>,
+  options: { readonly showCost?: boolean } = {},
+): string {
   const stats = shareStats(view, intl)
     .slice(0, 2)
     .map((stat) => `${stat.value} ${stat.label}`);
-  const lead = intl.formatMessage(
-    { id: "insights.insightsCards.postLead", defaultMessage: "{tokens} tokens with my agents" },
-    { tokens: compactNumber(view.tokens, intl) },
-  );
+  const tokens = compactNumber(view.tokens, intl);
+  const lead =
+    options.showCost && view.costUsd > 0
+      ? intl.formatMessage(
+          {
+            id: "insights.insightsCards.postLeadCost",
+            defaultMessage: "{tokens} tokens with my agents, ≈ {cost} at API list price",
+          },
+          { tokens, cost: wholeDollars(view.costUsd, intl) },
+        )
+      : intl.formatMessage(
+          {
+            id: "insights.insightsCards.postLead",
+            defaultMessage: "{tokens} tokens with my agents",
+          },
+          { tokens },
+        );
   return intl.formatMessage(
     { id: "insights.insightsCards.post", defaultMessage: "{summary}. What's yours? {url}" },
     { summary: [lead, ...stats].join(intl.locale === "zh-CN" ? "。" : ". "), url: SHARE_URL },

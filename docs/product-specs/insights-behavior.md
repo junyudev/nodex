@@ -65,15 +65,19 @@ than counted as empty. Without Core, content numbers show `—` and everything e
 ## Sharing
 
 The page opens on two 4:5 cards side by side, drawn for its period and scope. Under them sit an
-optional `Name on card` and, when there is a cost, a `Show cost` switch; both apply to both cards.
+optional `Name on card`, a `Show cost` switch when there is a cost, and `Dark` or `Light`; all
+apply to both cards, and the name and the style are remembered.
 
 - **Skyline** draws activity as a city, one tower per day, with the tallest labelled. `7 days` draws
   hours instead of days. Empty weeks before the first activity are left out so a short history still
   fills the card.
-- **Receipt** itemizes models, the cache discount and the total on a till receipt, with a barcode whose
-  bars are days.
+- **Receipt** itemizes models and the cache discount on a till receipt, with a barcode whose bars are
+  days. Its headline is the total: what the usage is worth at API list price, or the tokens when cost
+  is hidden.
 
-Both state the period, carry a QR code and `nodex.jyu.app`, and show the strongest non-zero numbers.
+Both state the period, name the agents whose history they counted (Claude Code, Codex), carry a QR
+code and `nodex.jyu.app`, and show the strongest non-zero numbers. Dark cards glow on a night sky;
+light ones are drawn on paper.
 A fixed mark (`1B Club`, `10B Club`, `100B Club`, `1T Club`) and an archetype read from the numbers
 give them something to wear; neither compares anyone with anyone.
 
@@ -82,5 +86,6 @@ if the person types one. Cost can be hidden.
 
 The card on the page is the export: one image, drawn on the device at 2160×2700. Hovering a card
 offers `Copy image`, which puts it on the clipboard, `Save PNG`, which asks where to put it, and
-`Post on X`, which copies it and opens a compose window with the numbers as text, ready to paste.
+`Post on X`, which copies it and opens a compose window with the numbers as text (the cost too
+when the card shows it), ready to paste.
 Nothing is uploaded unless the person posts it.

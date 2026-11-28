@@ -7,7 +7,17 @@ import {
   shortDay,
   type ShareCardView,
 } from "@nodex/insights-cards";
+import { claudeAgent } from "../../../shared/agents/claude";
+import { codexAgent } from "../../../shared/agents/codex";
 import { insightHour, modelFamily, type ModelFamily } from "./insights-format";
+
+/** The agents a card names when it says whose history it counted. */
+const PROVIDER_NAMES: Readonly<
+  Record<InsightsUsageSnapshot["models"][number]["provider"], string>
+> = {
+  claude: claudeAgent.label,
+  codex: codexAgent.label,
+};
 
 export type InsightsPeriod = "7d" | "30d" | "90d" | "12m" | "all";
 
@@ -263,6 +273,7 @@ export function projectInsights(
   for (let day = firstDay; day <= today; day = addDays(day, 1)) byDay.set(day, blank(day));
 
   const models = new Map<string, Mutable<InsightsModelRow>>();
+  const providerTokens = new Map<keyof typeof PROVIDER_NAMES, number>();
   let tokens = 0;
   let cachedTokens = 0;
   let costUsd = 0;
@@ -277,6 +288,7 @@ export function projectInsights(
     costUsd += row.costUsd;
     cacheSavingsUsd += row.cacheSavingsUsd;
     requests += row.requests;
+    providerTokens.set(row.provider, (providerTokens.get(row.provider) ?? 0) + rowTokens);
     const family = modelFamily(row.model);
     const entry = byDay.get(row.day);
     if (entry) {
@@ -398,6 +410,10 @@ export function projectInsights(
     longestStreak,
     biggestDay,
     models: modelRows,
+    sources: [...providerTokens]
+      .filter(([, value]) => value > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([provider]) => PROVIDER_NAMES[provider]),
     peakAgents,
     peakAgentsDay,
     agentTurns,

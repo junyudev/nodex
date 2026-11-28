@@ -1,3 +1,4 @@
+import type { ShareCardTheme } from "@nodex/insights-cards";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { InsightsOrigin } from "../../../shared/insights";
@@ -69,20 +70,32 @@ export const openPostComposer = (text: string) =>
   openExternalUrl(`https://x.com/intent/post?text=${encodeURIComponent(text)}`);
 
 const NAME_KEY = "nodex.insights.card-name";
+const THEME_KEY = "nodex.insights.card-theme";
 
-export function readCardName(): string {
+// What the cards remember is a convenience; a card still works without it.
+function readStored(key: string): string | null {
   try {
-    return window.localStorage.getItem(NAME_KEY) ?? "";
+    return window.localStorage.getItem(key);
   } catch {
-    return "";
+    return null;
   }
 }
 
-export function writeCardName(name: string) {
+function writeStored(key: string, value: string | null) {
   try {
-    if (name.trim()) window.localStorage.setItem(NAME_KEY, name);
-    else window.localStorage.removeItem(NAME_KEY);
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
   } catch {
-    // The name is a convenience; a card still works without remembering it.
+    // Not remembering is fine.
   }
 }
+
+export const readCardName = (): string => readStored(NAME_KEY) ?? "";
+
+export const writeCardName = (name: string) => writeStored(NAME_KEY, name.trim() ? name : null);
+
+export const readCardTheme = (): ShareCardTheme =>
+  readStored(THEME_KEY) === "light" ? "light" : "dark";
+
+export const writeCardTheme = (theme: ShareCardTheme) =>
+  writeStored(THEME_KEY, theme === "light" ? theme : null);

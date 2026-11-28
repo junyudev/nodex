@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import { NodexCompactFramedInput } from "@/components/ui/input";
+import { NodexSegmentedControl } from "@/components/ui/segmented-control";
 import { toast } from "@/components/ui/toast";
 import { darkAppearanceScope } from "@/lib/appearance-scope";
 
@@ -15,6 +16,7 @@ import {
   type ShareCardFonts,
   type ShareCardKind,
   type ShareCardOptions,
+  type ShareCardTheme,
 } from "@nodex/insights-cards";
 import { loadShareCardFonts } from "./insights-card-fonts";
 import type { InsightsView } from "./insights-model";
@@ -22,8 +24,10 @@ import {
   copyCardImage,
   openPostComposer,
   readCardName,
+  readCardTheme,
   saveCardImage,
   writeCardName,
+  writeCardTheme,
 } from "./use-insights";
 
 const CARDS: readonly { readonly kind: ShareCardKind; readonly name: MessageDescriptor }[] = [
@@ -59,6 +63,7 @@ async function shareCard(
   kind: ShareCardKind,
   svg: string,
   action: ShareAction,
+  summary: string,
 ) {
   const intl = getIntl();
   const png = await renderCardPng(svg);
@@ -84,7 +89,7 @@ async function shareCard(
     );
     return;
   }
-  await openPostComposer(shareMessage(view, intl));
+  await openPostComposer(summary);
   toast.info(
     intl.formatMessage({
       id: "insights.insightsShareCards.copiedForPost",
@@ -94,14 +99,17 @@ async function shareCard(
 }
 
 function ShareCard({
-  view,
   name,
+  summary,
+  theme,
   svg,
   disabled,
   onShare,
 }: {
-  readonly view: InsightsView;
   readonly name: string;
+  /** The words posted with the card, which also describe it. */
+  readonly summary: string;
+  readonly theme: ShareCardTheme;
   readonly svg: string | null;
   readonly disabled: boolean;
   readonly onShare: (svg: string, action: ShareAction) => void;
@@ -134,7 +142,10 @@ function ShareCard({
     <figure aria-label={name} className="group relative m-0 min-w-0">
       {/* The page shows the exported picture itself, so what you see is what is shared. */}
       {svg === null ? (
-        <div aria-hidden="true" className="aspect-[4/5] w-full rounded-xl bg-[#08080a]" />
+        <div
+          aria-hidden="true"
+          className={`aspect-[4/5] w-full rounded-xl ${theme === "light" ? "bg-[#f4f3ee]" : "bg-[#08080a]"}`}
+        />
       ) : (
         <img
           src={svgImageSource(svg)}
@@ -143,7 +154,7 @@ function ShareCard({
               id: "insights.insightsShareCards.cardAlt",
               defaultMessage: "{name} card: {summary}",
             },
-            { name, summary: shareMessage(view, intl) },
+            { name, summary },
           )}
           className="block aspect-[4/5] w-full rounded-xl shadow-md ring-[0.5px] ring-(--color-border-default)"
         />
@@ -179,12 +190,14 @@ export function InsightsShareCards({ view }: { readonly view: InsightsView }) {
   const fonts = useShareCardFonts();
   const [showCost, setShowCost] = useState(true);
   const [name, setName] = useState(readCardName);
+  const [theme, setTheme] = useState(readCardTheme);
   const [busy, setBusy] = useState(false);
-  const options: Omit<ShareCardOptions, "kind"> = { showCost, name };
+  const options: Omit<ShareCardOptions, "kind"> = { showCost, name, theme };
+  const summary = shareMessage(view, intl, { showCost });
 
   const share = (kind: ShareCardKind, svg: string, action: ShareAction) => {
     setBusy(true);
-    void shareCard(view, kind, svg, action)
+    void shareCard(view, kind, svg, action, summary)
       .catch(() =>
         toast.danger(
           getIntl().formatMessage({
@@ -212,8 +225,9 @@ export function InsightsShareCards({ view }: { readonly view: InsightsView }) {
         {CARDS.map(({ kind, name: cardName }) => (
           <ShareCard
             key={kind}
-            view={view}
             name={intl.formatMessage(cardName)}
+            summary={summary}
+            theme={theme}
             svg={
               fonts === null ? null : renderShareCard(view, { kind, ...options }, intl, fonts.value)
             }
@@ -253,6 +267,34 @@ export function InsightsShareCards({ view }: { readonly view: InsightsView }) {
             />
           </span>
         ) : null}
+        <NodexSegmentedControl<ShareCardTheme>
+          size="sm"
+          ariaLabel={intl.formatMessage({
+            id: "insights.insightsShareCards.cardStyle",
+            defaultMessage: "Card style",
+          })}
+          value={theme}
+          onChange={(next) => {
+            setTheme(next);
+            writeCardTheme(next);
+          }}
+          options={[
+            {
+              value: "dark",
+              label: intl.formatMessage({
+                id: "insights.insightsShareCards.dark",
+                defaultMessage: "Dark",
+              }),
+            },
+            {
+              value: "light",
+              label: intl.formatMessage({
+                id: "insights.insightsShareCards.light",
+                defaultMessage: "Light",
+              }),
+            },
+          ]}
+        />
         <p className="ml-auto">
           {intl.formatMessage({
             id: "insights.insightsShareCards.localOnly",
