@@ -348,6 +348,7 @@ export function verifyPromotionInputs(
   repo: string,
   dir: string,
   candidate: Awaited<ReturnType<typeof resolvePromotion>>,
+  requireWindowsAuthenticode = false,
 ): void {
   const { identity, runId } = candidate;
   const sha = identity.sourceSha;
@@ -383,7 +384,7 @@ export function verifyPromotionInputs(
   );
   for (const arch of RELEASE_ARCHITECTURES) {
     const path = root(arch === "arm64" ? "macos-arm64" : arch);
-    const manifest = readArchitectureDirectory(path);
+    const manifest = readArchitectureDirectory(path, requireWindowsAuthenticode);
     assertSameBuildIdentity(build, manifest.buildIdentity);
     if (
       manifest.architecture !== arch ||
@@ -414,6 +415,7 @@ export async function preparePromotion(
   dir: string,
   headline: string,
   tag?: string,
+  requireWindowsAuthenticode = false,
 ) {
   const candidate = await resolvePromotion(cwd, repo, headline, tag);
   gh([
@@ -426,7 +428,7 @@ export async function preparePromotion(
     dir,
     ...nightlyArtifacts.flatMap((kind) => ["--name", artifact(kind, candidate.identity.sourceSha)]),
   ]);
-  verifyPromotionInputs(repo, dir, candidate);
+  verifyPromotionInputs(repo, dir, candidate, requireWindowsAuthenticode);
   return candidate;
 }
 

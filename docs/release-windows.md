@@ -341,11 +341,62 @@ uploads available startup diagnostics.
 
 ## Signing, updates, and release promotion
 
-`WindowsSigningPolicy` in `scripts/windows-signing.ts` explicitly disables
-Authenticode while retaining icon and executable metadata editing. Native Windows
-builds use no signing credentials. A future Authenticode implementation belongs
-behind this policy and a protected distribution job; it must preserve locked vendor
-runtime identities. Windows SmartScreen may warn on first download.
+Local packages and Windows validation builds are unsigned. Official x64 builds
+can use SignPath Foundation to Authenticode-sign the finished NSIS installer.
+Electron-builder still edits Nodex executable resources and skips its signing
+pass. The installer payload and its existing vendor signatures are preserved.
+
+With signing enabled, the protected Windows distribution job uploads one
+source-certified installer as a GitHub Actions ZIP artifact. SignPath verifies
+origin, waits for a release approver, and returns the signed setup executable.
+Windows verifies its embedded signature and timestamp and checks the leaf
+certificate's SHA-256 fingerprint. The installed-app probe runs on this installer
+before the architecture artifact is uploaded. The final installer hash and
+verified fingerprint are bound to the package provenance. A failed request,
+missing signature or failed probe blocks distribution. Windows SmartScreen
+can still warn on early downloads while publisher reputation develops.
+
+### Enable SignPath Foundation signing
+
+1. Obtain Foundation approval for the installer and its current bundled
+   components. Install the SignPath GitHub App for this repository. Configure the
+   GitHub.com trusted build system, repository origin and protected `main`. Use
+   project `nodex`, policy `release-signing`, and artifact configuration
+   `windows-x64-installer`. Give the CI identity submitter access to this policy
+   and require a maintainer's manual approval for every signing request.
+2. Create the GitHub environment `windows-authenticode`, restricted to
+   `main`. Store the submitter token as its `SIGNPATH_API_TOKEN` secret and add
+   the `SIGNPATH_ORGANIZATION_ID` and `NODEX_AUTHENTICODE_CERT_SHA256` environment
+   variables. Use the lowercase hexadecimal SHA-256 of the signing leaf
+   certificate's DER bytes. Get the signing certificate independently from
+   SignPath and update this pin when the leaf rotates. Leave the
+   `windows-validation` environment free of signing credentials.
+3. Use this artifact configuration. The workflow supplies the certified
+   display version as `version`.
+
+   ```xml
+   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+     <parameters>
+       <parameter name="version" required="true" />
+     </parameters>
+     <zip-file>
+       <pe-file path="Nodex-${version}-win-x64-setup.exe" product-name="Nodex" product-version="${version}">
+         <authenticode-sign hash-algorithm="sha256" />
+       </pe-file>
+     </zip-file>
+   </artifact-configuration>
+   ```
+
+4. Dispatch **Distribution Rehearsal** on `main` with
+   `windows_authenticode=true` and a source commit containing the signing
+   integration. Approve the signing request within the action's 30-minute wait
+   and check its artifact identity, Windows signer, timestamp and installed
+   probe. Rehearsal exercises production signing without publishing the build.
+5. Set the repository Actions variable `NODEX_WINDOWS_AUTHENTICODE=true` to
+   enable Nightly signing and require a signed Nightly for Stable promotion.
+   Dispatch or wait for an eligible Nightly source that contains the integration.
+   Promote the resulting signed Nightly to Stable. Stable retains the exact
+   Nightly installer bytes, including the signature.
 
 Official assets use the source version:
 

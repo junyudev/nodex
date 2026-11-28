@@ -24,6 +24,7 @@ import type { PreparedElectronBuildManifest } from "../prepared-electron-build";
 import { inspectOfficialAgentSkillsArtifact } from "../official-agent-skills-artifact.mjs";
 import { assertPackagedPtyReceipt } from "../packaged-pty-probe.mjs";
 import { installedPayloadInventory } from "../installed-payload.mjs";
+import { verifyWindowsInstallerSignature, type WindowsSigningPolicy } from "../windows-signing";
 import { runVitePlus } from "../vite-plus-command";
 import { assertSourceIdentity } from "./distribution";
 import { parseArchitectureBuildManifest, type ArchitectureBuildManifest } from "./bundle";
@@ -105,14 +106,19 @@ const toolVersion = (command: string, args: string[]): string => {
   }
 };
 
-/** One native build/package/probe path serves validation, stable releases and Nightly. */
+/** One native build/package/probe path serves validation, Rehearsal and Nightly. */
 export function buildWindowsDistribution(options: {
   readonly architecture: WindowsArchitecture;
   readonly cwd: string;
   readonly identityPath: string;
   readonly outputDirectory: string;
   readonly release: boolean;
+  readonly phase:
+    | { readonly kind: "all" | "package" }
+    | { readonly kind: "verify"; readonly signing: WindowsSigningPolicy };
 }): ArchitectureBuildManifest | undefined {
+  if (options.phase.kind !== "all" && !options.release)
+    throw new Error("Split Windows packaging is reserved for official distribution.");
   if (options.release && options.architecture !== "x64")
     throw new Error("Official Windows distribution requires x64.");
   if (process.platform !== "win32" || process.arch !== options.architecture)
@@ -131,18 +137,32 @@ export function buildWindowsDistribution(options: {
     CSC_IDENTITY_AUTO_DISCOVERY: "false",
   };
   const task = (...args: string[]): void => runVitePlus(args, { cwd, env });
-  task("run", "build");
-  task("run", `stage:native-runtime:win:${options.architecture}`);
-  task("run", "verify:runtime:win", ".generated/codex-runtime", options.architecture);
-  task(
-    "run",
-    "verify:runtime:win",
-    `.generated/node-runtime/win32-${options.architecture}`,
-    options.architecture,
+  if (options.phase.kind !== "verify") {
+    task("run", "build");
+    task("run", `stage:native-runtime:win:${options.architecture}`);
+    task("run", "verify:runtime:win", ".generated/codex-runtime", options.architecture);
+    task(
+      "run",
+      "verify:runtime:win",
+      `.generated/node-runtime/win32-${options.architecture}`,
+      options.architecture,
+    );
+    task("run", "package:win:prepared", options.architecture);
+    assertSourceIdentity(cwd, identity);
+  }
+  const packagedInstaller = join(
+    cwd,
+    "dist",
+    `Nodex-${identity.version}-win-${options.architecture}-setup.exe`,
   );
-  task("run", "package:win:prepared", options.architecture);
-  assertSourceIdentity(cwd, identity);
+  if (options.phase.kind === "package") return;
 
+  const authenticode = verifyWindowsInstallerSignature(
+    packagedInstaller,
+    options.phase.kind === "verify" ? options.phase.signing : { kind: "unsigned" },
+  );
+  const verifiedInstallerSha256 =
+    authenticode.kind === "authenticode" ? sha256File(packagedInstaller) : undefined;
   const appRoot = join(
     cwd,
     "dist",
@@ -216,20 +236,20 @@ export function buildWindowsDistribution(options: {
   mkdirSync(output, { recursive: true });
   const name = windowsInstallerName(identity.version, options.architecture);
   const installerPath = join(output, name);
-  copyFileSync(
-    join(cwd, "dist", `Nodex-${identity.version}-win-${options.architecture}-setup.exe`),
-    installerPath,
-  );
+  copyFileSync(packagedInstaller, installerPath);
   copyFileSync(probePath, join(output, "installed-app-probe.json"));
   // Standalone verification artifacts do not enter the application release bundle.
   if (options.architecture === "arm64") return;
+  const installerSha256 = sha256File(installerPath);
+  if (verifiedInstallerSha256 && installerSha256 !== verifiedInstallerSha256)
+    throw new Error("Windows installer changed after signature verification and before recording.");
   const architecture = "windows-x64";
   const artifacts = [
     {
       architecture,
       name,
       bytes: statSync(installerPath).size,
-      sha256: sha256File(installerPath),
+      sha256: installerSha256,
       role: "windows-installer" as const,
     },
   ];
@@ -249,6 +269,7 @@ export function buildWindowsDistribution(options: {
         architecture,
         buildIdentity: identity,
         updates,
+        authenticode,
         runtimeLocks,
         desktopTools,
         artifacts,

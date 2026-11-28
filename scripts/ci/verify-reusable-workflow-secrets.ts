@@ -11,9 +11,14 @@ import {
 import type { UnknownRecord } from "./github-workflow-files";
 
 const secretReferencePattern = /secrets\.([A-Za-z_][A-Za-z0-9_]*)/gu;
+const windowsAuthenticodeEnvironment =
+  "${{ inputs.authenticode && 'windows-authenticode' || 'windows-validation' }}";
+const signPathToken = "SIGNPATH_API_TOKEN";
+
 const environmentSecretContracts = new Map<string, ReadonlySet<string>>([
   ["sparkle-feed-finalization", new Set(["SPARKLE_ED25519_PRIVATE_KEY"])],
   ["release-publish", new Set(["NODEX_RELEASE_TAG_TOKEN"])],
+  ["windows-authenticode", new Set([signPathToken])],
 ]);
 const environmentSecretNames = new Set(
   [...environmentSecretContracts.values()].flatMap((names) => [...names]),
@@ -161,10 +166,25 @@ export const verifyDeclaredReferences = (filePath: string, workflow: UnknownReco
   }
   for (const [jobName, rawJob] of Object.entries(jobs)) {
     const job = requireRecord(rawJob, `${jobName} job`);
-    const allowed = environmentSecretContracts.get(environmentName(job) ?? "") ?? new Set<string>();
+    const environment = environmentName(job);
+    // GitHub resolves the token in the runner job's environment without a caller mapping.
+    const localSignPathEnvironment =
+      reusable &&
+      path.basename(filePath) === "_windows-distribution.yml" &&
+      jobName === "installer" &&
+      environment === windowsAuthenticodeEnvironment;
+    const allowed =
+      environmentSecretContracts.get(
+        localSignPathEnvironment ? "windows-authenticode" : (environment ?? ""),
+      ) ?? new Set<string>();
     const references = [...referencedSecrets(job)];
     const reusableEnvironmentSecrets = references
-      .filter((name) => reusable && environmentSecretNames.has(name))
+      .filter(
+        (name) =>
+          reusable &&
+          environmentSecretNames.has(name) &&
+          !(localSignPathEnvironment && name === signPathToken),
+      )
       .sort();
     if (reusableEnvironmentSecrets.length > 0) {
       throw new Error(

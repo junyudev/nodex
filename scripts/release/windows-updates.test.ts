@@ -11,12 +11,20 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-import { assembleReleaseBundle, parseReleaseBundleManifest } from "./bundle";
+import {
+  assembleReleaseBundle,
+  parseReleaseBundleManifest,
+  readArchitectureDirectory,
+} from "./bundle";
 import { releaseAssetPaths } from "./github-release";
 import { projectReleaseAppcasts, verifyPublishedAppcasts } from "./pages";
 import { sha256File } from "./model";
 import { parseWindowsArchitectureUpdateManifest } from "./windows-updates";
-import { fixtureIdentity, makeReleaseFixture } from "./windows-release.fixture";
+import {
+  fixtureIdentity,
+  makeReleaseFixture,
+  makeWindowsReleaseFixture,
+} from "./windows-release.fixture";
 import { RELEASE_ARCHITECTURES, releaseBuildEnvironment } from "./targets";
 
 let root = "";
@@ -29,6 +37,29 @@ afterEach(() => {
 });
 const read = (file: string) => JSON.parse(readFileSync(file, "utf8"));
 const write = (file: string, value: unknown) => writeFileSync(file, JSON.stringify(value));
+
+test("signed Windows promotion requires verified Authenticode evidence bound to the build", () => {
+  const { windowsX64Directory } = makeWindowsReleaseFixture(root, fixtureIdentity("nightly"));
+  const provenancePath = join(windowsX64Directory, "windows-build-provenance.json");
+  const manifestPath = join(windowsX64Directory, "architecture-build.json");
+  const provenance = read(provenancePath);
+  const manifest = read(manifestPath);
+
+  expect(readArchitectureDirectory(windowsX64Directory).architecture).toBe("windows-x64");
+  expect(() => readArchitectureDirectory(windowsX64Directory, true)).toThrow(
+    "requires a Nightly with verified Windows Authenticode",
+  );
+
+  write(provenancePath, {
+    ...provenance,
+    authenticode: { kind: "authenticode", certificateSha256: "a".repeat(64) },
+  });
+  expect(() => readArchitectureDirectory(windowsX64Directory, true)).toThrow(
+    "provenance does not match",
+  );
+  write(manifestPath, { ...manifest, packageProvenanceSha256: sha256File(provenancePath) });
+  expect(readArchitectureDirectory(windowsX64Directory, true).architecture).toBe("windows-x64");
+});
 
 test.each(["stable", "nightly"] as const)(
   "%s bundles include the signed Windows x64 installer and isolated feeds",
