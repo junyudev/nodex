@@ -4,12 +4,14 @@ import { lazy, Suspense, useRef, useState, type ReactElement } from "react";
 import { ClockIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexDialog, NodexDialogContent } from "@/components/ui/dialog";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
-import { chatSnoozePresets, formatChatSnoozeTime } from "@/lib/chat-snooze";
+import { chatSnoozePresets, describeChatSnooze, formatChatSnoozeTime } from "@/lib/chat-snooze";
+import { cn } from "@/lib/utils";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal, type ModalCloseProps } from "@/lib/modal-registry";
 
@@ -66,7 +68,7 @@ export function SnoozeMenuItems({
  * holds the menu never receives the dialog's clicks; closing it returns focus to that trigger.
  */
 export function useCustomSnoozeHandoff(onChoose: (snoozedUntil: string) => void) {
-  const appHandle = useScopeHandle(appScope);
+  const openCustomSnooze = useOpenCustomSnooze(onChoose);
   const requested = useRef(false);
   return {
     /** Custom was chosen; the dialog opens as the menu finishes closing. */
@@ -82,13 +84,21 @@ export function useCustomSnoozeHandoff(onChoose: (snoozedUntil: string) => void)
       requested.current = false;
       requestAnimationFrame(() => {
         const focused = document.activeElement;
-        openModal(appHandle, CustomSnoozeDialog, {
-          onChoose,
-          returnFocus: focused instanceof HTMLElement ? focused : null,
-        });
+        openCustomSnooze(focused instanceof HTMLElement ? focused : null);
       });
       return true;
     },
+  };
+}
+
+/**
+ * Opens the custom snooze dialog from the window's modal host, over whatever offered it; closing
+ * it returns focus to `returnFocus` while that is still on screen.
+ */
+export function useOpenCustomSnooze(onChoose: (snoozedUntil: string) => void) {
+  const appHandle = useScopeHandle(appScope);
+  return (returnFocus: HTMLElement | null) => {
+    openModal(appHandle, CustomSnoozeDialog, { onChoose, returnFocus });
   };
 }
 
@@ -123,6 +133,117 @@ function CustomSnoozeDialog({
         </Suspense>
       </NodexDialogContent>
     </NodexDialog>
+  );
+}
+
+const SNOOZE_STRIP_BUTTON_CLASS =
+  "flex h-5 shrink-0 cursor-interaction items-center justify-center rounded-md text-sm leading-5 whitespace-nowrap hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:bg-token-list-hover-background focus-visible:text-token-foreground focus-visible:outline-none";
+
+/**
+ * The snooze choices laid out on one line, for a surface that offers them without a menu, read at
+ * `now`. A clock leads and opens Custom; each preset follows by its brief name and says, on hover,
+ * when it brings the item back. While a snooze is set, the line says when the item returns and
+ * offers Wake instead. Without `onChoose` the line only says when a set snooze returns.
+ *
+ * It lines up with facts listed beside 16px icons: the clock centers on their icon column and the
+ * text starts where theirs does, once the caller bleeds the line by `-mx-1` for hover padding.
+ */
+export function SnoozeStrip({
+  now,
+  current,
+  onChoose,
+  onCustom,
+  onWake,
+  className,
+}: {
+  readonly now: Date;
+  readonly current?: string | null;
+  readonly onChoose?: (snoozedUntil: string) => void;
+  /** Custom was chosen; the caller opens the picker, usually with `useOpenCustomSnooze`. */
+  readonly onCustom?: () => void;
+  /** Ends a snooze early; offered while one is set. */
+  readonly onWake?: () => void;
+  readonly className?: string;
+}) {
+  const intl = useIntl();
+  if (!current && !onChoose) return null;
+  const customLabel = intl.formatMessage({
+    id: "shared.snoozeMenu.snoozeUntilEllipsis",
+    defaultMessage: "Snooze until…",
+  });
+  const clock =
+    onChoose && onCustom ? (
+      <NodexTooltip tooltipContent={customLabel} side="bottom">
+        <button
+          type="button"
+          aria-label={customLabel}
+          className={cn(SNOOZE_STRIP_BUTTON_CLASS, "ml-0.5 w-5 text-token-description-foreground")}
+          data-snooze-strip-custom=""
+          onPointerEnter={() => void preloadCustomSnoozeForm()}
+          onFocus={() => void preloadCustomSnoozeForm()}
+          onClick={onCustom}
+        >
+          <ClockIcon className="icon-xs" />
+        </button>
+      </NodexTooltip>
+    ) : (
+      <span
+        aria-hidden="true"
+        className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-token-description-foreground"
+      >
+        <ClockIcon className="icon-xs" />
+      </span>
+    );
+  if (current) {
+    return (
+      <div className={cn("flex h-6 min-w-0 items-center", className)} data-snooze-strip="snoozed">
+        {clock}
+        <span className="min-w-0 flex-1 truncate pl-1 text-sm leading-5 text-token-foreground">
+          {describeChatSnooze(current, now, intl.locale)}
+        </span>
+        {onWake ? (
+          <button
+            type="button"
+            className={cn(SNOOZE_STRIP_BUTTON_CLASS, "ml-2 px-1 text-token-text-secondary")}
+            data-snooze-strip-wake=""
+            onClick={onWake}
+          >
+            {intl.formatMessage({ id: "shared.snoozeMenu.wake", defaultMessage: "Wake" })}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div
+      role="group"
+      aria-label={intl.formatMessage({ id: "shared.snoozeMenu.snooze", defaultMessage: "Snooze" })}
+      className={cn("flex h-6 min-w-0 items-center", className)}
+      data-snooze-strip="choices"
+    >
+      {clock}
+      <div className="flex min-w-0 items-center gap-1.5">
+        {chatSnoozePresets(now, intl.locale).map((preset) => (
+          <NodexTooltip
+            key={preset.id}
+            side="bottom"
+            tooltipContent={intl.formatMessage(
+              { id: "shared.snoozeMenu.snoozeUntil", defaultMessage: "Snooze until {time}" },
+              { time: formatChatSnoozeTime(preset.snoozedUntil, now, intl.locale) },
+            )}
+          >
+            <button
+              type="button"
+              className={cn(SNOOZE_STRIP_BUTTON_CLASS, "px-1 text-token-text-secondary")}
+              data-snooze-strip-preset={preset.id}
+              onClick={() => onChoose?.(preset.snoozedUntil)}
+            >
+              {preset.brief}
+            </button>
+          </NodexTooltip>
+        ))}
+      </div>
+    </div>
   );
 }
 

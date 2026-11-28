@@ -13,6 +13,8 @@ export interface ChatSnoozePreset {
   readonly label: string;
   /** The preset's name alone, for a menu that shows the time beside it: "Tomorrow". */
   readonly name: string;
+  /** The preset's shortest name, for a row of choices that names each time on hover: "1 hour". */
+  readonly brief: string;
   /** When the chat comes back, as that menu shows it: "9:00 AM", "Mon 9:00 AM". */
   readonly when: string;
   /** The instant the chat becomes unread again, as an ISO 8601 UTC string. */
@@ -178,6 +180,21 @@ function presetName(id: ChatSnoozePresetId, at: Date, now: Date): string {
   }
 }
 
+function presetBrief(id: ChatSnoozePresetId, at: Date, now: Date): string {
+  switch (id) {
+    case "in-1-hour":
+      return getIntl().formatMessage({ id: "lib.chatSnooze.oneHour", defaultMessage: "1 hour" });
+    case "in-3-hours":
+      return getIntl().formatMessage({
+        id: "lib.chatSnooze.threeHours",
+        defaultMessage: "3 hours",
+      });
+    case "next-morning":
+    case "next-week":
+      return presetName(id, at, now);
+  }
+}
+
 /** The presets offered at `now`, earliest first; a preset landing on an earlier one's time is dropped. */
 export function chatSnoozePresets(now: Date, locale?: string): readonly ChatSnoozePreset[] {
   const seen = new Set<number>();
@@ -190,6 +207,7 @@ export function chatSnoozePresets(now: Date, locale?: string): readonly ChatSnoo
         id,
         label: presetLabel(id, at, now, locale),
         name: presetName(id, at, now),
+        brief: presetBrief(id, at, now),
         when: id === "next-week" ? formatWeekdayTime(at, locale) : formatTime(at, locale),
         snoozedUntil: at.toISOString(),
       },

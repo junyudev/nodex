@@ -14,6 +14,7 @@ import {
   updateComposerPromptDrafts,
 } from "@/features/local-conversation/view/composer/composer-draft-state";
 import type { CodexSidebarThreadItem } from "@/lib/types";
+import { chatSnoozePresetTime } from "@/lib/chat-snooze";
 import { CodexSidebarSection, CodexSidebarThreadRow } from "./codex-sidebar";
 import { createAgentRuntimeActivityStore } from "@/lib/agent-runtime-session-activity";
 import { queryKeys } from "@/lib/query-keys";
@@ -189,6 +190,73 @@ describe("codex sidebar thread hover card", () => {
       // Saved drafts outlive the store; leave none behind for other tests.
       await writeDraft("");
     }
+  });
+
+  test("snoozes an open chat in one click from its card, and wakes a snoozed one", async () => {
+    const snoozed: [string, string][] = [];
+    const woken: string[] = [];
+    const openChanges: boolean[] = [];
+    const renderRow = (item: CodexSidebarThreadItem) =>
+      render(
+        <NodexHoverCardProvider>
+          <NodexTooltipProvider>
+            <CodexSidebarThreadRow
+              item={item}
+              active={false}
+              hoverCardOpen
+              onHoverCardOpenChange={(open) => openChanges.push(open)}
+              onSelect={() => {}}
+              onSnooze={(chat, until) => {
+                snoozed.push([chat.key, until]);
+              }}
+              onWake={(chat) => {
+                woken.push(chat.key);
+              }}
+            />
+          </NodexTooltipProvider>
+        </NodexHoverCardProvider>,
+      );
+    const footer = () =>
+      document.body.querySelector<HTMLElement>(
+        '[role="dialog"] [data-app-action-sidebar-thread-hover-card-snooze]',
+      );
+
+    let view!: ReturnType<typeof renderRow>;
+    await act(async () => {
+      view = renderRow(makeThreadItem());
+    });
+    const nextWeek = footer()!.querySelector<HTMLButtonElement>(
+      'button[data-snooze-strip-preset="next-week"]',
+    )!;
+    expect(textContent(nextWeek)).toBe("Next week");
+    await act(async () => {
+      fireEvent.click(nextWeek);
+      await Promise.resolve();
+    });
+    expect(snoozed).toEqual([["local:test-thread", chatSnoozePresetTime("next-week", new Date())]]);
+    // The chat leaves for its lane, so its card steps aside with it.
+    expect(openChanges).toEqual([false]);
+    view.unmount();
+
+    // A pinned chat stays put, so its card offers no snooze, as its row offers none.
+    await act(async () => {
+      view = renderRow(makeThreadItem({ pinned: true }));
+    });
+    expect(footer()).toBeNull();
+    view.unmount();
+
+    const snoozedUntil = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
+    await act(async () => {
+      view = renderRow(makeThreadItem({ snoozedUntil }));
+    });
+    expect(footer()!.querySelector("[data-snooze-strip-preset]")).toBeNull();
+    expect(textContent(footer()!)).toMatch(/^Snoozed until (today|tomorrow) at .+Wake$/);
+    await act(async () => {
+      fireEvent.click(footer()!.querySelector<HTMLButtonElement>("[data-snooze-strip-wake]")!);
+      await Promise.resolve();
+    });
+    expect(woken).toEqual(["local:test-thread"]);
+    expect(snoozed).toHaveLength(1);
   });
 
   test("marks an unread chat beside its age", async () => {
@@ -903,7 +971,7 @@ describe("codex sidebar linked Page status", () => {
     expect(selected).toBe(0);
   });
 
-  test("shows New page at the bottom only when resolved with no linked Page, and creates without selecting the row", async () => {
+  test("offers New page in the Page's place only when resolved with no linked Page, and creates without selecting the row", async () => {
     const unresolved = await renderLinkedRow({
       page: null,
       resolved: false,

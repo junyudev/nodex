@@ -112,7 +112,7 @@ import {
 import type { LinkedPageStatusPort } from "@/lib/linked-page-status-runtime";
 import type { DatabasePropertyOption } from "../../../shared/database-kernel";
 import { StatusIcon } from "@/lib/status-presentation";
-import { SnoozeMenu } from "@/components/shared/snooze-menu";
+import { SnoozeMenu, SnoozeStrip, useOpenCustomSnooze } from "@/components/shared/snooze-menu";
 import type { PageTurnPhrase } from "@/lib/page-turn-phrase";
 import { PAGE_TURN_TONE_CLASS_NAME } from "./page-turn-chip";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
@@ -122,7 +122,7 @@ import {
   resolveSidebarRowGlyph,
   SIDEBAR_GROUP_STATUS_LABELS,
 } from "@/lib/sidebar-status";
-import { describeChatSnooze, describeChatSnoozeAbsolute } from "@/lib/chat-snooze";
+import { describeChatSnoozeAbsolute } from "@/lib/chat-snooze";
 import { useSessionComposerDraftExcerpt } from "@/features/local-conversation/view/composer/composer-draft-state";
 import { cn } from "@/lib/utils";
 import {
@@ -1667,15 +1667,43 @@ function CodexSidebarThreadHoverCardMetadataRow({
   );
 }
 
-/** Reads the clock when the card opens, so "today" and "tomorrow" are relative to that moment. */
-function CodexSidebarThreadHoverCardSnooze({ snoozedUntil }: { snoozedUntil: string }) {
-  const intl = useIntl();
+/**
+ * The card's last word on the chat: when it comes back. An open chat offers each snooze time in
+ * one click, since the card is where its person reads the chat and decides it can wait; a snoozed
+ * chat says when it returns and offers Wake. The clock reads when the card opens, so "in 1 hour"
+ * and "tomorrow" count from that moment.
+ */
+function CodexSidebarThreadHoverCardSnooze({
+  snoozedUntil,
+  onSnooze,
+  onWake,
+  onDismiss,
+}: {
+  snoozedUntil: string | null;
+  onSnooze?: (snoozedUntil: string) => void;
+  onWake?: () => void;
+  onDismiss?: () => void;
+}) {
   const [openedAt] = useState(Date.now);
+  const openCustomSnooze = useOpenCustomSnooze((until) => onSnooze?.(until));
+  if (!snoozedUntil && !onSnooze) return null;
   return (
-    <div data-app-action-sidebar-thread-hover-card-snooze="">
-      <CodexSidebarThreadHoverCardMetadataRow
-        icon={<ClockIcon className="icon-2xs" />}
-        label={describeChatSnooze(snoozedUntil, new Date(openedAt), intl.locale)}
+    <div
+      className="mt-0.5 border-t-[0.5px] border-token-border pt-1"
+      data-app-action-sidebar-thread-hover-card-snooze=""
+      {...CODEX_SIDEBAR_ROW_ACTIONS_BOUNDARY}
+    >
+      <SnoozeStrip
+        className="-mx-1"
+        now={new Date(openedAt)}
+        current={snoozedUntil}
+        onChoose={onSnooze}
+        onWake={onWake}
+        // The picker opens over the window; the card it came from steps aside first.
+        onCustom={() => {
+          onDismiss?.();
+          openCustomSnooze(null);
+        }}
       />
     </div>
   );
@@ -1940,6 +1968,8 @@ function CodexSidebarThreadHoverCard({
   onOpenLinkedPage,
   onCreateLinkedPage,
   onStatusPickerOpenChange,
+  onSnooze,
+  onWake,
   onDismiss,
 }: {
   item: CodexSidebarThreadItem;
@@ -1959,6 +1989,10 @@ function CodexSidebarThreadHoverCard({
   onOpenLinkedPage?: (page: SessionLinkedPage) => void;
   onCreateLinkedPage?: () => void;
   onStatusPickerOpenChange?: (open: boolean) => void;
+  /** Sets the chat aside until a time; offered where its row offers Snooze. */
+  onSnooze?: (snoozedUntil: string) => void;
+  /** Ends the chat's snooze early. */
+  onWake?: () => void;
   onDismiss?: () => void;
 }) {
   const intl = useIntl();
@@ -2055,9 +2089,6 @@ function CodexSidebarThreadHoverCard({
           />
         </div>
       ) : null}
-      {item.snoozedUntil ? (
-        <CodexSidebarThreadHoverCardSnooze snoozedUntil={item.snoozedUntil} />
-      ) : null}
       {resolvedProjectLabel && onOpenProject ? (
         <button
           type="button"
@@ -2114,32 +2145,37 @@ function CodexSidebarThreadHoverCard({
           onStatusPickerOpenChange={handleStatusPickerOpenChange}
         />
       ) : linkedPageResolved && onCreateLinkedPage ? (
-        <div className="mt-0.5 border-t-[0.5px] border-token-border pt-1">
-          <button
-            type="button"
-            className="-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 cursor-interaction items-center gap-1.5 rounded-md px-1 text-left text-sm leading-5 text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:bg-token-list-hover-background focus-visible:text-token-foreground focus-visible:outline-none"
-            data-app-action-sidebar-thread-hover-card-new-page=""
-            onPointerDown={stopCodexSidebarRowActionPropagation}
-            onMouseDown={stopCodexSidebarRowActionPropagation}
-            onKeyDown={stopCodexSidebarRowActionPropagation}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onCreateLinkedPage();
-            }}
-          >
-            <span className="flex h-5 w-4 shrink-0 items-center justify-center">
-              <NewPageIcon className="icon-xs" />
-            </span>
-            <span className="min-w-0 flex-1 truncate">
-              {intl.formatMessage({
-                id: "workbench.codexSidebar.newPage",
-                defaultMessage: "New page",
-              })}
-            </span>
-          </button>
-        </div>
+        // With no Page yet, the Page's place offers one, quieter than the facts around it.
+        <button
+          type="button"
+          className="-mx-1 flex h-5 min-w-0 cursor-interaction items-center gap-1.5 rounded-md px-1 text-left text-sm leading-5 text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:bg-token-list-hover-background focus-visible:text-token-foreground focus-visible:outline-none"
+          data-app-action-sidebar-thread-hover-card-new-page=""
+          onPointerDown={stopCodexSidebarRowActionPropagation}
+          onMouseDown={stopCodexSidebarRowActionPropagation}
+          onKeyDown={stopCodexSidebarRowActionPropagation}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onCreateLinkedPage();
+          }}
+        >
+          <span className="flex h-5 w-4 shrink-0 items-center justify-center">
+            <NewPageIcon className="icon-xs" />
+          </span>
+          <span className="min-w-0 flex-1 truncate">
+            {intl.formatMessage({
+              id: "workbench.codexSidebar.newPage",
+              defaultMessage: "New page",
+            })}
+          </span>
+        </button>
       ) : null}
+      <CodexSidebarThreadHoverCardSnooze
+        snoozedUntil={item.snoozedUntil}
+        onSnooze={onSnooze}
+        onWake={onWake}
+        onDismiss={onDismiss}
+      />
     </div>
   );
 }
@@ -2485,10 +2521,11 @@ function CodexSidebarThreadRowView({
   const statusDescriptionId = useId();
   const titleId = useId();
   const showRestingPinnedButton = showPinSlot && item.pinned;
-  // An open chat offers Snooze where an unpinned row used to offer Pin; pinning lives in its menu.
-  const showSnoozeSlot = !item.disabled && Boolean(onSnooze) && !item.pinned && !settled;
-  const showRailPinSlot = showPinSlot && !showRestingPinnedButton && !showSnoozeSlot;
-  const showActionRail = showRailPinSlot || showSnoozeSlot || showEndAction;
+  // An open chat offers Snooze, on its row where an unpinned row used to offer Pin and in its hover
+  // card; pinning lives in its menu.
+  const snoozable = !item.disabled && Boolean(onSnooze) && !item.pinned && !settled;
+  const showRailPinSlot = showPinSlot && !showRestingPinnedButton && !snoozable;
+  const showActionRail = showRailPinSlot || snoozable || showEndAction;
   const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false);
   const actionsOpen = contextMenuOpen || snoozeMenuOpen;
   // What rests at the row's end makes way for its actions.
@@ -2811,7 +2848,7 @@ function CodexSidebarThreadRowView({
                 </SidebarRowActionTooltip>
               </div>
             ) : null}
-            {showSnoozeSlot ? (
+            {snoozable ? (
               <SnoozeMenu
                 label={intl.formatMessage({
                   id: "workbench.codexSidebar.snoozeChat",
@@ -2946,6 +2983,22 @@ function CodexSidebarThreadRowView({
                 : undefined
             }
             onStatusPickerOpenChange={setStatusPickerOpen}
+            onSnooze={
+              snoozable
+                ? (snoozedUntil) => {
+                    handleHoverCardOpenChange(false);
+                    void onSnooze?.(item, snoozedUntil);
+                  }
+                : undefined
+            }
+            onWake={
+              snoozable && item.snoozedUntil && onWake
+                ? () => {
+                    handleHoverCardOpenChange(false);
+                    void onWake(item);
+                  }
+                : undefined
+            }
             onDismiss={() => handleHoverCardOpenChange(false)}
           />
         }
