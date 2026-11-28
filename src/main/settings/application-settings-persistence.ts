@@ -1,7 +1,7 @@
 import {
   DEFAULT_MINI_SETTINGS,
   MINI_RESTING_MODES,
-  type MiniAnchor,
+  type MiniPoint,
   type MiniResting,
   type MiniSettings,
 } from "../../shared/mini";
@@ -174,19 +174,20 @@ import {
 
 export interface MiniPlacement {
   readonly displayId: number;
-  readonly anchor: MiniAnchor;
+  /** The dock's center relative to this display's work area. */
+  readonly dock: MiniPoint;
 }
 
 export interface MiniPlacementSettings {
   readonly lastDisplayId: number | null;
-  readonly anchors: Readonly<Record<string, MiniAnchor>>;
+  readonly docks: Readonly<Record<string, MiniPoint>>;
 }
 
 interface ServerTomlConfig {
   mini_shown?: boolean;
   mini_resting?: MiniResting;
   mini_last_display_id?: number;
-  mini_display_anchors?: Record<string, MiniAnchor>;
+  mini_display_docks?: Record<string, MiniPoint>;
   home?: string;
   codex_home?: string;
   codex_executable?: string;
@@ -1705,25 +1706,19 @@ export function getMiniSettings(source: ApplicationSettingsDocumentSource): Mini
 export function getMiniPlacementSettings(
   source: ApplicationSettingsDocumentSource,
 ): MiniPlacementSettings {
-  const { mini_last_display_id, mini_display_anchors } = loadProfileServerTomlConfig(source);
-  const anchors: Record<string, MiniAnchor> = {};
-  for (const [id, anchor] of Object.entries(mini_display_anchors ?? {})) {
+  const { mini_last_display_id, mini_display_docks } = loadProfileServerTomlConfig(source);
+  const docks: Record<string, MiniPoint> = {};
+  for (const [id, dock] of Object.entries(mini_display_docks ?? {})) {
     if (!/^-?\d+$/.test(id)) continue;
-    if (anchor?.vertical !== "top" && anchor?.vertical !== "bottom") continue;
-    if (
-      anchor.horizontal !== "left" &&
-      anchor.horizontal !== "center" &&
-      anchor.horizontal !== "right"
-    )
-      continue;
-    anchors[id] = { vertical: anchor.vertical, horizontal: anchor.horizontal };
+    if (!Number.isFinite(dock?.x) || !Number.isFinite(dock?.y)) continue;
+    docks[id] = { x: dock.x, y: dock.y };
   }
   return {
     lastDisplayId:
       typeof mini_last_display_id === "number" && Number.isSafeInteger(mini_last_display_id)
         ? mini_last_display_id
         : null,
-    anchors,
+    docks,
   };
 }
 
@@ -1740,14 +1735,14 @@ export function updateMiniSettings(
 }
 
 export function updateMiniPlacement(
-  { displayId, anchor }: MiniPlacement,
+  { displayId, dock }: MiniPlacement,
   source: ApplicationSettingsDocumentSource,
 ): void {
-  const { anchors } = getMiniPlacementSettings(source);
+  const { docks } = getMiniPlacementSettings(source);
   writeProfileServerTomlConfig(source, {
     ...loadProfileServerTomlConfig(source),
     mini_last_display_id: displayId,
-    mini_display_anchors: { ...anchors, [displayId]: anchor },
+    mini_display_docks: { ...docks, [displayId]: dock },
   });
 }
 

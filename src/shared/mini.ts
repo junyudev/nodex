@@ -22,9 +22,17 @@ export const MINI_COMPANION_EVENT_CHANNEL = "mini:companion:event";
 /** Main → panel renderer: the chats with a live preview, and whether previews dock beside Mini. */
 export const MINI_PREVIEWS_CHANNEL = "mini:previews";
 
-export interface MiniRect {
+export const MINI_DOCK_HEIGHT = 40;
+
+/** Width of the pill with its optional dictation button, in DIP. */
+export const miniDockWidth = (canDictate: boolean): number => (canDictate ? 115 : 81);
+
+export interface MiniPoint {
   readonly x: number;
   readonly y: number;
+}
+
+export interface MiniRect extends MiniPoint {
   readonly width: number;
   readonly height: number;
 }
@@ -53,8 +61,8 @@ export interface MiniPreviews {
 export const NO_MINI_PREVIEWS: MiniPreviews = { chats: {}, docked: false };
 
 /**
- * Where the panel sits on its display. Its content grows away from that edge: cards stack above a
- * dock at the bottom, below a dock at the top.
+ * The region of the display containing Mini's dock. Cards grow away from the nearer
+ * vertical edge, and the region also determines which side hosts live previews.
  */
 export interface MiniAnchor {
   readonly vertical: "top" | "bottom";
@@ -103,19 +111,23 @@ export type MiniHideReason =
   /** Nodex opened what Mini pointed to, or the panel renderer was retired. */
   | "finished";
 
+export interface MiniGeometry {
+  readonly anchor: MiniAnchor;
+  /** The dock center in window coordinates. */
+  readonly dock: MiniPoint;
+}
+
 export type MiniPresentationEvent =
-  | {
+  | ({
       /** On screen and holding the keyboard; focus what the renderer last asked for. */
       readonly kind: "focused";
       readonly generation: number;
-      readonly anchor: MiniAnchor;
-    }
-  | {
+    } & MiniGeometry)
+  | ({
       /** On screen without the keyboard: the dock and its cards. */
       readonly kind: "resting";
       readonly generation: number;
-      readonly anchor: MiniAnchor;
-    }
+    } & MiniGeometry)
   | {
       readonly kind: "hidden";
       readonly generation: number;
@@ -147,7 +159,7 @@ export const miniCoverageIsEmpty = (coverage: MiniCoverage): boolean =>
 
 export type MiniDrag =
   | { readonly phase: "start"; readonly x: number; readonly y: number }
-  | { readonly phase: "end" };
+  | { readonly phase: "end"; readonly snap: boolean };
 
 /** What Mini can bring forward in a Nodex window. */
 export type MiniOpenTarget =
@@ -194,7 +206,7 @@ export type MiniCompanionResult =
 /** IPC channels the panel renderer invokes; only the Mini panel window may call them. */
 export interface MiniIpcApi {
   /** Where Mini's drawn content sits now; null while nothing is drawn. */
-  "mini:layout": { args: [layout: MiniContentLayout | null]; result: void };
+  "mini:layout": { args: [layout: MiniContentLayout | null, dockWidth: number]; result: void };
   /** Show or hide one chat's live preview, as its own preview controls would. */
   "mini:preview-visibility": {
     args: [sessionId: string, visibility: MiniPreviewVisibility];
@@ -208,7 +220,7 @@ export interface MiniIpcApi {
   "mini:activity": { args: [coverage: MiniCoverage]; result: void };
   /**
    * Move Mini with the pointer: `start` once it is held past a small threshold, from the screen
-   * point where it was grabbed; `end` when it is released, to settle at the nearest placement.
+   * point where it was grabbed; `end` when it is released, with optional snapping.
    */
   "mini:drag": { args: [drag: MiniDrag]; result: void };
   /** Take the keyboard, for the composer or a card's reply. */

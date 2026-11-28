@@ -1,12 +1,13 @@
 import { BrowserWindow, screen, systemPreferences } from "electron";
-import type { Display, Point, Rectangle } from "electron";
+import type { Display } from "electron";
 import {
-  DEFAULT_MINI_ANCHOR,
   EMPTY_MINI_COVERAGE,
   MINI_PRESENTATION_CHANNEL,
   MINI_PREVIEWS_CHANNEL,
   MINI_ROUTE,
   NO_MINI_PREVIEWS,
+  miniDockWidth,
+  type MiniPoint,
   type MiniContentLayout,
   type MiniPreviews,
   type MiniCoverage,
@@ -25,10 +26,13 @@ import type {
 } from "../settings/application-settings-persistence";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
 import {
-  miniBounds,
+  clampMiniDock,
+  miniAnchorForDock,
+  miniDockAtAnchor,
   miniPreviewHostLayout,
-  MINI_WINDOW_SIZE,
-  nearestMiniAnchor,
+  miniRelativeDock,
+  miniWindowBounds,
+  snapMiniDock,
 } from "./mini-geometry";
 import {
   initialMiniPresentation,
@@ -37,6 +41,15 @@ import {
 } from "./mini-presentation";
 
 const logger = getLogger({ component: "mini" });
+const dragFrameMs = 16;
+// Give the renderer's pointerup time to carry Option before falling back to a free drop.
+const releaseGraceMs = 64;
+
+interface MiniDragState {
+  readonly timer: ReturnType<typeof setInterval>;
+  readonly offset: MiniPoint;
+  release: { readonly point: MiniPoint; readonly time: number } | null;
+}
 
 export class MiniWindowController {
   #window: BrowserWindow | null = null;
@@ -51,9 +64,9 @@ export class MiniWindowController {
   #focusLifetime = 0;
   #displayId: number | null;
   #lastPlacement: MiniPlacementSettings;
-  /** While a drag is in progress, the timer moving the panel after the pointer. */
-  #drag: ReturnType<typeof setInterval> | null = null;
-  #snapAnimation: ReturnType<typeof setInterval> | null = null;
+  #screenDock: MiniPoint | null = null;
+  #dockWidth = miniDockWidth(false);
+  #drag: MiniDragState | null = null;
   #blurHolds = new Map<symbol, number>();
 
   constructor(
@@ -96,8 +109,9 @@ export class MiniWindowController {
     const url = new URL(this.options.rendererUrl);
     url.searchParams.set("initialRoute", MINI_ROUTE);
     const mac = this.options.native !== null;
+    const display = this.#display();
     const window = new BrowserWindow({
-      ...MINI_WINDOW_SIZE,
+      ...miniWindowBounds(display, this.#restoredDock(display)),
       show: false,
       focusable: false,
       frame: false,
@@ -160,7 +174,7 @@ export class MiniWindowController {
       this.#lastPreviewHost = null;
       this.#blurHolds.clear();
       this.#shownGeneration = null;
-      this.#cancelMove();
+      this.#cancelDrag();
       if (!this.#disposed && this.#state.visibility !== "on-demand") {
         this.#recreate = setTimeout(() => {
           this.#recreate = null;
@@ -188,8 +202,24 @@ export class MiniWindowController {
     this.#sendPreviews();
   }
 
-  reportLayout(layout: MiniContentLayout | null): void {
+  reportLayout(layout: MiniContentLayout | null, dockWidth = this.#dockWidth): void {
+    const window = this.#window;
+    if (layout && window && !window.isDestroyed()) {
+      const { width, height } = window.getContentBounds();
+      if (
+        [layout.content, layout.base].some(
+          (rect) => rect.x + rect.width > width || rect.y + rect.height > height,
+        )
+      )
+        return;
+    }
     this.#contentLayout = layout;
+    if (dockWidth !== this.#dockWidth) {
+      this.#dockWidth = dockWidth;
+      if (window?.isVisible() && this.#screenDock) {
+        this.#moveDock(window, this.#display(), this.#screenDock);
+      }
+    }
     this.#syncPreviewHost();
   }
 
@@ -253,7 +283,7 @@ export class MiniWindowController {
     }
     const layout = miniPreviewHostLayout(
       contentLayout,
-      this.#state.anchor,
+      this.#state.geometry.anchor,
       this.#lastPreviewHost?.alignment,
       this.#prefersReducedMotion(),
     );
@@ -279,21 +309,14 @@ export class MiniWindowController {
     return this.#state.coverage;
   }
 
-  apply(action: MiniPresentationAction): void {
-    const previous = this.#state.event;
+  apply(action: Exclude<MiniPresentationAction, { kind: "geometry" }>): void {
+    const previous = this.#state.event.kind;
     this.#state = transitionMiniPresentation(this.#state, action);
     this.#ensureWindow();
-    if (this.#state.event === previous) return;
     const next = this.#state.event.kind;
-    if (next !== previous.kind && (next === "focused" || previous.kind === "focused")) {
-      this.#focusLifetime += 1;
-    }
-    if (next === previous.kind) {
-      if (this.#shownGeneration === previous.generation) this.#sendPresentation();
-      this.#syncPreviewHost();
-      return;
-    }
-    this.#present(previous.kind === "hidden");
+    if (next === previous) return;
+    if (next === "focused" || previous === "focused") this.#focusLifetime += 1;
+    this.#present(previous === "hidden");
   }
 
   pointer(overContent: boolean): void {
@@ -352,107 +375,127 @@ export class MiniWindowController {
     }
   }
 
-  #display(window: BrowserWindow): Display {
-    const displays = screen.getAllDisplays();
+  #display(): Display {
     return (
-      displays.find(({ id }) => id === this.#displayId) ??
-      (window.isVisible()
-        ? screen.getDisplayMatching(window.getBounds())
-        : screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
+      screen.getAllDisplays().find(({ id }) => id === this.#displayId) ??
+      screen.getDisplayNearestPoint(
+        this.#screenDock ? roundPoint(this.#screenDock) : screen.getCursorScreenPoint(),
+      )
     );
   }
 
+  #restoredDock({ id, workArea }: Display): MiniPoint {
+    const { lastDisplayId, docks } = this.#lastPlacement;
+    const saved = docks[id] ?? (lastDisplayId === null ? undefined : docks[lastDisplayId]);
+    return saved
+      ? clampMiniDock(
+          workArea,
+          { x: workArea.x + saved.x, y: workArea.y + saved.y },
+          this.#dockWidth,
+        )
+      : miniDockAtAnchor(workArea, this.#dockWidth);
+  }
+
   #place(window: BrowserWindow): void {
-    const display = this.#display(window);
+    const display = this.#display();
+    this.#position(window, display, this.#restoredDock(display));
+  }
+
+  #position(window: BrowserWindow, display: Display, dock: MiniPoint): void {
     this.#displayId = display.id;
-    const { lastDisplayId, anchors } = this.#lastPlacement;
-    const anchor =
-      anchors[display.id] ??
-      (lastDisplayId === null ? undefined : anchors[lastDisplayId]) ??
-      DEFAULT_MINI_ANCHOR;
-    window.setBounds(miniBounds(display.workArea, anchor));
-    this.apply({ kind: "anchor", anchor });
+    this.#screenDock = dock;
+    const bounds = miniWindowBounds(display, dock);
+    const current = window.getBounds();
+    if (
+      bounds.x !== current.x ||
+      bounds.y !== current.y ||
+      bounds.width !== current.width ||
+      bounds.height !== current.height
+    )
+      window.setBounds(bounds);
+    this.#state = transitionMiniPresentation(this.#state, {
+      kind: "geometry",
+      geometry: {
+        anchor: miniAnchorForDock(display.workArea, dock),
+        dock: miniRelativeDock(dock, window.getContentBounds()),
+      },
+    });
+  }
+
+  #moveDock(window: BrowserWindow, display: Display, dock: MiniPoint): void {
+    const previous = this.#state.event;
+    this.#position(window, display, clampMiniDock(display.workArea, dock, this.#dockWidth));
+    if (this.#state.event !== previous) this.#sendPresentation();
+    this.#syncPreviewHost();
   }
 
   #reposition = (): void => {
     const window = this.#window;
     if (!window || !window.isVisible()) return;
-    this.#cancelMove();
-    this.#place(window);
+    if (this.#drag) {
+      this.#followDrag(window, this.#drag.release?.point ?? screen.getCursorScreenPoint());
+      return;
+    }
+    const display = this.#display();
+    this.#moveDock(window, display, this.#restoredDock(display));
   };
 
-  /**
-   * The renderer saw the pointer leave a threshold while held on Mini: the panel follows the
-   * pointer, holding it where it was grabbed, until the button comes up.
-   */
-  beginDrag(grabbed: Point): void {
+  /** Keep the point that was grabbed under the pointer as the dock moves. */
+  beginDrag(grabbed: MiniPoint): void {
     const window = this.#window;
-    if (!window || !window.isVisible() || this.#state.event.kind === "hidden") return;
-    this.#cancelMove();
-    const bounds = window.getBounds();
-    const offset = { x: grabbed.x - bounds.x, y: grabbed.y - bounds.y };
-    this.#drag = setInterval(() => {
-      if (this.#window !== window || window.isDestroyed()) return this.#cancelMove();
-      // The renderer reports the release; a button already up ends a drag it could not report.
-      if (this.options.native && !this.options.native.isPrimaryMouseDown()) return this.endDrag();
-      const cursor = screen.getCursorScreenPoint();
-      window.setPosition(cursor.x - offset.x, cursor.y - offset.y);
-    }, 16);
+    if (!window || !window.isVisible() || this.#state.event.kind === "hidden" || !this.#screenDock)
+      return;
+    this.#cancelDrag();
+    const offset = miniRelativeDock(grabbed, this.#screenDock);
+    const timer = setInterval(() => {
+      const drag = this.#drag;
+      if (!drag || this.#window !== window || window.isDestroyed()) return this.#cancelDrag();
+      if (drag.release) {
+        if (performance.now() - drag.release.time >= releaseGraceMs) this.endDrag();
+        return;
+      }
+      const point = screen.getCursorScreenPoint();
+      this.#followDrag(window, point);
+      // A release outside the surface may never reach the renderer.
+      if (this.options.native && !this.options.native.isPrimaryMouseDown()) {
+        drag.release = { point, time: performance.now() };
+      }
+    }, dragFrameMs);
+    this.#drag = { offset, timer, release: null };
+    this.#followDrag(window, screen.getCursorScreenPoint());
   }
 
-  /** The button came up: Mini settles at the placement nearest where it was dropped. */
-  endDrag(): void {
+  #followDrag(window: BrowserWindow, cursor: MiniPoint, snap = false): void {
+    if (!this.#drag) return;
+    const dock = miniRelativeDock(cursor, this.#drag.offset);
+    const display = screen.getDisplayNearestPoint(roundPoint(dock));
+    this.#moveDock(
+      window,
+      display,
+      snap ? snapMiniDock(display.workArea, dock, this.#dockWidth) : dock,
+    );
+  }
+
+  /** Store the final position in the current display's work-area coordinates. */
+  endDrag(snap = false): void {
     const window = this.#window;
-    if (!this.#drag || !window || window.isDestroyed()) return this.#cancelMove();
-    this.#cancelMove();
-    const dropped = window.getBounds();
-    const display = screen.getDisplayMatching(dropped);
-    const current = this.#lastPlacement.anchors[display.id] ?? this.#state.anchor;
-    const anchor = nearestMiniAnchor(display.workArea, dropped, current);
-    this.#displayId = display.id;
+    const drag = this.#drag;
+    if (!drag || !window || window.isDestroyed()) return this.#cancelDrag();
+    this.#followDrag(window, drag.release?.point ?? screen.getCursorScreenPoint(), snap);
+    this.#cancelDrag();
+    if (!this.#screenDock) return;
+    const { id, workArea } = this.#display();
+    const dock = miniRelativeDock(this.#screenDock, workArea);
     this.#lastPlacement = {
-      lastDisplayId: display.id,
-      anchors: { ...this.#lastPlacement.anchors, [display.id]: anchor },
+      lastDisplayId: id,
+      docks: { ...this.#lastPlacement.docks, [id]: dock },
     };
-    this.#animateSnap(window, dropped, miniBounds(display.workArea, anchor));
-    this.apply({ kind: "anchor", anchor });
-    this.options.savePlacement({ displayId: display.id, anchor });
+    this.options.savePlacement({ displayId: id, dock });
   }
 
-  #animateSnap(window: BrowserWindow, from: Rectangle, to: Rectangle): void {
-    if (from.x === to.x && from.y === to.y && from.width === to.width && from.height === to.height)
-      return;
-    if (this.#prefersReducedMotion()) {
-      window.setBounds(to);
-      return;
-    }
-    if (this.options.native) {
-      window.setBounds(to, true);
-      return;
-    }
-    // Electron's animate flag is macOS-only.
-    const start = performance.now();
-    this.#snapAnimation = setInterval(() => {
-      const progress = Math.min(1, (performance.now() - start) / 150);
-      const easeOut = 1 - (1 - progress) ** 3;
-      window.setBounds({
-        ...to,
-        x: Math.round(from.x + (to.x - from.x) * easeOut),
-        y: Math.round(from.y + (to.y - from.y) * easeOut),
-      });
-      if (progress === 1) this.#cancelSnapAnimation();
-    }, 16);
-  }
-
-  #cancelSnapAnimation(): void {
-    if (this.#snapAnimation) clearInterval(this.#snapAnimation);
-    this.#snapAnimation = null;
-  }
-
-  #cancelMove(): void {
-    if (this.#drag) clearInterval(this.#drag);
+  #cancelDrag(): void {
+    if (this.#drag) clearInterval(this.#drag.timer);
     this.#drag = null;
-    this.#cancelSnapAnimation();
   }
 
   #makeKey(window: BrowserWindow): void {
@@ -484,7 +527,7 @@ export class MiniWindowController {
     if (!window) return;
     const { kind } = this.#state.event;
     if (kind === "hidden") {
-      this.#cancelMove();
+      this.#cancelDrag();
       this.#orderOut(window);
     } else {
       if (!this.#rendererReady) return;
@@ -523,10 +566,14 @@ export class MiniWindowController {
   dispose(): void {
     this.#disposed = true;
     if (this.#recreate) clearTimeout(this.#recreate);
-    this.#cancelMove();
+    this.#cancelDrag();
     screen.off("display-added", this.#reposition);
     screen.off("display-removed", this.#reposition);
     screen.off("display-metrics-changed", this.#reposition);
     this.#window?.destroy();
   }
+}
+
+function roundPoint({ x, y }: MiniPoint): MiniPoint {
+  return { x: Math.round(x), y: Math.round(y) };
 }

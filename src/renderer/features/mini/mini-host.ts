@@ -51,8 +51,8 @@ export const miniHost = {
   release: (generation: number) =>
     void invokeRendererControl("mini:release", generation).catch(ignore),
   open: (target: MiniOpenTarget) => void invokeRendererControl("mini:open", target).catch(ignore),
-  layout: (layout: MiniContentLayout | null) =>
-    void invokeRendererControl("mini:layout", layout).catch(ignore),
+  layout: (layout: MiniContentLayout | null, dockWidth: number) =>
+    void invokeRendererControl("mini:layout", layout, dockWidth).catch(ignore),
   previewVisibility: (sessionId: string, visibility: MiniPreviewVisibility) =>
     void invokeRendererControl("mini:preview-visibility", sessionId, visibility).catch(ignore),
   onPreviews: (listener: (previews: MiniPreviews) => void): (() => void) =>

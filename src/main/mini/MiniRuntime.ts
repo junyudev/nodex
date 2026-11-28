@@ -100,8 +100,8 @@ export const live = (preloadPath: string) =>
           }),
         );
       }
-      // Only where Mini was last left matters; a newer placement replaces one not yet saved.
-      const placements = yield* Queue.sliding<MiniPlacement>(1);
+      // Each drop can update a different display, so persist them in order.
+      const placements = yield* Queue.unbounded<MiniPlacement>();
       yield* Effect.addFinalizer(() => Queue.shutdown(placements));
       yield* Queue.take(placements).pipe(
         Effect.flatMap((input) => settings.update({ type: "update-mini-placement", input })),
