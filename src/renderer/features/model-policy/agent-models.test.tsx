@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
+import { useNodexSettingsDisclosures } from "@/components/ui/settings";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { NODEX_MODELS_ANCHOR } from "@/lib/agent-settings-navigation";
 import { DEFAULT_MODEL_POLICY, type ModelPolicy } from "../../../shared/model-policy";
 import type { ReactNode } from "react";
 import {
@@ -95,12 +97,12 @@ vi.mock("@/features/nodex-account/nodex-account-identity", () => ({
 
 const onOpenAccount = vi.fn();
 const open = { open: true, onOpenChange: () => undefined };
-const renderModels = (children: ReactNode) =>
-  render(
-    <NodexTooltipProvider>
-      <AgentModelsProvider onOpenAccount={onOpenAccount}>{children}</AgentModelsProvider>
-    </NodexTooltipProvider>,
-  );
+const modelsTree = (children: ReactNode) => (
+  <NodexTooltipProvider>
+    <AgentModelsProvider onOpenAccount={onOpenAccount}>{children}</AgentModelsProvider>
+  </NodexTooltipProvider>
+);
+const renderModels = (children: ReactNode) => render(modelsTree(children));
 const renderNodex = () => renderModels(<NodexModelsSection disclosure={open} />);
 const toggle = async (name: string) => {
   await act(async () => {
@@ -118,6 +120,22 @@ beforeEach(() => {
   onOpenAccount.mockClear();
 });
 afterEach(cleanup);
+
+test("opens the Nodex card on an anchored arrival and keeps it open on the Agents page", () => {
+  function NodexCard({ anchor = null }: { readonly anchor?: string | null }) {
+    const disclosure = useNodexSettingsDisclosures(anchor);
+    return <NodexModelsSection disclosure={disclosure(NODEX_MODELS_ANCHOR)} />;
+  }
+
+  const direct = renderModels(<NodexCard />);
+  expect(screen.queryByRole("switch", { name: "GPT-6.1 Sol" })).toBeNull();
+  direct.unmount();
+
+  const anchored = renderModels(<NodexCard anchor={NODEX_MODELS_ANCHOR} />);
+  expect(screen.getByRole("switch", { name: "GPT-6.1 Sol" })).toBeDefined();
+  anchored.rerender(modelsTree(<NodexCard />));
+  expect(screen.getByRole("switch", { name: "GPT-6.1 Sol" })).toBeDefined();
+});
 
 test("Nodex's card shows its credits, its models and keeps Agents out by default", () => {
   renderNodex();
@@ -153,13 +171,27 @@ test("lets the person allow Agents to choose Nodex models", async () => {
   expect(lastPolicy()?.agentsMayChooseCredit).toBe(true);
 });
 
-test("collapses Nodex off to one line that says what it guarantees", async () => {
-  policy = { ...DEFAULT_MODEL_POLICY, nodexOff: true };
-  renderNodex();
+test("restores the individual model switches when Nodex is turned back on", async () => {
+  const view = renderNodex();
+  const applySavedPolicy = async () => {
+    const saved = lastPolicy();
+    if (!saved) throw new Error("Expected a saved model policy");
+    policy = saved;
+    await act(async () => {
+      view.rerender(modelsTree(<NodexModelsSection disclosure={open} />));
+    });
+  };
+  await toggle("GPT-6.1 Sol");
+  await applySavedPolicy();
+  expect(screen.getByText("2 of 3 on")).toBeDefined();
+  await toggle("Turn off all Nodex models");
+  await applySavedPolicy();
   expect(screen.getByText("Off. Nothing on this computer can spend your credits.")).toBeDefined();
   expect(screen.queryByRole("switch", { name: "GPT-6.1 Sol" })).toBeNull();
   await toggle("Turn on Nodex");
-  expect(lastPolicy()?.nodexOff).toBe(false);
+  await applySavedPolicy();
+  expect(screen.getByRole("switch", { name: "GPT-6.1 Sol", checked: false })).toBeDefined();
+  expect(screen.getByRole("switch", { name: "GPT-6 Luna", checked: true })).toBeDefined();
 });
 
 test("asks before turning off what a running chat is spending on", async () => {

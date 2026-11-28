@@ -5,6 +5,7 @@ import {
 import { browserImageDragType } from "../../../../../shared/browser/browser-image-drag";
 import { deliverBrowserAnnotations } from "../../../browser-sidebar/browser-annotation-delivery";
 import { composerDraftIntents, useComposerDraftIntent } from "@/lib/composer-draft-intents";
+import { catalogModel } from "@/lib/agent-model-catalog.test-fixtures";
 import { buildComposerActions as buildActions } from "@/test/composer-actions-fixture";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { useLayoutEffect, useState } from "react";
@@ -413,6 +414,55 @@ async function renderComposer(
 
   return view;
 }
+
+test("keeps an off Nodex model visible in its own Composer and offers another choice", async () => {
+  resetStorage();
+  const model = catalogModel("gpt-6-luna", "GPT-6 Luna");
+  const binding = { driver: "codex", instanceId: `nodex_codex_${"a".repeat(32)}` } as const;
+  const selected = { binding, model: model.id };
+  const title = "GPT-6 Luna on Nodex is off";
+  const message = `${title} in Settings → Agents. Choose another model.`;
+  const view = await renderComposer({
+    selectedModel: model.id,
+    availableModels: [model],
+    provider: {
+      kind: binding.driver,
+      label: "Nodex",
+      selection: binding.instanceId,
+      commands: [],
+      modelCatalog: {
+        selected,
+        entries: [
+          {
+            binding,
+            model,
+            label: "Nodex",
+            selection: selected,
+            unavailableReason: message,
+            unavailableLabel: "Off",
+            spendsCredit: true,
+          },
+        ],
+        currentModelOff: { code: "model_off", title, message },
+        loading: false,
+        choose: () => {},
+      },
+    },
+  });
+  expect(view.getByText(title)).toBeDefined();
+  expect(
+    within(view.getByRole("button", { name: "Select model" })).getByText("GPT-6 Luna"),
+  ).toBeDefined();
+  expect(view.queryByRole("button", { name: "Turn on" })).toBeNull();
+  const chooseModel = view.getByRole("button", { name: /^Choose model$/u });
+  await act(async () => {
+    fireEvent.click(chooseModel);
+    await Promise.resolve();
+  });
+  await view.findByRole("combobox", { name: "Search models" });
+  const option = await view.findByRole("option", { name: /GPT-6 Luna.*Off/u });
+  expect(option.matches(":disabled")).toBe(true);
+});
 
 test("restored app context sends through the active queue instead of a steer request", async () => {
   resetStorage();

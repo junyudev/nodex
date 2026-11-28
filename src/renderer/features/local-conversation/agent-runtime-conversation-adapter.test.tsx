@@ -3453,7 +3453,7 @@ it("separates off models, preserves provider switches, and enables only non-cred
   await act(async () => unmount());
 });
 
-it("keeps managed Codex and Claude choices without user-configured instances", async () => {
+it("filters Nodex choices by policy and keeps an off model selected in its own chat", async () => {
   const managed = [
     {
       ...provider,
@@ -3510,6 +3510,37 @@ it("keeps managed Codex and Claude choices without user-configured instances", a
   await expect(result.current.provider.modelCatalog!.choose(unavailable.selection)).rejects.toThrow(
     "Temporarily unavailable",
   );
+
+  const claude = managed[1]!;
+  await act(async () => {
+    nodexSupply.available = true;
+    policyState.settings = setModelOn(DEFAULT_MODEL_POLICY, claude, "claude-opus-5-5", false);
+    rerender();
+  });
+  await waitFor(() => {
+    const catalog = result.current.provider.modelCatalog!;
+    expect(catalog.selected).toMatchObject({
+      binding: { instanceId: claude.instanceId },
+      model: "claude-opus-5-5",
+    });
+    expect(catalog.currentModelOff?.title).toBe("Claude Opus 5.5 on Nodex is off");
+    expect(catalog.currentModelOff?.turnOn).toBeUndefined();
+  });
+
+  await act(async () => {
+    const catalog = result.current.provider.modelCatalog!;
+    const local = catalog.entries.find(
+      (entry) => entry.binding.instanceId === provider.instanceId,
+    )!;
+    await catalog.choose(local.selection);
+    policyState.settings = { ...policyState.settings, nodexOff: true };
+    rerender();
+  });
+  await waitFor(() => {
+    const catalog = result.current.provider.modelCatalog!;
+    expect(catalog.entries.map((entry) => entry.binding.instanceId)).toEqual([provider.instanceId]);
+    expect(catalog.off?.entries).toEqual([]);
+  });
   await act(async () => unmount());
 });
 

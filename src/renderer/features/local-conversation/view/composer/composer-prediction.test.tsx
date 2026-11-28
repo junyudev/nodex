@@ -12,7 +12,7 @@ afterEach(() => {
 function editor({ value = "", prediction = predictionResult(), disabled = false } = {}) {
   const ref = createRef<ComposerPromptEditorHandle>();
   const change = vi.fn();
-  const send = vi.fn(() => true);
+  const submit = vi.fn<(text: string) => void>();
   const interaction = vi.fn();
   const props = {
     value,
@@ -20,13 +20,16 @@ function editor({ value = "", prediction = predictionResult(), disabled = false 
     disabled,
     placeholder: "Ask",
     onChange: change,
-    onKeyDown: send,
+    onKeyDown: () => {
+      submit(ref.current!.getPersistedText());
+      return true;
+    },
     onPredictionInteraction: interaction,
   };
   const view = render(<ComposerPromptEditor ref={ref} {...props} />);
   const input = view.container.querySelector<HTMLElement>("[data-codex-composer='true']");
   if (!input) throw new Error("Composer editor did not mount");
-  return { view, input, ref, change, send, interaction, props };
+  return { view, input, ref, change, submit, interaction, props };
 }
 
 async function key(input: HTMLElement, key: string, extra: KeyboardEventInit = {}) {
@@ -38,22 +41,30 @@ async function key(input: HTMLElement, key: string, extra: KeyboardEventInit = {
 
 describe("composer prediction document consumption", () => {
   it.each(["Tab", "ArrowRight", "Enter"])(
-    "accepts %s into normal text before a later Enter sends",
+    "accepts %s into an editable draft and submits only on a separate Enter",
     async (acceptKey) => {
-      const { input, ref, change, send, interaction } = editor();
-      expect(ref.current?.getText()).toBe("");
+      const { input, ref, change, submit, interaction } = editor();
+      const suggestion = "Inspect the tests next";
       expect(ref.current?.getPersistedText()).toBe("");
-      expect(input.querySelector("[data-composer-prediction]")).not.toBeNull();
+      const ghost = input.querySelector("[data-composer-prediction]");
+      expect(ghost?.textContent).toBe(suggestion);
+      expect(ghost?.getAttribute("aria-hidden")).toBe("true");
       await key(input, acceptKey);
-      expect(ref.current?.getText()).toBe("Inspect the tests next");
-      expect(change).toHaveBeenCalledWith("Inspect the tests next");
-      expect(send).not.toHaveBeenCalled();
+      expect(ref.current?.getPersistedText()).toBe(suggestion);
+      expect(change).toHaveBeenCalledWith(suggestion);
+      expect(submit).not.toHaveBeenCalled();
       expect(input.querySelector("[data-composer-prediction]")).toBeNull();
       expect(interaction).toHaveBeenCalledWith(
-        expect.objectContaining({ action: "accepted", acceptedText: "Inspect the tests next" }),
+        expect.objectContaining({ action: "accepted", acceptedText: suggestion }),
       );
+      await act(async () => {
+        ref.current?.insertText(", including empty input.");
+        await Promise.resolve();
+      });
+      expect(ref.current?.getPersistedText()).toBe(`${suggestion}, including empty input.`);
+      expect(submit).not.toHaveBeenCalled();
       await key(input, "Enter");
-      expect(send).toHaveBeenCalledOnce();
+      expect(submit).toHaveBeenCalledExactlyOnceWith(`${suggestion}, including empty input.`);
     },
   );
 

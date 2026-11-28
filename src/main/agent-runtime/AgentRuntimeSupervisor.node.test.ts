@@ -18,10 +18,15 @@ import {
   acquireAgentRuntimeProcess,
   AgentRuntimeProcessError,
 } from "../platform/node/AgentRuntimeProcess";
-import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
+import type {
+  AgentRuntimeProcessConnection,
+  AgentRuntimeProcessOptions,
+} from "../platform/node/AgentRuntimeProcess";
 import type { AgentRuntimeLiveness } from "../platform/node/agent-runtime-liveness";
 import type { AgentRuntimeConnectionState } from "../../shared/agent-runtime-api";
 import { HostInvocation } from "../../host/HostInvocation";
+import { DEFAULT_MODEL_POLICY, setModelOn } from "../../shared/model-policy";
+import { make as makeApplicationSettings } from "../settings/ApplicationSettings";
 import { make } from "./AgentRuntimeSupervisor";
 
 const fixture = Effect.gen(function* () {
@@ -80,18 +85,70 @@ const writerHome = Effect.gen(function* () {
 
 const startProcess = (
   home: string,
-  host: Parameters<typeof acquireAgentRuntimeProcess>[0]["host"],
+  host: AgentRuntimeProcessOptions["host"],
+  configuration: Partial<
+    Pick<AgentRuntimeProcessOptions["configuration"], "providers" | "modelPolicy">
+  > = {},
 ) =>
   acquireAgentRuntimeProcess({
     executable: process.execPath,
     entryPath: fileURLToPath(
       new URL("../../../packages/agent-runtime/src/nodex/entry.ts", import.meta.url),
     ),
-    configuration: { home, cwd: home, providers: {} },
+    configuration: { home, cwd: home, providers: {}, ...configuration },
     profileHome: home,
     environment: { ...process.env, NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}` },
     host,
   });
+
+it.live("enforces the saved Profile model switch from the first request to a fresh Runtime", () =>
+  Effect.gen(function* () {
+    const { home } = yield* writerHome;
+    const path = yield* Path.Path;
+    const source = {
+      environment: {},
+      hostHomeDirectory: home,
+      settingsPath: path.join(home, "config.toml"),
+    };
+    const instanceId = `nodex_codex_${"a".repeat(32)}`;
+    const provider = { instanceId, driver: "codex", source: "nodex" } as const;
+    yield* Effect.gen(function* () {
+      const settings = yield* makeApplicationSettings(source);
+      yield* settings.update({
+        type: "update-model-policy",
+        input: setModelOn(DEFAULT_MODEL_POLICY, provider, "gpt-6.1-sol", false),
+      });
+    }).pipe(Effect.scoped);
+
+    const reopened = yield* makeApplicationSettings(source);
+    const { modelPolicy } = yield* reopened.snapshot();
+    const runtime = yield* startProcess(home, () => Effect.void, {
+      modelPolicy,
+      providers: {
+        [instanceId]: {
+          driver: provider.driver,
+          source: provider.source,
+          enabled: false,
+          config: { setupMode: "existing", binaryPath: "/missing" },
+        },
+      },
+    });
+    const refused = yield* runtime
+      .request("models.assert", {
+        modelSelection: { instanceId, model: "gpt-6.1-sol" },
+        origin: "person",
+      })
+      .pipe(Effect.flip);
+    assert.equal(refused.code, "model_off");
+    assert.include(refused.message, "GPT-6.1 Sol on Nodex is off in Settings");
+    assert.isNull(
+      yield* runtime.request("models.assert", {
+        modelSelection: { instanceId, model: "gpt-6-luna" },
+        origin: "person",
+      }),
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 
 it.live(
   "releases the writer before the next request when the activating caller is interrupted",

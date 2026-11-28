@@ -404,13 +404,14 @@ const search = async (view: ReturnType<typeof renderPicker>, value: string) => {
   });
 };
 
-const offModels = (patch: { readonly choose?: () => Promise<void>; readonly credit?: boolean }) => {
+const nodexBinding = { driver: "codex", instanceId: `nodex_codex_${"a".repeat(32)}` } as const;
+
+const offModels = (choose: () => Promise<void>) => {
   const paid = catalogModel("google/gemini-3.5-flash", "Gemini 3.5 Flash");
   const sol = catalogModel("gpt-6.1-sol", "GPT-6.1 Sol");
-  const nodex = { driver: "codex", instanceId: `nodex_codex_${"a".repeat(32)}` } as const;
   return {
-    count: 7,
-    choose: patch.choose ?? vi.fn(async () => {}),
+    count: 2,
+    choose,
     entries: [
       {
         binding: selected.binding,
@@ -419,20 +420,38 @@ const offModels = (patch: { readonly choose?: () => Promise<void>; readonly cred
         selection: { binding: selected.binding, model: paid.id },
       },
       {
-        binding: nodex,
+        binding: nodexBinding,
         label: "Nodex",
         spendsCredit: true,
         model: sol,
-        selection: { binding: nodex, model: sol.id },
+        selection: { binding: nodexBinding, model: sol.id },
       },
     ],
   };
 };
 
-test("choosing an off model turns it on, but credit only ever turns on in Settings", async () => {
+test("shows off models only in search and routes credit choices to Settings", async () => {
   const choose = vi.fn(async () => {});
   const manageModels = vi.fn();
-  const view = renderPicker(presentation({ manageModels, off: offModels({ choose }) }));
+  const luna = catalogModel("gpt-6-luna", "GPT-6 Luna");
+  const view = renderPicker(
+    presentation({
+      manageModels,
+      off: offModels(choose),
+      entries: [
+        {
+          binding: nodexBinding,
+          label: "Nodex",
+          spendsCredit: true,
+          model: luna,
+          selection: { binding: nodexBinding, model: luna.id },
+        },
+      ],
+    }),
+  );
+  await view.findByRole("option", { name: /GPT-6 Luna.*Nodex/u });
+  expect(view.queryByRole("option", { name: /GPT-6\.1 Sol|Gemini 3\.5 Flash/u })).toBeNull();
+  expect(view.getByRole("button", { name: "2 models off" })).toBeDefined();
   await search(view, "gemini");
   await click(await view.findByRole("option", { name: /Gemini 3\.5 Flash/ }));
   await waitFor(() => expect(choose).toHaveBeenCalledOnce());
