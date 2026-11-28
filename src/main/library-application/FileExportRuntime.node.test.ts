@@ -1,4 +1,4 @@
-import { describe } from "vite-plus/test";
+import { describe, vi } from "vite-plus/test";
 import * as fs from "node:fs";
 import { createHash } from "node:crypto";
 import * as os from "node:os";
@@ -8,7 +8,9 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
+import { pruneFileExports } from "../platform/node/file-export-cache";
 import { LibraryModule, LibraryModuleError, live as liveLibraryModule } from "./LibraryModule";
 import { FileExportRuntime, live } from "./FileExportRuntime";
 import type { NodexClipboardEnvelopeV1 } from "../../shared/clipboard-paste";
@@ -165,6 +167,85 @@ describe("FileExportRuntime", () => {
         fs.readFileSync(path.join(outside, path.basename(target)), "utf8"),
         "captured",
       );
+    }),
+  );
+
+  const day = 24 * 60 * 60 * 1000;
+  const retention = (now: number) => ({
+    now,
+    maxIdleMs: 14 * day,
+    maxBytes: 2 ** 31,
+    minIdleMs: day,
+  });
+  const useAt = (target: string, at: number) => fs.utimesSync(target, new Date(at), new Date(at));
+
+  it.effect("exports age from their last use, and nothing outside the layout stays", () =>
+    Effect.gen(function* () {
+      const { runtime } = yield* fixture();
+      const target = yield* runtime.materialize(access, input);
+      const directory = path.dirname(target);
+      const root = path.dirname(directory);
+      useAt(directory, 0);
+      assert.strictEqual(yield* runtime.materialize(access, input), target);
+      const now = fs.statSync(directory).mtimeMs;
+      assert.isAbove(now, 0);
+
+      const unused = path.join(root, "c".repeat(64));
+      fs.mkdirSync(unused);
+      fs.writeFileSync(path.join(unused, "image.png"), "unused");
+      useAt(unused, now - 15 * day);
+      const flat = path.join(root, `${"d".repeat(64)}.png`);
+      fs.writeFileSync(flat, "flat");
+      fs.chmodSync(flat, 0o444);
+      const siblingStaging = `${root}.staging`;
+      fs.mkdirSync(siblingStaging);
+      fs.writeFileSync(path.join(siblingStaging, "left.tmp"), "");
+      const abandoned = path.join(root, ".staging", "abandoned.tmp");
+      fs.writeFileSync(abandoned, "");
+      useAt(abandoned, now - 2 * day);
+      fs.writeFileSync(path.join(root, ".staging", "publishing.tmp"), "");
+      useAt(path.join(root, ".staging", "publishing.tmp"), now);
+
+      yield* Effect.promise(() => pruneFileExports(root, retention(now)));
+      assert.sameMembers(fs.readdirSync(root), [".staging", path.basename(directory)]);
+      assert.deepEqual(fs.readdirSync(path.join(root, ".staging")), ["publishing.tmp"]);
+      assert.isFalse(fs.existsSync(siblingStaging));
+      assert.strictEqual(fs.readFileSync(target, "utf8"), "captured");
+    }),
+  );
+
+  it.effect("past the size budget the least recently used go first, sparing recent ones", () =>
+    Effect.gen(function* () {
+      const { home } = yield* fixture();
+      const root = path.join(home, "cache", "file-exports");
+      const now = Date.UTC(2026, 10, 28);
+      const exportUsedAt = (letter: string, at: number) => {
+        const directory = path.join(root, letter.repeat(64));
+        fs.mkdirSync(directory, { recursive: true });
+        fs.writeFileSync(path.join(directory, "File.bin"), "abc");
+        useAt(directory, at);
+      };
+      exportUsedAt("a", now - 5 * day);
+      exportUsedAt("b", now - 3 * day);
+      exportUsedAt("c", now - 2 * day);
+      exportUsedAt("d", now - 60 * 60 * 1000);
+
+      yield* Effect.promise(() => pruneFileExports(root, { ...retention(now), maxBytes: 6 }));
+      assert.sameMembers(fs.readdirSync(root), ["c".repeat(64), "d".repeat(64)]);
+      yield* Effect.promise(() => pruneFileExports(root, { ...retention(now), maxBytes: 0 }));
+      assert.deepEqual(fs.readdirSync(root), ["d".repeat(64)]);
+    }),
+  );
+
+  it.effect("the runtime prunes its cache once launch settles", () =>
+    Effect.gen(function* () {
+      const { runtime } = yield* fixture();
+      const target = yield* runtime.materialize(access, input);
+      const siblingStaging = `${path.dirname(path.dirname(target))}.staging`;
+      fs.mkdirSync(siblingStaging);
+      yield* TestClock.adjust("1 minute");
+      yield* Effect.promise(() => vi.waitFor(() => assert.isFalse(fs.existsSync(siblingStaging))));
+      assert.strictEqual(fs.readFileSync(target, "utf8"), "captured");
     }),
   );
 

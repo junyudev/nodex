@@ -1,7 +1,10 @@
 import path from "node:path";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
@@ -13,12 +16,27 @@ import {
 } from "../../shared/clipboard-file-references";
 import { FILE_MAX_BYTES } from "../../shared/file-resources";
 import { MainConfig } from "../app/MainConfig";
-import { findFileExport, publishFileExport } from "../platform/node/file-export-cache";
+import {
+  type FileExportRetention,
+  findFileExport,
+  pruneFileExports,
+  publishFileExport,
+} from "../platform/node/file-export-cache";
 import { LibraryModule } from "./LibraryModule";
 
 export class FileExportError extends Schema.TaggedError<FileExportError>()("FileExportError", {
   cause: Schema.Defect(),
 }) {}
+
+/**
+ * Exported paths are handed to other apps, which may keep one open, so retention ages from last
+ * use and the size budget is generous. A removed export is rebuilt on its next use.
+ */
+const retention: Omit<FileExportRetention, "now"> = {
+  maxIdleMs: Duration.toMillis(Duration.days(14)),
+  maxBytes: 2 * 1024 ** 3,
+  minIdleMs: Duration.toMillis(Duration.days(1)),
+};
 
 export class FileExportRuntime extends Context.Service<
   FileExportRuntime,
@@ -44,6 +62,15 @@ export const live = Layer.effect(
     // Two 64 MiB Files bound both transport concurrency and in-flight bytes to 128 MiB.
     const permits = yield* Semaphore.make(2);
     const root = path.join(config.nodexHome, "cache", "file-exports");
+    const prune = Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      yield* Effect.tryPromise(() => pruneFileExports(root, { ...retention, now }));
+    }).pipe(Effect.catch((error) => Effect.logWarning("File export cache pruning failed", error)));
+    // Pruning starts after launch settles and repeats for long-running apps.
+    yield* Effect.sleep("1 minute").pipe(
+      Effect.andThen(Effect.repeat(prune, Schedule.spaced("6 hours"))),
+      Effect.forkScoped,
+    );
     const metadata = Effect.fn("FileExportRuntime.metadata")(
       function* (access: ContentRoutingContext, input: ReadFileBytesInput) {
         const result = yield* library.read(access, {
