@@ -47,6 +47,9 @@ use windows_sys::Win32::{
 
 type Result<T> = std::result::Result<T, String>;
 const EXIT_BUDGET: Duration = Duration::from_secs(45);
+// A process can fail a query because it is already exiting, before its handle
+// is signaled. Bounded wait only on that failure path.
+const QUERY_EXIT_GRACE_MS: u32 = 5_000;
 
 fn wide(value: impl AsRef<OsStr>) -> Vec<u16> {
     value.as_ref().encode_wide().chain(Some(0)).collect()
@@ -197,7 +200,10 @@ struct Process {
 }
 impl Process {
     fn exited(&self) -> Result<bool> {
-        match unsafe { WaitForSingleObject(self.handle.0, 0) } {
+        self.exits_within(0)
+    }
+    fn exits_within(&self, milliseconds: u32) -> Result<bool> {
+        match unsafe { WaitForSingleObject(self.handle.0, milliseconds) } {
             WAIT_OBJECT_0 => Ok(true),
             WAIT_TIMEOUT => Ok(false),
             _ => Err(win_error("WaitForSingleObject", self.pid)),
@@ -430,7 +436,7 @@ fn prepare_core(process: &Process, helpers: &Path, log: &mut Log) -> Result<Opti
     }
     let args = match process.arguments() {
         Ok(args) => args,
-        Err(_) if process.exited()? => return Ok(None),
+        Err(_) if process.exits_within(QUERY_EXIT_GRACE_MS)? => return Ok(None),
         Err(e) => return Err(e),
     };
     let Some(index) = args.iter().position(|a| a == "--home") else {
@@ -805,7 +811,7 @@ fn inspection(path: &Path) -> Result<()> {
                     command_line: String::from_utf16_lossy(&command),
                     created_at: process.created.to_string(),
                 }),
-                Err(_) if process.exited()? => {}
+                Err(_) if process.exits_within(QUERY_EXIT_GRACE_MS)? => {}
                 Err(error) => return Err(error),
             }
         }
