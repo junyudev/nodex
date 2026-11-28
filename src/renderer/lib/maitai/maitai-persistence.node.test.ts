@@ -457,6 +457,41 @@ describe("Maitai persisted atoms", () => {
     expect(() => store.jotaiStore.set(concrete, "new value")).toThrow("encode failed");
   });
 
+  test("a declaration evaluated again by hot reload keeps its state and adopts the edited codec", async () => {
+    const transport = new FakeTransport();
+    transport.snapshot = { revision: 1, values: { draft: "stored" } };
+    const store = createMaitaiStore();
+    setMaitaiPersistenceTransport(store, transport);
+    const definition = createStringDefinition();
+    const concrete = getConcretePersistedAtom(store, definition);
+    await preloadPersistedAtom(store, definition);
+
+    const reloaded = persistedAtom({
+      debugLabel: "draft",
+      storageKey: "draft",
+      defaultValue: "",
+      hydration: "eager",
+      decode: (value) => (typeof value === "string" ? value.toUpperCase() : ""),
+    });
+    expect(reloaded).toBe(definition);
+    expect(getConcretePersistedAtom(store, reloaded)).toBe(concrete);
+    expect(store.jotaiStore.get(concrete)).toMatchObject({ status: "ready", value: "stored" });
+    expect(transport.readCount).toBe(1);
+    transport.emit({
+      key: "draft",
+      value: "from another window",
+      mutationId: "remote",
+      revision: 9,
+      originRendererId: "remote",
+    });
+    expect(store.jotaiStore.get(concrete).value).toBe("FROM ANOTHER WINDOW");
+
+    expect(() => createStringDefinition("none")).toThrow("draft changed its policies");
+    expect(() =>
+      persistedAtom({ debugLabel: "other", storageKey: "draft", defaultValue: 0, decode: Number }),
+    ).toThrow("Duplicate persisted atom storage key: draft");
+  });
+
   test("store disposal and test reset release persistence subscriptions", async () => {
     const transport = new FakeTransport();
     const store = createMaitaiStore();
