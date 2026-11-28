@@ -490,6 +490,7 @@ const AgentRequest = Schema.Union([
     "providers.read",
     Schema.Struct({
       refresh: Schema.optional(Schema.Boolean),
+      readUsage: Schema.optional(Schema.Boolean),
       waitForChecks: Schema.optional(Schema.Boolean),
       instanceIds: Schema.optional(Schema.Array(Schema.String)),
     }),
@@ -1066,15 +1067,19 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     named?: readonly string[],
     refresh?: boolean,
     waitForChecks?: boolean,
+    readUsage?: boolean,
   ) {
     const policy = yield* providerPolicy.admission;
     return yield* (
       refresh
         ? named
           ? Effect.forEach(
-              named,
+              new Set(named),
               (instanceId) =>
-                providers.refreshInstance(instanceId as ProviderInstanceId, { fresh: true }),
+                providers.refreshInstance(instanceId as ProviderInstanceId, {
+                  fresh: true,
+                  readUsage: readUsage === true,
+                }),
               { concurrency: "unbounded", discard: true },
             ).pipe(Effect.andThen(providers.getProviders))
           : providers.refresh()
@@ -1750,6 +1755,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           input.input.instanceIds,
           input.input.refresh,
           input.input.waitForChecks,
+          input.input.readUsage,
         ).pipe(Effect.flatMap(encodeProviders));
       case "providers.logout": {
         const named = input.input.instanceIds;

@@ -641,10 +641,9 @@ describe("WorkbenchRailAccountControls", () => {
       ...reading,
       instanceId: "antigravity-a" as ClaudeProvider["instanceId"],
       driver: "antigravity",
-      auth: { status: "authenticated", type: "oauth-personal" },
+      auth: { status: "authenticated", type: "oauth-personal", email: "dev@example.com" },
       usageLimits: {
         checkedAt: new Date().toISOString(),
-        credentialFingerprint: "google-a",
         windows: [
           {
             id: "gemini-5h",
@@ -655,7 +654,7 @@ describe("WorkbenchRailAccountControls", () => {
           },
           {
             id: "3p-weekly",
-            label: "Claude & GPT (shared) · Weekly",
+            label: "Claude & GPT · Weekly",
             kind: "weekly",
             usedPercent: 96,
             windowDurationMins: 10080,
@@ -687,7 +686,7 @@ describe("WorkbenchRailAccountControls", () => {
     const card = await openCard(view, meter, "antigravity");
     expect(card.querySelectorAll('[role="meter"]')).toHaveLength(2);
     expect(textContent(card)).toContain("Gemini · 5-hour");
-    expect(textContent(card)).toContain("Claude & GPT (shared) · Weekly");
+    expect(textContent(card)).toContain("Claude & GPT · Weekly");
     expect(textContent(card)).not.toContain("Sign out");
     await waitFor(() => expect(refreshes).toBe(1));
   });

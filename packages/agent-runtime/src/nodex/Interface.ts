@@ -661,6 +661,8 @@ export interface AgentRuntimeOperations
     readonly input: {
       readonly refresh?: boolean;
       readonly instanceIds?: ReadonlyArray<string>;
+      /** Await an account usage read for each named instance during an explicit refresh. */
+      readonly readUsage?: boolean;
       /** Observe the current catalog without waiting for its initial checks. */
       readonly waitForChecks?: boolean;
     };

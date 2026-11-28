@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { collectUint8StreamText } from "@nodex/provider-core/server/collectStreamText";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -21,11 +22,10 @@ const MAC_ITEM_NOT_FOUND = 44;
 const MAX_SECRET_BYTES = 64 * 1024;
 
 /** The sign-in agy stores, in its keyring entry or file. It holds no OAuth client to refresh with. */
-export const AntigravityStoredToken = Schema.Struct({
+const AntigravityStoredToken = Schema.Struct({
   token: Schema.Struct({
     access_token: Schema.NonEmptyString,
     refresh_token: Schema.optional(Schema.String),
-    expiry: Schema.optional(Schema.String),
   }),
   auth_method: Schema.optional(Schema.String),
   id_token_email: Schema.optional(Schema.String),
@@ -35,12 +35,11 @@ const decodeStoredToken = Schema.decodeUnknownOption(Schema.fromJsonString(Antig
 export type AntigravityStoredSignIn =
   | {
       readonly status: "signed-in";
-      readonly accessToken: string;
-      readonly refreshToken: string | undefined;
-      readonly expiry: string | undefined;
-      /** The Google method agy signed in with, which selects the quota host and `authenticate`. */
+      /** Identifies a stored login attempt locally without exposing its credentials. */
+      readonly key: string;
       readonly authMethod: "oauth-personal" | "oauth-business";
       readonly email: string | undefined;
+      readonly fileBacked?: true;
     }
   | { readonly status: "signed-out" }
   /** This computer's keyring can't be read here, so only starting agy can tell. */
@@ -68,14 +67,14 @@ export function parseAntigravityStoredSignIn(value: string): AntigravityStoredSi
   const decoded = decodeKeyringValue(value);
   const stored = decoded === undefined ? Option.none() : decodeStoredToken(decoded);
   if (Option.isNone(stored)) return SIGNED_OUT;
-  const { token, auth_method: method, id_token_email: email } = stored.value;
+  const { token, auth_method: authMethod, id_token_email: email } = stored.value;
   return {
     status: "signed-in",
-    accessToken: token.access_token,
-    refreshToken: token.refresh_token || undefined,
-    expiry: token.expiry,
-    authMethod: method === "oauth-business" ? "oauth-business" : "oauth-personal",
-    email: email?.trim() || undefined,
+    key: createHash("sha256")
+      .update(token.refresh_token || token.access_token)
+      .digest("hex"),
+    authMethod: authMethod === "oauth-business" ? authMethod : "oauth-personal",
+    email: email?.trim().toLowerCase() || undefined,
   };
 }
 
@@ -154,8 +153,11 @@ export const readAntigravityStoredSignIn = Effect.fn("readAntigravityStoredSignI
       .pipe(Effect.orElseSucceed((): string | undefined => undefined));
     if (stored !== undefined) {
       const signIn = parseAntigravityStoredSignIn(stored);
-      if (signIn.status === "signed-in" || !input.shared) return signIn;
+      if (signIn.status === "signed-in") return { ...signIn, fileBacked: true };
+      if (!input.shared) return signIn;
     }
-    return input.shared ? yield* readKeyring(input.platform, input.environment) : SIGNED_OUT;
+    // agy bypasses the OS keyring in an SSH session, including private profiles.
+    if (!input.shared || input.environment.SSH_CONNECTION) return SIGNED_OUT;
+    return yield* readKeyring(input.platform, input.environment);
   },
 );

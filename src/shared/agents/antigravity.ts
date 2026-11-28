@@ -248,12 +248,11 @@ export const antigravityAgent = {
     trackedBySettings: true,
     preference: "antigravity",
     label: "Antigravity",
-    preferCredentialIdentity: true,
     keepWindowLabels: true,
     separateQuotas: true,
     accountTypes: ["computer", "oauth-personal", "oauth-business"],
     accountTypeSetting: "authMethod",
-    deferredReadingMs: 32_000,
+    accountLoadsLater: true,
   },
   setup: {
     signIn: { via: "account" },

@@ -214,6 +214,10 @@ const fakeAntigravity = Effect.fnUntraced(function* (
       '  printf "agy %s\\n" "$NODEX_ACP_AGENT_VERSION"',
       "  exit 0",
       "fi",
+      'if [ "$1" = "-p" ] && [ "$2" = "/usage" ]; then',
+      '  printf "%s\\n" "print-usage" >> "$NODEX_ACP_REQUEST_LOG_PATH"',
+      "  exit 2",
+      "fi",
       `exec ${quote(process.execPath)} ${quote(peer)} "$@"`,
       "",
     ].join("\n"),
@@ -357,9 +361,21 @@ it.live.skipIf(process.platform === "win32")(
         const before = yield* call("thread.snapshot", { threadId: "thread" });
         expect(before.projection.runs[0]?.status).toBe("running");
 
+        expect(yield* fs.readFileString(log)).not.toContain("print-usage");
+        const limits = yield* call("providers.read", {
+          instanceIds: [instanceId],
+          refresh: true,
+          readUsage: true,
+        });
+        expect(limits[0]?.usageLimits?.unavailable?.reason).toBe("unsupported");
+        expect(
+          (yield* fs.readFileString(log)).split("\n").filter((line) => line === "print-usage"),
+        ).toHaveLength(1);
+
         yield* call("providers.auth.logout", { instanceId });
         const signedOut = (yield* readCatalog())[0];
         expect(signedOut).toMatchObject({ auth: { status: "unauthenticated" }, models: [] });
+        expect(signedOut?.usageLimits).toBeNull();
         const stopped = yield* call("thread.snapshot", { threadId: "thread" }).pipe(
           Effect.repeat({
             until: (value) => value.projection.runs.every(({ status }) => status !== "running"),

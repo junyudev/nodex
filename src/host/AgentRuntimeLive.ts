@@ -1061,9 +1061,9 @@ const supervisor = Layer.effectContext(
         .snapshot()
         .pipe(Effect.map((snapshot) => declaredSubscriptionAgents(snapshot.agentProfiles))),
       known: product.knownCatalog(),
-      refresh: (instanceIds) => product.catalog({ instanceIds, refresh: true }),
+      refresh: (instanceIds) => product.catalog({ instanceIds, refresh: true, readUsage: true }),
       refreshWhileRunning: (instanceIds) =>
-        product.catalogWhileRunning({ instanceIds, refresh: true }),
+        product.catalogWhileRunning({ instanceIds, refresh: true, readUsage: true }),
       logout: product.logoutProviders,
       served: providerCatalog.served,
       connectionChanges: runtime.connectionChanges,

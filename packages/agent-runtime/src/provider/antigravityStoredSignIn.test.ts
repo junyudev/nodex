@@ -24,9 +24,7 @@ describe("parseAntigravityStoredSignIn", () => {
   it("reads agy's keyring encodings and its plain file", () => {
     const signedIn = {
       status: "signed-in",
-      accessToken: "access",
-      refreshToken: "refresh",
-      expiry: "2999-01-01T00:00:00Z",
+      key: expect.stringMatching(/^[a-f0-9]{64}$/),
       authMethod: "oauth-personal",
       email: "person@example.com",
     };
@@ -41,8 +39,13 @@ describe("parseAntigravityStoredSignIn", () => {
     expect(parseAntigravityStoredSignIn(stored())).toEqual(signedIn);
   });
 
-  it("keeps the Enterprise method and treats an unusable value as no sign-in", () => {
-    expect(parseAntigravityStoredSignIn(stored({ auth_method: "oauth-business" }))).toMatchObject({
+  it("normalizes the email and treats an unusable value as no sign-in", () => {
+    expect(
+      parseAntigravityStoredSignIn(
+        stored({ id_token_email: " Person@Example.com ", auth_method: "oauth-business" }),
+      ),
+    ).toMatchObject({
+      email: "person@example.com",
       authMethod: "oauth-business",
     });
     expect(parseAntigravityStoredSignIn(stored({ token: { access_token: "" } }))).toEqual({
@@ -138,6 +141,7 @@ describe("readAntigravityStoredSignIn", () => {
           expect(yield* read({ shared, platform: "darwin" }, "exit 44")).toMatchObject({
             status: "signed-in",
             email: "file@example.com",
+            fileBacked: true,
           });
         }
         expect(reads).toEqual([]);
