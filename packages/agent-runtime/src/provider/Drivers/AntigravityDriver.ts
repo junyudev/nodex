@@ -1,3 +1,4 @@
+import { symlink } from "node:fs/promises";
 import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import {
   AntigravitySettings,
@@ -23,7 +24,6 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import { HttpClient } from "effect/http";
 import * as AcpErrors from "effect-acp/errors";
 
 import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
@@ -68,7 +68,7 @@ import {
 import { makeAcpNativeLoggerFactory } from "@nodex/provider-acp/server/nativeLogging";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeAntigravityProvider } from "../AntigravityProvider.ts";
-import { makeAntigravityUsageProbe } from "../antigravityUsageLimits.ts";
+import { readAntigravityUsage } from "../antigravityUsageLimits.ts";
 import { readAntigravityStoredSignIn } from "../antigravityStoredSignIn.ts";
 import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import * as ModelCatalog from "@nodex/provider-core/server/ModelCatalog";
@@ -107,7 +107,6 @@ export type AntigravityDriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
   | Crypto.Crypto
   | FileSystem.FileSystem
-  | HttpClient.HttpClient
   | IdAllocator.IdAllocatorV2
   | McpProviderSessions.McpProviderSessions
   | ModelCatalog.ModelCatalog
@@ -139,7 +138,6 @@ export const AntigravityDriver: ProviderDriver<
     const digest = yield* Crypto.Crypto;
     const random = yield* Crypto.Crypto;
     const fileSystem = yield* FileSystem.FileSystem;
-    const httpClient = yield* HttpClient.HttpClient;
     const path = yield* Path.Path;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const host = yield* ProviderHost.ProviderHost;
@@ -595,28 +593,49 @@ export const AntigravityDriver: ProviderDriver<
       };
     });
 
-    const usage = yield* makeAntigravityUsageProbe({
-      profileDirectory,
-      shared: directories.shared,
-      authMethod: auth.authMethod,
-      storedSignIn: readSignIn,
-    }).pipe(
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, path),
-      Effect.provideService(Crypto.Crypto, digest),
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-    );
+    const probeUsage = (fileBacked: boolean) =>
+      readAntigravityUsage({
+        spawner,
+        prepare: Effect.gen(function* () {
+          const cwd = host.paths.stateDir;
+          const { spawn } = yield* prepareSpawn(cwd, processEnvironment);
+          const invocation = { command: spawn.command, cwd, env: spawn.env };
+          if (!fileBacked && directories.shared) return invocation;
+          // Print mode uses ~/.gemini/antigravity-cli and accepts neither ACP directory flag.
+          // Give it a scoped home that resolves to the same Nodex profile and sign-in file.
+          const home = yield* fileSystem.makeTempDirectoryScoped({
+            directory: directories.runtimeTemp,
+            prefix: "usage-",
+          });
+          const gemini = path.join(home, ".gemini");
+          yield* fileSystem.makeDirectory(gemini, { mode: 0o700 });
+          yield* Effect.tryPromise(() =>
+            symlink(
+              path.join(profileDirectory, "antigravity-acp"),
+              path.join(gemini, "antigravity-cli"),
+              platform === "win32" ? "junction" : "dir",
+            ),
+          );
+          return {
+            ...invocation,
+            env: {
+              ...invocation.env,
+              SSH_CONNECTION: invocation.env?.SSH_CONNECTION || "127.0.0.1 0 127.0.0.1 0",
+              ...(platform === "win32" ? { USERPROFILE: home } : { HOME: home }),
+            },
+          };
+        }),
+      });
     // A sign-in made in a terminal loads the account's models once checks find it.
     const catalogLoader = yield* Deferred.make<Effect.Effect<void>>();
     const provider = yield* makeAntigravityProvider(settings, {
       environment: processEnvironment,
       ...(storedSignIn
         ? { storedSignIn, loadCatalog: Deferred.await(catalogLoader).pipe(Effect.flatten) }
-        : {}),
+        : { readPrivateSignIn: readSignIn }),
       stampIdentity: classifyModels,
       probe,
-      probeUsage: usage.probe,
-      clearUsage: usage.clear,
+      probeUsage,
       auth: { type: auth.authMethod, label: antigravityAuthLabel(auth.authMethod) },
       supportsTextGeneration: isAntigravityTextGenerationAvailable(profileDirectory).pipe(
         Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -762,6 +781,7 @@ export const AntigravityDriver: ProviderDriver<
       textGeneration,
       auth: authFlow.controller,
       refreshModels,
+      refreshUsage: provider.refreshUsage,
     } satisfies ProviderInstance;
   }),
 };

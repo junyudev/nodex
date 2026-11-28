@@ -74,6 +74,8 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     ServerSettingsError,
     Scope.Scope
   >;
+  /** Enrichment publishes the provider's authoritative limits, including account resets. */
+  readonly enrichmentOwnsUsageLimits?: true;
   readonly enrichSnapshot?: (input: {
     readonly settings: Settings;
     readonly snapshot: ServerProvider;
@@ -124,12 +126,14 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       // Enrichment derives from the snapshot it was handed; a runtime usage
       // update that landed since must not be reverted by it.
       const usageLimits =
-        usageReadFrom && state.snapshot.usageLimits === usageReadFrom.usageLimits
-          ? resolveUsageLimitsAfterProbe({
-              published: state.snapshot.usageLimits,
-              probed: nextSnapshot.usageLimits,
-            })
-          : state.snapshot.usageLimits;
+        input.enrichmentOwnsUsageLimits
+          ? nextSnapshot.usageLimits
+          : usageReadFrom && state.snapshot.usageLimits === usageReadFrom.usageLimits
+            ? resolveUsageLimitsAfterProbe({
+                published: state.snapshot.usageLimits,
+                probed: nextSnapshot.usageLimits,
+              })
+            : state.snapshot.usageLimits;
       const workspaceId = state.snapshot.auth.workspaceId;
       const merged = withUsageLimits(
         usageLimits !== nextSnapshot.usageLimits && workspaceId && !nextSnapshot.auth.workspaceId

@@ -725,14 +725,14 @@ describe("usage readings", () => {
       },
       {
         id: "3p-weekly",
-        label: "Claude & GPT (shared) · Weekly",
+        label: "Claude & GPT · Weekly",
         kind: "weekly",
         usedPercent: 95,
         windowDurationMins: 10080,
       },
       {
         id: "3p-quota",
-        label: "Claude & GPT (shared) · Reported quota",
+        label: "Claude & GPT · Reported quota",
         kind: "other",
         usedPercent: 50,
       },
@@ -743,17 +743,15 @@ describe("usage readings", () => {
       auth: { status: "authenticated", type: "oauth-personal", email: "dev@example.com" },
       usageLimits: {
         checkedAt: new Date(NOW - HOUR).toISOString(),
-        credentialFingerprint: "account-a",
         windows: [],
       },
     });
     const newer = claudeProvider({
       ...older,
       instanceId: "antigravity-b" as RuntimeProvider["instanceId"],
-      auth: { status: "authenticated", type: "oauth-business" },
+      auth: { status: "authenticated", type: "oauth-business", email: "dev@example.com" },
       usageLimits: {
         checkedAt: new Date(NOW).toISOString(),
-        credentialFingerprint: "account-a",
         windows: [...windows],
       },
     });
@@ -769,7 +767,7 @@ describe("usage readings", () => {
     expect(accounts[0]?.instanceIds).toEqual(["antigravity-a", "antigravity-b"]);
     const view = describeUsageMeter(accounts[0]!.reading, NOW);
     expect(view.binding).toMatchObject({
-      label: "Claude & GPT (shared) · Weekly",
+      label: "Claude & GPT · Weekly",
       remainingPercent: 5,
     });
     expect(new Set(view.windows.map(({ label }) => label))).toEqual(

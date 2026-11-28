@@ -66,7 +66,7 @@ const codex = { instanceId: "codex", driver: "codex" } as unknown as Provider;
 
 const harness = (options: {
   readonly meter?: SubscriptionRef.SubscriptionRef<boolean>;
-  readonly antigravity?: boolean;
+  readonly antigravityMeter?: SubscriptionRef.SubscriptionRef<boolean>;
   readonly declared?: readonly string[];
   /** Whether Agent execution is running; mutable so a test can stop or start it. */
   readonly execution?: { running: boolean };
@@ -89,19 +89,24 @@ const harness = (options: {
         Effect.map((readAt): Providers => [codex, claude({ readAt, usedPercent })]),
       );
     const check = (ids: readonly string[]) => options.check?.(ids) ?? now(30);
+    const meter = options.meter;
+    const antigravityMeter = options.antigravityMeter;
+    const preferences = Effect.gen(function* () {
+      return {
+        claude: meter ? yield* SubscriptionRef.get(meter) : true,
+        antigravity: antigravityMeter ? yield* SubscriptionRef.get(antigravityMeter) : false,
+      };
+    });
+    const meterChanges = Stream.merge(
+      meter ? SubscriptionRef.changes(meter) : Stream.empty,
+      antigravityMeter ? SubscriptionRef.changes(antigravityMeter) : Stream.empty,
+    ).pipe(Stream.mapEffect(() => preferences));
     const usage = yield* make({
-      meters: {
-        claude: options.meter ? yield* SubscriptionRef.get(options.meter) : true,
-        antigravity: options.antigravity ?? false,
-      },
-      meterChanges: options.meter
-        ? SubscriptionRef.changes(options.meter).pipe(
-            Stream.map((claude) => ({ claude, antigravity: options.antigravity ?? false })),
-          )
-        : undefined,
+      meters: yield* preferences,
+      meterChanges,
       declared: Effect.succeed({
         claude: options.declared ?? ["claude-default"],
-        antigravity: options.antigravity ? ["antigravity-a"] : [],
+        antigravity: antigravityMeter ? ["antigravity-a"] : [],
       }),
       known: Effect.suspend(() => {
         reads.push("known");
@@ -524,46 +529,78 @@ it.effect("idles every Claude usage read while hidden and reads once immediately
   ).pipe(Effect.provide(TestClock.layer())),
 );
 
-it.effect(
-  "uses the same refresh for enabled providers and picks up Antigravity's deferred quota",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const antigravity = (usedPercent: number): Provider => ({
-          ...claude({ instanceId: "antigravity-a", usedPercent }),
-          driver: "antigravity",
-          auth: { type: "oauth-personal", status: "authenticated" },
-        });
-        const checked: (readonly string[])[] = [];
-        const claudeMeter = yield* SubscriptionRef.make(true);
-        let latest = antigravity(10);
-        const { usage, reads, settle } = yield* harness({
-          meter: claudeMeter,
-          antigravity: true,
-          known: () => Effect.succeed([claude({}), latest]),
-          check: (ids) => {
-            checked.push(ids);
-            return Effect.succeed(ids.includes("claude-default") ? [claude({}), latest] : [latest]);
-          },
-        });
-        yield* usage.refresh;
-        assert.deepEqual(checked, [["antigravity-a", "claude-default"]]);
-        latest = antigravity(80);
-        yield* TestClock.adjust("32 seconds");
-        yield* settle;
-        assert.deepEqual(reads, ["known", "asked", "known"]);
-        const snapshot = yield* SubscriptionRef.get(usage.snapshot);
-        assert.equal(
-          snapshot.providers?.find((row) => row.driver === "antigravity")?.usageLimits?.windows[0]
-            ?.usedPercent,
-          80,
-        );
-        const reject = yield* Effect.result(usage.logoutClaude(["antigravity-a"]));
-        assert.equal(reject._tag, "Failure");
-        yield* SubscriptionRef.set(claudeMeter, false);
-        yield* settle;
-        yield* TestClock.adjust("5 minutes");
-        assert.deepEqual(checked.at(-1), ["antigravity-a"]);
-      }),
-    ).pipe(Effect.provide(TestClock.layer())),
+it.effect("requests Antigravity usage only while its meter is shown", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const antigravity = (usedPercent: number, readAt?: number): Provider => ({
+        ...claude({ instanceId: "antigravity-a", usedPercent, readAt }),
+        driver: "antigravity",
+        auth: { type: "oauth-personal", status: "authenticated" },
+      });
+      const checked: (readonly string[])[] = [];
+      const antigravityMeter = yield* SubscriptionRef.make(false);
+      const { usage, settle, execution, connection, skipped } = yield* harness({
+        antigravityMeter,
+        known: () => Effect.succeed([claude({}), antigravity(10)]),
+        check: (ids) =>
+          Clock.currentTimeMillis.pipe(
+            Effect.map((now) => {
+              checked.push(ids);
+              return [
+                ...(ids.includes("claude-default") ? [claude({ readAt: now })] : []),
+                ...(ids.includes("antigravity-a") ? [antigravity(80, now)] : []),
+              ];
+            }),
+          ),
+      });
+      yield* usage.refresh;
+      yield* usage.reread;
+      yield* PubSub.publish(connection, { status: "ready", generation: "g1" });
+      yield* TestClock.adjust("5 minutes");
+      yield* settle;
+      assert.deepEqual(checked, [["claude-default"], ["claude-default"]]);
+
+      yield* SubscriptionRef.set(antigravityMeter, true);
+      yield* settle;
+      assert.deepEqual(checked.at(-1), ["antigravity-a"]);
+      const result = yield* usage.refresh;
+      assert.equal(
+        checked.length,
+        3,
+        "opening the card within the floor reuses the completed read",
+      );
+      assert.equal(
+        result.providers?.find(({ driver }) => driver === "antigravity")?.usageLimits?.windows[0]
+          ?.usedPercent,
+        80,
+      );
+
+      yield* SubscriptionRef.set(antigravityMeter, false);
+      yield* settle;
+      yield* SubscriptionRef.set(antigravityMeter, true);
+      yield* settle;
+      assert.equal(checked.length, 3, "re-enabling also honors the floor");
+      yield* TestClock.adjust("1 minute");
+      yield* usage.refresh;
+      assert.deepEqual(checked.at(-1), ["antigravity-a", "claude-default"]);
+
+      execution.running = false;
+      yield* TestClock.adjust("5 minutes");
+      yield* settle;
+      assert.equal(skipped(), 1);
+      assert.equal(checked.length, 4);
+      execution.running = true;
+      yield* TestClock.adjust("5 minutes");
+      yield* settle;
+      assert.equal(checked.length, 5);
+      assert.deepEqual(checked.at(-1), ["antigravity-a", "claude-default"]);
+
+      yield* SubscriptionRef.set(antigravityMeter, false);
+      yield* TestClock.adjust("5 minutes");
+      yield* settle;
+      assert.deepEqual(checked.at(-1), ["claude-default"]);
+      const reject = yield* Effect.result(usage.logoutClaude(["antigravity-a"]));
+      assert.equal(reject._tag, "Failure");
+    }),
+  ).pipe(Effect.provide(TestClock.layer())),
 );

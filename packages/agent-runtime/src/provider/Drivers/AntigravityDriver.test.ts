@@ -19,7 +19,6 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import { HttpClient } from "effect/http";
 
 import { makeProviderFailure } from "@nodex/provider-core/server/failure";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
@@ -37,6 +36,7 @@ import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { resolveProviderCompatibility } from "../providerCompatibility.ts";
 import { AntigravityDriver } from "./AntigravityDriver.ts";
+import { ANTIGRAVITY_SIGN_IN_FILE } from "../antigravityStoredSignIn.ts";
 import * as ProviderHostLive from "../ProviderHostLive.ts";
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 
@@ -133,6 +133,11 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
         ...(options.initialMode === undefined
           ? []
           : [`export NODEX_ACP_INITIAL_MODE=${shellQuote(options.initialMode)}`]),
+        'if [ "$1" = "-p" ]; then',
+        `  candidate="$HOME/.gemini/antigravity-cli/${ANTIGRAVITY_SIGN_IN_FILE}"`,
+        '  if [ ! -f "$candidate" ]; then exit 1; fi',
+        "  exit 2",
+        "fi",
         `export NODEX_ACP_AGENT_VERSION=${shellQuote(options.agentVersion ?? "1.5.12")}`,
         `exec ${shellQuote(nodePath)} ${shellQuote(mockAgentPath)} "$@"`,
         "",
@@ -335,12 +340,6 @@ const layerDeps = ServerConfig.layerTest(process.cwd(), {
   prefix: "nodex-antigravity-driver-config-",
 }).pipe(
   Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
-  Layer.provideMerge(
-    Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make(() => Effect.die("Unexpected quota request")),
-    ),
-  ),
   Layer.provideMerge(ServerSettings.layerTest()),
   Layer.provideMerge(
     Layer.mock(BackgroundPolicy.BackgroundPolicy)({
@@ -441,6 +440,37 @@ it.layer(layerTest)("AntigravityDriver", (it) => {
         ).toContain("oauth-business");
         expect(h.keyringReads.length).toBeGreaterThan(0);
       }),
+  );
+
+  it.effect.skipIf(windowsHost)("print mode consumes the private ACP profile's sign-in", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness({ config: { authMethod: "oauth-personal" } });
+      const acpDirectory = h.path.join(h.profileDirectory, "antigravity-acp");
+      yield* h.fs.makeDirectory(acpDirectory, { recursive: true });
+      yield* h.fs.writeFileString(
+        h.path.join(acpDirectory, ANTIGRAVITY_SIGN_IN_FILE),
+        JSON.stringify({
+          token: { access_token: "fixture" },
+          id_token_email: " Person@Example.com ",
+        }),
+      );
+      yield* h.refresh();
+      expect((yield* h.instance.snapshot.getSnapshot).auth.email).toBe("person@example.com");
+      expect(h.launches.some(({ args }) => args[0] === "-p")).toBe(false);
+
+      yield* h.instance.refreshUsage!;
+      const reading = (yield* h.instance.snapshot.getSnapshot).usageLimits;
+      expect(reading?.unavailable?.reason).toBe("unsupported");
+      const print = h.launches.find(({ args }) => args[0] === "-p");
+      expect(print).toMatchObject({
+        command: h.first.executablePath,
+        profileDirectory: h.profileDirectory,
+      });
+      const usageHome = print?.environment.HOME;
+      expect(usageHome).toBeDefined();
+      expect(yield* h.fs.exists(usageHome!)).toBe(false);
+      expect(yield* h.fs.exists(h.path.join(acpDirectory, ANTIGRAVITY_SIGN_IN_FILE))).toBe(true);
+    }),
   );
 
   it.effect.skipIf(windowsHost)(

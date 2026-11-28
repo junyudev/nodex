@@ -122,7 +122,7 @@ export class ProviderRegistry extends Context.Service<
      */
     readonly refreshInstance: (
       instanceId: ProviderInstanceId,
-      options?: { readonly fresh?: boolean },
+      options?: { readonly fresh?: boolean; readonly readUsage?: boolean },
     ) => Effect.Effect<ReadonlyArray<ServerProvider>>;
 
     /**
@@ -823,12 +823,20 @@ export const layer = Layer.effect(
 
     const refreshInstance = Effect.fn("refreshInstance")(function* (
       instanceId: ProviderInstanceId,
-      options?: { readonly fresh?: boolean },
+      options?: { readonly fresh?: boolean; readonly readUsage?: boolean },
     ) {
-      if (options?.fresh) {
-        const instance = yield* instanceRegistry.getInstance(instanceId);
-        yield* instance?.invalidateCaches ?? Effect.void;
+      const instance =
+        options?.fresh || options?.readUsage
+          ? yield* instanceRegistry.getInstance(instanceId)
+          : undefined;
+      if (options?.readUsage && instance?.refreshUsage) {
+        yield* instance.refreshUsage;
+        const current = yield* instanceRegistry.getInstance(instanceId);
+        return current === instance
+          ? yield* observeSource(buildSnapshotSource(instance))
+          : yield* Ref.get(providersRef);
       }
+      if (options?.fresh) yield* instance?.invalidateCaches ?? Effect.void;
       const sources = yield* getLiveSources;
       const providerSource = sources.find((candidate) => candidate.instanceId === instanceId);
       if (!providerSource) {
@@ -1201,7 +1209,7 @@ export const layer = Layer.effect(
       getCheckedProvidersFor: (instanceIds) => checkedProviders(new Set(instanceIds)),
       refresh: (provider?: ProviderDriverKind) =>
         refresh(provider).pipe(Effect.catchCause(recoverRefreshFailure)),
-      refreshInstance: (instanceId: ProviderInstanceId, options?: { readonly fresh?: boolean }) =>
+      refreshInstance: (instanceId, options) =>
         refreshInstance(instanceId, options).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshWorkspaceSnapshot: (input) =>
         refreshWorkspaceSnapshot(input).pipe(Effect.catchCause(recoverRefreshFailure)),

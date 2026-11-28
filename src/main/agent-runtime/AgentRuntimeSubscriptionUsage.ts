@@ -33,9 +33,7 @@ type DeclaredAgents = Readonly<Record<string, readonly string[]>>;
 
 const meterEnabled = (meters: MeterPreferences, key: string) => meters[key] !== false;
 
-const deferredMeters = subscriptionMeters.filter(
-  ({ deferredReadingMs }) => deferredReadingMs !== undefined,
-);
+const awaitingMeters = subscriptionMeters.filter(({ accountLoadsLater }) => accountLoadsLater);
 
 const anyMeterEnabled = (meters: MeterPreferences, providers: Providers | null = null) =>
   SUBSCRIPTION_USAGE_PROVIDERS.some((key) => meterEnabled(meters, key)) ||
@@ -159,11 +157,9 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
   /** Paces reading again: every from-scratch attempt, even one skipped while stopped. */
   const lastAttemptAt = yield* Ref.make(startedAt);
   /** Floors explicit refreshes: from-scratch reads that actually ran. */
-  const lastFreshReadAt = yield* Ref.make<number | null>(null);
+  const lastFreshReadAt = new Map<string, number>();
   const reads = yield* Semaphore.make(1);
   const meters = yield* Ref.make(options.meters);
-  const reconcileAt = yield* Ref.make<number | null>(null);
-  const deferredDeclarations = yield* Ref.make<DeclaredAgents>({});
   // Each wakes its loop to reconsider; sliding so a burst of requests asks once.
   const schedule = yield* Queue.sliding<void>(1);
   const rereads = yield* Queue.sliding<void>(1);
@@ -192,7 +188,6 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
       if (!anyMeterEnabled(yield* Ref.get(meters), current.providers)) return;
       const result = yield* Effect.result(
         options.declared.pipe(
-          Effect.tap((declared) => Ref.set(deferredDeclarations, declared)),
           Effect.flatMap((declared) => {
             const instanceIds = Object.values(declared).flat();
             // Self-reporting Agents first join through a catalog that execution served.
@@ -228,62 +223,61 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
    * Reads the declared Agents with enabled meters again from scratch; `start` lets it start execution to do
    * so. A failed read keeps what was read, and one skipped while stopped changes nothing.
    */
-  const readNow = (start: boolean) =>
+  const readNow = (start: boolean, onlyMeters?: ReadonlySet<string>) =>
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(snapshot);
       if (!anyMeterEnabled(yield* Ref.get(meters), current.providers)) return;
       const now = yield* Clock.currentTimeMillis;
-      yield* Ref.set(lastAttemptAt, now);
+      if (!start) yield* Ref.set(lastAttemptAt, now);
       const result = yield* Effect.result(
         Effect.gen(function* () {
           const declared = yield* options.declared;
           const enabled = yield* Ref.get(meters);
-          const request = Object.keys(declared)
-            .sort()
-            .flatMap((key) => (meterEnabled(enabled, key) ? declared[key] : []));
-          const reported = (current.providers ?? []).flatMap((row) => {
+          const requested = (key: string) =>
+            meterEnabled(enabled, key) &&
+            (onlyMeters === undefined || onlyMeters.has(key)) &&
+            (!start ||
+              current.status === "unavailable" ||
+              now - (lastFreshReadAt.get(key) ?? -Infinity) >= floorMs);
+          const byMeter = new Map<string, readonly string[]>(
+            Object.keys(declared)
+              .sort()
+              .map((key) => [key, declared[key]]),
+          );
+          for (const row of current.providers ?? []) {
             const key = subscriptionUsageProvider(row);
-            return key !== null && reportedOutsideSettings(row) && meterEnabled(enabled, key)
-              ? [row.instanceId]
-              : [];
-          });
-          const instanceIds = [...new Set([...request, ...reported])];
-          const providers =
-            instanceIds.length === 0
-              ? []
-              : yield* start
-                  ? options.refresh(instanceIds)
-                  : options.refreshWhileRunning(instanceIds);
-          return providers === null ? null : { declared, instanceIds, providers };
+            if (key !== null && reportedOutsideSettings(row))
+              byMeter.set(key, [...(byMeter.get(key) ?? []), row.instanceId]);
+          }
+          const selected = [...byMeter].filter(([key, ids]) => ids.length && requested(key));
+          const instanceIds = [...new Set(selected.flatMap(([, ids]) => ids))];
+          if (instanceIds.length === 0) return null;
+          if (start) yield* Ref.set(lastAttemptAt, now);
+          const providers = yield* start
+            ? options.refresh(instanceIds)
+            : options.refreshWhileRunning(instanceIds);
+          if (providers === null) return null;
+          for (const [key] of selected) lastFreshReadAt.set(key, now);
+          return { declared, instanceIds, providers };
         }),
       );
       if (Result.isFailure(result)) return yield* publishFailure(result.failure);
       if (result.success === null) return;
       const { declared, instanceIds, providers } = result.success;
-      yield* Ref.set(deferredDeclarations, declared);
-      // Some Agents publish usage after their health check returns.
-      const delay = Math.min(
-        ...deferredMeters.flatMap(({ preference, deferredReadingMs }) =>
-          declared[preference]?.some((id) => instanceIds.includes(id)) &&
-          deferredReadingMs !== undefined
-            ? [deferredReadingMs]
-            : [],
-        ),
-      );
-      if (Number.isFinite(delay))
-        yield* Ref.set(reconcileAt, (yield* Clock.currentTimeMillis) + delay);
       const all = new Set(Object.values(declared).flat());
       const refreshed = new Set(instanceIds);
-      yield* Ref.set(lastFreshReadAt, now);
+      const latest = yield* SubscriptionRef.get(snapshot);
       yield* publish({
         status: "ready",
         providers: [
-          ...(current.providers ?? []).filter(
+          ...(latest.providers ?? []).filter(
             (row) =>
               (all.has(row.instanceId) || reportedOutsideSettings(row)) &&
               !refreshed.has(row.instanceId),
           ),
-          ...subscriptionRows(providers).filter((row) => refreshed.has(row.instanceId)),
+          ...adoptSubscriptionRows(latest.providers, providers).filter((row) =>
+            refreshed.has(row.instanceId),
+          ),
         ],
         reason: null,
       });
@@ -294,15 +288,7 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
    * read that ran moments ago, on its own or for an earlier caller, stands in.
    */
   const askedInFlight = yield* Ref.make<Deferred.Deferred<void> | null>(null);
-  const readAsked = reads.withPermits(1)(
-    Effect.gen(function* () {
-      const current = yield* SubscriptionRef.get(snapshot);
-      const last = yield* Ref.get(lastFreshReadAt);
-      const now = yield* Clock.currentTimeMillis;
-      if (current.status !== "unavailable" && last !== null && now - last < floorMs) return;
-      yield* readNow(true);
-    }),
-  );
+  const readAsked = reads.withPermit(readNow(true));
   const refresh = Effect.uninterruptibleMask((restore) =>
     Effect.gen(function* () {
       const candidate = yield* Deferred.make<void>();
@@ -355,28 +341,30 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
         lastAttemptAt: yield* Ref.get(lastAttemptAt),
         intervalMs,
       });
-    const declarations = yield* Ref.get(deferredDeclarations);
-    if (
-      (current.status === "unavailable" && current.providers === null) ||
-      deferredMeters.some(
-        ({ preference }) =>
-          meterEnabled(enabled, preference) && (declarations[preference]?.length ?? 0) > 0,
-      )
-    )
-      return (yield* Ref.get(lastAttemptAt)) + intervalMs;
-    return null;
+    // A saved profile whose account loads after its check is asked again until it reports.
+    const awaitingAccount = yield* options.declared.pipe(
+      Effect.map((declared) =>
+        awaitingMeters.some(
+          ({ preference }) =>
+            meterEnabled(enabled, preference) &&
+            (declared[preference] ?? []).some(
+              (id) =>
+                !current.providers?.some(
+                  (row) =>
+                    row.instanceId === id && row.usageLimits?.unavailable?.reason === "unsupported",
+                ),
+            ),
+        ),
+      ),
+      Effect.orElseSucceed(() => false),
+    );
+    return awaitingAccount || (current.status === "unavailable" && current.providers === null)
+      ? (yield* Ref.get(lastAttemptAt)) + intervalMs
+      : null;
   });
   yield* Effect.forever(
     Effect.gen(function* () {
-      const refreshAt = yield* nextRead;
-      const enabled = yield* Ref.get(meters);
-      const pendingReconcile = deferredMeters.some(({ preference }) =>
-        meterEnabled(enabled, preference),
-      )
-        ? yield* Ref.get(reconcileAt)
-        : null;
-      const at =
-        refreshAt === null ? pendingReconcile : Math.min(refreshAt, pendingReconcile ?? refreshAt);
+      const at = yield* nextRead;
       if (at === null) return yield* Queue.take(schedule);
       const delay = Math.max(0, at - (yield* Clock.currentTimeMillis));
       // Races the due time against a state change that may move it.
@@ -385,12 +373,6 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
         Queue.take(schedule).pipe(Effect.as(false)),
       );
       if (!due) return;
-      if (pendingReconcile === at) {
-        const reconcile = yield* Ref.modify(reconcileAt, (current) =>
-          current === pendingReconcile ? [true, null] : [false, current],
-        );
-        if (reconcile) return yield* readKnown;
-      }
       yield* reads.withPermits(1)(
         Effect.gen(function* () {
           const reconsidered = yield* nextRead;
@@ -460,8 +442,9 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
           );
           if (changed.length === 0) return;
           yield* Queue.offer(schedule, undefined);
-          if (changed.some((provider) => meterEnabled(enabled, provider)))
-            yield* reads.withPermits(1)(readNow(true)).pipe(Effect.forkIn(scope));
+          const showing = new Set(changed.filter((provider) => meterEnabled(enabled, provider)));
+          if (showing.size > 0)
+            yield* reads.withPermit(readNow(true, showing)).pipe(Effect.forkIn(scope));
         }),
       ),
       Effect.forkScoped({ startImmediately: true }),

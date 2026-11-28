@@ -711,10 +711,8 @@ export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boole
   });
   const accountIdentity =
     auth.email || auth.workspaceId ? `${auth.email ?? ""}|${auth.workspaceId ?? ""}` : null;
-  const configuredIdentity = meter?.preferCredentialIdentity
-    ? (limits?.credentialFingerprint ?? accountIdentity)
-    : (accountIdentity ?? limits?.credentialFingerprint);
-  const identity = configuredIdentity ?? `instance:${provider.instanceId}`;
+  const identity =
+    accountIdentity ?? limits?.credentialFingerprint ?? `instance:${provider.instanceId}`;
   return {
     provider: kind,
     key: `${kind}:${identity}`,

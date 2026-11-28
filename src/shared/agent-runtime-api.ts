@@ -623,7 +623,7 @@ export interface AgentRuntimeIpcApi {
     result: AgentRuntimeOperations["thread.attachment"]["output"];
   };
   "agent-runtime:providers:read": {
-    args: [input?: AgentRuntimeOperations["providers.read"]["input"]];
+    args: [input?: Omit<AgentRuntimeOperations["providers.read"]["input"], "readUsage">];
     result: AgentRuntimeOperations["providers.read"]["output"];
   };
   "agent-runtime:providers:composer-skills": {

@@ -51,8 +51,6 @@ export interface AgentSetup {
 export interface AgentUsageMeter {
   readonly preference: string;
   readonly label: string;
-  /** Credential identities may distinguish accounts even when the address is unavailable. */
-  readonly preferCredentialIdentity?: true;
   readonly accountWindows?: readonly string[];
   /** Each window limits only its own models, so a shorter one never holds back a longer one. */
   readonly separateQuotas?: true;
@@ -63,8 +61,12 @@ export interface AgentUsageMeter {
   readonly showPlaceholder?: true;
   readonly signOut?: true;
   readonly keepProfileLabel?: true;
-  readonly deferredReadingMs?: number;
   readonly trackedBySettings?: true;
+  /**
+   * A saved profile can find its account only after its check, so the meter is asked again each
+   * interval until it reports.
+   */
+  readonly accountLoadsLater?: true;
 }
 
 export interface AgentDefinition {

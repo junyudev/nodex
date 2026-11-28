@@ -1558,8 +1558,10 @@ as long as the execution build and the provider settings and installation it des
 unchanged; otherwise the listing starts the process. A running process always answers live,
 and an explicit refresh always reaches it; a refresh that names Agents checks only those, from
 scratch so the Agents check their reported usage again. Claude and Antigravity share a
-five-minute usage refresh that runs only while Agent execution is running. Opening a usage card
-or enabling its meter can start execution for an immediate refresh.
+five-minute usage refresh that runs only while Agent execution is running and their meter is on.
+Opening a usage card or enabling its meter can start execution for an immediate refresh.
+Antigravity reads its limits only when that refresh asks: its health checks, chat starts and
+sign-ins never read them.
 See [Workbench shell](workbench-shell.md) for the rail's usage behavior. A provider check that ends without an answer, such
 as when the provider's service cannot be reached, is retried on its own after 15 seconds,
 doubling up to the provider health interval, until a check settles; a signed-out provider
