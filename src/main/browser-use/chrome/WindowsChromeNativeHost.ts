@@ -68,6 +68,37 @@ export interface WindowsChromeNativeHostOptions {
   readonly verifyPlatformArtifact: (candidate: string) => Promise<void>;
 }
 
+export const windowsChromeRegistryPaths = (localAppData: string, runtimeStateHome: string) => [
+  path.join(localAppData, "OpenAI", "Codex", "chrome-native-hosts-v2.json"),
+  path.join(runtimeStateHome, "chrome-native-hosts-v2.json"),
+];
+
+async function verifyRegistryIfPresent(registry: string, security: WindowsChromeFileSecurity) {
+  const stats = await fs.lstat(registry).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!stats) return false;
+  await security.verify(registry);
+  return true;
+}
+
+/** Retire a Profile's advertisement using its registration journal, even without a bundle. */
+export async function releaseWindowsChromeNativeHost(options: {
+  readonly localAppData: string;
+  readonly runtimeStateHome: string;
+  readonly host: string;
+  readonly security: WindowsChromeFileSecurity;
+}) {
+  for (const registry of windowsChromeRegistryPaths(
+    options.localAppData,
+    options.runtimeStateHome,
+  )) {
+    if (!(await verifyRegistryIfPresent(registry, options.security))) continue;
+    await removeWindowsChromeNativeHostResources(registry, options.runtimeStateHome, options.host);
+  }
+}
+
 export function createWindowsChromeNativeHost(options: WindowsChromeNativeHostOptions) {
   const { expectedNativeHost, security } = options;
   const nativeHostPath = path.join(
@@ -82,20 +113,7 @@ export function createWindowsChromeNativeHost(options: WindowsChromeNativeHostOp
   };
 
   const manifestContents = createChromeNativeHostManifest(options.authority, nativeHostPath);
-  const registries = [
-    path.join(options.localAppData, "OpenAI", "Codex", "chrome-native-hosts-v2.json"),
-    path.join(options.runtimeStateHome, "chrome-native-hosts-v2.json"),
-  ];
-  const verifyRegistryIfPresent = async (registry: string): Promise<boolean> => {
-    try {
-      await fs.lstat(registry);
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
-      throw error;
-    }
-    await security.verify(registry);
-    return true;
-  };
+  const registries = windowsChromeRegistryPaths(options.localAppData, options.runtimeStateHome);
 
   const checkInstallation = async (manifest: string) => {
     await security.verify(manifest);
@@ -132,22 +150,11 @@ export function createWindowsChromeNativeHost(options: WindowsChromeNativeHostOp
     const entry = createChromeNativeHostRegistryEntry({ ...options, nativeHostPath });
     for (const registry of registries) {
       await security.ensureDirectory(path.dirname(registry));
-      await verifyRegistryIfPresent(registry);
+      await verifyRegistryIfPresent(registry, security);
       await writeNativeHostRegistry(registry, entry, true);
       await security.verify(registry);
     }
   };
 
-  const releaseResources = async () => {
-    for (const registry of registries) {
-      if (!(await verifyRegistryIfPresent(registry))) continue;
-      await removeWindowsChromeNativeHostResources(
-        registry,
-        options.runtimeStateHome,
-        options.authority.hostName,
-      );
-    }
-  };
-
-  return { nativeHostPath, install, publish, verify, checkInstallation, releaseResources };
+  return { nativeHostPath, install, publish, verify, checkInstallation };
 }

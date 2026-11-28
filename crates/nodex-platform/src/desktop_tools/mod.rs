@@ -8,6 +8,7 @@ mod registry;
 
 pub use authenticode::verify_authenticode;
 pub use files::inspect_path;
+pub(crate) use files::verify_store_boundary;
 pub use job_stdio::run_job;
 pub use pipes::{PipeConnection, PipeListener, connect_pipe, enumerate_pipes};
 pub use processes::{ProcessIdentity, descendants, process_identity, terminate_subtree};
@@ -50,6 +51,9 @@ enum Start {
     },
     InspectPaths {
         paths: Vec<PathBuf>,
+    },
+    VerifyStoreBoundary {
+        path: PathBuf,
     },
     Ancestors {
         peer: ProcessIdentity,
@@ -146,6 +150,11 @@ fn run_once(command: Start) -> io::Result<Value> {
             require_revocation,
         } => value(authenticode::inspect_signature(&path, require_revocation)?),
         Start::InspectPath { path } => value(inspect_path(&path)?),
+        Start::VerifyStoreBoundary { path } => {
+            files::verify_store_boundary(&path)
+                .map_err(|error| io::Error::other(format!("{}: {error}", path.display())))?;
+            value(())
+        }
         Start::InspectPaths { paths } => {
             if paths.len() > 64 {
                 return Err(invalid("path inspection batch limit exceeded"));

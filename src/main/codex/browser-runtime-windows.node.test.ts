@@ -1,7 +1,10 @@
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import { layer as callbackRuntimeLayer } from "../app/ScopedCallbackRuntime";
 import {
   ChromeControlRuntime,
@@ -11,6 +14,7 @@ import type { BrowserRuntimeAvailability } from "./browser-runtime-bundle";
 import {
   WindowsDesktopTools,
   unsupportedWindowsDesktopTools,
+  type RegistryValue,
 } from "../platform/node/WindowsDesktopTools";
 import { makeWindowsBrowserRuntimeVerifier } from "../platform/node/WindowsBrowserRuntimeVerifier";
 import { BrowserUseThreadConfigBuilder } from "./browser-use-thread-config";
@@ -27,10 +31,14 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   BROWSER_RUNTIME_BUNDLE_DIRECTORY,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
+  CHROME_NATIVE_HOST_NAME,
   parseBrowserRuntimeManifest,
 } from "../../shared/browser-runtime-metadata";
 import { resolveBrowserRuntimeBundle } from "./browser-runtime-bundle";
 import type { WindowsBrowserRuntimeVerifierPort } from "./browser-runtime-windows-verifier-port";
+import { appComponentStoreRoot } from "../app-components/AppComponentStore";
+import { TEST_CHROME_FAMILY_DESCRIPTOR } from "../browser-use/chrome/chrome-test-fixture";
+import { windowsChromeStatePath } from "../browser-use/chrome/WindowsChromeRegistration";
 import {
   FIXTURE_PUBLISHER,
   fixtureWindowsPe,
@@ -44,9 +52,11 @@ afterEach(() => {
 });
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
-function fixture(arch: "arm64" | "x64" = "x64") {
-  const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-win-desktop-tools-"));
-  roots.push(runtimeRoot);
+function fixture(arch: "arm64" | "x64" = "x64", component = false) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-win-desktop-tools-"));
+  roots.push(home);
+  const store = appComponentStoreRoot(home);
+  const runtimeRoot = component ? path.join(store, "desktop-tools", "d".repeat(64)) : home;
   const root = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
   const manifest = writeWindowsBrowserRuntimeFixture(root, arch);
   const manifestPath = path.join(root, BROWSER_RUNTIME_MANIFEST_FILENAME);
@@ -62,6 +72,7 @@ function fixture(arch: "arm64" | "x64" = "x64") {
   };
   return {
     root,
+    store,
     manifest,
     file,
     replacePe(bytes: Buffer, attest = false) {
@@ -71,19 +82,26 @@ function fixture(arch: "arm64" | "x64" = "x64") {
       addon.size = bytes.length;
       fs.writeFileSync(manifestPath, JSON.stringify(manifest));
     },
-    load(windowsVerifier?: WindowsBrowserRuntimeVerifierPort, targetArch = arch) {
+    load(
+      windowsVerifier?: WindowsBrowserRuntimeVerifierPort,
+      targetArch = arch,
+      verifyWindowsTransport?: (signal?: AbortSignal) => Promise<void>,
+    ) {
+      const manifestSha256 = sha(fs.readFileSync(manifestPath));
       return resolveBrowserRuntimeBundle({
         appServerIdentity,
+        expectedManifestSha256: component ? manifestSha256 : undefined,
         runtimeRoot,
         targetArch,
         targetPlatform: "win32",
         windowsVerifier,
+        verifyWindowsTransport,
         testedPairs: [
           {
             appServer: appServerIdentity,
             browser: {
               browserPluginVersion: manifest.browserPlugin.version,
-              manifestSha256: sha(fs.readFileSync(manifestPath)),
+              manifestSha256,
               peerCliVersion: manifest.runtimeVersions.codexCli,
               targetArch: arch,
               targetPlatform: "win32",
@@ -122,6 +140,66 @@ describe("Windows Desktop Tool manifests", () => {
     expect(parseBrowserRuntimeManifest(manifest)).toBeNull();
   });
 });
+
+test.each(["arm64", "x64"] as const)(
+  "checks the %s Component store before admitting native transport",
+  async (arch) => {
+    const { load, root, store } = fixture(arch, true);
+    let boundaryTrusted = false;
+    let transportCalls = 0;
+    const verifier = makeWindowsBrowserRuntimeVerifier(
+      {
+        ...unsupportedWindowsDesktopTools,
+        verifyStoreBoundary: (candidate) =>
+          boundaryTrusted && candidate === store
+            ? Effect.succeed(null)
+            : unsupportedWindowsDesktopTools.verifyStoreBoundary(candidate),
+        inspectPaths: (entries) =>
+          Effect.succeed(
+            entries.map(() => ({
+              reparsePoint: false,
+              grantsForeignWrite: false,
+              ownerSid: "S-1-5-21-1",
+              currentUserSid: "S-1-5-21-1",
+            })),
+          ),
+        verifyAuthenticode: () =>
+          Effect.succeed({
+            status: "verified",
+            signature: "embedded",
+            chain: [FIXTURE_PUBLISHER],
+            codeSigningEku: true,
+            timestampPresent: true,
+            revocation: "onlineChecked",
+          }),
+      },
+      store,
+      Effect.runPromise,
+      "component-store",
+    );
+    const transport = async () => {
+      transportCalls += 1;
+      throw new Error("probe pipe unavailable");
+    };
+    expect(await load(verifier, arch, transport)).toMatchObject({
+      status: "unavailable",
+      reason: "platform-verification-failed",
+      message: expect.stringContaining("verifyStoreBoundary"),
+    });
+    expect(transportCalls).toBe(0);
+    boundaryTrusted = true;
+    expect(await load(verifier, arch, transport)).toMatchObject({
+      status: "unavailable",
+      reason: "platform-verification-failed",
+      message: expect.stringContaining("probe pipe unavailable"),
+    });
+    expect(transportCalls).toBe(1);
+    expect(await load(verifier, arch, async () => {})).toMatchObject({
+      status: "available",
+      bundle: { rootPath: root },
+    });
+  },
+);
 
 describe("Windows Desktop Tool load", () => {
   test.each(["arm64", "x64"] as const)(
@@ -409,6 +487,140 @@ it.effect(
         expect(yield* chrome.refresh).toMatchObject({
           requested: true,
           status: "runtime-unavailable",
+        });
+      }).pipe(Effect.provide(runtime));
+    }),
+);
+
+it.effect(
+  "Windows Chrome registration replaces the active Component pin and retires it on removal",
+  () =>
+    Effect.gen(function* () {
+      const first = fixture("x64", true);
+      const second = fixture("x64", true);
+      const loadPin = async ({ manifest, root, load }: ReturnType<typeof fixture>) => {
+        const chrome = manifest.capabilities.browserUse.backends.chrome;
+        if (chrome.status !== "available") throw new Error("Expected a Chrome capability");
+        const descriptor = {
+          ...TEST_CHROME_FAMILY_DESCRIPTOR,
+          browserDiagnostics: TEST_CHROME_FAMILY_DESCRIPTOR.browserDiagnostics.map((family) => ({
+            ...family,
+            windows: {
+              processNames: [`${family.browserFamily}.exe`],
+              userDataDirectorySegments: [family.shortDisplayName],
+            },
+          })),
+        };
+        const bytes = Buffer.from(JSON.stringify(descriptor));
+        chrome.extensionIds = [...descriptor.extensionIds];
+        const artifact = manifest.artifacts.find(({ path }) => path === chrome.familyDescriptor)!;
+        artifact.size = bytes.byteLength;
+        artifact.sha256 = sha(bytes);
+        fs.writeFileSync(path.join(root, chrome.familyDescriptor), bytes);
+        fs.writeFileSync(
+          path.join(root, BROWSER_RUNTIME_MANIFEST_FILENAME),
+          JSON.stringify(manifest),
+        );
+        const result = await load(fixtureWindowsVerifier());
+        if (result.status !== "available") throw new Error(result.message);
+        return result.bundle;
+      };
+      const firstPin = yield* Effect.promise(() => loadPin(first));
+      const secondPin = yield* Effect.promise(() => loadPin(second));
+      const runtimeStateHome = path.join(path.dirname(first.store), "runtime", "agent");
+      const install = path.join(path.dirname(first.store), "Program Files", "Nodex");
+      const pins = yield* SubscriptionRef.make<typeof firstPin | null>(null);
+      const registry = new Map<string, RegistryValue>();
+      const native = Layer.succeed(WindowsDesktopTools, {
+        ...unsupportedWindowsDesktopTools,
+        verifyAuthenticode: () =>
+          Effect.succeed({
+            status: "verified",
+            signature: "embedded",
+            chain: [FIXTURE_PUBLISHER],
+            codeSigningEku: true,
+            timestampPresent: true,
+            revocation: "cacheChecked",
+          }),
+        inspectPath: () =>
+          Effect.succeed({
+            reparsePoint: false,
+            grantsForeignWrite: false,
+            ownerSid: "S-1-5-21-1",
+            currentUserSid: "S-1-5-21-1",
+          }),
+        enumeratePipes: () => Effect.succeed({ names: [], truncated: false }),
+        readRegistration: ({ browser }) => Effect.sync(() => registry.get(browser) ?? null),
+        writeRegistration: (key, previous, target) =>
+          Effect.sync(() => {
+            const installed = {
+              kind: 1,
+              dataHex: Buffer.from(`${target}\0`, "utf16le").toString("hex"),
+            };
+            registry.set(key.browser, installed);
+            return { key, installed, previous, createdKey: previous === null };
+          }),
+        restoreRegistration: ({ browser }, receipt) =>
+          Effect.sync(() => {
+            if (registry.get(browser)?.dataHex !== receipt.installed.dataHex) return false;
+            if (receipt.previous) registry.set(browser, receipt.previous);
+            else registry.delete(browser);
+            return true;
+          }),
+      });
+      const runtime = chromeControlLive({
+        browserRuntime: {
+          status: "unavailable",
+          reason: "not-installed",
+          message: "Install Desktop Tools",
+        },
+        windowsComponentChanges: SubscriptionRef.changes(pins),
+        windowsBrowserReady: Effect.void,
+        windowsInstallationDirectory: install,
+        registration: { kind: "production", homeDirectory: path.dirname(first.store) },
+        peerAuthorizationMode: "packaged",
+        platform: "win32",
+        runtimeStateHome,
+      }).pipe(Layer.provide(Layer.merge(native, callbackRuntimeLayer)));
+      yield* Effect.gen(function* () {
+        const chrome = yield* ChromeControlRuntime;
+        const publish = (pin: typeof firstPin | null) =>
+          Effect.gen(function* () {
+            const revision = chrome.snapshot().revision;
+            const observed = yield* chrome.changes.pipe(
+              Stream.filter(
+                ({ snapshot }) =>
+                  snapshot.revision > revision && snapshot.nativeHostInstalled === Boolean(pin),
+              ),
+              Stream.runHead,
+              Effect.forkScoped({ startImmediately: true }),
+            );
+            yield* SubscriptionRef.set(pins, pin);
+            yield* Fiber.join(observed);
+          });
+        const registryPath = path.join(runtimeStateHome, "chrome-native-hosts-v2.json");
+        const entries = () => JSON.parse(fs.readFileSync(registryPath, "utf8")).entries;
+        yield* publish(firstPin);
+        expect(registry.size).toBe(2);
+        expect(entries()).toMatchObject([{ paths: { resourcesPath: firstPin.rootPath } }]);
+        const firstRegistration = registry.get("chrome");
+        yield* publish(secondPin);
+        expect(entries()).toMatchObject([{ paths: { resourcesPath: secondPin.rootPath } }]);
+        expect(registry.get("chrome")).toEqual(firstRegistration);
+        const state = windowsChromeStatePath(runtimeStateHome);
+        expect(
+          JSON.parse(fs.readFileSync(path.join(state, "registration-v1.json"), "utf8")),
+        ).toMatchObject({ installationDirectory: install });
+        expect(
+          fs.existsSync(path.join(state, "native-messaging", `${CHROME_NATIVE_HOST_NAME}.json`)),
+        ).toBe(true);
+        yield* publish(null);
+        expect(registry.size).toBe(0);
+        expect(entries()).toEqual([]);
+        expect(chrome.snapshot()).toMatchObject({
+          nativeHostInstalled: false,
+          providerReady: false,
+          browserRuntimeUnavailableReason: "not-installed",
         });
       }).pipe(Effect.provide(runtime));
     }),

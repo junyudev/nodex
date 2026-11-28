@@ -101,6 +101,14 @@ fn reparse(file: &File) -> io::Result<bool> {
 
 /// Holds the checked ancestors while the caller inspects or verifies the final handle.
 pub(super) fn open_ntfs(path: &Path, access: u32) -> io::Result<(Vec<File>, bool)> {
+    open_ntfs_chain(path, access, 0)
+}
+
+fn open_ntfs_chain(
+    path: &Path,
+    access: u32,
+    ancestor_access: u32,
+) -> io::Result<(Vec<File>, bool)> {
     let mut components = path.components();
     let drive = match components.next() {
         Some(Component::Prefix(prefix)) => match prefix.kind() {
@@ -143,10 +151,11 @@ pub(super) fn open_ntfs(path: &Path, access: u32) -> io::Result<(Vec<File>, bool
     // hide reparse points ahead of the first component we inspect.
     let root = wide(format!(r"\\?\GLOBALROOT{device}\"))?;
     let mut components = components.peekable();
+    let traverse = FILE_READ_ATTRIBUTES | FILE_TRAVERSE | ancestor_access;
     let root_access = if components.peek().is_none() {
         access
     } else {
-        FILE_READ_ATTRIBUTES | FILE_TRAVERSE
+        traverse
     };
     let root: File = handle(unsafe {
         CreateFileW(
@@ -191,7 +200,7 @@ pub(super) fn open_ntfs(path: &Path, access: u32) -> io::Result<(Vec<File>, bool
         let access = if components.peek().is_none() {
             access
         } else {
-            FILE_READ_ATTRIBUTES | FILE_TRAVERSE
+            traverse
         };
         chain.push(open_component(parent, name, access)?);
     }
@@ -216,7 +225,54 @@ pub fn inspect_path(path: &Path) -> io::Result<PathSecurity> {
     inspect_open_path(chain.last().expect("checked path"), reparse_point)
 }
 
+/// Above the private store, creating siblings is safe. Replacing a checked
+/// entry, modifying its attributes, or changing its security descriptor is not.
+pub(crate) fn verify_store_boundary(path: &Path) -> io::Result<()> {
+    let access = READ_CONTROL | FILE_READ_ATTRIBUTES;
+    let (chain, reparse_point) = open_ntfs_chain(path, access, READ_CONTROL)?;
+    let (store, ancestors) = chain.split_last().expect("checked path");
+    if ancestors.is_empty() || reparse_point || !store.metadata()?.is_dir() {
+        return Err(invalid("expected a local Component store directory"));
+    }
+    let user = process_sid(None)?;
+    let (owner, foreign_write, control) = path_security(store, &user, MUTATION)?;
+    if owner != user || foreign_write || control & SE_DACL_PROTECTED == 0 {
+        return Err(invalid(
+            "Component store must have a protected user-owned DACL without foreign write grants",
+        ));
+    }
+
+    let parent_mask = MUTATION & !(FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA);
+    for (index, ancestor) in ancestors.iter().enumerate() {
+        let (owner, foreign_write, _) = path_security(ancestor, &user, parent_mask)?;
+        // TrustedInstaller is a privileged Windows servicing identity. It may
+        // own a system directory above the store, never one inside the closure.
+        let trusted_owner = trusted_sid(&owner, &user)
+            || owner == "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464";
+        if !trusted_owner || foreign_write {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!(
+                    "Component store ancestor at depth {index} has an untrusted owner or grants foreign replacement rights"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn inspect_open_path(file: &File, reparse_point: bool) -> io::Result<PathSecurity> {
+    let current_user_sid = process_sid(None)?;
+    let (owner_sid, grants_foreign_write, _) = path_security(file, &current_user_sid, MUTATION)?;
+    Ok(PathSecurity {
+        reparse_point,
+        owner_sid,
+        grants_foreign_write,
+        current_user_sid,
+    })
+}
+
+fn path_security(file: &File, user: &str, mask: u32) -> io::Result<(String, bool, u16)> {
     let mut owner = null_mut();
     let mut acl = null_mut();
     let mut descriptor = null_mut();
@@ -236,29 +292,33 @@ pub(super) fn inspect_open_path(file: &File, reparse_point: bool) -> io::Result<
         return Err(io::Error::from_raw_os_error(status as i32));
     }
     let _descriptor = LocalAllocation(descriptor);
-    let current_user_sid = process_sid(None)?;
-    Ok(PathSecurity {
-        reparse_point,
-        owner_sid: sid_string(owner)?,
-        grants_foreign_write: foreign_write(acl, &current_user_sid)?,
-        current_user_sid,
-    })
+    let mut control = 0;
+    let mut revision = 0;
+    if unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok((sid_string(owner)?, foreign_write(acl, user, mask)?, control))
 }
 
-fn foreign_write(acl: *mut ACL, current_user: &str) -> io::Result<bool> {
+const MUTATION: u32 = GENERIC_WRITE
+    | GENERIC_ALL
+    | FILE_WRITE_DATA
+    | FILE_APPEND_DATA
+    | FILE_WRITE_EA
+    | FILE_WRITE_ATTRIBUTES
+    | FILE_DELETE_CHILD
+    | DELETE
+    | WRITE_DAC
+    | WRITE_OWNER;
+
+fn trusted_sid(sid: &str, user: &str) -> bool {
+    [user, "S-1-5-18", "S-1-5-32-544"].contains(&sid)
+}
+
+fn foreign_write(acl: *mut ACL, current_user: &str, mask: u32) -> io::Result<bool> {
     if acl.is_null() {
         return Ok(true); // Absent or NULL DACL grants everyone full access.
     }
-    let mask = GENERIC_WRITE
-        | GENERIC_ALL
-        | FILE_WRITE_DATA
-        | FILE_APPEND_DATA
-        | FILE_WRITE_EA
-        | FILE_WRITE_ATTRIBUTES
-        | FILE_DELETE_CHILD
-        | DELETE
-        | WRITE_DAC
-        | WRITE_OWNER;
     for index in 0..u32::from(unsafe { (*acl).AceCount }) {
         let mut raw = null_mut();
         if unsafe { GetAce(acl, index, &mut raw) } == 0 {
@@ -274,7 +334,7 @@ fn foreign_write(acl: *mut ACL, current_user: &str) -> io::Result<bool> {
                 let ace = unsafe { &*raw.cast::<ACCESS_ALLOWED_ACE>() };
                 if ace.Mask & mask != 0 {
                     let sid = sid_string((&raw const ace.SidStart).cast_mut().cast())?;
-                    if ![current_user, "S-1-5-18", "S-1-5-32-544"].contains(&sid.as_str()) {
+                    if !trusted_sid(&sid, current_user) {
                         return Ok(true);
                     }
                 }

@@ -28,6 +28,8 @@ export type AppComponentFailureReason =
   | "integrity"
   /** The volume holding the Profile has too little free space. */
   | "disk-space"
+  /** Other accounts can change the Profile's folder, so Components cannot be kept private there. */
+  | "location"
   /** The files installed correctly, and this build of Nodex refused to load them. */
   | "rejected"
   | "unknown";

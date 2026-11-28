@@ -100,17 +100,18 @@ export function createWindowsChromeRegistration(options: {
     .sort()
     .map((browser) => ({ browser, view: "x86", host }) as const);
   const journalPath = path.join(statePath, journalFile);
-  const save = (state: z.infer<typeof journal>) =>
-    writeJsonAtomically(
+  const save = async (state: z.infer<typeof journal>) => {
+    await security.ensureDirectory(statePath);
+    await writeJsonAtomically(
       journalPath,
       { ...state, installationDirectory: options.installationDirectory },
       0o600,
       true,
     );
+  };
   let approved: { token: string; values: readonly (RegistryValue | null)[] } | null = null;
 
   const readState = async (): Promise<z.infer<typeof journal>> => {
-    await security.ensureDirectory(statePath);
     try {
       await fs.lstat(journalPath);
     } catch (error) {
@@ -119,6 +120,7 @@ export function createWindowsChromeRegistration(options: {
       }
       throw error;
     }
+    await security.verify(statePath);
     await security.verify(journalPath);
     const stats = await fs.stat(journalPath);
     if (!stats.isFile() || stats.size > 600_000)

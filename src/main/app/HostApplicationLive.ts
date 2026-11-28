@@ -24,6 +24,7 @@ import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHost
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import {
   BrowserApplication,
   BrowserApplicationError,
@@ -103,6 +104,7 @@ import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { MainConfig } from "./MainConfig";
 import { CodexPlatform } from "../../host/ProviderPlatform";
 import type { VerifiedBrowserRuntimeBundle } from "../codex/browser-runtime-bundle";
+import { AppComponents } from "../app-components/AppComponents";
 
 const workspaceRouting = Layer.unwrap(
   Effect.gen(function* () {
@@ -182,6 +184,28 @@ const chromeControl = Layer.unwrap(
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
     const platform = config.platform as NodeJS.Platform;
+    const components = yield* AppComponents;
+    const activation = codex.desktopTools.browserRuntimeActivation;
+    const component = activation?.source === "component" ? activation : undefined;
+    const windowsComponentChanges =
+      platform === "win32" && component && codex.windowsDesktopTools
+        ? components.changes.pipe(
+            Stream.map(({ components }) => {
+              const desktopTools = components.find(({ id }) => id === "desktop-tools");
+              if (!desktopTools) return undefined;
+              if (!desktopTools.enabled) return null;
+              if (
+                desktopTools.installation.status === "failed" &&
+                desktopTools.installation.retryAt === null
+              )
+                return null;
+              if (desktopTools.installation.status !== "installed") return undefined;
+              const runtime = codex.desktopTools.browserRuntime;
+              return runtime.status === "available" ? runtime.bundle : null;
+            }),
+            Stream.filter((bundle) => bundle !== undefined),
+          )
+        : undefined;
     return chromeControlRuntimeLive({
       architecture: config.arch,
       localAppData: Object.entries(config.environment).find(
@@ -191,10 +215,12 @@ const chromeControl = Layer.unwrap(
         return codex.desktopTools.browserRuntime;
       },
       windowsBrowserReady: codex.windowsDesktopTools?.ready,
+      windowsComponentChanges,
       componentBrowserReady:
-        codex.desktopTools.browserRuntimeActivation?.source === "component" &&
+        platform !== "win32" &&
+        component &&
         codex.desktopTools.browserRuntime.status !== "available"
-          ? codex.desktopTools.browserRuntimeActivation.available.pipe(Effect.asVoid)
+          ? component.available.pipe(Effect.asVoid)
           : undefined,
       ...(platform === "darwin" ? loadMacBrowserPeer(config) : undefined),
       registration: config.chromeHostRegistration ?? { kind: "disabled" },
@@ -386,6 +412,7 @@ export const live: Layer.Layer<
   | CodexAppServerCapabilities
   | CodexExecutionHostAuthState
   | ApplicationSettings
+  | AppComponents
   | TemporaryAssets
   | CodexPlatform
   | ExecutionNode

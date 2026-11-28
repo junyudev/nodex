@@ -5,6 +5,7 @@ export const BROWSER_RUNTIME_MANIFEST_FILENAME = "browser-runtime-manifest.json"
 export const BROWSER_RUNTIME_SCHEMA_VERSION = schemaVersion;
 export const BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION = "15.0";
 export const BROWSER_PLUGIN_NODE_MODULE_DIR = "marketplace/plugins/browser/node_modules";
+export const CHROME_NATIVE_HOST_NAME = "com.openai.codexextension";
 
 export type BrowserRuntimeArtifactArchitecture = "any" | "arm64" | "universal" | "x64";
 export type BrowserRuntimeArtifactKind = "data" | "executable" | "native-addon" | "library";
@@ -141,7 +142,7 @@ export type BrowserRuntimeChromeCapability<
       familyDescriptor: string;
       installManifest: string;
       nativeHost: HostTrust & {
-        hostName: "com.openai.codexextension";
+        hostName: typeof CHROME_NATIVE_HOST_NAME;
         path: string;
       };
       plugin: {
@@ -552,7 +553,7 @@ function parseBrowserUseCapability<HostTrust>(
   const hostTrust = parseHostTrust(chrome.nativeHost);
   if (
     chrome.plugin.id !== "chrome@openai-bundled" ||
-    chrome.nativeHost.hostName !== "com.openai.codexextension" ||
+    chrome.nativeHost.hostName !== CHROME_NATIVE_HOST_NAME ||
     !pluginRoot ||
     !pluginManifest ||
     !pluginVersion ||

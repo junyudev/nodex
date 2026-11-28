@@ -170,6 +170,7 @@ export function ComputerUseSettingsView({
 }: ComputerUseSettingsViewProps) {
   const intl = useIntl();
   const desktopToolsDescription = useAppComponentRequirementDescription("desktop-tools");
+  const needsDesktopTools = snapshot.browserRuntimeUnavailableReason === "not-installed";
   if (snapshot.windows) {
     const { enabled } = snapshot.windows;
     return (
@@ -182,9 +183,17 @@ export function ComputerUseSettingsView({
         >
           <NodexSettingsRow
             label={intl.formatMessage(settingsMessages.computerUseAnyApp)}
-            description={enabled ? snapshot.message : null}
+            description={
+              (needsDesktopTools ? desktopToolsDescription : null) ??
+              (enabled ? snapshot.message : null)
+            }
           >
-            {enabled ? <AvailabilityStatus snapshot={snapshot} /> : null}
+            {enabled || needsDesktopTools ? (
+              <AvailabilityStatus
+                snapshot={snapshot}
+                onDesktopToolsInstalled={onDesktopToolsInstalled}
+              />
+            ) : null}
             {onSetWindowsEnabled ? (
               <NodexSwitch
                 ariaLabel={intl.formatMessage({
@@ -207,7 +216,6 @@ export function ComputerUseSettingsView({
   const selectedSoundMode =
     SOUND_MODE_OPTIONS.find((option) => option.value === snapshot.soundMode) ??
     SOUND_MODE_OPTIONS[0];
-  const needsDesktopTools = snapshot.browserRuntimeUnavailableReason === "not-installed";
 
   return (
     <NodexSettingsPageSurface

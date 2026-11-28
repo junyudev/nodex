@@ -9,9 +9,10 @@ import { makeWindowsBrowserPeerAuthorizer } from "../../browser-use/browser-use-
 import { nodeReplServerDefinition } from "../../codex/desktop-tool-environment";
 import { makeWindowsBrowserRuntimeVerifier } from "./WindowsBrowserRuntimeVerifier";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { cp, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import * as Effect from "effect/Effect";
@@ -22,6 +23,8 @@ import {
 } from "../../../../scripts/testing/windows-desktop-tools.test-support";
 import { requiredNativeExecutable } from "../../../../scripts/testing/native-artifacts";
 import { makePrivatePaths } from "./private-filesystem";
+import { appComponentStoreRoot } from "../../app-components/AppComponentStore";
+import release from "../../../../resources/browser-runtime/browser-runtime.lock.json";
 import {
   WindowsDesktopTools,
   windowsDesktopToolsLayer,
@@ -366,20 +369,76 @@ testOnWindows(
 
 const projectRoot = resolve(".");
 const stagedRuntime = join(projectRoot, ".generated", "codex-runtime");
-test.skipIf(
-  process.platform !== "win32" ||
-    (process.env.NODEX_REQUIRE_STAGED_DESKTOP_TOOLS !== "1" &&
-      !existsSync(
-        join(
-          stagedRuntime,
-          "agent-runtime",
-          BROWSER_RUNTIME_BUNDLE_DIRECTORY,
-          BROWSER_RUNTIME_MANIFEST_FILENAME,
-        ),
-      )),
-)(
-  "initializes the staged vendor Windows REPL over MCP stdio",
+const createPrivateDirectory = async (path: string) => {
+  await mkdir(path);
+  await makePrivatePaths([{ path, directory: true }], launcher());
+};
+
+testOnWindows(
+  "rejects foreign grants and a junction above the Profile Component store",
   async () => {
+    const temp = await mkdtemp(join(tmpdir(), "nodex-component-boundary-"));
+    const profile = join(temp, "Profile");
+    const store = appComponentStoreRoot(profile);
+    const aliasedProfile = join(temp, "alias");
+    const aliasStore = appComponentStoreRoot(aliasedProfile);
+    const component = join("desktop-tools", "a".repeat(64), BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+    const icacls = promisify(execFile);
+    const verify = (boundary: string) =>
+      run((native) =>
+        Effect.promise(() =>
+          makeWindowsBrowserRuntimeVerifier(
+            native,
+            boundary,
+            Effect.runPromise,
+            "component-store",
+          ).verifyClosurePaths(join(boundary, component)),
+        ),
+      );
+    try {
+      await makePrivatePaths([{ path: temp, directory: true }], launcher());
+      await createPrivateDirectory(profile);
+      await createPrivateDirectory(store);
+      await mkdir(join(store, component), { recursive: true });
+      expect(await verify(store)).toMatchObject({ ok: true });
+      await symlink(profile, aliasedProfile, "junction");
+      expect(await verify(aliasStore)).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("ancestor is a reparse point"),
+      });
+      await icacls("icacls.exe", [profile, "/grant", "*S-1-1-0:(DC)"]);
+      expect(await verify(store)).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("foreign replacement rights"),
+      });
+      await makePrivatePaths([{ path: profile, directory: true }], launcher());
+      await icacls("icacls.exe", [store, "/grant", "*S-1-1-0:(W)"]);
+      expect(await verify(store)).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("foreign write grants"),
+      });
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  },
+);
+
+test
+  .skipIf(
+    process.platform !== "win32" ||
+      (process.env.NODEX_REQUIRE_STAGED_DESKTOP_TOOLS !== "1" &&
+        !existsSync(
+          join(
+            stagedRuntime,
+            "agent-runtime",
+            BROWSER_RUNTIME_BUNDLE_DIRECTORY,
+            BROWSER_RUNTIME_MANIFEST_FILENAME,
+          ),
+        )),
+  )
+  .each(["staged-runtime", "profile-store"] as const)(
+  "initializes the staged vendor Windows REPL over MCP stdio from the %s",
+  async (source) => {
     const home = await mkdtemp(join(tmpdir(), "nodex-staged-runtime-"));
     try {
       // The Actions checkout inherits a shared ACL. Copy the staged bytes under
@@ -388,12 +447,30 @@ test.skipIf(
         [{ path: home, directory: true }],
         requiredNativeExecutable("core-server"),
       );
-      const runtime = join(home, ".generated", "codex-runtime");
-      await cp(stagedRuntime, runtime, { recursive: true });
+      let boundary = join(home, ".generated", "codex-runtime");
+      let location: Parameters<typeof probeWindowsDesktopTools>[0]["location"] = {
+        isPackaged: false,
+        projectRootPath: home,
+      };
+      if (source === "profile-store") {
+        const asset = release.assets[process.arch === "arm64" ? "win32-arm64" : "win32-x64"];
+        boundary = appComponentStoreRoot(home);
+        await createPrivateDirectory(boundary);
+        const componentRoot = join(boundary, "desktop-tools", asset.archiveSha256);
+        await mkdir(componentRoot, { recursive: true });
+        await cp(
+          join(stagedRuntime, "agent-runtime", BROWSER_RUNTIME_BUNDLE_DIRECTORY),
+          join(componentRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY),
+          { recursive: true },
+        );
+        location = { componentRoot, manifestSha256: asset.manifestSha256 };
+      } else {
+        await cp(stagedRuntime, boundary, { recursive: true });
+      }
       expect(
         await probeWindowsDesktopTools({
-          location: { isPackaged: false, projectRootPath: home },
-          boundary: runtime,
+          location,
+          boundary,
           launcher: launcher(),
           conformanceCandidatePair: windowsDesktopToolConformanceCandidate(
             projectRoot,

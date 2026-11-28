@@ -1,5 +1,5 @@
 /* @effect-diagnostics asyncFunction:off -- Bridges the cancellable runtime loader to native inspection. */
-import type * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { WindowsBrowserRuntimeVerifierPort } from "../../codex/browser-runtime-windows-verifier-port";
@@ -10,6 +10,16 @@ import {
 } from "./WindowsDesktopTools";
 import { verifyRuntimeArtifacts } from "./RuntimeArtifactVerification";
 
+export function probeWindowsBrowserTransport(native: WindowsDesktopToolsService, hostPid: number) {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const host = yield* native.processIdentity(hostPid);
+      yield* native.listenPipe("nodex-desktop-tools-probe");
+      return host;
+    }),
+  );
+}
+
 function pathRejection(security: PathSecurity): string | null {
   if (security.reparsePoint) return "is a reparse point";
   if (!hasTrustedWindowsOwner(security)) return "has an untrusted owner";
@@ -19,14 +29,15 @@ function pathRejection(security: PathSecurity): string | null {
 
 export function makeWindowsBrowserRuntimeVerifier(
   native: WindowsDesktopToolsService,
-  installBoundary: string,
+  boundary: string,
   runNative: typeof Effect.runPromise,
+  source: "installation" | "component-store" = "installation",
 ): WindowsBrowserRuntimeVerifierPort {
   return {
     async verifyClosurePaths(root, signal) {
-      const relative = path.relative(installBoundary, root);
+      const relative = path.relative(boundary, root);
       if (path.isAbsolute(relative) || relative.split(path.sep).includes(".."))
-        return { ok: false, reason: "Desktop Tool closure is outside the installation boundary" };
+        return { ok: false, reason: "Desktop Tool closure is outside its trust boundary" };
 
       const inspect = async (paths: string[]) => {
         const results = await runNative(native.inspectPaths(paths), { signal });
@@ -36,8 +47,10 @@ export function makeWindowsBrowserRuntimeVerifier(
         }
       };
       try {
-        let ancestor = installBoundary;
-        await inspect([ancestor]);
+        let ancestor = boundary;
+        if (source === "component-store")
+          await runNative(native.verifyStoreBoundary(boundary), { signal });
+        else await inspect([ancestor]);
         for (const component of relative.split(path.sep).filter(Boolean)) {
           ancestor = path.join(ancestor, component);
           await inspect([ancestor]);

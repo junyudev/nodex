@@ -447,6 +447,7 @@
   "appComponents.documentTools.name": "文档工具",
   "appComponents.failure.diskSpace": "可用空间不足。",
   "appComponents.failure.integrity": "下载的文件已损坏。",
+  "appComponents.failure.location": "此 Profile 所在的文件夹不是私有的。",
   "appComponents.failure.rejected": "此版本的 Nodex 无法使用下载的文件。",
   "appComponents.failure.unknown": "无法安装。",
   "appComponents.footnote": "在应用安装之后才下载的部分。关闭其中一项即可将其移除并释放空间。",
