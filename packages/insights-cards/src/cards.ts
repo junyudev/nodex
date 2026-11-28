@@ -13,6 +13,31 @@ export type ShareCardKind = "skyline" | "receipt";
 export const SHARE_CARD_WIDTH = 1080;
 export const SHARE_CARD_HEIGHT = 1350;
 export const SHARE_URL = "nodex.jyu.app";
+/** What someone who sees a card types to make their own, without installing anything. */
+export const SHARE_COMMAND = "npx nodex-card";
+
+/** Geist Mono and its fallbacks advance every character by six tenths of the font size. */
+const MONO_ADVANCE = 0.6;
+
+/**
+ * The command set as code: a quiet chip a viewer reads as something to type, with the address
+ * after it. Returns the markup and where the address starts.
+ */
+function commandChip(
+  x: number,
+  baseline: number,
+  size: number,
+  colors: { readonly chip: string; readonly ink: string },
+) {
+  const padding = Math.round(size * 0.5);
+  const width = Math.round(SHARE_COMMAND.length * size * MONO_ADVANCE + padding * 2);
+  const height = Math.round(size * 1.55);
+  const top = Math.round(baseline - size * 1.08);
+  return {
+    markup: `<rect x="${x}" y="${top}" width="${width}" height="${height}" rx="${Math.round(size * 0.36)}" fill="${colors.chip}"/><text x="${x + padding}" y="${baseline}" font-family="${MONO}" font-size="${size}" font-weight="500" fill="${colors.ink}">${SHARE_COMMAND}</text>`,
+    end: x + width,
+  };
+}
 
 export type ShareCardTheme = "dark" | "light";
 
@@ -191,6 +216,7 @@ interface SkylinePalette {
   readonly sides: Ramp;
   readonly empty: string;
   readonly qr: { readonly plate: string; readonly edge: string | null; readonly ink: string };
+  readonly chip: string;
 }
 
 const SKYLINE_PALETTES: Readonly<Record<ShareCardTheme, SkylinePalette>> = {
@@ -209,6 +235,7 @@ const SKYLINE_PALETTES: Readonly<Record<ShareCardTheme, SkylinePalette>> = {
     sides: ["#161e3e", "#1c2654", "#253478", "#364a98", "#5c6fb4"],
     empty: "#191920",
     qr: { plate: "#ffffff", edge: null, ink: "#08080a" },
+    chip: "#ffffff1a",
   },
   // On paper, busier days are inked deeper.
   light: {
@@ -225,6 +252,7 @@ const SKYLINE_PALETTES: Readonly<Record<ShareCardTheme, SkylinePalette>> = {
     sides: ["#bcc6ec", "#8f9fe0", "#5f74d1", "#3c55c0", "#2a40a0"],
     empty: "#e7e6e0",
     qr: { plate: "#ffffff", edge: "#e2e0d8", ink: "#131316" },
+    chip: "#13131612",
   },
 };
 
@@ -473,6 +501,7 @@ function renderSkyline<RichText>(
     ),
   );
   const periodLabel = sharePeriodLabel(view, intl);
+  const command = commandChip(64, 1278, 23, palette);
   const question = intl.formatMessage(
     PERIOD_QUESTIONS[view.period === "range" ? "all" : view.period],
     view.period === "year" ? { year: periodLabel } : undefined,
@@ -508,7 +537,7 @@ ${sources
   .join(
     "",
   )}<text x="64" y="1234" font-family="${SANS}" font-size="33" font-weight="600" letter-spacing="-.5" fill="${palette.ink}">${escapeXml(question)}</text>
-<text x="64" y="1278" font-family="${MONO}" font-size="23" fill="${palette.muted}">${SHARE_URL}</text>
+${command.markup}<text x="${command.end + 18}" y="1278" font-family="${MONO}" font-size="23" fill="${palette.muted}">${SHARE_URL}</text>
 ${palette.qr.edge === null ? `<rect x="896" y="1180" width="120" height="120" rx="12" fill="${palette.qr.plate}"/>` : `<rect x="896.5" y="1180.5" width="119" height="119" rx="12" fill="${palette.qr.plate}" stroke="${palette.qr.edge}"/>`}${qrCode(906, 1190, 100, palette.qr.ink)}
 </svg>`;
 }
@@ -855,9 +884,10 @@ function renderReceipt<RichText>(
       { fill: dim, size: 17 },
     ),
   );
-  advance(25);
-  rows.push(text(SHARE_URL, left, { fill: dim, size: 17 }));
-  rows.push(qrCode(right - 86, y - 74, 86, ink));
+  advance(30);
+  const command = commandChip(left, y, 17, { chip: "#17171a12", ink });
+  rows.push(command.markup, text(SHARE_URL, command.end + 12, { fill: dim, size: 17 }));
+  rows.push(qrCode(right - 86, y - 79, 86, ink));
   advance(36);
 
   const height = y;
@@ -922,8 +952,15 @@ export function shareMessage<RichText>(
           { tokens },
         );
   return intl.formatMessage(
-    { id: "insights.insightsCards.post", defaultMessage: "{summary}. What's yours? {url}" },
-    { summary: [lead, ...stats].join(intl.locale === "zh-CN" ? "。" : ". "), url: SHARE_URL },
+    {
+      id: "insights.insightsCards.post",
+      defaultMessage: "{summary}. What's yours? {command} · {url}",
+    },
+    {
+      summary: [lead, ...stats].join(intl.locale === "zh-CN" ? "。" : ". "),
+      command: SHARE_COMMAND,
+      url: SHARE_URL,
+    },
   );
 }
 
