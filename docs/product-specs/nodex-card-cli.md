@@ -1,8 +1,8 @@
-# nodex-insights
+# nodex-card
 
 ## Intent
 
-`npx nodex-insights` gives anyone who uses coding agents the [Insights share cards](insights-behavior.md#sharing)
+`npx nodex-card` gives anyone who uses coding agents the [Insights share cards](insights-behavior.md#sharing)
 without installing Nodex: one command reads their local agent history and opens their Skyline and
 Receipt, ready to copy, save or post. The cards carry `nodex.jyu.app` and its QR code back to Nodex.
 

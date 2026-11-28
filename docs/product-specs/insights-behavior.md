@@ -90,5 +90,5 @@ offers `Copy image`, which puts it on the clipboard, `Save PNG`, which asks wher
 when the card shows it), ready to paste.
 Nothing is uploaded unless the person posts it.
 
-The same cards, drawn by the same code, come from the terminal too: [`npx nodex-insights`](nodex-insights-cli.md)
+The same cards, drawn by the same code, come from the terminal too: [`npx nodex-card`](nodex-card-cli.md)
 makes them from local agent history for people who do not use Nodex yet.

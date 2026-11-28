@@ -1,5 +1,5 @@
 {
-  "name": "nodex-insights",
+  "name": "nodex-card",
   "version": "0.1.0",
   "private": true,
   "description": "Turn your AI coding agents' usage into a card worth sharing. Reads local history through ccusage; nothing leaves your computer.",
@@ -16,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/junyudev/nodex.git",
-    "directory": "packages/nodex-insights"
+    "directory": "packages/nodex-card"
   },
   "type": "module",
   "scripts": {

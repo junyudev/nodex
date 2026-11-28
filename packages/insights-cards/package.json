@@ -2,7 +2,7 @@
   "name": "@nodex/insights-cards",
   "version": "0.0.0",
   "private": true,
-  "description": "Insights share cards, their numbers and their words, drawn the same in Nodex and nodex-insights",
+  "description": "Insights share cards, their numbers and their words, drawn the same in Nodex and nodex-card",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {

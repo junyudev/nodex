@@ -15,7 +15,7 @@ export function detectLocale(
 }
 
 const help = {
-  "en-US": `Usage: npx nodex-insights [options]
+  "en-US": `Usage: npx nodex-card [options]
 
 Turn your local AI coding agent usage into Skyline and Receipt cards.
 
@@ -27,7 +27,7 @@ Turn your local AI coding agent usage into Skyline and Receipt cards.
   --no-open            Print the preview URL without opening it
   --help               Show this help
   --version            Show the version`,
-  "zh-CN": `用法：npx nodex-insights [选项]
+  "zh-CN": `用法：npx nodex-card [选项]
 
 将本机 AI 编程智能体的用量生成天际线和账单卡片。
 
@@ -45,7 +45,7 @@ export const terminal = {
   "en-US": {
     help: help["en-US"],
     reading: "Reading local agent history with ccusage (offline)…",
-    invalidArguments: "Invalid arguments. Run npx nodex-insights --help for available options.",
+    invalidArguments: "Invalid arguments. Run npx nodex-card --help for available options.",
     invalidDate: (flag: string) => `${flag} needs a valid date in YYYY-MM-DD format.`,
     invalidYear: "--year needs a valid year in YYYY format.",
     futureYear: "--year cannot be in the future.",
@@ -63,7 +63,7 @@ export const terminal = {
   "zh-CN": {
     help: help["zh-CN"],
     reading: "正在使用 ccusage 离线读取本机的智能体记录…",
-    invalidArguments: "参数无效。运行 npx nodex-insights --help 查看可用选项。",
+    invalidArguments: "参数无效。运行 npx nodex-card --help 查看可用选项。",
     invalidDate: (flag: string) => `${flag} 需要 YYYY-MM-DD 格式的有效日期。`,
     invalidYear: "--year 需要 YYYY 格式的有效年份。",
     futureYear: "--year 不能是未来的年份。",
