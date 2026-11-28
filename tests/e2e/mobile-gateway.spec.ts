@@ -266,14 +266,10 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       expect(generation.bodies).toEqual([capture.text]);
       writeFileSync(path.join(directory, `${generation.requestId}.answer`), "");
       await expect
-        .poll(
-          async () =>
-            (
-              (await connected.request("inbox.message", {
-                entryId: capture.pageId,
-              })) as import("@nodex/mobile-protocol").IntakeEntry
-            ).proposal?.state,
-        )
+        .poll(async () => {
+          const entry = await connected.request("inbox.message", { entryId: capture.pageId });
+          return entry.rowKind === "intake" ? entry.proposal?.state : undefined;
+        })
         .toBe("open");
       const entry = await connected.request("inbox.message", { entryId: capture.pageId });
       if (entry.rowKind !== "intake") throw new Error("Expected intake");
@@ -286,8 +282,14 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
         decision: { type: "accept", proposalId: proposal.proposalId, revision: proposal.revision },
       });
       expect(await connected.request("inbox.message", { entryId: capture.pageId })).toMatchObject({
-        state: "kept",
-        outcome: "kept",
+        rowKind: "intake",
+        waiting: false,
+        status: "plan",
+        proposal: {
+          proposalId: proposal.proposalId,
+          state: "completed",
+          action: { type: "keep" },
+        },
       });
       await expect(row).toHaveCount(0);
     });
