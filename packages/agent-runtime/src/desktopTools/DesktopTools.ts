@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { isAbsolute } from "node:path";
+import { mkdir, rm } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   CallToolResultSchema,
+  ErrorCode,
   ListToolsResultSchema,
+  McpError,
   type CallToolRequest,
   type CallToolResult,
   type ElicitRequest,
@@ -66,6 +69,7 @@ interface Turn {
   readonly controller: AbortController;
   readonly executionPolicy?: ReplExecutionPolicy;
   started?: Promise<void>;
+  runningJavaScript: number;
 }
 
 interface Invocation {
@@ -99,6 +103,28 @@ const toolError = (text: string): CallToolResult => ({
   content: [{ type: "text", text }],
   isError: true,
 });
+const resetReasons = {
+  permissionMode: "the chat's permission mode changed",
+  executionPolicy: "the chat's execution policy changed",
+  cwd: "the chat's working directory changed",
+  idle: "the chat's JavaScript session was idle",
+  stopped: "the previous JavaScript call was stopped",
+  timeout: "the previous JavaScript call timed out",
+  reset: "the Agent reset the JavaScript session",
+  restarted: "the JavaScript runtime restarted",
+  unavailable: "Desktop Tools became unavailable",
+  archived: "the chat was archived",
+} as const;
+
+type ResetReason = keyof typeof resetReasons;
+interface ResetNotice {
+  readonly reason: ResetReason;
+}
+interface JavaScriptSession {
+  remembered?: Promise<void>;
+  notice?: ResetNotice;
+}
+
 const terminal = (status: string) => status !== "running" && status !== "pending";
 
 const sameRunOwner = (a: HostTurnIdentity, b: HostTurnIdentity) =>
@@ -138,6 +164,9 @@ export function makeDesktopTools(
   const replIdleReleaseMs = options.replIdleReleaseMs ?? REPL_IDLE_RELEASE_MS;
   const captures = makeCaptures();
   const threads = new Map<ThreadId, Thread>();
+  const javaScriptSessions = new Map<ThreadId, JavaScriptSession>();
+  const sessionMarker = (threadId: ThreadId) =>
+    join(home, "desktop-repl-sessions", desktopSessionId(threadId));
   const runPolicies = new Map<
     ThreadId,
     {
@@ -179,6 +208,8 @@ export function makeDesktopTools(
       .catch(() => {});
 
   const makeThread = (threadId: ThreadId, launch: Launch) => {
+    const session = javaScriptSessions.get(threadId) ?? {};
+    javaScriptSessions.set(threadId, session);
     const invocations = new Map<string, Invocation>();
     const turns = new Map<string, Turn>();
     // Calls still running in the kernel after their caller stopped waiting. See `call`.
@@ -198,7 +229,7 @@ export function makeDesktopTools(
       if (closing || inUse()) return;
       idle = setTimeout(() => {
         idle = undefined;
-        if (!closing && !inUse()) void repl.release();
+        if (!closing && !inUse()) void releaseKernel("idle");
       }, replIdleReleaseMs);
       idle.unref?.();
     };
@@ -222,6 +253,50 @@ export function makeDesktopTools(
       },
     });
 
+    type ReplClient = Awaited<ReturnType<typeof repl.get>>;
+    let javaScriptClient: ReplClient | undefined;
+    const noteReset = (reason: ResetReason, client = javaScriptClient) => {
+      if (!javaScriptClient || javaScriptClient !== client) return;
+      if (repl.running() !== javaScriptClient) reason = "restarted";
+      javaScriptClient = undefined;
+      // Retain the reason bindings were first lost if no call has reported it yet.
+      // A new notice also keeps a late result from the retired kernel from consuming it.
+      session.notice = { reason: session.notice?.reason ?? reason };
+    };
+    const releaseKernel = (reason: ResetReason) => {
+      noteReset(reason);
+      return repl.release();
+    };
+    const rememberSession = () =>
+      (session.remembered ??= mkdir(sessionMarker(threadId), { recursive: true })
+        .then((created) => {
+          // A Runtime restart can't keep the kernel. Remember only chats that used JavaScript.
+          if (created === undefined) session.notice ??= { reason: "restarted" };
+        })
+        .catch((error: unknown) => {
+          delete session.remembered;
+          throw error;
+        }));
+    const useJavaScript = (client: ReplClient) => {
+      if (javaScriptClient !== client) noteReset("restarted");
+      javaScriptClient = client;
+      return session.notice;
+    };
+    const withResetNotice = (result: CallToolResult, notice: ResetNotice | undefined) => {
+      if (!notice || session.notice !== notice) return result;
+      delete session.notice;
+      return {
+        ...result,
+        content: [
+          {
+            type: "text" as const,
+            text: `This JavaScript call started a fresh session because ${resetReasons[notice.reason]}. Bindings from earlier calls are gone. Set them up again.`,
+          },
+          ...result.content,
+        ],
+      };
+    };
+
     let appliedPolicy: ReplExecutionPolicy | undefined;
     let clientQueue = Promise.resolve();
     const client = (policy?: ReplExecutionPolicy, validate?: () => void) => {
@@ -229,7 +304,14 @@ export function makeDesktopTools(
       const pending = clientQueue.then(async () => {
         validate?.();
         if (policy && !isDeepStrictEqual(appliedPolicy, policy)) {
-          if (appliedPolicy || policy.cwd !== launch.cwd) await repl.release();
+          const previousCwd = appliedPolicy ? appliedPolicy.cwd : launch.cwd;
+          if (policy.cwd !== previousCwd) await releaseKernel("cwd");
+          else if (appliedPolicy)
+            await releaseKernel(
+              policy.runtimeMode !== appliedPolicy.runtimeMode
+                ? "permissionMode"
+                : "executionPolicy",
+            );
           validate?.();
           appliedPolicy = policy;
         }
@@ -255,6 +337,7 @@ export function makeDesktopTools(
 
     const end = (turn: Turn, hook: "Stop" | "Interrupt") => {
       if (!turns.delete(turn.identity.attemptId)) return Promise.resolve();
+      if (turn.runningJavaScript > 0) noteReset("stopped");
       turn.controller.abort();
       if (!turn.started) return Promise.resolve();
       const cleanup = Promise.resolve()
@@ -303,6 +386,10 @@ export function makeDesktopTools(
       launch,
       client,
       sandboxMetadata,
+      noteReset,
+      rememberSession,
+      useJavaScript,
+      withResetNotice,
       invocations,
       abandoned,
       turns,
@@ -360,11 +447,12 @@ export function makeDesktopTools(
   };
 
   const pendingCloses = new Map<ThreadId, Promise<void>>();
-  const remove = (threadId: ThreadId) => {
+  const remove = (threadId: ThreadId, reason?: ResetReason) => {
     const thread = threads.get(threadId);
     threads.delete(threadId);
     const previous = pendingCloses.get(threadId);
     if (!thread) return previous ?? Promise.resolve();
+    if (reason) thread.noteReset(reason);
     const closing = Promise.all([previous, thread.close()]).then(() => {
       if (pendingCloses.get(threadId) === closing) pendingCloses.delete(threadId);
     });
@@ -378,16 +466,15 @@ export function makeDesktopTools(
   ): Promise<McpProviderDesktopTools | undefined> => {
     if (closed) return undefined;
     if (!launch) {
-      void remove(caller.threadId);
+      void remove(caller.threadId, "unavailable");
       return undefined;
     }
     const old = threads.get(caller.threadId);
+    const cwdChanged = old !== undefined && old.launch.cwd !== launch.cwd;
     const replace =
-      old === undefined ||
-      old.launch.cwd !== launch.cwd ||
-      !isDeepStrictEqual(old.launch.tools.server, launch.tools.server);
+      !old || cwdChanged || !isDeepStrictEqual(old.launch.tools.server, launch.tools.server);
     const thread = replace ? makeThread(caller.threadId, launch) : old;
-    if (replace) void remove(caller.threadId);
+    if (replace && old) void remove(caller.threadId, cwdChanged ? "cwd" : "restarted");
     thread.setProvider(caller.providerInstanceId);
     threads.set(caller.threadId, thread);
     const skills = await readDesktopToolSkills(launch.tools.pluginRoots);
@@ -493,6 +580,7 @@ export function makeDesktopTools(
       identity,
       metadata: { session_id: sessionId, thread_id: sessionId, turn_id: identity.attemptId },
       controller: new AbortController(),
+      runningJavaScript: 0,
       ...(prepared ? { executionPolicy: prepared.policy } : {}),
     };
     thread.turns.set(identity.attemptId, turn);
@@ -513,6 +601,7 @@ export function makeDesktopTools(
         throw new Error("Desktop tool execution policy was retired");
     };
 
+    let resultNotice: ResetNotice | undefined;
     const execute = async (): Promise<CallToolResult> => {
       // Subscribe before rechecking so retirement during the first admission read cannot be missed.
       const live = await ports.admit(caller);
@@ -549,42 +638,69 @@ export function makeDesktopTools(
         return toolError("Desktop tool call cancelled");
       // One kernel runs this Thread's calls, so a call its caller gave up on finishes first.
       await whileWaiting(Promise.all(thread.abandoned), signal);
-      let client = discovery;
+      const executesJavaScript = params.name === "js";
+      const usesJavaScript = executesJavaScript || params.name === "js_add_node_module_dir";
+      if (usesJavaScript) await thread.rememberSession();
       if (turn.executionPolicy) {
         const current = await ports.admit(caller);
         if (!current || !sameRunOwner(current.identity, identity))
           return toolError("Desktop tool call cancelled");
-        assertCurrent();
-        client = await getClient(caller, thread, signal, turn.executionPolicy, assertCurrent);
-        assertCurrent();
       }
+      assertCurrent();
+      const client = await getClient(caller, thread, signal, turn.executionPolicy, assertCurrent);
+      assertCurrent();
+      const sandbox = thread.sandboxMetadata(turn.executionPolicy);
+      const notice = usesJavaScript ? thread.useJavaScript(client) : undefined;
       // The REPL can only cancel running JavaScript by resetting its kernel, which discards
       // every binding the Agent has built. A caller that stops waiting, as a provider does when
       // a new message redirects its turn, is not a reason to do that: the call belongs to the
       // Run attempt, finishes on its own, and is cancelled upstream only when the attempt ends.
-      const running = client.request(
-        {
-          method: "tools/call",
-          params: {
-            name: params.name,
-            arguments: args,
-            _meta: {
-              callId,
-              [turnMetadataKey]: turn.metadata,
-              ...thread.sandboxMetadata(turn.executionPolicy),
+      if (executesJavaScript) turn.runningJavaScript++;
+      const running = client
+        .request(
+          {
+            method: "tools/call",
+            params: {
+              name: params.name,
+              arguments: args,
+              _meta: {
+                callId,
+                [turnMetadataKey]: turn.metadata,
+                ...sandbox,
+              },
             },
           },
-        },
-        CallToolResultSchema,
-        {
-          signal: turn.controller.signal,
-          timeout,
-          onprogress: (progress) => {
-            if (!requestSignal.aborted) onprogress(progress);
+          CallToolResultSchema,
+          {
+            signal: turn.controller.signal,
+            timeout,
+            onprogress: (progress) => {
+              if (!requestSignal.aborted) onprogress(progress);
+            },
           },
-        },
-      );
-      return await whileWaiting(running, requestSignal).catch((error: unknown) => {
+        )
+        .then(
+          (result) => {
+            if (params.name === "js_reset" && !result.isError && lookup(caller) === thread)
+              thread.noteReset("reset", client);
+            return result;
+          },
+          (error: unknown) => {
+            if (
+              executesJavaScript &&
+              !turn.controller.signal.aborted &&
+              lookup(caller) === thread &&
+              error instanceof McpError &&
+              error.code === Number(ErrorCode.RequestTimeout)
+            )
+              thread.noteReset("timeout", client);
+            throw error;
+          },
+        )
+        .finally(() => {
+          if (executesJavaScript) turn.runningJavaScript--;
+        });
+      const result = await whileWaiting(running, requestSignal).catch((error: unknown) => {
         if (!turn.controller.signal.aborted && requestSignal.aborted) {
           const settled = running.then(
             () => {},
@@ -598,15 +714,21 @@ export function makeDesktopTools(
         }
         throw error;
       });
+      if (executesJavaScript) resultNotice = notice;
+      return result;
     };
 
     try {
-      const result = await execute().catch(() =>
+      const output = await execute().catch(() =>
         toolError(signal.aborted ? "Desktop tool call cancelled" : "Desktop tool call failed"),
       );
-      const activity = desktopToolResultActivity(callId, result);
+      const activity = desktopToolResultActivity(callId, output);
       if (activity && !signal.aborted && lookup(caller) === thread)
         await observe(turn, { phase: "activity", activity });
+      const result =
+        !signal.aborted && lookup(caller) === thread
+          ? thread.withResetNotice(output, resultNotice)
+          : output;
       if (!thread.closing())
         captures.record({
           threadId: caller.threadId,
@@ -646,10 +768,15 @@ export function makeDesktopTools(
         if (match(turn.identity))
           void thread.end(turn, status === "completed" ? "Stop" : "Interrupt");
     },
-    async closeThread(threadId: ThreadId) {
+    async closeThread(threadId: ThreadId, deleted = false) {
       captures.clear(threadId);
       runPolicies.delete(threadId);
-      await remove(threadId);
+      await remove(threadId, deleted ? undefined : "archived");
+      if (!deleted) return;
+      const session = javaScriptSessions.get(threadId);
+      javaScriptSessions.delete(threadId);
+      await session?.remembered?.catch(() => {});
+      await rm(sessionMarker(threadId), { recursive: true, force: true });
     },
     async close() {
       closed = true;

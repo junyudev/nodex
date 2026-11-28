@@ -10,6 +10,7 @@ import {
   browserSkillName,
   realChromeHostPointsInto,
   desktopEvidence,
+  desktopResetNotice,
   runDesktopSmoke,
   smokeMarker,
   type DesktopSmokeStep,
@@ -161,9 +162,18 @@ for (const scenario of ["browser", "approval", "unavailable"] as const) {
                 );
                 const output = results.flatMap(({ text }) => text ?? []).join("\n");
                 if (step === "memory") expect(output).toContain("DESKTOP_MEMORY_RETAINED");
-                if (step === "origin") expect(output).toContain("DESKTOP_UNAPPROVED_ORIGIN");
-                if (step === "reset") expect(output).toContain("undefined");
-                if (step === "restart") expect(output).toContain("DESKTOP_RESTARTED");
+                if (step === "origin") {
+                  expect(results[0]?.text?.[0]).toContain(desktopResetNotice.permissionMode);
+                  expect(output).toContain("DESKTOP_UNAPPROVED_ORIGIN");
+                }
+                if (step === "reset") {
+                  expect(results[0]?.text?.[0]).toContain(desktopResetNotice.stopped);
+                  expect(output).toContain("undefined");
+                }
+                if (step === "restart") {
+                  expect(results[0]?.text?.[0]).toContain(desktopResetNotice.restarted);
+                  expect(output).toContain("DESKTOP_RESTARTED");
+                }
                 if (step === "decline") expect(output).toMatch(/denied|declined/u);
               },
             };

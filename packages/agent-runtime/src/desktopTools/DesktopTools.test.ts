@@ -292,6 +292,19 @@ const isAlive = (pid: number) => {
   }
 };
 
+const fixtureContent = [
+  { type: "text", text: "fixture" },
+  { type: "image", data: "AAAA", mimeType: "image/png" },
+];
+
+const withFreshSessionNotice = (reason: string) => [
+  {
+    type: "text",
+    text: `This JavaScript call started a fresh session because ${reason}. Bindings from earlier calls are gone. Set them up again.`,
+  },
+  ...fixtureContent,
+];
+
 describe("Desktop Tools", () => {
   it.live.skipIf(process.platform !== "darwin")(
     "uses the admitted attempt’s sandbox and ignores provider-supplied sandbox metadata",
@@ -328,6 +341,7 @@ describe("Desktop Tools", () => {
           },
           CallToolResultSchema,
         );
+        expect(first.content).toEqual(fixtureContent);
         const metadata = first.structuredContent?.meta as Record<string, unknown>;
         const state = metadata["codex/sandbox-state"];
         expect(metadata["codex/sandbox-state-meta"]).toEqual(state);
@@ -363,6 +377,8 @@ describe("Desktop Tools", () => {
         context.tools.prepareRun(secondIdentity, "full-access", []);
         const next = await js("next turn");
         expect(next.structuredContent?.pid).not.toBe(first.structuredContent?.pid);
+        expect(next.content).toEqual(withFreshSessionNotice("the chat's permission mode changed"));
+        expect((await js("same kernel")).content).toEqual(fixtureContent);
         expect(next.structuredContent?.meta).toMatchObject({
           "codex/sandbox-state": { permissionProfile: { type: "disabled" } },
         });
@@ -527,11 +543,15 @@ describe("Desktop Tools", () => {
         expect(context.approvals).toHaveLength(1);
         context.setMode("auto");
         context.setDecision("acceptForSession");
-        expect((await js("elicit")).structuredContent?.reply).toEqual({
+        const afterReset = await js("elicit");
+        expect(afterReset.structuredContent?.reply).toEqual({
           action: "accept",
           content: {},
           _meta: { persist: "session" },
         });
+        expect(afterReset.content).toEqual(
+          withFreshSessionNotice("the Agent reset the JavaScript session"),
+        );
         expect(context.approvals.map(({ kind }) => kind)).toEqual([
           "command",
           "command",
@@ -645,6 +665,12 @@ describe("Desktop Tools", () => {
         await vi.waitFor(async () =>
           expect(await kernelEvents(context)).toEqual(["js", "cancelled"]),
         );
+        context.setAttempt("attempt:after-stop");
+        context.setRunning(true);
+        expect((await call.js("after Stop")).content).toEqual(
+          withFreshSessionNotice("the previous JavaScript call was stopped"),
+        );
+        expect((await call.js("same kernel")).content).toEqual(fixtureContent);
         await call.close();
       }),
   );
@@ -659,7 +685,12 @@ describe("Desktop Tools", () => {
         expect((await js("ok")).structuredContent?.pid).toBe(pid);
         context.tools.retire(threadA, () => true, "completed");
         await vi.waitFor(() => expect(isAlive(pid)).toBe(false));
-        expect((await js("ok")).structuredContent?.pid).not.toBe(pid);
+        const next = await js("ok");
+        expect(next.structuredContent?.pid).not.toBe(pid);
+        expect(next.content).toEqual(
+          withFreshSessionNotice("the chat's JavaScript session was idle"),
+        );
+        expect((await js("ok")).content).toEqual(fixtureContent);
         await client.close();
       },
       undefined,
@@ -675,6 +706,8 @@ describe("Desktop Tools", () => {
       expect((await js("crash")).isError).toBe(true);
       const second = await js("ok");
       expect(second.structuredContent?.pid).not.toBe(first.structuredContent?.pid);
+      expect(second.content).toEqual(withFreshSessionNotice("the JavaScript runtime restarted"));
+      expect((await js("ok")).content).toEqual(fixtureContent);
       const cwd = join(context.home, "new");
       await mkdir(cwd);
       context.tools.retire(threadA, () => true, "completed");
@@ -686,6 +719,8 @@ describe("Desktop Tools", () => {
       });
       const third = await js("ok");
       expect(third.structuredContent?.cwd).toBe(await realpath(cwd));
+      expect(third.content).toEqual(withFreshSessionNotice("the chat's working directory changed"));
+      expect((await js("ok")).content).toEqual(fixtureContent);
       expect(isAlive(Number(second.structuredContent?.pid))).toBe(false);
       await client.close();
     }),
@@ -797,7 +832,7 @@ it.live.skipIf(!realRoot || process.platform !== "darwin")(
         const result = await js(code);
         trace.push(code, result);
         expect(result.isError).not.toBe(true);
-        const output = result.content.find((item) => item.type === "text");
+        const output = result.content.findLast((item) => item.type === "text");
         return JSON.parse(output?.type === "text" ? output.text : "");
       };
 

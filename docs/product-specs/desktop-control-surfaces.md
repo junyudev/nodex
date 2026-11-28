@@ -67,7 +67,9 @@ The Profile keeps its recovery receipts at `runtime/agent/chrome-control/windows
 
 Outside Codex, each chat has its own JavaScript session. While its kernel is live, bindings survive
 chat turns and provider restarts. A change to the effective execution policy or working directory starts
-a fresh kernel. Stopping a running JavaScript call resets its bindings. A fork has its own session.
+a fresh kernel. Stopping a running JavaScript call resets its bindings. Host-managed kernels are
+released after 30 minutes without activity and when their Runtime closes. After a reset, the next
+JavaScript result tells the Agent why its previous bindings are gone. A fork has its own session.
 
 On macOS, the effective chat permission mode applies to JavaScript and its child commands:
 
@@ -83,9 +85,9 @@ execution behavior.
 
 `nodeRepl.cwd` reports the working directory. `nodeRepl.tmpDir` reports the temporary directory.
 On macOS, each live REPL has a private scratch directory for temporary files. It is removed when
-the process exits, with abandoned directories cleaned up on startup. Host-managed REPLs are
-released after 30 minutes without activity. A kernel reset clears bindings. Other processes under the same OS account can read scratch files if their read policy
-permits it. An Agent keeps secrets in memory and sends them directly to the intended command.
+the process exits, with abandoned directories cleaned up on startup. Other processes under the same
+OS account can read scratch files if their read policy permits it. An Agent keeps secrets in memory
+and sends them directly to the intended command.
 
 The JavaScript approval card shows the code and can allow JavaScript for the chat. The allowance
 survives Stop and app restarts and ends when the chat’s permission mode changes. Site and app
