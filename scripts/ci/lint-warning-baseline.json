@@ -525,9 +525,6 @@
     "nodex(no-explicit-test-timeout)": 1,
     "nodex(no-real-time-wait-in-tests)": 2
   },
-  "tests/e2e/composer-predictions.spec.ts": {
-    "nodex(no-explicit-test-timeout)": 3
-  },
   "tests/e2e/conversation-import-browse.spec.ts": {
     "nodex(no-explicit-test-timeout)": 3
   },
@@ -638,9 +635,6 @@
   },
   "tests/e2e/mobile-gateway.spec.ts": {
     "nodex(no-explicit-test-timeout)": 5
-  },
-  "tests/e2e/model-policy.spec.ts": {
-    "nodex(no-explicit-test-timeout)": 3
   },
   "tests/e2e/new-chat-lifecycle.spec.ts": {
     "nodex(no-explicit-test-timeout)": 6
