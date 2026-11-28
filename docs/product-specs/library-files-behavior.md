@@ -106,7 +106,10 @@ File boundary. A desktop export is a read-only copy of one exact version under
 the File's name, which local file paths and Reveal in Finder show in place of
 the Library's storage. Cache hits revalidate the selected source and version.
 Cache loss or a changed copy is repaired from Core and does not make the cache
-a persistent owner.
+a persistent owner. Main removes an export 14 days after its last use and, once
+the cache passes 2 GiB, the least recently used first, but never one used within
+the past day, since another app may still have it open. The next use exports it
+again.
 At most two bounded File exports run concurrently.
 
 File publication and Page entry mutation remain separate commands. Each item
