@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="<!-- preview-csp -->" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Nodex Insights</title>
+    <style>
+      /* preview-styles */
+    </style>
+  </head>
+  <body>
+    <header class="bar">
+      <a class="brand" href="https://nodex.jyu.app" target="_blank" rel="noopener noreferrer">
+        <svg id="mark" class="mark" viewBox="0 0 800 800" aria-hidden="true"></svg>
+        <span data-copy="title">Nodex Insights</span>
+      </a>
+      <div class="switches">
+        <div id="theme-control" class="segments" role="group">
+          <button id="dark" data-copy="dark" type="button"></button>
+          <button id="light" data-copy="light" type="button"></button>
+        </div>
+        <div id="language-control" class="segments" role="group">
+          <button id="english" type="button" lang="en">English</button>
+          <button id="chinese" type="button" lang="zh-CN">中文</button>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section id="cards" class="cards"></section>
+      <div class="controls">
+        <label class="field">
+          <span data-copy="name"></span>
+          <input id="name" type="text" autocomplete="off" spellcheck="false" />
+        </label>
+        <label id="cost-control" class="field" hidden>
+          <span data-copy="showCost"></span>
+          <input id="show-cost" type="checkbox" role="switch" checked />
+        </label>
+        <p class="note" data-copy="privacy"></p>
+      </div>
+    </main>
+    <div id="toast" role="status" aria-atomic="true"></div>
+    <template id="card-template">
+      <figure>
+        <img alt="" />
+        <div class="toolbar" role="group">
+          <button data-copy="copy" type="button"></button>
+          <button data-copy="save" type="button"></button>
+          <button data-copy="post" type="button"></button>
+        </div>
+      </figure>
+    </template>
+    <script id="preview-data" type="application/json"></script>
+    <script>
+      /* preview-script */
+    </script>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "name": "nodex-insights",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turn your AI coding agents' usage into a card worth sharing. Reads local history through ccusage; nothing leaves your computer.",
+  "keywords": [
+    "ai-agents",
+    "ccusage",
+    "claude-code",
+    "codex",
+    "tokens",
+    "usage"
+  ],
+  "homepage": "https://nodex.jyu.app",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/junyudev/nodex.git",
+    "directory": "packages/nodex-insights"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "typecheck": "tsc-rs --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "ccusage": "20.1.2"
+  },
+  "devDependencies": {
+    "@formatjs/intl": "6.1.5",
+    "@nodex/insights-cards": "workspace:*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

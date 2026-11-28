@@ -89,3 +89,6 @@ offers `Copy image`, which puts it on the clipboard, `Save PNG`, which asks wher
 `Post on X`, which copies it and opens a compose window with the numbers as text (the cost too
 when the card shows it), ready to paste.
 Nothing is uploaded unless the person posts it.
+
+The same cards, drawn by the same code, come from the terminal too: [`npx nodex-insights`](nodex-insights-cli.md)
+makes them from local agent history for people who do not use Nodex yet.
