@@ -60,6 +60,8 @@ function hostVariables({
 
 const SHARED_RULES = `
 [data-file-tree-virtualized-scroll='true'] { scrollbar-gutter: auto; }
+/* A row's badge, such as its comment count, keeps its width; the name truncates instead. */
+[data-item-section='decoration'] { flex-basis: auto; }
 [role='treeitem'], [role='treeitem'] * { cursor: var(--cursor-interaction) !important; }
 [data-item-type='file'][data-item-path$='/']:has([data-item-section='content']:empty) { display: none; }
 /* A loading folder's placeholder row shows only its slotted skeleton. */
