@@ -24,6 +24,7 @@ import {
 import { WorkbenchRailAccountControls } from "@/components/workbench/workbench-rail-account-controls";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { createMaitaiStore } from "@/lib/maitai/maitai-store";
+import type { CodexAccountSnapshot } from "@/lib/types";
 import { TestMaitaiRoot } from "@/test/app-maitai";
 import { installWindowApi } from "@/test/browser-globals";
 import { hoverWithMouse, openNodexMenu } from "@/test/dom";
@@ -115,7 +116,11 @@ const EMPTY_CHANGELOG: ChangelogFeed = {
   releases: [],
 };
 
-function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutLabel?: string) {
+function renderAccountControls(
+  snapshot: NodexAccountSnapshot,
+  options: { settingsShortcutLabel?: string; codexAccount?: CodexAccountSnapshot } = {},
+) {
+  const { settingsShortcutLabel, codexAccount } = options;
   const listeners = new Set<(value: unknown) => void>();
   let observed = snapshot;
   const invoke = vi
@@ -156,14 +161,17 @@ function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutL
             onOpenSettings={settings}
             onOpenAccountSettings={accountSettings}
             settingsShortcutLabel={settingsShortcutLabel}
-            account={{
-              status: "ready",
-              account: null,
-              requiresOpenAiAuth: true,
-              pendingLogin: null,
-              rateLimits: null,
-            }}
+            account={
+              codexAccount ?? {
+                status: "ready",
+                account: null,
+                requiresOpenAiAuth: true,
+                pendingLogin: null,
+                rateLimits: null,
+              }
+            }
             connection={{ status: "connected", retries: 0 }}
+            onRefreshAccount={codexAccount ? async () => codexAccount : undefined}
             onStartChatGptLogin={nativeAction}
             onStartApiKeyLogin={nativeAction}
             onCancelLogin={nativeAction}
@@ -202,7 +210,10 @@ async function selectMenuItem(name: string | RegExp) {
 
 describe("Nodex account menu", () => {
   test("keeps Settings available locally and routes signed-in identity to Account", async () => {
-    const controls = renderAccountControls({ ...signedOut, configured: false }, "⇧⌘,");
+    const controls = renderAccountControls(
+      { ...signedOut, configured: false },
+      { settingsShortcutLabel: "⇧⌘," },
+    );
     await screen.findByText("Not available in this build.");
     await openNodexMenu(controls.trigger());
     // With only the personal Space there is nothing to switch to, only a Space to join.
@@ -275,6 +286,50 @@ describe("Nodex account menu", () => {
     expect(within(controls.trigger()).queryByText("NS")).toBeNull();
     expect(controls.container.querySelector("img")).toBeNull();
     expect(controls.invoke).toHaveBeenLastCalledWith("nodex-account:sign-out");
+    expect(controls.nativeAction).not.toHaveBeenCalled();
+  });
+
+  test("updates the Nodex identity in the menu and Settings while Codex stays signed in", async () => {
+    const codexEmail = "codex@example.com";
+    const controls = renderAccountControls(signedIn, {
+      codexAccount: {
+        status: "ready",
+        account: { type: "chatgpt", email: codexEmail, planType: "plus" },
+        requiresOpenAiAuth: false,
+        pendingLogin: null,
+        rateLimits: null,
+      },
+    });
+    const settings = within(screen.getByRole("main", { name: "Account" }));
+    await settings.findByText("account@nodex.invalid");
+    await screen.findByRole("button", { name: /^Codex usage/u });
+
+    await openNodexMenu(controls.trigger());
+    await screen.findByRole("menuitem", { name: /Nodex Scenario/u });
+    const updatedEmail = "updated@nodex.invalid";
+    await controls.emit({
+      ...signedIn,
+      revision: 2,
+      account: { ...signedIn.account!, name: "Updated Nodex identity", email: updatedEmail },
+    });
+    const identity = await screen.findByRole("menuitem", { name: /Updated Nodex identity/u });
+    expect(within(identity).getByText(updatedEmail)).toBeDefined();
+    expect(settings.getByText("Updated Nodex identity")).toBeDefined();
+    expect(settings.getByText(updatedEmail)).toBeDefined();
+    expect(screen.queryByText("account@nodex.invalid")).toBeNull();
+
+    controls.invoke.mockResolvedValue({ ...signedOut, revision: 3 });
+    await selectMenuItem("Sign out");
+    await settings.findByText("Not signed in");
+    expect(settings.queryByText(updatedEmail)).toBeNull();
+
+    const codex = screen.getByRole("button", { name: /^Codex usage/u });
+    await act(async () => {
+      fireEvent.focus(codex);
+      await Promise.resolve();
+    });
+    const usage = await screen.findByRole("dialog", { name: "Codex usage details" });
+    expect(within(usage).getByText(codexEmail)).toBeDefined();
     expect(controls.nativeAction).not.toHaveBeenCalled();
   });
 
